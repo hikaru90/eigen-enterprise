@@ -3,6 +3,7 @@ import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenan
 import { rotateTenantDek } from '$lib/server/crypto/tenant-keys'
 import { getDb } from '$lib/server/db'
 import { thought } from '$lib/server/db/schema'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 
 export async function rotateTenantEncryptedThoughtData(
   userId: string,
@@ -71,5 +72,10 @@ export async function rotateTenantEncryptedThoughtData(
       .where(and(eq(thought.id, row.id), eq(thought.userId, userId)))
     reencrypted += 1
   }
+  // Rotation re-sealed everything with the person's new key: shared tasks go back to the company key.
+  await reconcileThoughtKeys(
+    userId,
+    rows.map((row) => row.id),
+  )
   return { reencrypted }
 }

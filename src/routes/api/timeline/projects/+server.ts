@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
-import type { MemoryAuthor, ProjectStatus } from '$lib/server/db/schema'
+import type { MemoryAuthor, MemoryVisibility, ProjectStatus } from '$lib/server/db/schema'
 import { createUserDeclaredProject } from '$lib/server/memory/create-user-project'
 import { listProjectsForUser, type ProjectListItem } from '$lib/server/memory/project-list'
 
@@ -11,12 +11,15 @@ export type TimelineProjectsResponse = {
 export type CreateProjectRequest = {
   label: string
   status?: ProjectStatus
+  /** true = only the person sees it and its tasks; default false = shared with everyone. */
+  private?: boolean
 }
 
 export type CreateProjectResponse = {
   entityId: string
   label: string
   status: ProjectStatus
+  visibility: MemoryVisibility
 }
 
 const PROJECT_STATUS_KEYS = ['active', 'someday', 'completed'] as const
@@ -53,12 +56,16 @@ export const POST: RequestHandler = async (event) => {
   if (!label) error(400, 'label is required')
 
   const status = parseProjectStatus(body.status)
+  if (body.private !== undefined && typeof body.private !== 'boolean') {
+    error(400, 'private must be true or false')
+  }
 
   try {
     const result = await createUserDeclaredProject({
       userId: user.id,
       label,
       ...(status ? { status } : {}),
+      visibility: body.private === true ? 'private' : 'company',
     })
     return json(result satisfies CreateProjectResponse)
   } catch (err) {

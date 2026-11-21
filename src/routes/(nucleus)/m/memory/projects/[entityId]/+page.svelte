@@ -11,6 +11,8 @@
   import { goto, invalidate } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { page } from '$app/state'
+  import MemoryOwnerLabel from '$lib/components/memory-owner-label.svelte'
+  import MemoryPrivateSwitch from '$lib/components/memory-private-switch.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button } from '$lib/components/ui/button'
   import type { ReviewProjectResponse } from '$lib/memory/project-review-types'
@@ -18,6 +20,7 @@
   import type { ProjectViewMode } from '$lib/memory/project-view-mode'
   import { parseProjectViewMode } from '$lib/memory/project-view-mode'
   import { m } from '$lib/paraglide/messages.js'
+  import { docTitle } from '$lib/shell/title'
   import ProjectGanttView from '../../../../../timeline/project-gantt-view.svelte'
   import ProjectKanbanView from '../../../../../timeline/project-kanban-view.svelte'
   import ProjectListView from '../../../../../timeline/project-list-view.svelte'
@@ -26,14 +29,16 @@
   import TimelineEditProjectDialog from '../../../../../timeline/timeline-edit-project-dialog.svelte'
   import { postTimelineQuickAction } from '../../../../../timeline/timeline-item-actions'
   import ProjectReviewDialog from './project-review-dialog.svelte'
-  import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
 
   const VIEW_STORAGE_KEY = 'project-view-mode'
 
   const project = $derived(data.project)
-  const viewMode = $derived(data.view)
+  /** A colleague's shared project: read-only (plan/shared-memory-voice-agent-tools.md §1). */
+  const readOnly = $derived(!data.editable)
+  // Kanban moves tasks between stages: a read-only project shows its list instead.
+  const viewMode = $derived(readOnly && data.view === 'kanban' ? 'list' : data.view)
   const statusFilter = $derived(data.statusFilter)
 
   const statusFilterOptions: Array<{ value: ProjectTaskStatusFilter; label: string }> = [
@@ -55,6 +60,10 @@
   let reviewOpen = $state(false)
   let reviewPayload = $state<ReviewProjectResponse | null>(null)
   let projectLabelOverride = $state<string | null>(null)
+  let privateOverride = $state<boolean | null>(null)
+  let visibilityBusy = $state(false)
+  let visibilityError = $state<string | null>(null)
+  const isPrivate = $derived(privateOverride ?? project.visibility === 'private')
 
   const displayLabel = $derived(projectLabelOverride ?? project.label)
 
@@ -202,6 +211,26 @@
     }
   }
 
+  /** The Private switch: saved at once (memory.set_project_visibility), tasks follow the project. */
+  async function changeVisibility(next: boolean) {
+    visibilityBusy = true
+    visibilityError = null
+    try {
+      const res = await fetch(`/api/timeline/projects/${project.entityId}/visibility`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ private: next }),
+      })
+      if (!res.ok) throw new Error((await res.text()) || `Request failed (${res.status})`)
+      const body = (await res.json()) as { visibility: 'private' | 'company' }
+      privateOverride = body.visibility === 'private'
+    } catch (err) {
+      visibilityError = `${m.memory_private_failed()} ${err instanceof Error ? err.message : String(err)}`
+    } finally {
+      visibilityBusy = false
+    }
+  }
+
   async function confirmDismiss() {
     dismissOpen = false
     const res = await fetch(`/api/timeline/projects/${project.entityId}/dismiss`, {
@@ -244,6 +273,9 @@
           <FolderKanbanIcon class="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
           <span class="truncate">{displayLabel}</span>
         </h2>
+        {#if readOnly}
+          <div class="mt-1"><MemoryOwnerLabel name={data.owner.name} /></div>
+        {/if}
         <p class="text-muted-foreground text-xs">
           {statusLabel(project.status)}
           {#if project.openTaskCount > 0}
@@ -256,7 +288,7 @@
           {/if}
         </p>
       </div>
-      <div class="flex shrink-0 items-center gap-1">
+      <div class="flex shrink-0 items-center gap-1" class:hidden={readOnly}>
         {#if project.status === 'active'}
           <Button
             type="button"
@@ -304,15 +336,17 @@
         >
           {m.graph_timeline_project_view_timeline()}
         </button>
-        <button
-          type="button"
-          role="tab"
-          class={viewPillClass(viewMode === 'kanban')}
-          aria-selected={viewMode === 'kanban'}
-          onclick={() => void setViewMode('kanban')}
-        >
-          {m.graph_timeline_project_view_kanban()}
-        </button>
+        {#if !readOnly}
+          <button
+            type="button"
+            role="tab"
+            class={viewPillClass(viewMode === 'kanban')}
+            aria-selected={viewMode === 'kanban'}
+            onclick={() => void setViewMode('kanban')}
+          >
+            {m.graph_timeline_project_view_kanban()}
+          </button>
+        {/if}
       </div>
 
       <div
@@ -337,8 +371,22 @@
       </div>
     </div>
 
+    {#if !readOnly}
+      <MemoryPrivateSwitch
+        id="project-private"
+        kind="project"
+        checked={isPrivate}
+        disabled={visibilityBusy}
+        onchange={(next) => void changeVisibility(next)}
+      />
+      {#if visibilityError}
+        <p class="text-destructive text-xs" role="alert">{visibilityError}</p>
+      {/if}
+    {/if}
+
     <div
       class="border-border bg-muted/10 flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
+      class:hidden={readOnly}
       data-testid="project-review-panel"
     >
       <p class="text-muted-foreground min-w-0 flex-1 text-xs leading-snug">
@@ -372,6 +420,7 @@
         items={visibleItems}
         selectedItemId={selectedItem?.id ?? null}
         {updatingEventId}
+        {readOnly}
         onSelect={(item) => (selectedItem = item)}
         onQuickAction={(id, action) => void onQuickAction(id, action)}
       />
@@ -380,7 +429,9 @@
         project={{ ...project, label: displayLabel }}
         items={visibleItems}
         selectedItemId={selectedItem?.id ?? null}
-        onSelect={(item) => (selectedItem = item)}
+        onSelect={(item) => {
+          if (!readOnly) selectedItem = item
+        }}
       />
     {:else}
       <ProjectKanbanView

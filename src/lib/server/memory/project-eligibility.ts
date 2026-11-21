@@ -10,6 +10,7 @@ import {
   type ProjectStatus,
 } from '$lib/server/db/schema'
 import { upsertEntityNode } from '$lib/server/graph/age'
+import { reconcileProjectKeys } from '$lib/server/memory/shared-memory-keys'
 import { validateNonEmptyEntityId } from '$lib/server/validation/mcp-args'
 
 const PROJECT_SOURCE_RANK: Record<ProjectSource, number> = {
@@ -210,6 +211,8 @@ export async function ensureProject(
     projectStatus: nextStatus,
     projectSource: nextSource,
   })
+  // A project shares its tasks unless it is private: their keys follow.
+  await reconcileProjectKeys(userId, entityId)
 }
 
 /** @deprecated Use ensureProject */
@@ -244,6 +247,8 @@ export async function demoteProject(userId: string, entityId: string): Promise<b
     projectStatus: null,
     projectSource: null,
   })
+  // No longer a project: nothing of it is shared any more.
+  await reconcileProjectKeys(userId, id)
   return true
 }
 
@@ -275,4 +280,5 @@ export async function restoreProjectListing(
     projectStatus: status,
     projectSource: source,
   })
+  await reconcileProjectKeys(userId, entityId)
 }

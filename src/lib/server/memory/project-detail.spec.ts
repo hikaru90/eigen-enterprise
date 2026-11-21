@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadProjectDetail } from './project-detail'
 
-const { listProjectsByEntityIdsMock, listTemporalEventsForUserMock } = vi.hoisted(() => ({
-  listProjectsByEntityIdsMock: vi.fn(),
+const { loadProjectForReaderMock, listTemporalEventsForUserMock, resolveProjectAccessMock } = vi.hoisted(() => ({
+  loadProjectForReaderMock: vi.fn(),
   listTemporalEventsForUserMock: vi.fn(),
+  resolveProjectAccessMock: vi.fn(),
 }))
 
-vi.mock('./project-list', () => ({
-  listProjectsByEntityIds: listProjectsByEntityIdsMock,
+vi.mock('./team-projects', () => ({
+  loadProjectForReader: loadProjectForReaderMock,
 }))
+
+vi.mock('./memory-visibility', () => ({
+  resolveProjectAccess: resolveProjectAccessMock,
+}))
+
+const own = { entityId: 'p1', ownerId: 'u1', ownerName: 'Ana', visibility: 'company', systemKey: null, editable: true }
 
 vi.mock('./temporal-event-list', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./temporal-event-list')>()
@@ -23,8 +30,17 @@ describe('loadProjectDetail', () => {
     vi.clearAllMocks()
   })
 
+  it('returns null when the project does not exist for the reader (absent or a colleague’s private one)', async () => {
+    resolveProjectAccessMock.mockResolvedValue(null)
+
+    expect(await loadProjectDetail('u1', 'missing')).toBeNull()
+    expect(loadProjectForReaderMock).not.toHaveBeenCalled()
+    expect(listTemporalEventsForUserMock).not.toHaveBeenCalled()
+  })
+
   it('returns null when the entity is not a listed project', async () => {
-    listProjectsByEntityIdsMock.mockResolvedValue([])
+    resolveProjectAccessMock.mockResolvedValue(own)
+    loadProjectForReaderMock.mockResolvedValue(null)
 
     const result = await loadProjectDetail('u1', 'missing')
 
@@ -60,7 +76,8 @@ describe('loadProjectDetail', () => {
         },
       ],
     }
-    listProjectsByEntityIdsMock.mockResolvedValue([project])
+    resolveProjectAccessMock.mockResolvedValue(own)
+    loadProjectForReaderMock.mockResolvedValue({ ...project, owner: { id: 'u1', name: 'Ana' }, editable: true })
     listTemporalEventsForUserMock.mockResolvedValue({
       items: [
         {
@@ -99,7 +116,7 @@ describe('loadProjectDetail', () => {
 
     const result = await loadProjectDetail('u1', 'p1')
 
-    expect(listProjectsByEntityIdsMock).toHaveBeenCalledWith('u1', ['p1'])
+    expect(loadProjectForReaderMock).toHaveBeenCalledWith('u1', 'u1', 'p1')
     expect(listTemporalEventsForUserMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'u1',
@@ -111,11 +128,29 @@ describe('loadProjectDetail', () => {
     )
     expect(result).toMatchObject({
       project,
+      owner: { id: 'u1', name: 'Ana' },
+      editable: true,
       items: [
         expect.objectContaining({ id: 'task:t1', projectEntityId: 'p1' }),
         expect.objectContaining({ id: 'task:t2', projectEntityId: 'p1' }),
       ],
     })
     expect(result?.items).toHaveLength(2)
+  })
+
+  it('a colleague’s shared project loads its owner’s items, read-only', async () => {
+    resolveProjectAccessMock.mockResolvedValue({ ...own, editable: false })
+    loadProjectForReaderMock.mockResolvedValue({ entityId: 'p1', label: 'Launch', owner: { id: 'u1', name: 'Ana' }, editable: false })
+    listTemporalEventsForUserMock.mockResolvedValue({
+      items: [{ id: 'task:t1', thoughtId: 't1', projectEntityId: 'p1' }],
+      nextCursor: null,
+    })
+
+    const result = await loadProjectDetail('u2', 'p1')
+
+    expect(loadProjectForReaderMock).toHaveBeenCalledWith('u2', 'u1', 'p1')
+    expect(listTemporalEventsForUserMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1' }))
+    expect(result).toMatchObject({ editable: false, owner: { id: 'u1' }, items: [{ id: 'task:t1' }] })
+    expect(result?.project).not.toHaveProperty('owner')
   })
 })

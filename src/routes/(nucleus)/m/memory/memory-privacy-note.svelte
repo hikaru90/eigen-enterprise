@@ -7,15 +7,21 @@
    * by src/lib/server/memory/memory-access.integration.spec.ts and the delete
    * specs next to it:
    * - RLS (src/lib/server/db/enable_rls.sql) scopes every Memory table to the
-   *   signed-in person's user id, whatever their company role; no app route
-   *   reads another person's Memory. Exception: the Roadmap system project lives
-   *   in the owner's Memory — members read it, admins and the agent's roadmap.*
-   *   tools change it (modules/orchestrator/roadmap).
+   *   signed-in person's user id, whatever their company role. Shared Memory
+   *   (drizzle/0164, plan/shared-memory-voice-agent-tools.md §1): projects and
+   *   notes are shared with every member by default — a project with its tasks
+   *   (task thoughts linked to it), their order, milestones and dates — read-only
+   *   for everyone but their owner; one switched to Private is the owner's alone,
+   *   no admin or owner override. Thoughts, Capture and tasks outside a shared
+   *   project stay the person's own. memory-sharing.integration.spec.ts pins it.
+   *   The Roadmap system project lives in the owner's Memory and is always
+   *   shared — admins and the agent's roadmap.* tools change it
+   *   (modules/orchestrator/roadmap).
    * - The company brain acts as a person (CB3): in a person's own conversation
    *   its memory.* kernel tools run as THAT person (delegated principal, RLS of
    *   that person — modules/memory/tools.ts, src/lib/server/kernel/principal-scope.ts),
-   *   so it reads their Memory and nobody else's; another person's turn runs as
-   *   them, never reaching this Memory.
+   *   so it reads their Memory plus what colleagues share; another person's turn
+   *   runs as them and reaches only what this person shares.
    * - API keys authenticate only /api/mcp and /api/mail/send; MCP needs the
    *   key's "MCP access"; its delete_thought archives, delete_project dismisses.
    * - Capture, enrichment and search go through the gateway to the server's AI
@@ -39,13 +45,16 @@
   <h2 id="memory-privacy-title" class="font-medium text-foreground">Who can see your Memory</h2>
   <ul class="list-disc space-y-1 pl-4">
     <li>
-      Only you. Other members, admins and the owner can’t open or search your thoughts, tasks,
-      projects or notes. The one exception is the company’s Roadmap project: everyone sees it,
-      and admins and the assistant change it.
+      Your projects and notes are shared with everyone in the company — a project together with
+      its tasks and progress. Colleagues can read them but only you change them. Switch one to
+      Private and only you can see it: no admin, not even the owner. Your thoughts, what you
+      capture and tasks outside a shared project are yours alone. The company’s Roadmap project
+      is always shared, and admins and the assistant change it.
     </li>
     <li>
-      The company brain reads it only as you: in your own conversations it sees your Memory —
-      never anyone else’s, and nobody else’s questions reach yours. When you ask, it adds thoughts
+      The company brain reads it only as you: in your own conversations it sees your Memory and
+      what colleagues share — never their private things; a colleague’s question reaches only
+      what you share. It can make things private for you, never share them. When you ask, it adds thoughts
       and notes to your Memory — notes marked as the assistant’s — and changes only the notes it
       wrote. An app or agent you give an API key with
       MCP access (Settings → API keys) can read and add to it as you, until you revoke the key —

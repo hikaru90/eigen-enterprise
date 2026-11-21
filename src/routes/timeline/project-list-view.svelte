@@ -16,6 +16,8 @@
     updatingEventId?: string | null
     onSelect: (item: TemporalEventListItem) => void
     onQuickAction: (eventId: string, action: 'mark_done' | 'reopen') => void
+    /** A colleague's shared project: tasks are shown, never changed or opened for editing. */
+    readOnly?: boolean
   }
 
   let {
@@ -24,6 +26,7 @@
     updatingEventId = null,
     onSelect,
     onQuickAction,
+    readOnly = false,
   }: Props = $props()
 </script>
 
@@ -47,12 +50,16 @@
           : ''}"
         role="listitem"
       >
-        <TemporalEventStatusButton {item} compact {updatingEventId} {onQuickAction} />
-        <button
-          type="button"
-          class="flex min-w-0 flex-1 flex-col gap-1 text-left"
-          onclick={() => onSelect(item)}
-        >
+        {#if readOnly}
+          <span
+            class="mt-1 size-3.5 shrink-0 rounded-full border border-border {completed ? 'bg-muted-foreground/40' : ''}"
+            aria-label={completed ? 'Done' : 'Open'}
+            role="img"
+          ></span>
+        {:else}
+          <TemporalEventStatusButton {item} compact {updatingEventId} {onQuickAction} />
+        {/if}
+        {#snippet summary()}
           <div class="flex min-w-0 flex-wrap items-center gap-1.5">
             <span
               class="text-foreground text-sm leading-snug {completedEventSummaryClass(completed)}"
@@ -71,7 +78,18 @@
               >Created {formatCreatedDate(item)}</span
             >
           </div>
-        </button>
+        {/snippet}
+        {#if readOnly}
+          <div class="flex min-w-0 flex-1 flex-col gap-1 text-left">{@render summary()}</div>
+        {:else}
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 flex-col gap-1 text-left"
+            onclick={() => onSelect(item)}
+          >
+            {@render summary()}
+          </button>
+        {/if}
       </div>
     {/each}
   {/if}

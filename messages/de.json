@@ -375,5 +375,19 @@
   "llm_project_review_system": "Du prüfst ein bestehendes GTD-Projekt und schlägst bestätigbare Aufräum-Änderungen vor. thoughtId und order dürfen nur Katalog-UUIDs verwenden. Neue Aufgaben nur bei echten Lücken vorschlagen. Gib nur gültiges JSON zurück.",
   "llm_temporal_extraction_system": "Du extrahierst Daten, Deadlines und zeitliche Erwähnungen aus persönlichen Notizen.",
   "llm_relation_extraction_system": "Du extrahierst Beziehungen zwischen Gedanken.",
-  "llm_cue_generation_system": "Du generierst Such-Hinweise für persönliche Notizen."
+  "llm_cue_generation_system": "Du generierst Such-Hinweise für persönliche Notizen.",
+  "memory_private_label": "Privat",
+  "memory_private_note_on_hint": "Nur du kannst sie lesen – kein Admin, auch nicht der Inhaber.",
+  "memory_private_note_off_hint": "Alle im Unternehmen können sie lesen. Nur du änderst sie.",
+  "memory_private_project_on_hint": "Nur du siehst es und seine Aufgaben – kein Admin, auch nicht der Inhaber.",
+  "memory_private_project_off_hint": "Alle im Unternehmen sehen es, seine Aufgaben und den Fortschritt. Nur du änderst es.",
+  "memory_private_failed": "Konnte nicht ändern, wer es sieht:",
+  "memory_owner_by": "Von {name}",
+  "memory_read_only": "Nur lesen",
+  "memory_read_only_hint": "Geteilt von {name}. Nur diese Person ändert es.",
+  "memory_scope_aria": "Wessen",
+  "memory_scope_mine": "Meine",
+  "memory_scope_team": "Team",
+  "memory_team_projects_empty": "Noch teilt niemand im Team ein Projekt.",
+  "memory_team_notes_empty": "Noch teilt niemand im Team eine Notiz."
 }

@@ -13,6 +13,7 @@ import { encryptTenantValue, decryptTenantValue } from '$lib/server/crypto/tenan
 import { getDb } from '$lib/server/db'
 import { thought, type CaptureSource, type EnrichQueueStatus } from '$lib/server/db/schema'
 import { computeLexicalText } from '$lib/server/memory/lexical-text'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 import { ensureUserOntologySeeded, loadOntologyForUser } from '$lib/server/ontology-db'
 
 export type { CapturePreviewBundle }
@@ -253,6 +254,17 @@ export async function interpretAndQueueCapture(
  * Idempotent when the draft was already confirmed (client/server auto-accept race).
  */
 export async function confirmCapturePreview(
+  userId: string,
+  thoughtId: string,
+  options?: { verbatim?: boolean },
+): Promise<ConfirmCaptureResult> {
+  const result = await confirmCapturePreviewUnsealed(userId, thoughtId, options)
+  // Rewrites the thought's ciphertext: a task of a shared project stays sealed with the company key (shared-memory-keys.ts).
+  await reconcileThoughtKeys(userId, [thoughtId])
+  return result
+}
+
+async function confirmCapturePreviewUnsealed(
   userId: string,
   thoughtId: string,
   options?: { verbatim?: boolean },

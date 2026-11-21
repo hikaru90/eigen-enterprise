@@ -385,10 +385,17 @@ CREATE POLICY thought_text_file_isolation ON thought_text_file
 ALTER TABLE thought_entity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE thought_entity FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS thought_entity_isolation ON thought_entity;
+-- A link is written by the owner of both the thought and the entity (0164).
 CREATE POLICY thought_entity_isolation ON thought_entity
   FOR ALL
   USING (user_id = current_setting('app.current_user_id', true))
-  WITH CHECK (user_id = current_setting('app.current_user_id', true));
+  WITH CHECK (
+    user_id = current_setting('app.current_user_id', true)
+    AND EXISTS (
+      SELECT 1 FROM canonical_entity ce
+      WHERE ce.id = thought_entity.entity_id AND ce.user_id = thought_entity.user_id
+    )
+  );
 
 ALTER TABLE thought_neighbor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE thought_neighbor FORCE ROW LEVEL SECURITY;
@@ -485,3 +492,138 @@ REVOKE ALL ON FUNCTION resolve_agent_callback_token(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION resolve_user_api_key(text) TO eigen_app;
 GRANT EXECUTE ON FUNCTION touch_user_api_key(uuid) TO eigen_app;
 GRANT EXECUTE ON FUNCTION resolve_agent_callback_token(text) TO eigen_app;
+
+-- ─── Shared Memory (drizzle/0164_memory_sharing.sql; keep identical) ─────────
+-- Projects and notes marked 'company' are readable by every signed-in member;
+-- tasks follow their project. The owner policies above keep writes owner-only.
+-- Private (visibility 'private') has no admin or owner override.
+
+ALTER TABLE company_data_key ENABLE ROW LEVEL SECURITY;
+ALTER TABLE company_data_key FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS company_data_key_read ON company_data_key;
+CREATE POLICY company_data_key_read ON company_data_key
+  FOR SELECT
+  USING (coalesce(current_setting('app.current_user_id', true), '') <> '');
+DROP POLICY IF EXISTS company_data_key_create ON company_data_key;
+CREATE POLICY company_data_key_create ON company_data_key
+  FOR INSERT
+  WITH CHECK (coalesce(current_setting('app.current_user_id', true), '') <> '');
+
+DROP POLICY IF EXISTS canonical_entity_shared_read ON canonical_entity;
+CREATE POLICY canonical_entity_shared_read ON canonical_entity
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND visibility = 'company'
+    AND project_status IS NOT NULL
+    AND project_status <> 'dismissed'
+  );
+
+DROP POLICY IF EXISTS thought_entity_shared_read ON thought_entity;
+CREATE POLICY thought_entity_shared_read ON thought_entity
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND EXISTS (
+      SELECT 1 FROM canonical_entity ce
+      WHERE ce.id = thought_entity.entity_id
+        AND ce.user_id = thought_entity.user_id
+        AND ce.visibility = 'company'
+        AND ce.project_status IS NOT NULL
+        AND ce.project_status <> 'dismissed'
+    )
+  );
+
+DROP POLICY IF EXISTS thought_shared_read ON thought;
+CREATE POLICY thought_shared_read ON thought
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND category = 'task'
+    AND EXISTS (
+      SELECT 1 FROM thought_entity te
+      JOIN canonical_entity ce ON ce.id = te.entity_id
+      WHERE te.thought_id = thought.id
+        AND te.user_id = thought.user_id
+        AND ce.user_id = thought.user_id
+        AND ce.visibility = 'company'
+        AND ce.project_status IS NOT NULL
+        AND ce.project_status <> 'dismissed'
+    )
+  );
+
+DROP POLICY IF EXISTS temporal_event_shared_read ON temporal_event;
+CREATE POLICY temporal_event_shared_read ON temporal_event
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND thought_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM thought t
+      WHERE t.id = temporal_event.thought_id AND t.user_id = temporal_event.user_id
+    )
+  );
+
+ALTER TABLE project_task_sequence ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_task_sequence FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS project_task_sequence_isolation ON project_task_sequence;
+CREATE POLICY project_task_sequence_isolation ON project_task_sequence
+  FOR ALL
+  USING (user_id = current_setting('app.current_user_id', true))
+  WITH CHECK (
+    user_id = current_setting('app.current_user_id', true)
+    AND EXISTS (
+      SELECT 1 FROM canonical_entity ce
+      WHERE ce.id = project_task_sequence.project_entity_id AND ce.user_id = project_task_sequence.user_id
+    )
+  );
+DROP POLICY IF EXISTS project_task_sequence_shared_read ON project_task_sequence;
+CREATE POLICY project_task_sequence_shared_read ON project_task_sequence
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND EXISTS (
+      SELECT 1 FROM canonical_entity ce
+      WHERE ce.id = project_task_sequence.project_entity_id
+        AND ce.user_id = project_task_sequence.user_id
+        AND ce.visibility = 'company'
+        AND ce.project_status IS NOT NULL
+        AND ce.project_status <> 'dismissed'
+    )
+  );
+
+ALTER TABLE project_milestone ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_milestone FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS project_milestone_isolation ON project_milestone;
+CREATE POLICY project_milestone_isolation ON project_milestone
+  FOR ALL
+  USING (user_id = current_setting('app.current_user_id', true))
+  WITH CHECK (
+    user_id = current_setting('app.current_user_id', true)
+    AND EXISTS (
+      SELECT 1 FROM canonical_entity ce
+      WHERE ce.id = project_milestone.project_entity_id AND ce.user_id = project_milestone.user_id
+    )
+  );
+DROP POLICY IF EXISTS project_milestone_shared_read ON project_milestone;
+CREATE POLICY project_milestone_shared_read ON project_milestone
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND EXISTS (
+      SELECT 1 FROM canonical_entity ce
+      WHERE ce.id = project_milestone.project_entity_id
+        AND ce.user_id = project_milestone.user_id
+        AND ce.visibility = 'company'
+        AND ce.project_status IS NOT NULL
+        AND ce.project_status <> 'dismissed'
+    )
+  );
+
+DROP POLICY IF EXISTS text_file_shared_read ON text_file;
+CREATE POLICY text_file_shared_read ON text_file
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND visibility = 'company'
+  );

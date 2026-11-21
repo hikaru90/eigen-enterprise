@@ -159,6 +159,8 @@ export default defineConfig({
       'src/routes/timeline/timeline-unassigned-tasks.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/projects/roadmap-pinned-card.svelte.spec.ts',
       'src/routes/timeline/timeline-add-task.svelte.spec.ts',
+      'src/lib/components/memory-sharing.svelte.spec.ts',
+      'src/routes/(nucleus)/m/memory/projects/team-projects.svelte.spec.ts',
       'src/lib/components/contribute/contribute-composer.svelte.spec.ts',
       'src/lib/components/contribute/contribute-board.svelte.spec.ts',
       'src/lib/components/contribute/contribute-views.svelte.spec.ts',

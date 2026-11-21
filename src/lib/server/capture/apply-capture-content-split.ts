@@ -9,6 +9,7 @@ import { encryptTenantValue, decryptTenantValue } from '$lib/server/crypto/tenan
 import { getDb } from '$lib/server/db'
 import { thought } from '$lib/server/db/schema'
 import { computeLexicalText } from '$lib/server/memory/lexical-text'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 import { createTextFile, linkTextFileToThought } from '$lib/server/text-files/service'
 
 export type AppliedCaptureContentSplit = {
@@ -58,7 +59,7 @@ async function encryptMetadataPatch(
  * as `normalized_text`. For split, may distill a pointer onto `normalized_text` and
  * link a text_file for the reference body.
  */
-export async function applyCaptureContentSplitIfNeeded(input: {
+type CaptureContentSplitInput = {
   userId: string
   thoughtId: string
   rawText: string
@@ -67,7 +68,20 @@ export async function applyCaptureContentSplitIfNeeded(input: {
    * reuse it instead of running `normalizeThoughtText` again.
    */
   existingNormalizedText?: string
-}): Promise<AppliedCaptureContentSplit> {
+}
+
+export async function applyCaptureContentSplitIfNeeded(
+  input: CaptureContentSplitInput,
+): Promise<AppliedCaptureContentSplit> {
+  const result = await applyCaptureContentSplitUnsealed(input)
+  // Rewrites the thought's ciphertext: a task of a shared project stays sealed with the company key (shared-memory-keys.ts).
+  await reconcileThoughtKeys(input.userId, [input.thoughtId])
+  return result
+}
+
+async function applyCaptureContentSplitUnsealed(
+  input: CaptureContentSplitInput,
+): Promise<AppliedCaptureContentSplit> {
   const split = await resolveCaptureContentSplit({
     userId: input.userId,
     rawText: input.rawText,

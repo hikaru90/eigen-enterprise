@@ -285,6 +285,8 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'memory.list_text_files',
   'memory.retrieve_thoughts',
   'memory.search_text_files',
+  'memory.set_project_visibility',
+  'memory.set_text_file_visibility',
   'memory.update_task',
   'memory.update_text_file',
   'messages.list_channels',

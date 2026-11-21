@@ -9,6 +9,7 @@ import {
   thought,
   thoughtEntity,
   type MemoryAuthor,
+  type MemoryVisibility,
   type ProjectSource,
   type ProjectStatus,
 } from '$lib/server/db/schema'
@@ -17,6 +18,7 @@ import {
   type AuthorLayerSqlColumns,
 } from '$lib/server/memory/authorship'
 import { auditGtdProjectProfiles } from '$lib/server/memory/judge-gtd-project'
+import { applyProjectVisibility } from '$lib/server/memory/memory-visibility'
 import {
   countOpenTasksForProjectEntity,
   ensureProject,
@@ -25,6 +27,7 @@ import {
 } from '$lib/server/memory/project-eligibility'
 import { upsertGraphHubEntity } from '$lib/server/memory/project-entity'
 import type { ProjectMilestoneListItem } from '$lib/server/memory/project-timeline'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 import { assertNotSystemProject } from '$lib/server/memory/system-projects'
 import { taskItemId } from '$lib/server/memory/temporal-event-list'
 
@@ -44,6 +47,8 @@ export type ProjectTaskSequenceItem = {
 export type ProjectListItem = {
   entityId: string
   label: string
+  /** 'company' = every member sees it and its tasks (default); 'private' = its owner only. */
+  visibility: MemoryVisibility
   status: ProjectStatus
   source: ProjectSource
   nextAction: ProjectNextAction | null
@@ -203,6 +208,7 @@ const PROJECT_ROW_COLUMNS = {
   source: canonicalEntity.projectSource,
   nextActionThoughtId: canonicalEntity.nextActionThoughtId,
   targetDate: canonicalEntity.targetDate,
+  visibility: canonicalEntity.visibility,
 }
 
 function baseProjectConditions(userId: string) {
@@ -357,6 +363,7 @@ async function hydrateProjectListItems(
     source: string | null
     nextActionThoughtId: string | null
     targetDate: Date | null
+    visibility: MemoryVisibility
   }[],
 ): Promise<ProjectListItem[]> {
   const items: ProjectListItem[] = []
@@ -380,6 +387,7 @@ async function hydrateProjectListItems(
     items.push({
       entityId: row.entityId,
       label: row.label,
+      visibility: row.visibility,
       status,
       source,
       nextAction,
@@ -416,23 +424,36 @@ export type ListProjectsOptions = {
 export async function dismissProject(userId: string, entityId: string): Promise<void> {
   await assertNotSystemProject(userId, entityId)
   // Remove all thought-entity links for this project so thoughts are untagged.
-  await getDb()
+  const unlinked = await getDb()
     .delete(thoughtEntity)
     .where(and(eq(thoughtEntity.userId, userId), eq(thoughtEntity.entityId, entityId)))
+    .returning({ thoughtId: thoughtEntity.thoughtId })
 
   // Dismiss the project entity and clear nextActionThoughtId.
   await getDb()
     .update(canonicalEntity)
     .set({ projectStatus: 'dismissed', nextActionThoughtId: null, updatedAt: new Date() })
     .where(and(eq(canonicalEntity.userId, userId), eq(canonicalEntity.id, entityId)))
+
+  // Its tasks are no longer shared through it: back to their owner's key.
+  await reconcileThoughtKeys(
+    userId,
+    unlinked.map((row) => row.thoughtId),
+  )
 }
 
 /** Create a new GTD project with manual source. */
 export async function createProject(
   userId: string,
   label: string,
-  options?: { status?: ProjectStatus },
-): Promise<{ entityId: string; label: string; status: ProjectStatus; source: ProjectSource }> {
+  options?: { status?: ProjectStatus; visibility?: MemoryVisibility },
+): Promise<{
+  entityId: string
+  label: string
+  status: ProjectStatus
+  source: ProjectSource
+  visibility: MemoryVisibility
+}> {
   const trimmedLabel = label.trim()
   if (!trimmedLabel) {
     throw new Error('Project label is required')
@@ -446,8 +467,10 @@ export async function createProject(
 
   // Promote to GTD project
   await ensureProject(userId, entityId, status, source)
+  const visibility = options?.visibility ?? 'company'
+  await applyProjectVisibility(userId, entityId, visibility)
 
-  return { entityId, label: trimmedLabel, status, source }
+  return { entityId, label: trimmedLabel, status, source, visibility }
 }
 
 /** Update a project's label (name). */

@@ -51,9 +51,10 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
         queueCapture(member, 'A private worry about my manager', { skipWorker: true }),
       )
     ).thoughtId
+    // Notes are shared by default (plan/shared-memory-voice-agent-tools.md §1); this one is Private.
     await operator`
-      insert into text_file (user_id, title, body_text, lexical_text)
-      values (${member}, 'Private note', 'my private note', 'my private note')`
+      insert into text_file (user_id, title, body_text, lexical_text, visibility)
+      values (${member}, 'Private note', 'my private note', 'my private note', 'private')`
   })
 
   afterAll(async () => {
@@ -62,7 +63,7 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
     await db.closeAppDbPool()
   })
 
-  it('no other account — another member, an admin, the owner — can read it, even asking by id', async () => {
+  it('no other account — another member, an admin, the owner — can read their thoughts or a Private note, even asking by id', async () => {
     for (const reader of [owner, admin]) {
       const rows = await db.withDbUser(reader, (scoped) =>
         scoped.execute(

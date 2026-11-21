@@ -7,6 +7,13 @@ const { listTextFilesMock, createTextFileMock, searchTextFilesMock } = vi.hoiste
   searchTextFilesMock: vi.fn(),
 }))
 
+// Owner names come from the user table (memory-owners.ts); here every item is u1's.
+vi.mock('$lib/server/memory/memory-owners', () => ({
+  withOwners: vi.fn(async (items: Array<{ ownerId?: string }>) =>
+    items.map((item) => ({ ...item, owner: { id: item.ownerId ?? 'u1', name: 'Me' } })),
+  ),
+}))
+
 vi.mock('$lib/server/text-files/service', () => ({
   listTextFiles: listTextFilesMock,
   createTextFile: createTextFileMock,
@@ -59,6 +66,7 @@ describe('/api/text-files', () => {
       query: 'carbonara',
       topK: 5,
       authorLayerKey: null,
+      scope: 'all',
     })
     const body = await res.json()
     expect(body.results[0].id).toBe('f1')
@@ -104,7 +112,30 @@ describe('/api/text-files', () => {
     expect(createTextFileMock).toHaveBeenCalledWith('u1', {
       title: 'shopping list',
       body: undefined,
+      visibility: 'company',
     })
+  })
+
+  it('POST with private: true creates a Private note', async () => {
+    createTextFileMock.mockResolvedValue({ id: 'f3', title: 'Salary', body: '' })
+    await POST({
+      locals: { user: { id: 'u1' } },
+      request: new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'Salary', private: true }),
+      }),
+    } as never)
+    expect(createTextFileMock).toHaveBeenCalledWith('u1', expect.objectContaining({ visibility: 'private' }))
+  })
+
+  it('GET passes the Mine / Team scope and rejects an unknown one', async () => {
+    listTextFilesMock.mockResolvedValue([])
+    await GET({ locals: { user: { id: 'u1' } }, url: new URL('http://localhost/api/text-files?scope=team') } as never)
+    expect(listTextFilesMock).toHaveBeenCalledWith('u1', expect.objectContaining({ scope: 'team' }))
+    await expect(
+      GET({ locals: { user: { id: 'u1' } }, url: new URL('http://localhost/api/text-files?scope=everyone') } as never),
+    ).rejects.toMatchObject({ status: 400 })
   })
 
   it('POST rejects when title and body are both missing', async () => {

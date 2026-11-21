@@ -1,5 +1,15 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
+// Re-sealing keys to visibility (shared-memory-keys.ts) is covered by memory-sharing.integration.spec.ts.
+const { reconcileThoughtKeysMock, reconcileProjectKeysMock } = vi.hoisted(() => ({
+  reconcileThoughtKeysMock: vi.fn(async () => 0),
+  reconcileProjectKeysMock: vi.fn(async () => 0),
+}))
+vi.mock('$lib/server/memory/shared-memory-keys', () => ({
+  reconcileThoughtKeys: reconcileThoughtKeysMock,
+  reconcileProjectKeys: reconcileProjectKeysMock,
+}))
+
 const { encryptMock, decryptMock, dbMock } = vi.hoisted(() => ({
   encryptMock: vi.fn(async ({ plaintext }: { plaintext: string }) => `enc:${plaintext}`),
   decryptMock: vi.fn(async () => {

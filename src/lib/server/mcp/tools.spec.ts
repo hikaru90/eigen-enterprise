@@ -105,6 +105,19 @@ vi.mock('$lib/server/db', () => ({
   }),
 }))
 
+const { listTeamProjectsMock } = vi.hoisted(() => ({ listTeamProjectsMock: vi.fn(async () => [] as unknown[]) }))
+// Whose items they are (shared Memory): owners resolved by name; colleagues' shared projects.
+vi.mock('$lib/server/memory/memory-owners', () => ({
+  ownerNameOf: vi.fn(async () => 'Me'),
+  withOwners: vi.fn(async (items: Array<{ ownerId?: string }>) =>
+    items.map((item) => ({ ...item, owner: { id: item.ownerId ?? 'u1', name: 'Me' } })),
+  ),
+}))
+vi.mock('$lib/server/memory/team-projects', () => ({
+  listTeamProjects: listTeamProjectsMock,
+  loadProjectForReader: vi.fn(),
+}))
+
 vi.mock('$lib/server/text-files/service', () => ({
   createTextFile: createTextFileMock,
   searchTextFiles: searchTextFilesMock,
@@ -525,6 +538,8 @@ describe('MCP tools', () => {
         authorLabel: 'claude',
         authorKeyId: 'key-1',
       },
+      // Shared with the company unless private: true.
+      visibility: 'company',
     })
   })
 
@@ -590,9 +605,28 @@ describe('MCP tools', () => {
     expect(searchTextFilesMock).toHaveBeenCalledWith('u1', {
       query: 'hello',
       topK: 10,
+      scope: 'all',
       authorFilter: 'agent',
     })
     expect(out).toMatchObject({ count: 1 })
+  })
+
+  it('runListProjectsTool lists the person’s projects and colleagues’ shared ones, each with owner and editable', async () => {
+    listProjectsForUserMock.mockResolvedValue([{ entityId: 'p1', label: 'Mine', visibility: 'private', tasks: [], milestones: [] }])
+    listTeamProjectsMock.mockResolvedValueOnce([
+      { entityId: 'p9', label: 'Theirs', visibility: 'company', owner: { id: 'u2', name: 'Ana' }, editable: false, tasks: [], milestones: [] },
+    ])
+    const { runListProjectsTool } = await import('./tools')
+    const out = (await runListProjectsTool({ userId: 'u1' }, {})) as { projects: unknown[] }
+    expect(out.projects).toEqual([
+      expect.objectContaining({ entityId: 'p1', owner: { id: 'u1', name: 'Me' }, editable: true, visibility: 'private' }),
+      expect.objectContaining({ entityId: 'p9', owner: { id: 'u2', name: 'Ana' }, editable: false }),
+    ])
+    listTeamProjectsMock.mockClear()
+    const mine = (await runListProjectsTool({ userId: 'u1' }, { scope: 'mine' })) as { projects: unknown[] }
+    expect(mine.projects).toHaveLength(1)
+    expect(listTeamProjectsMock).not.toHaveBeenCalled()
+    await expect(runListProjectsTool({ userId: 'u1' }, { scope: 'everyone' })).rejects.toThrow(/scope/)
   })
 
   it('runListProjectsTool returns waterfall shape without embedding', async () => {

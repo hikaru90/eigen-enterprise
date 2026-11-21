@@ -28,6 +28,7 @@ import { queueCapture } from '$lib/server/capture/queue-capture'
 import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import type { CaptureSource, MemoryAuthor } from '$lib/server/db/schema'
 import { resolveAuthorSqlCondition } from '$lib/server/memory/authorship'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 
 /** Deterministic text shaping only; kind key + FK come from `resolveThoughtCategory`. */
 export function normalizeThoughtText(raw: string): {
@@ -171,6 +172,18 @@ export type EditStoredThoughtOptions = {
 }
 
 export async function editStoredThought(
+  userId: string,
+  thoughtId: string,
+  editRequest: string,
+  options?: EditStoredThoughtOptions,
+) {
+  const result = await editStoredThoughtUnsealed(userId, thoughtId, editRequest, options)
+  // Rewrites the thought's ciphertext: a task of a shared project stays sealed with the company key (shared-memory-keys.ts).
+  if (result.ok) await reconcileThoughtKeys(userId, [thoughtId])
+  return result
+}
+
+async function editStoredThoughtUnsealed(
   userId: string,
   thoughtId: string,
   editRequest: string,

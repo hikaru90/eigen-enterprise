@@ -1,6 +1,12 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
-import { createTextFile, listTextFiles, searchTextFiles } from '$lib/server/text-files/service'
+import { withOwners } from '$lib/server/memory/memory-owners'
+import {
+  createTextFile,
+  listTextFiles,
+  searchTextFiles,
+  type TextFileScope,
+} from '$lib/server/text-files/service'
 
 function parseLimit(url: URL): number {
   const raw = url.searchParams.get('limit')
@@ -24,27 +30,42 @@ function parseCursor(url: URL): { updatedAt: Date; id: string } | undefined {
   return { updatedAt, id }
 }
 
+/** Whose notes: mine, team (colleagues' shared ones) or all (default). */
+function parseScope(url: URL): TextFileScope {
+  const raw = url.searchParams.get('scope')
+  if (raw === null) return 'all'
+  if (raw === 'mine' || raw === 'team' || raw === 'all') return raw
+  error(400, 'scope must be mine, team or all')
+}
+
 export const GET: RequestHandler = async (event) => {
   const user = event.locals.user
   if (!user) error(401, 'Unauthorized')
 
   const query = event.url.searchParams.get('q')?.trim() ?? ''
   const authorLayerKey = event.url.searchParams.get('authorLayerKey')
+  const scope = parseScope(event.url)
   if (query) {
     const topK = parseLimit(event.url)
-    const results = await searchTextFiles(user.id, {
-      query,
-      topK,
-      authorLayerKey,
-    })
+    const results = await withOwners(
+      await searchTextFiles(user.id, {
+        query,
+        topK,
+        authorLayerKey,
+        scope,
+      }),
+    )
     return json({ count: results.length, results })
   }
 
-  const files = await listTextFiles(user.id, {
-    limit: parseLimit(event.url),
-    cursor: parseCursor(event.url),
-    authorLayerKey,
-  })
+  const files = await withOwners(
+    await listTextFiles(user.id, {
+      limit: parseLimit(event.url),
+      cursor: parseCursor(event.url),
+      authorLayerKey,
+      scope,
+    }),
+  )
 
   return json({ count: files.length, textFiles: files })
 }
@@ -69,9 +90,17 @@ export const POST: RequestHandler = async (event) => {
       ? body.body
       : undefined
   if (!(title?.trim() || rawBody?.trim())) error(400, 'title or body is required')
+  const isPrivate =
+    typeof body === 'object' && body && 'private' in body ? body.private : undefined
+  if (isPrivate !== undefined && typeof isPrivate !== 'boolean') error(400, 'private must be true or false')
 
   try {
-    const textFile = await createTextFile(user.id, { title, body: rawBody })
+    const created = await createTextFile(user.id, {
+      title,
+      body: rawBody,
+      visibility: isPrivate === true ? 'private' : 'company',
+    })
+    const [textFile] = await withOwners([created])
     return json({ textFileId: textFile.id, textFile }, { status: 201 })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)

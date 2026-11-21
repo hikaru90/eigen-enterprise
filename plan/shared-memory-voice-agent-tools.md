@@ -14,6 +14,26 @@ Owner, 2026-11-21: "I want you to make the following memories and projects … b
 - Enforcement is RLS at company scope (owner + visibility on the row); retrieval filters by access before ranking. Encryption keys must let every member read shared items: no per-person-key content in a shared row.
 - The assistant/brain sees shared projects and notes of colleagues in its answers, same rule.
 
+### Design (WS `memory-share`, 2026-11-21)
+
+**Today.** A project is a `canonical_entity` row with `project_status` set (label plain text); its tasks are `thought` rows (`category = 'task'`) linked through `thought_entity` (+ `project_task_sequence` ranks, `project_milestone`, `temporal_event` dates). A note is a `text_file` row (title plain, body only in `body_text_encrypted`). Thoughts carry `*_encrypted` copies of their text and metadata. Every Memory table has one RLS policy `user_id = app.current_user_id` (enable_rls.sql, re-applied after every migrate by ee preStart). Content is encrypted with the row owner's DEK (`tenant_data_key`, itself RLS-scoped to its user), so another member's session can neither see nor decrypt it. The Roadmap system project is read by switching the DB session to the company owner (roadmap store `withUserDb(ownerId)`). Services take the Memory owner's id and filter `user_id = owner` explicitly; RLS is the guarantee underneath.
+
+**Visibility.** One column `visibility text not null default 'company' check in ('private','company')` on `canonical_entity` and `text_file` (the §4 dial; "shared with some" is not built). The migration's default makes every existing project and note shared; no explicit private marker exists on either today (checked: neither table has one), so nothing is kept private. Non-project entities carry the column but it means nothing: only rows with a live `project_status` (not `dismissed`) are ever shared.
+
+**RLS (company scope).** The owner policy stays `FOR ALL` (all writes owner-only). A second, permissive `FOR SELECT` policy per table adds what a signed-in colleague (`app.current_user_id <> ''`) may read:
+- `canonical_entity`: `visibility = 'company'` and a live project.
+- `thought`: `category = 'task'` and linked (same owner) to such a project. Every other thought — Capture, notes-like thoughts, tasks outside projects, tasks of a private project — stays owner-only.
+- `thought_entity`, `project_task_sequence`, `project_milestone`: rows of a shared project. `temporal_event`: rows whose thought the reader can see.
+- `text_file`: `visibility = 'company'`. `thought_text_file` (note↔thought links) stays private.
+- Write guard: `thought_entity`, `project_task_sequence`, `project_milestone` inserts/updates must point at the writer's own project, so a colleague can't hang a task on someone else's shared project.
+Toggling `visibility` is a plain row update, so a project/note turning private disappears for everyone else on their next query. No admin or owner override exists in any policy.
+
+**Keys.** A shared row must never need a per-person key. New `company_data_key` (one row, DEK wrapped by the master key like `tenant_data_key`, readable by any signed-in session). An envelope encrypted with it carries `"k":"company"`; `decryptTenantValue` picks the key from the envelope (explicit key id, no guessing), so every existing read path decrypts shared rows for every member unchanged, and refuses loud when asked to decrypt another person's personal-key envelope. Re-keying is one idempotent reconcile (`src/lib/server/memory/shared-memory-keys.ts`): a thought is company-keyed iff it is a task in a shared project; a note iff it is shared. It runs on every visibility toggle (both ways), on every write that links a thought to a project or rewrites a thought's ciphertext, on note writes, and once per user at server start (backfill for the migration, which cannot encrypt in SQL).
+
+**Reads.** Colleague views call the existing owner-parameterised services with the *owner's* id inside the *reader's* session: RLS trims the result to what is shared, decryption uses the company key. Memory › Projects gets a Mine / Team switch (Team: colleagues' shared projects with owner name, tasks, progress); a colleague's project page is read-only (no edit, dismiss, review, task actions). Memory › Notes gets Mine / Team / All; a colleague's note opens read-only with its author. Own projects and notes get a Private switch (create + edit); Roadmap can't be made private.
+
+**Registry (no UI-only actions).** `memory.set_project_visibility`, `memory.set_text_file_visibility` (owner only; the assistant acting for a person may only make things private, never widen — same leash rule as approvals); `memory.create_text_file` takes `private`; `memory.list_projects` / `memory.list_text_files` / `memory.search_text_files` / `memory.get_text_file` / `memory.get_project_timeline` include colleagues' shared items, each marked with owner and `editable`. Search filters by access in SQL before ranking. `memory.retrieve_thoughts` stays the person's own thoughts.
+
 ## 2. Voice input on every input field (WS `voice-everywhere`)
 
 - One dictation affordance (the existing dictation stack, model `qwen/qwen3-asr-1.7b`, the way Contribute does it) on every free-text field: the shared Textarea and text-like Input primitives, plus the app's own composers. **"Ask the company brain" first.**

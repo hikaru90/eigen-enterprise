@@ -11,6 +11,8 @@ import {
 } from '$lib/server/memory/authorship'
 import { generateProjectPlan } from '$lib/server/memory/generate-project-plan'
 import { archiveThoughtForUser } from '$lib/server/memory/lifecycle'
+import { ownerNameOf, withOwners } from '$lib/server/memory/memory-owners'
+import { resolveProjectAccess, setProjectVisibility } from '$lib/server/memory/memory-visibility'
 import {
   listProjectsForUser,
   createProject,
@@ -24,6 +26,8 @@ import {
   setProjectDeadline,
   setProjectMilestone,
 } from '$lib/server/memory/project-timeline'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
+import { listTeamProjects, loadProjectForReader } from '$lib/server/memory/team-projects'
 import {
   compactTemporalFieldsForMcp,
   enhanceSnippetWithTemporalContext,
@@ -43,9 +47,11 @@ import {
   linkTextFileToThought,
   listTextFiles,
   searchTextFiles,
+  setTextFileVisibility,
   unlinkTextFileFromThought,
   updateTextFile,
 } from '$lib/server/text-files/service'
+import type { TextFileScope } from '$lib/server/text-files/service'
 import { readThoughtIdFromToolArgs, validateNonEmptyEntityId, validateSearchParams } from '$lib/server/validation/mcp-args'
 
 export type McpToolProgress = {
@@ -268,11 +274,12 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
       topK: effectiveTopK,
       ...(authorFilter ? { authorFilter } : {}),
     }),
+    // Notes: the person's and colleagues' shared ones, each with its owner.
     searchTextFiles(context.userId, {
       query,
       topK: effectiveTopK,
       ...(authorFilter ? { authorFilter } : {}),
-    }),
+    }).then(withOwners),
   ])
   void tryRecordRetrievalQualityEvent({
     userId: context.userId,
@@ -470,6 +477,8 @@ export async function runEditThoughtTool(context: McpToolContext, args: unknown)
       if (!row) {
         throw new Error('Thought not found')
       }
+      // Rewrites the thought's ciphertext: a task of a shared project stays sealed with the company key (shared-memory-keys.ts).
+      await reconcileThoughtKeys(context.userId, [thoughtId])
       updated = {
         ok: true as const,
         thought: await (
@@ -532,6 +541,20 @@ export async function runEditThoughtTool(context: McpToolContext, args: unknown)
   }
 }
 
+/** Whose notes a list/search covers (default 'all': the reader's and colleagues' shared ones). */
+function parseTextFileScope(body: Record<string, unknown>): TextFileScope {
+  const raw = body.scope
+  if (raw === undefined) return 'all'
+  if (raw === 'mine' || raw === 'team' || raw === 'all') return raw
+  throw new Error('scope must be mine, team or all')
+}
+
+/** `private: true` → 'private'; `false` → 'company' (shared with every member). */
+function parsePrivateFlag(body: Record<string, unknown>): 'private' | 'company' {
+  if (typeof body.private !== 'boolean') throw new Error('private (true or false) is required')
+  return body.private ? 'private' : 'company'
+}
+
 export async function runCreateTextFileTool(context: McpToolContext, args: unknown) {
   const body = asObject(args)
   const rawBody = typeof body.body === 'string' ? body.body : undefined
@@ -548,6 +571,7 @@ export async function runCreateTextFileTool(context: McpToolContext, args: unkno
     title,
     body: rawBody,
     authorship,
+    visibility: body.private === true ? 'private' : 'company',
   })
   return sanitizeMcpToolResult({ textFileId: textFile.id, textFile })
 }
@@ -563,7 +587,9 @@ export async function runListTextFilesTool(context: McpToolContext, args: unknow
   if (cursor && Number.isNaN(cursor.updatedAt.getTime())) {
     throw new Error('cursor_updated_at must be a valid ISO timestamp')
   }
-  const textFiles = await listTextFiles(context.userId, { limit, cursor })
+  const textFiles = await withOwners(
+    await listTextFiles(context.userId, { limit, cursor, scope: parseTextFileScope(body) }),
+  )
   return sanitizeMcpToolResult({ count: textFiles.length, textFiles })
 }
 
@@ -571,8 +597,9 @@ export async function runGetTextFileTool(context: McpToolContext, args: unknown)
   const body = asObject(args)
   const textFileId = typeof body.text_file_id === 'string' ? body.text_file_id.trim() : ''
   if (!textFileId) throw new Error('text_file_id is required')
-  const textFile = await getTextFile(context.userId, textFileId)
-  if (!textFile) throw new Error('Text file not found')
+  const found = await getTextFile(context.userId, textFileId)
+  if (!found) throw new Error('Text file not found')
+  const [textFile] = await withOwners([found])
   return sanitizeMcpToolResult({ textFile })
 }
 
@@ -617,12 +644,37 @@ export async function runSearchTextFilesTool(context: McpToolContext, args: unkn
   if (!query) throw new Error('query is required')
   const topK = typeof body.top_k === 'number' ? body.top_k : undefined
   const authorFilter = parseAuthorScope(body)
-  const results = await searchTextFiles(context.userId, {
-    query,
-    topK,
-    ...(authorFilter ? { authorFilter } : {}),
-  })
+  const results = await withOwners(
+    await searchTextFiles(context.userId, {
+      query,
+      topK,
+      scope: parseTextFileScope(body),
+      ...(authorFilter ? { authorFilter } : {}),
+    }),
+  )
   return sanitizeMcpToolResult({ count: results.length, results })
+}
+
+/** Make one of the person's notes private (theirs only) or share it with every member. */
+export async function runSetTextFileVisibilityTool(context: McpToolContext, args: unknown) {
+  const body = asObject(args)
+  const textFileId = typeof body.text_file_id === 'string' ? body.text_file_id.trim() : ''
+  if (!textFileId) throw new Error('text_file_id is required')
+  const result = await setTextFileVisibility(context.userId, textFileId, parsePrivateFlag(body))
+  if (!result) throw new Error('Text file not found')
+  return sanitizeMcpToolResult(result)
+}
+
+/** Make one of the person's projects private (theirs only, tasks included) or share it with every member. */
+export async function runSetProjectVisibilityTool(context: McpToolContext, args: unknown) {
+  const body = asObject(args)
+  const projectEntityId = validateNonEmptyEntityId(
+    typeof body.project_entity_id === 'string' ? body.project_entity_id : '',
+    'project_entity_id',
+  )
+  return sanitizeMcpToolResult(
+    await setProjectVisibility(context.userId, projectEntityId, parsePrivateFlag(body)),
+  )
 }
 
 export async function runLinkTextFileToThoughtTool(context: McpToolContext, args: unknown) {
@@ -650,6 +702,11 @@ export async function runUnlinkTextFileFromThoughtTool(context: McpToolContext, 
   return sanitizeMcpToolResult({ unlinked: true, thoughtId, textFileId })
 }
 
+/**
+ * The person's projects and the projects colleagues share (scope 'all', the
+ * default), or one of the two. Each says whose it is and whether the reader
+ * may change it; a colleague's project is read-only.
+ */
 export async function runListProjectsTool(context: McpToolContext, args: unknown) {
   const body = asObject(args)
   const authorScope =
@@ -658,12 +715,31 @@ export async function runListProjectsTool(context: McpToolContext, args: unknown
       : body.author === 'agent'
         ? 'all'
         : 'user'
-  const projects = await listProjectsForUser(context.userId, { authorScope })
+  const scope = body.scope === undefined ? 'all' : body.scope
+  if (scope !== 'mine' && scope !== 'team' && scope !== 'all') {
+    throw new Error('scope must be mine, team or all')
+  }
+  const own =
+    scope === 'team'
+      ? []
+      : await (async () => {
+          const owner = { id: context.userId, name: await ownerNameOf(context.userId) }
+          return (await listProjectsForUser(context.userId, { authorScope })).map((project) => ({
+            ...project,
+            owner,
+            editable: true,
+          }))
+        })()
+  const team = scope === 'mine' ? [] : await listTeamProjects(context.userId)
+  const projects = [...own, ...team]
   return sanitizeMcpToolResult({
     count: projects.length,
     projects: projects.map((project) => ({
       entityId: project.entityId,
       label: project.label,
+      owner: project.owner,
+      editable: project.editable,
+      visibility: project.visibility,
       status: project.status,
       source: project.source,
       openTaskCount: project.openTaskCount,
@@ -684,14 +760,23 @@ export async function runGetProjectTimelineTool(context: McpToolContext, args: u
         ? body.projectEntityId
         : ''
   const projectEntityId = validateNonEmptyEntityId(projectEntityIdRaw, 'project_entity_id')
-  const projects = await listProjectsForUser(context.userId, { authorScope: 'all' })
-  const project = projects.find((p) => p.entityId === projectEntityId)
+  // The reader's own project, or a colleague's shared one (read-only); never a private one.
+  const access = await resolveProjectAccess(context.userId, projectEntityId)
+  if (!access) throw new Error('Project not found')
+  const project = access.editable
+    ? (await listProjectsForUser(context.userId, { authorScope: 'all' })).find(
+        (p) => p.entityId === projectEntityId,
+      )
+    : await loadProjectForReader(context.userId, access.ownerId, projectEntityId)
   if (!project) throw new Error('Project not found')
-  const milestones = await listMilestonesForProject(context.userId, projectEntityId)
+  const milestones = await listMilestonesForProject(access.ownerId, projectEntityId)
   return sanitizeMcpToolResult({
     project: {
       entityId: project.entityId,
       label: project.label,
+      owner: { id: access.ownerId, name: access.ownerName },
+      editable: access.editable,
+      visibility: project.visibility,
       status: project.status,
       source: project.source,
       openTaskCount: project.openTaskCount,

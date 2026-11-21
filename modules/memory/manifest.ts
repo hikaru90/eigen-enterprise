@@ -11,6 +11,8 @@ export const MEMORY_TOOL_NAMES = [
   'memory.search_text_files',
   'memory.create_text_file',
   'memory.update_text_file',
+  'memory.set_project_visibility',
+  'memory.set_text_file_visibility',
 ] as const
 
 /** Memory is a system module (always on): see SYSTEM_MODULE_IDS. */

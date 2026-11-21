@@ -1,17 +1,18 @@
 import type { AppUser } from './app.d.ts'
 import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit'
-import { reportSpeechModelsAtStartup } from '$lib/server/llm/speech-models'
 import { sequence } from '@sveltejs/kit/hooks'
 import { svelteKitHandler } from 'better-auth/svelte-kit'
 import { building, dev } from '$app/environment'
 import { getTextDirection } from '$lib/paraglide/runtime'
 import { paraglideMiddleware } from '$lib/paraglide/server'
+import { releaseDurableHarnessLockForExit } from '$lib/server/agent/durable-harness'
 import { captureServerException } from '$lib/server/analytics/posthog-server'
 import { hashApiKey } from '$lib/server/api-keys/api-key-utils'
 import { isApiKeyRoute, parseBearerApiKey } from '$lib/server/api-keys/bearer-routes'
-import { DRIVE_VIEW_PREFIX, driveViewUser } from '$lib/server/drive-view'
 import { auth } from '$lib/server/auth'
+import { startBackupHealthTicker } from '$lib/server/backups/live'
 import { bootApp } from '$lib/server/boot'
+import { csrfRefusal, isForbiddenCrossSiteForm } from '$lib/server/csrf'
 import {
   appSql,
   appDbAsyncLocal,
@@ -21,18 +22,17 @@ import {
 } from '$lib/server/db'
 import { authSql } from '$lib/server/db/auth-db'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
-import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
-import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
-import { startBackupHealthTicker } from '$lib/server/backups/live'
-import { platformAiFromEnv } from '$lib/server/llm/platform-llm'
-import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
-import { configuredMailTransport, configuredManagedMail } from '../modules/email/owlery/service'
 import { domainsFromEnv } from '$lib/server/domains/env'
-import { installPromptShutdown } from '$lib/server/shutdown'
-import { csrfRefusal, isForbiddenCrossSiteForm } from '$lib/server/csrf'
+import { DRIVE_VIEW_PREFIX, driveViewUser } from '$lib/server/drive-view'
+import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
+import { platformAiFromEnv } from '$lib/server/llm/platform-llm'
+import { reportSpeechModelsAtStartup } from '$lib/server/llm/speech-models'
+import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
+import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
 import { pluginHandle } from '$lib/server/plugins/handle'
 import { livePluginGateDeps } from '$lib/server/plugins/live'
-import { releaseDurableHarnessLockForExit } from '$lib/server/agent/durable-harness'
+import { installPromptShutdown } from '$lib/server/shutdown'
+import { configuredMailTransport, configuredManagedMail } from '../modules/email/owlery/service'
 
 if (!building) {
   // SIGTERM exits promptly; in-flight agent turns resume on reopen (D3).
@@ -252,6 +252,11 @@ const handlePostHogProxy: Handle = async ({ event, resolve }) => {
 /** Server start: check the speech models still have OpenRouter endpoints (logs, never blocks boot). */
 export const init: ServerInit = () => {
   void reportSpeechModelsAtStartup()
+  // Shared Memory (drizzle/0164): re-seal rows whose key does not match their visibility
+  // (the migration's backfill; a safety net after). Logs per person, loud on failure.
+  void import('$lib/server/memory/shared-memory-keys')
+    .then(({ reconcileSharedMemoryKeysAtStartup }) => reconcileSharedMemoryKeysAtStartup())
+    .catch((err: unknown) => console.error('[shared-memory-keys] startup re-key failed', err))
 }
 
 /**

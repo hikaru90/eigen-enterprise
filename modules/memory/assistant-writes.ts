@@ -22,6 +22,10 @@ export type MemoryWriter = { kind: 'self' | 'assistant'; userId: string }
 
 export const ASSISTANT_AUTHOR_LABEL = 'Assistant'
 
+/** The assistant's leash on visibility (plan/shared-memory-voice-agent-tools.md §1). */
+export const ASSISTANT_NEVER_SHARES =
+  'The assistant can make a project or note private for the person, but never share it: only the person shares their things (the Private switch in Memory).'
+
 export const WORKS_FOR_NO_ONE =
   'The assistant can write to Memory only while it works for a person (answering them in chat). This run works for no one, so nothing was saved.'
 
@@ -66,7 +70,7 @@ export async function assistantCaptureThought(
 /** The assistant writes a note into the person's Memory, marked as its own. */
 export async function assistantCreateTextFile(
   userId: string,
-  input: { title?: string; body?: string; author?: string; as_user?: boolean },
+  input: { title?: string; body?: string; private?: boolean; author?: string; as_user?: boolean },
 ): Promise<{ textFileId: string; title: string }> {
   refuseApiKeyAuthorship(input)
   if (!(input.title?.trim() || input.body?.trim())) throw new Error('title or body is required')
@@ -75,6 +79,8 @@ export async function assistantCreateTextFile(
     title: input.title,
     body: input.body,
     authorship: { author: 'agent', authorLabel: ASSISTANT_AUTHOR_LABEL, authorKeyId: null },
+    // Shared with everyone like any note, unless the person asked for it private.
+    visibility: input.private === true ? 'private' : 'company',
   })
   return { textFileId: note.id, title: note.title }
 }
@@ -90,6 +96,12 @@ export async function assistantUpdateTextFile(
   const { getTextFile, updateTextFile } = await import('$lib/server/text-files/service')
   const existing = await getTextFile(userId, input.text_file_id)
   if (!existing) throw new Error('Note not found')
+  if (!existing.editable) {
+    throw new KernelError(
+      'permission_denied',
+      'That note is a colleague’s, shared read-only. Only its owner changes it.',
+    )
+  }
   const writtenByAssistant =
     existing.author === 'agent' &&
     existing.authorKeyId === null &&

@@ -5,6 +5,9 @@
   import { onMount } from 'svelte'
   import { page } from '$app/state'
   import MemoryAuthorBadge from '$lib/components/memory-author-badge.svelte'
+  import MemoryOwnerLabel from '$lib/components/memory-owner-label.svelte'
+  import MemoryPrivateSwitch from '$lib/components/memory-private-switch.svelte'
+  import MemoryScopeTabs, { type MemoryScope } from '$lib/components/memory-scope-tabs.svelte'
   import MemorySurfaceDrawer from '$lib/components/memory-surface-drawer.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
@@ -17,6 +20,7 @@
     type CurrentUserView,
   } from '$lib/memory/current-user-view'
   import { m } from '$lib/paraglide/messages.js'
+  import { docTitle } from '$lib/shell/title'
   import {
     getCurrentUserView,
     subscribeCurrentUserView,
@@ -28,12 +32,12 @@
     fetchTextFile,
     fetchTextFiles,
     searchTextFiles,
+    setTextFileVisibility,
     updateTextFile,
     type TextFileLinkedThought,
     type TextFileRecord,
     type TextFileSearchHit,
   } from '$lib/text-files/api'
-  import { docTitle } from '$lib/shell/title'
 
   type ListItem = {
     id: string
@@ -43,11 +47,16 @@
     author?: 'user' | 'agent'
     authorLabel?: string | null
     authorKeyId?: string | null
+    ownerName: string
+    visibility: 'private' | 'company'
+    editable: boolean
   }
 
   const PAGE_SIZE = 20
 
   let dataView = $state<CurrentUserView>(getCurrentUserView())
+  /** Mine = the person's notes; Team = what colleagues share with everyone (read-only). */
+  let scope = $state<MemoryScope>('mine')
 
   let searchQuery = $state('')
   let listItems = $state<ListItem[]>([])
@@ -65,6 +74,10 @@
   let editBody = $state('')
   let editAuthor = $state<'user' | 'agent'>('user')
   let editAuthorLabel = $state<string | null>(null)
+  let editEditable = $state(true)
+  let editOwnerName = $state('')
+  let editPrivate = $state(false)
+  let visibilityBusy = $state(false)
   let linkedThoughts = $state<TextFileLinkedThought[]>([])
   let saving = $state(false)
   let deleting = $state(false)
@@ -73,6 +86,7 @@
   let createOpen = $state(false)
   let createTitle = $state('')
   let createBody = $state('')
+  let createPrivate = $state(false)
   let createBusy = $state(false)
   let createError = $state<string | null>(null)
 
@@ -100,6 +114,9 @@
       author: record.author,
       authorLabel: record.authorLabel,
       authorKeyId: record.authorKeyId,
+      ownerName: record.owner.name,
+      visibility: record.visibility,
+      editable: record.editable,
     }
   }
 
@@ -112,6 +129,9 @@
       author: hit.author,
       authorLabel: hit.authorLabel,
       authorKeyId: hit.authorKeyId,
+      ownerName: hit.owner.name,
+      visibility: hit.visibility,
+      editable: hit.editable,
     }
   }
 
@@ -126,7 +146,7 @@
     try {
       const q = searchQuery.trim()
       if (q) {
-        const results = await searchTextFiles(q, PAGE_SIZE, dataView)
+        const results = await searchTextFiles(q, PAGE_SIZE, dataView, scope)
         listItems = results.map(toListItemFromHit)
         hasMore = false
       } else {
@@ -134,6 +154,7 @@
           PAGE_SIZE,
           reset ? undefined : (listCursor ?? undefined),
           dataView,
+          scope,
         )
         const mapped = files.map(toListItem)
         listItems = reset ? mapped : [...listItems, ...mapped]
@@ -162,13 +183,18 @@
     const fromList = listItems.find((item) => item.id === id)
     editAuthor = fromList?.author ?? 'user'
     editAuthorLabel = fromList?.authorLabel ?? null
+    editEditable = fromList?.editable ?? true
     try {
-      const [file, thoughts] = await Promise.all([fetchTextFile(id), fetchLinkedThoughts(id)])
+      const file = await fetchTextFile(id)
       editTitle = file.title
       editBody = file.body
       editAuthor = file.author ?? 'user'
       editAuthorLabel = file.authorLabel ?? null
-      linkedThoughts = thoughts
+      editEditable = file.editable
+      editOwnerName = file.owner.name
+      editPrivate = file.visibility === 'private'
+      // A note's links to thoughts are its owner's (thoughts stay private).
+      linkedThoughts = file.editable ? await fetchLinkedThoughts(id) : []
     } catch (e) {
       detailError = e instanceof Error ? e.message : String(e)
     } finally {
@@ -204,6 +230,29 @@
     }
   }
 
+  /** The Private switch: saved at once (memory.set_text_file_visibility). */
+  async function changeVisibility(isPrivate: boolean) {
+    if (!selectedId) return
+    visibilityBusy = true
+    detailError = null
+    try {
+      const result = await setTextFileVisibility(selectedId, isPrivate)
+      editPrivate = result.visibility === 'private'
+      listItems = listItems.map((item) =>
+        item.id === selectedId ? { ...item, visibility: result.visibility } : item,
+      )
+    } catch (e) {
+      detailError = `${m.memory_private_failed()} ${e instanceof Error ? e.message : String(e)}`
+    } finally {
+      visibilityBusy = false
+    }
+  }
+
+  function selectScope(next: MemoryScope) {
+    scope = next
+    void loadList(true)
+  }
+
   async function removeNote() {
     if (!selectedId) return
     if (!confirm(m.notes_delete_confirm())) return
@@ -225,10 +274,17 @@
     createBusy = true
     createError = null
     try {
-      const created = await createTextFile({ title: createTitle, body: createBody })
+      const created = await createTextFile({
+        title: createTitle,
+        body: createBody,
+        private: createPrivate,
+      })
       createOpen = false
       createTitle = ''
       createBody = ''
+      createPrivate = false
+      // A new note is the person's own: show it in Mine.
+      scope = 'mine'
       await loadList(true)
       await openNote(created.id)
     } catch (e) {
@@ -277,6 +333,7 @@
   </header>
 
   <div class="mb-3 shrink-0 space-y-2">
+    <MemoryScopeTabs {scope} onselect={selectScope} />
     <Input
       type="search"
       value={searchQuery}
@@ -292,10 +349,14 @@
     {:else if loadError}
       <p class="text-sm text-destructive">{m.notes_load_error()} {loadError}</p>
     {:else if visibleListItems.length === 0}
-      <div class="space-y-1">
-        <p class="text-sm text-muted-foreground">{m.notes_empty()}</p>
-        <p class="text-xs text-muted-foreground/70">{m.notes_empty_hint()}</p>
-      </div>
+      {#if scope === 'team'}
+        <p class="text-sm text-muted-foreground">{m.memory_team_notes_empty()}</p>
+      {:else}
+        <div class="space-y-1">
+          <p class="text-sm text-muted-foreground">{m.notes_empty()}</p>
+          <p class="text-xs text-muted-foreground/70">{m.notes_empty_hint()}</p>
+        </div>
+      {/if}
     {:else}
       <ul class="space-y-2">
         {#each visibleListItems as item (item.id)}
@@ -310,6 +371,11 @@
                   <div class="flex flex-wrap items-center gap-2">
                     <p class="font-medium text-foreground">{item.title || m.notes_untitled()}</p>
                     <MemoryAuthorBadge author={item.author} authorLabel={item.authorLabel} />
+                    {#if !item.editable}
+                      <MemoryOwnerLabel name={item.ownerName} />
+                    {:else if item.visibility === 'private'}
+                      <span class="text-[11px] text-muted-foreground">{m.memory_private_label()}</span>
+                    {/if}
                   </div>
                   <p class="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-muted-foreground">
                     {item.preview}
@@ -318,8 +384,10 @@
                 <span
                   class="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground group-hover:text-foreground"
                 >
-                  <PencilLine class="size-3" aria-hidden="true" />
-                  {m.notes_edit_hint()}
+                  {#if item.editable}
+                    <PencilLine class="size-3" aria-hidden="true" />
+                    {m.notes_edit_hint()}
+                  {/if}
                 </span>
               </div>
             </button>
@@ -352,13 +420,24 @@
       <div class="flex flex-wrap items-center gap-2">
         <Drawer.Title class="text-base font-semibold">{m.notes_edit_title()}</Drawer.Title>
         <MemoryAuthorBadge author={editAuthor} authorLabel={editAuthorLabel} />
+        {#if !editEditable && editOwnerName}
+          <MemoryOwnerLabel name={editOwnerName} />
+        {/if}
       </div>
-      <Drawer.Description class="text-xs">{m.notes_edit_description()}</Drawer.Description>
+      <Drawer.Description class="text-xs">
+        {editEditable ? m.notes_edit_description() : m.memory_read_only_hint({ name: editOwnerName })}
+      </Drawer.Description>
     </Drawer.Header>
     {#if detailLoading}
       <p class="text-sm text-muted-foreground">{m.notes_loading()}</p>
     {:else if detailError && !editBody}
       <p class="text-sm text-destructive">{detailError}</p>
+    {:else if !editEditable}
+      <!-- A colleague's shared note: read-only, their words as they wrote them. -->
+      <article class="space-y-2" data-testid="note-read-only">
+        <h3 class="font-medium text-foreground">{editTitle || m.notes_untitled()}</h3>
+        <p class="whitespace-pre-wrap font-mono text-sm text-foreground">{editBody}</p>
+      </article>
     {:else}
       <div class="space-y-3">
         <div class="space-y-1">
@@ -377,6 +456,13 @@
             class="min-h-48 font-mono text-sm"
           />
         </div>
+        <MemoryPrivateSwitch
+          id="note-private"
+          kind="note"
+          checked={editPrivate}
+          disabled={visibilityBusy}
+          onchange={(isPrivate) => void changeVisibility(isPrivate)}
+        />
         {#if detailError}
           <p class="text-xs text-destructive">{detailError}</p>
         {/if}
@@ -441,6 +527,12 @@
         <Label for="create-body">{m.notes_body_label()}</Label>
         <Textarea id="create-body" bind:value={createBody} class="min-h-32" />
       </div>
+      <MemoryPrivateSwitch
+        id="create-note-private"
+        kind="note"
+        checked={createPrivate}
+        onchange={(isPrivate) => (createPrivate = isPrivate)}
+      />
       {#if createError}
         <p class="text-xs text-destructive">{createError}</p>
       {/if}

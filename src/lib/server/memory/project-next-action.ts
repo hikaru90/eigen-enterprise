@@ -7,6 +7,7 @@ import {
   loadOrderedThoughtIdsForProject,
   selectNextOpenThoughtAfterCompleted,
 } from '$lib/server/memory/project-task-sequence'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 import { validateNonEmptyEntityId } from '$lib/server/validation/mcp-args'
 
 export async function designateNextAction(
@@ -119,6 +120,8 @@ export async function linkThoughtToProject(
   }
 
   await upsertMentionEdge({ userId, thoughtId: tid, entityId })
+  // A task of a shared project is sealed with the company key (shared-memory-keys.ts).
+  await reconcileThoughtKeys(userId, [tid])
 }
 
 export async function thoughtHasManualProjectLink(

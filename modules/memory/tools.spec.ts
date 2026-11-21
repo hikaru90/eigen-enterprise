@@ -13,6 +13,8 @@ vi.mock('$lib/server/mcp/tools', () => ({
   runSearchTextFilesTool: runMock,
   runCreateTextFileTool: runMock,
   runUpdateTextFileTool: runMock,
+  runSetProjectVisibilityTool: runMock,
+  runSetTextFileVisibilityTool: runMock,
 }))
 
 import type { ToolContext } from '$lib/kernel/types'
@@ -52,7 +54,13 @@ describe('createMemoryTools', () => {
 
   it('marks capture and note writes as mutate and the rest as read', () => {
     const byName = new Map(tools.map((t) => [t.name, t]))
-    const writes = ['memory.capture_thought', 'memory.create_text_file', 'memory.update_text_file']
+    const writes = [
+      'memory.capture_thought',
+      'memory.create_text_file',
+      'memory.update_text_file',
+      'memory.set_project_visibility',
+      'memory.set_text_file_visibility',
+    ]
     for (const name of writes) expect(byName.get(name)?.auditClass).toBe('mutate')
     for (const name of [...MEMORY_TOOL_NAMES].filter((n) => !writes.includes(n))) {
       expect(byName.get(name)?.auditClass).toBe('read')
@@ -86,6 +94,37 @@ describe('createMemoryTools', () => {
       })
     }
     expect(runMock).not.toHaveBeenCalled()
+  })
+
+  it('the assistant may make a project or note private for the person, never share it', async () => {
+    runMock.mockClear()
+    const asAssistant = createMemoryTools({
+      writerOf: async () => ({ kind: 'assistant', userId: 'person-1' }),
+    })
+    for (const [name, idKey] of [
+      ['memory.set_project_visibility', 'project_entity_id'],
+      ['memory.set_text_file_visibility', 'text_file_id'],
+    ] as const) {
+      const descriptor = asAssistant.find((t) => t.name === name)!
+      await expect(descriptor.handler(ctx, { [idKey]: 'x', private: false })).rejects.toMatchObject({
+        code: 'permission_denied',
+        message: expect.stringMatching(/never share/i),
+      })
+      await descriptor.handler(ctx, { [idKey]: 'x', private: true })
+      expect(runMock).toHaveBeenLastCalledWith({ userId: 'person-1' }, { [idKey]: 'x', private: true })
+    }
+  })
+
+  it('a write to a colleague’s shared item is a permission error naming its owner', async () => {
+    const { MemoryReadOnlyError } = await import('$lib/server/memory/memory-read-only')
+    runMock.mockRejectedValueOnce(new MemoryReadOnlyError('note', 'Ana'))
+    const descriptor = createMemoryTools({ writerOf: async () => ({ kind: 'self', userId: 'person-1' }) }).find(
+      (t) => t.name === 'memory.update_text_file',
+    )!
+    await expect(descriptor.handler(ctx, { text_file_id: 'f', body: 'x' })).rejects.toMatchObject({
+      code: 'permission_denied',
+      message: expect.stringMatching(/Ana’s: it is read-only/),
+    })
   })
 
   it('validates required inputs with zod', () => {

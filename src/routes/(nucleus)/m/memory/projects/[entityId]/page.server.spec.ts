@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { load } from './+page.server'
 
-const { loadProjectDetail, systemProjectOf } = vi.hoisted(() => ({
+const { loadProjectDetail, resolveProjectAccess } = vi.hoisted(() => ({
   loadProjectDetail: vi.fn(),
-  systemProjectOf: vi.fn(async (): Promise<{ key: string; label: string } | null> => null),
+  resolveProjectAccess: vi.fn(async (): Promise<{ systemKey: string | null } | null> => null),
 }))
 vi.mock('$lib/server/memory/project-detail', () => ({ loadProjectDetail }))
-vi.mock('$lib/server/memory/system-projects', () => ({ systemProjectOf }))
+vi.mock('$lib/server/memory/memory-visibility', () => ({ resolveProjectAccess }))
 vi.mock('$lib/server/memory/user-timezone', () => ({
   getUserPreferredTimezone: vi.fn(async () => 'UTC'),
 }))
@@ -27,19 +27,31 @@ describe('/m/memory/projects/[entityId]', () => {
     expect(loadProjectDetail).not.toHaveBeenCalled()
   })
 
-  it('404s for a well-formed id with no project', async () => {
+  it('404s for a well-formed id with no project (or a colleague’s private one)', async () => {
     loadProjectDetail.mockResolvedValueOnce(null)
     await expect(load(event('7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f60'))).rejects.toMatchObject({
       status: 404,
     })
   })
 
-  it('sends the Roadmap system project to its board page', async () => {
-    systemProjectOf.mockResolvedValueOnce({ key: 'roadmap', label: 'Roadmap' })
+  it('sends the Roadmap system project to its board page — for every member', async () => {
+    resolveProjectAccess.mockResolvedValueOnce({ systemKey: 'roadmap' })
     await expect(load(event('7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f61'))).rejects.toMatchObject({
       status: 307,
       location: '/m/memory/projects/roadmap',
     })
     expect(loadProjectDetail).not.toHaveBeenCalled()
+  })
+
+  it('a colleague’s shared project loads read-only with its owner', async () => {
+    resolveProjectAccess.mockResolvedValueOnce({ systemKey: null })
+    loadProjectDetail.mockResolvedValueOnce({
+      project: { entityId: 'p1', label: 'Launch' },
+      items: [],
+      owner: { id: 'u2', name: 'Ana' },
+      editable: false,
+    })
+    const data = (await load(event('7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f62'))) as Record<string, unknown>
+    expect(data).toMatchObject({ owner: { id: 'u2', name: 'Ana' }, editable: false })
   })
 })

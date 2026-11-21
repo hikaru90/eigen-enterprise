@@ -242,7 +242,9 @@ export function formatTextFilesForPrompt(files: TextFileSearchHit[]): string {
       .map((f) => {
         const dateStr = f.updatedAt.slice(0, 10)
         const title = f.title.trim() || 'Untitled note'
-        return `file=${f.id} (${title}, score=${f.lexicalScore.toFixed(3)}, updated=${dateStr})\n${f.preview}`
+        // Colleagues' shared notes are theirs, not the asker's (shared Memory, plan/shared-memory-voice-agent-tools.md §1).
+        const whose = f.editable === false ? ', a colleague’s shared note' : ''
+        return `file=${f.id} (${title}, score=${f.lexicalScore.toFixed(3)}, updated=${dateStr}${whose})\n${f.preview}`
       })
       .join('\n\n')
   )
