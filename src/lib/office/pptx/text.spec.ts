@@ -2,6 +2,7 @@ import { strToU8 } from 'fflate'
 import { describe, expect, it } from 'vitest'
 import { extractOfficeText } from '../text'
 import { buildPptx, graphicFrame, para, ph, pic, PNG_1PX, sp, TABLE_URI, xfrm } from './test-utils/build-pptx'
+import { commentedPptx } from './test-utils/comment-fixtures'
 import { extractText } from './text'
 
 describe('pptx extractText (Markdown for agents)', () => {
@@ -68,5 +69,36 @@ describe('pptx extractText (Markdown for agents)', () => {
     const bytes = buildPptx({ slides: [{ shapes: sp({ id: 2, name: 'Title 1', ph: ph('title'), body: para('Only') }) }] })
     expect(await extractOfficeText('pptx', bytes)).toBe('## Slide 1: Only\n')
     await expect(extractText(strToU8('nope'))).rejects.toThrow(/ZIP/)
+  })
+})
+
+describe('pptx extractText: comments', () => {
+  it('lists each slide’s comments after its notes, replies indented, resolved ones marked', async () => {
+    const md = await extractText(commentedPptx())
+    expect(md).toBe(
+      [
+        '## Slide 1: First',
+        '',
+        '- Hello world',
+        '',
+        '> Comment (Alice Smith): Check the numbers before Friday',
+        '  > Reply (Bob Brown): On it.',
+        '  > Reply (Alice Smith): Thanks',
+        '> Comment (Bob Brown, resolved): Bigger box',
+        '> Comment (Bob Brown): Typo',
+        '',
+        '_(2 older-format comments on this slide are not shown: its threaded comments replace them.)_',
+        '',
+        '## Slide 2: Second',
+        '',
+        '> Comment (Dana Old): Old remark',
+        '  > Reply (Dana Old): Old reply',
+        '',
+        '## Slide 3: Third',
+        '',
+        '- Hello world',
+        '',
+      ].join('\n'),
+    )
   })
 })
