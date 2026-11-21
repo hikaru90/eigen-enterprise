@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { dismissProject } from './project-list'
 
+// Re-sealing keys to visibility (shared-memory-keys.ts) is covered by memory-sharing.integration.spec.ts.
+const { reconcileThoughtKeysMock, reconcileProjectKeysMock } = vi.hoisted(() => ({
+  reconcileThoughtKeysMock: vi.fn(async () => 0),
+  reconcileProjectKeysMock: vi.fn(async () => 0),
+}))
+vi.mock('$lib/server/memory/shared-memory-keys', () => ({
+  reconcileThoughtKeys: reconcileThoughtKeysMock,
+  reconcileProjectKeys: reconcileProjectKeysMock,
+}))
+
 const { getDbMock } = vi.hoisted(() => ({
   getDbMock: vi.fn(),
 }))
@@ -17,7 +27,8 @@ describe('dismissProject', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('removes thought-entity links and sets projectStatus to dismissed', async () => {
-    const deleteWhereMock = vi.fn(async () => undefined)
+    const deleteReturningMock = vi.fn(async () => [{ thoughtId: 't1' }, { thoughtId: 't2' }])
+    const deleteWhereMock = vi.fn(() => ({ returning: deleteReturningMock }))
     const deleteMock = vi.fn(() => ({ where: deleteWhereMock }))
 
     const updateWhereMock = vi.fn(async () => undefined)
@@ -42,5 +53,8 @@ describe('dismissProject', () => {
       }),
     )
     expect(updateWhereMock).toHaveBeenCalled()
+
+    // 3) its tasks are no longer shared through it: their keys go back to the owner's
+    expect(reconcileThoughtKeysMock).toHaveBeenCalledWith('user-1', ['t1', 't2'])
   })
 })

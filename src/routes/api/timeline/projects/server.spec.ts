@@ -84,6 +84,7 @@ describe('POST /api/timeline/projects', () => {
     expect(createUserDeclaredProjectMock).toHaveBeenCalledWith({
       userId: 'u1',
       label: 'New Project',
+      visibility: 'company',
     })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ entityId: 'ent-1', label: 'New Project', status: 'active' })
@@ -100,7 +101,15 @@ describe('POST /api/timeline/projects', () => {
       userId: 'u1',
       label: 'New Project',
       status: 'someday',
+      visibility: 'company',
     })
+  })
+
+  it('creates a Private project when asked', async () => {
+    createUserDeclaredProjectMock.mockResolvedValue({ entityId: 'ent-2', label: 'Job search', status: 'active', visibility: 'private' })
+    await POST(postEvent({ body: { label: 'Job search', private: true } }))
+    expect(createUserDeclaredProjectMock).toHaveBeenCalledWith(expect.objectContaining({ visibility: 'private' }))
+    await expect(POST(postEvent({ body: { label: 'x', private: 'yes' } }))).rejects.toMatchObject({ status: 400 })
   })
 
   it('returns 400 when service rejects', async () => {

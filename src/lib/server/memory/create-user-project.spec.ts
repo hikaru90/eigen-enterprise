@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createUserDeclaredProject } from './create-user-project'
 
+const { applyProjectVisibilityMock } = vi.hoisted(() => ({ applyProjectVisibilityMock: vi.fn(async () => {}) }))
+vi.mock('$lib/server/memory/memory-visibility', () => ({ applyProjectVisibility: applyProjectVisibilityMock }))
+
 const { upsertGraphHubEntityMock, promoteHubEntityTypeMock, ensureProjectProfileMock } = vi.hoisted(
   () => ({
     upsertGraphHubEntityMock: vi.fn(async () => 'proj-1'),
@@ -31,10 +34,19 @@ describe('createUserDeclaredProject', () => {
       entityId: 'proj-1',
       label: 'Website Relaunch',
       status: 'active',
+      visibility: 'company',
     })
     expect(upsertGraphHubEntityMock).toHaveBeenCalledWith('u1', 'Website Relaunch', 'project')
     expect(promoteHubEntityTypeMock).toHaveBeenCalledWith('u1', 'proj-1', 'Website Relaunch')
     expect(ensureProjectProfileMock).toHaveBeenCalledWith('u1', 'proj-1', 'active', 'manual')
+    // Shared with the company unless the person asks for Private.
+    expect(applyProjectVisibilityMock).toHaveBeenCalledWith('u1', 'proj-1', 'company')
+  })
+
+  it('creates a Private project when asked', async () => {
+    const result = await createUserDeclaredProject({ userId: 'u1', label: 'Job search', visibility: 'private' })
+    expect(result.visibility).toBe('private')
+    expect(applyProjectVisibilityMock).toHaveBeenCalledWith('u1', 'proj-1', 'private')
   })
 
   it('rejects empty label', async () => {

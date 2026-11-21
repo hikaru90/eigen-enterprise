@@ -7,6 +7,13 @@ const { deleteTextFileMock, getTextFileMock, updateTextFileMock } = vi.hoisted((
   updateTextFileMock: vi.fn(),
 }))
 
+// Owner names come from the user table (memory-owners.ts); here every item is u1's.
+vi.mock('$lib/server/memory/memory-owners', () => ({
+  withOwners: vi.fn(async (items: Array<{ ownerId?: string }>) =>
+    items.map((item) => ({ ...item, owner: { id: item.ownerId ?? 'u1', name: 'Me' } })),
+  ),
+}))
+
 vi.mock('$lib/server/text-files/service', () => ({
   deleteTextFile: deleteTextFileMock,
   getTextFile: getTextFileMock,
@@ -53,7 +60,17 @@ describe('GET /api/text-files/[fileId]', () => {
     const res = await GET(getEvent())
     expect(getTextFileMock).toHaveBeenCalledWith('u1', 'file-1')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ textFile: { id: 'file-1', title: 'Notes' } })
+    expect(await res.json()).toEqual({
+      textFile: { id: 'file-1', title: 'Notes', owner: { id: 'u1', name: 'Me' } },
+    })
+  })
+
+  it('PATCH and DELETE of a colleague’s shared note answer 403 (read-only)', async () => {
+    const { MemoryReadOnlyError } = await import('$lib/server/memory/memory-read-only')
+    updateTextFileMock.mockRejectedValueOnce(new MemoryReadOnlyError('note', 'Ana'))
+    await expect(PATCH(patchEvent({ body: { body: 'x' } }))).rejects.toMatchObject({ status: 403 })
+    deleteTextFileMock.mockRejectedValueOnce(new MemoryReadOnlyError('note', 'Ana'))
+    await expect(DELETE(getEvent() as never)).rejects.toMatchObject({ status: 403 })
   })
 })
 

@@ -189,6 +189,13 @@ export type CaptureSource = (typeof captureSourceEnum)[number]
 export const memoryAuthorEnum = ['user', 'agent'] as const
 export type MemoryAuthor = (typeof memoryAuthorEnum)[number]
 
+/**
+ * Who may read a project or note (drizzle/0164, plan/shared-memory-voice-agent-tools.md §1):
+ * 'company' = every member (the default), 'private' = its owner only, no override.
+ */
+export const memoryVisibilityValues = ['private', 'company'] as const
+export type MemoryVisibility = (typeof memoryVisibilityValues)[number]
+
 /** Unified lifecycle for thoughts and temporal events (soft status only). */
 export const lifecycleStatusEnum = ['open', 'completed', 'archived'] as const
 export type LifecycleStatus = (typeof lifecycleStatusEnum)[number]
@@ -368,6 +375,8 @@ export const textFile = pgTable(
     author: text('author').$type<MemoryAuthor>().notNull().default('user'),
     authorLabel: text('author_label'),
     authorKeyId: uuid('author_key_id').references(() => userApiKey.id, { onDelete: 'set null' }),
+    /** 'company' (default): every member reads it; 'private': its owner only (RLS, 0164). */
+    visibility: text('visibility').$type<MemoryVisibility>().notNull().default('company'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -376,6 +385,7 @@ export const textFile = pgTable(
   },
   (t) => [
     index('text_file_user_updated_idx').on(t.userId, t.updatedAt),
+    index('text_file_visibility_updated_idx').on(t.visibility, t.updatedAt),
     index('text_file_author_idx').on(t.userId, t.author),
     index('text_file_lexical_tsv_idx').using('gin', t.lexicalTsv),
   ],
@@ -701,6 +711,12 @@ export const canonicalEntity = pgTable(
      * roadmap_ensure_project() and can't be dismissed. NULL for everything else.
      */
     systemKey: text('system_key').$type<SystemProjectKey>(),
+    /**
+     * Who may read the project (drizzle/0164): 'company' (default) = every
+     * member sees it and its tasks; 'private' = its owner only. Meaningful only
+     * while project_status is set (and not 'dismissed').
+     */
+    visibility: text('visibility').$type<MemoryVisibility>().notNull().default('company'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -716,6 +732,9 @@ export const canonicalEntity = pgTable(
     uniqueIndex('canonical_entity_user_canonical_uidx').on(t.userId, t.canonicalKey),
     index('canonical_entity_embedding_hnsw_idx').using('hnsw', t.embedding.op('vector_cosine_ops')),
     index('canonical_entity_user_project_idx').on(t.userId),
+    index('canonical_entity_shared_project_idx')
+      .on(t.userId)
+      .where(sql`${t.visibility} = 'company' AND ${t.projectStatus} IS NOT NULL`),
   ],
 )
 
@@ -990,6 +1009,20 @@ export const tenantDataKey = pgTable('tenant_data_key', {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
+})
+
+/**
+ * The company's data key (drizzle/0164): one row ('company'), wrapped by the
+ * master key like tenant_data_key. Shared Memory rows (projects' tasks, shared
+ * notes) are encrypted with it so every member can read them.
+ */
+export const companyDataKey = pgTable('company_data_key', {
+  id: text('id').primaryKey().default('company'),
+  wrappedDek: text('wrapped_dek').notNull(),
+  dekVersion: integer('dek_version').notNull().default(1),
+  kekProvider: text('kek_provider').notNull(),
+  kekKeyId: text('kek_key_id').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
 /**

@@ -25,6 +25,16 @@ export async function unwrapDek(input: { userId: string; wrappedDek: string }): 
   return Buffer.from(b64, 'base64')
 }
 
+/** The company data key (company_data_key, drizzle/0164) is wrapped like a tenant DEK, bound to "company". */
+export async function wrapCompanyDek(dekBytes: Buffer): Promise<string> {
+  return encryptEnvelope(dekBytes.toString('base64'), deriveLocalMasterKey(), 'company')
+}
+
+export async function unwrapCompanyDek(wrappedDek: string): Promise<Buffer> {
+  const b64 = decryptEnvelope(wrappedDek, deriveLocalMasterKey(), 'company')
+  return Buffer.from(b64, 'base64')
+}
+
 export function getKekProvider(): TenantKekProvider {
   return 'local'
 }

@@ -15,6 +15,7 @@ import { computeLexicalText } from '$lib/server/memory/lexical-text'
 import { stripMarkdownJsonFences } from '$lib/server/memory/llm-json-content'
 import { promoteHubEntityType, upsertGraphHubEntity } from '$lib/server/memory/project-entity'
 import { loadEligibleGtdProjects, type EligibleGtdProject } from '$lib/server/memory/project-list'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 import { validateNonEmptyEntityId } from '$lib/server/validation/mcp-args'
 
 export type ProjectIdentityMode = 'assign' | 'seed' | 'reconcile' | 'promote'
@@ -498,6 +499,11 @@ export async function mergeProjectEntities(
     await getDb()
       .delete(thoughtEntity)
       .where(and(eq(thoughtEntity.userId, userId), eq(thoughtEntity.entityId, loser.id)))
+    // The merged links now share (or not) through the winner: keys follow.
+    await reconcileThoughtKeys(
+      userId,
+      links.map((link) => link.thoughtId),
+    )
 
     const [loserProject] = await getDb()
       .select({

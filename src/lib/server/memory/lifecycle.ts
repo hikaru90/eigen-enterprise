@@ -10,6 +10,7 @@ import {
   syncReminderScheduleForEvent,
 } from '$lib/server/memory/event-reminder-schedule'
 import { clearNextActionIfCompleted } from '$lib/server/memory/project-next-action'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 import {
   getTemporalEventListItemById,
   thoughtIdFromTaskItemId,
@@ -164,6 +165,17 @@ function lifecycleSummary(status: LifecycleStatus, preview: string): string {
 
 /** Set lifecycle on a thought and cascade to all child temporal events. */
 export async function setThoughtLifecycleStatus(
+  userId: string,
+  thoughtId: string,
+  status: LifecycleStatus,
+) {
+  const result = await setThoughtLifecycleStatusUnsealed(userId, thoughtId, status)
+  // Rewrites the thought's ciphertext: a task of a shared project stays sealed with the company key (shared-memory-keys.ts).
+  await reconcileThoughtKeys(userId, [thoughtId])
+  return result
+}
+
+async function setThoughtLifecycleStatusUnsealed(
   userId: string,
   thoughtId: string,
   status: LifecycleStatus,

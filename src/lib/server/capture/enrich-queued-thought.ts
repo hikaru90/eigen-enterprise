@@ -31,6 +31,7 @@ import {
 } from '$lib/server/memory/entity-extraction'
 import type { EntityGraphEnrichmentContext } from '$lib/server/memory/entity-graph-enrichment-context'
 import { loadEntityGraphEnrichmentContext } from '$lib/server/memory/entity-graph-enrichment-context'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 import type { ExtractedTemporalMention } from '$lib/server/memory/temporal-normalize'
 import { getUserPreferredTimezone } from '$lib/server/memory/user-timezone'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
@@ -157,6 +158,16 @@ async function prefetchEnrichExtractions(input: {
  * Full enrich pipeline for one queued row: context → classify/embed → graph enrich.
  */
 export async function enrichQueuedThought(
+  userId: string,
+  thoughtId: string,
+  options?: EnrichQueuedThoughtOptions,
+): Promise<void> {
+  await enrichQueuedThoughtUnsealed(userId, thoughtId, options)
+  // Enrichment sets the category and project links and rewrites metadata: the key follows (shared-memory-keys.ts).
+  await reconcileThoughtKeys(userId, [thoughtId])
+}
+
+async function enrichQueuedThoughtUnsealed(
   userId: string,
   thoughtId: string,
   options?: EnrichQueuedThoughtOptions,

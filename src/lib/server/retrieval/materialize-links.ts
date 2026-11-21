@@ -14,6 +14,7 @@ import {
   thoughtNeighbor,
   thoughtRelation,
 } from '$lib/server/db/schema'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 
 const RERANK_SNIPPET_LEN = 300
 const ENTITY_TOP_THOUGHTS_LIMIT = 20
@@ -39,6 +40,13 @@ export function confidenceToSalience(confidence: string): number {
 
 /** Sync thought_entity rows from entity_resolution_log for one thought. */
 export async function syncThoughtEntityLinks(userId: string, thoughtId: string): Promise<number> {
+  const linked = await writeThoughtEntityLinks(userId, thoughtId)
+  // Linked to (or unlinked from) a shared project: its key follows (shared-memory-keys.ts).
+  await reconcileThoughtKeys(userId, [thoughtId])
+  return linked
+}
+
+async function writeThoughtEntityLinks(userId: string, thoughtId: string): Promise<number> {
   const db = getDb()
 
   return db.transaction(async (tx) => {

@@ -322,16 +322,22 @@ async function getItem(
   return item
 }
 
+/**
+ * The Roadmap is the company's and always shared (plan/shared-memory-voice-agent-tools.md §1):
+ * its tasks are sealed with the company key, so every member's session opens them.
+ */
 async function encryptTask(userId: string, title: string, metadata: Record<string, unknown>) {
   const { encryptTenantValue } = await tenantCrypto()
+  const scope = 'company' as const
   const [rawTextEncrypted, normalizedTextEncrypted, metadataEncrypted] = await Promise.all([
-    encryptTenantValue({ userId, table: 'thought', column: 'raw_text', plaintext: title }),
-    encryptTenantValue({ userId, table: 'thought', column: 'normalized_text', plaintext: title }),
+    encryptTenantValue({ userId, table: 'thought', column: 'raw_text', plaintext: title, scope }),
+    encryptTenantValue({ userId, table: 'thought', column: 'normalized_text', plaintext: title, scope }),
     encryptTenantValue({
       userId,
       table: 'thought',
       column: 'metadata',
       plaintext: JSON.stringify(metadata),
+      scope,
     }),
   ])
   return { rawTextEncrypted, normalizedTextEncrypted, metadataEncrypted }

@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, ne, or, sql, type SQL } from 'drizzle-orm'
 import { encryptTenantValue, decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
-import { textFile, thought, thoughtTextFile } from '$lib/server/db/schema'
+import { textFile, thought, thoughtTextFile, type MemoryVisibility } from '$lib/server/db/schema'
 import type { MemoryAuthorship } from '$lib/server/memory/authorship'
 import {
   authorshipInsertValues,
@@ -9,11 +9,18 @@ import {
   resolveAuthorSqlCondition,
 } from '$lib/server/memory/authorship'
 import { computeLexicalText } from '$lib/server/memory/lexical-text'
+import { MemoryReadOnlyError } from '$lib/server/memory/memory-read-only'
 import { buildLexicalTsQuery } from '$lib/server/retrieval/lexical'
 
 export const MAX_TEXT_FILE_BODY_BYTES = 512 * 1024
 export const TEXT_FILE_PREVIEW_LEN = 200
 
+/**
+ * A note as one person sees it (plan/shared-memory-voice-agent-tools.md §1):
+ * notes are shared with every member by default ('company'); 'private' ones
+ * reach only their owner (RLS, drizzle/0164). `editable` = the reader owns it;
+ * a colleague's note is read-only.
+ */
 export type TextFileRecord = {
   id: string
   title: string
@@ -21,9 +28,15 @@ export type TextFileRecord = {
   author: 'user' | 'agent'
   authorLabel: string | null
   authorKeyId: string | null
+  ownerId: string
+  visibility: MemoryVisibility
+  editable: boolean
   createdAt: string
   updatedAt: string
 }
+
+/** Whose notes a list or search covers: the reader's, colleagues' shared ones, or both. */
+export type TextFileScope = 'mine' | 'team' | 'all'
 
 export type TextFileAttachmentPreview = {
   id: string
@@ -41,6 +54,9 @@ export type TextFileSearchHit = {
   author: 'user' | 'agent'
   authorLabel: string | null
   authorKeyId: string | null
+  ownerId: string
+  visibility: MemoryVisibility
+  editable: boolean
 }
 
 export type TextFileLinkedThought = {
@@ -71,6 +87,32 @@ function toPreview(body: string): string {
   return body.slice(0, TEXT_FILE_PREVIEW_LEN)
 }
 
+/** Shared notes are sealed with the company key, private ones with their owner's (shared-memory-keys.ts). */
+function scopeOf(visibility: MemoryVisibility): 'company' | 'person' {
+  return visibility === 'company' ? 'company' : 'person'
+}
+
+const RECORD_COLUMNS = {
+  id: textFile.id,
+  userId: textFile.userId,
+  title: textFile.title,
+  bodyText: textFile.bodyText,
+  bodyTextEncrypted: textFile.bodyTextEncrypted,
+  author: textFile.author,
+  authorLabel: textFile.authorLabel,
+  authorKeyId: textFile.authorKeyId,
+  visibility: textFile.visibility,
+  createdAt: textFile.createdAt,
+  updatedAt: textFile.updatedAt,
+}
+
+/** The reader's notes, colleagues' shared notes, or both: the same rule as the RLS read policies. */
+function scopeCondition(readerId: string, scope: TextFileScope): SQL {
+  if (scope === 'mine') return eq(textFile.userId, readerId)
+  if (scope === 'team') return and(ne(textFile.userId, readerId), eq(textFile.visibility, 'company'))!
+  return or(eq(textFile.userId, readerId), eq(textFile.visibility, 'company'))!
+}
+
 async function decryptTextFileRow<
   T extends {
     title: string
@@ -82,11 +124,15 @@ async function decryptTextFileRow<
     createdAt: Date
     updatedAt: Date
     id: string
+    userId?: string
+    visibility?: MemoryVisibility
   },
->(userId: string, row: T): Promise<TextFileRecord> {
+>(readerId: string, row: T): Promise<TextFileRecord> {
+  // The note's owner seals its body; the reader is whoever asked.
+  const ownerId = row.userId ?? readerId
   const body = row.bodyTextEncrypted
     ? await decryptTenantValue({
-        userId,
+        userId: ownerId,
         table: 'text_file',
         column: 'body_text',
         ciphertext: row.bodyTextEncrypted,
@@ -99,15 +145,41 @@ async function decryptTextFileRow<
     author: row.author,
     authorLabel: row.authorLabel,
     authorKeyId: row.authorKeyId,
+    ownerId,
+    visibility: row.visibility ?? 'company',
+    editable: ownerId === readerId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
 }
 
+/**
+ * The note exists for this reader but is a colleague's (shared): writes are
+ * refused loud. Returns normally when the note is not visible at all (the
+ * caller answers "not found").
+ */
+async function refuseColleagueNote(readerId: string, fileId: string): Promise<void> {
+  const [row] = await getDb()
+    .select({ userId: textFile.userId })
+    .from(textFile)
+    .where(and(eq(textFile.id, fileId), ne(textFile.userId, readerId)))
+    .limit(1)
+  if (!row) return
+  const { ownerNameOf } = await import('$lib/server/memory/memory-owners')
+  throw new MemoryReadOnlyError('note', await ownerNameOf(row.userId))
+}
+
 export async function createTextFile(
   userId: string,
-  input: { title?: string; body?: string; authorship?: MemoryAuthorship },
+  input: {
+    title?: string
+    body?: string
+    authorship?: MemoryAuthorship
+    /** Default 'company': every member reads it. */
+    visibility?: MemoryVisibility
+  },
 ): Promise<TextFileRecord> {
+  const visibility = input.visibility ?? 'company'
   const title = normalizeTitle(input.title)
   const body = assertBodyWithinLimit(typeof input.body === 'string' ? input.body : '')
   assertTitleOrBody(title, body)
@@ -118,6 +190,7 @@ export async function createTextFile(
     table: 'text_file',
     column: 'body_text',
     plaintext: body,
+    scope: scopeOf(visibility),
   })
 
   const [row] = await getDb()
@@ -128,18 +201,11 @@ export async function createTextFile(
       bodyText: '',
       bodyTextEncrypted,
       lexicalText,
+      visibility,
       ...authorValues,
     })
     .returning({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
     })
 
   return decryptTextFileRow(userId, row)
@@ -152,21 +218,16 @@ export async function updateTextFile(
 ): Promise<TextFileRecord | null> {
   const [existing] = await getDb()
     .select({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
     })
     .from(textFile)
     .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
     .limit(1)
 
-  if (!existing) return null
+  if (!existing) {
+    await refuseColleagueNote(userId, fileId)
+    return null
+  }
 
   const current = await decryptTextFileRow(userId, existing)
   const nextTitle = input.title !== undefined ? normalizeTitle(input.title) : current.title
@@ -178,6 +239,7 @@ export async function updateTextFile(
     table: 'text_file',
     column: 'body_text',
     plaintext: nextBody,
+    scope: scopeOf(current.visibility),
   })
 
   const [row] = await getDb()
@@ -191,15 +253,7 @@ export async function updateTextFile(
     })
     .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
     .returning({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
     })
 
   return decryptTextFileRow(userId, row)
@@ -221,21 +275,16 @@ export async function appendTextFile(
 
   const [existing] = await getDb()
     .select({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
     })
     .from(textFile)
     .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
     .limit(1)
 
-  if (!existing) return null
+  if (!existing) {
+    await refuseColleagueNote(userId, fileId)
+    return null
+  }
 
   const current = await decryptTextFileRow(userId, existing)
   const separator =
@@ -252,6 +301,7 @@ export async function appendTextFile(
     table: 'text_file',
     column: 'body_text',
     plaintext: nextBody,
+    scope: scopeOf(current.visibility),
   })
 
   const [row] = await getDb()
@@ -264,15 +314,7 @@ export async function appendTextFile(
     })
     .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
     .returning({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
     })
 
   return decryptTextFileRow(userId, row)
@@ -283,24 +325,42 @@ export async function deleteTextFile(userId: string, fileId: string): Promise<bo
     .delete(textFile)
     .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
     .returning({ id: textFile.id })
+  if (deleted.length === 0) await refuseColleagueNote(userId, fileId)
   return deleted.length > 0
 }
 
+/**
+ * Make a note private (its owner only, no override) or share it with every
+ * member. Only its owner may; the body is re-sealed with the matching key in
+ * the same step, so it opens for colleagues exactly while it is shared.
+ */
+export async function setTextFileVisibility(
+  userId: string,
+  fileId: string,
+  visibility: MemoryVisibility,
+): Promise<{ textFileId: string; visibility: MemoryVisibility } | null> {
+  const [row] = await getDb()
+    .update(textFile)
+    .set({ visibility })
+    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
+    .returning({ id: textFile.id, visibility: textFile.visibility })
+  if (!row) {
+    await refuseColleagueNote(userId, fileId)
+    return null
+  }
+  const { reconcileTextFileKey } = await import('$lib/server/memory/shared-memory-keys')
+  await reconcileTextFileKey(userId, fileId)
+  return { textFileId: row.id, visibility: row.visibility }
+}
+
+/** One note the reader may read: their own, or a colleague's shared one (read-only). */
 export async function getTextFile(userId: string, fileId: string): Promise<TextFileRecord | null> {
   const [row] = await getDb()
     .select({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
     })
     .from(textFile)
-    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
+    .where(and(eq(textFile.id, fileId), scopeCondition(userId, 'all')))
     .limit(1)
 
   if (!row) return null
@@ -313,6 +373,8 @@ export async function listTextFiles(
     limit?: number
     cursor?: { updatedAt: Date; id: string }
     authorLayerKey?: string | null
+    /** Default 'all': the reader's notes and colleagues' shared ones. */
+    scope?: TextFileScope
   },
 ): Promise<TextFileRecord[]> {
   const limit = Math.max(1, Math.min(options?.limit ?? 20, 100))
@@ -330,20 +392,12 @@ export async function listTextFiles(
 
   const rows = await getDb()
     .select({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
     })
     .from(textFile)
     .where(
       and(
-        eq(textFile.userId, userId),
+        scopeCondition(userId, options?.scope ?? 'all'),
         authorSql,
         cursor
           ? or(
@@ -366,6 +420,8 @@ export async function searchTextFiles(
     topK?: number
     authorFilter?: 'user' | 'agent'
     authorLayerKey?: string | null
+    /** Default 'all'. Access is filtered in SQL before ranking. */
+    scope?: TextFileScope
   },
 ): Promise<TextFileSearchHit[]> {
   const limit = Math.max(1, Math.min(input.topK ?? 10, 50))
@@ -387,19 +443,11 @@ export async function searchTextFiles(
 
   const rows = await getDb()
     .select({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      author: textFile.author,
-      authorLabel: textFile.authorLabel,
-      authorKeyId: textFile.authorKeyId,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      ...RECORD_COLUMNS,
       lexicalScore: rankExpr,
     })
     .from(textFile)
-    .where(and(eq(textFile.userId, userId), matchExpr, authorSql))
+    .where(and(scopeCondition(userId, input.scope ?? 'all'), matchExpr, authorSql))
     .orderBy(desc(rankExpr))
     .limit(limit)
 
@@ -415,6 +463,9 @@ export async function searchTextFiles(
         author: file.author,
         authorLabel: file.authorLabel,
         authorKeyId: file.authorKeyId,
+        ownerId: file.ownerId,
+        visibility: file.visibility,
+        editable: file.editable,
       }
     }),
   )
@@ -436,7 +487,8 @@ export async function linkTextFileToThought(
 ): Promise<{ linked: boolean; reason?: 'thought_not_found' | 'text_file_not_found' }> {
   const [thoughtOk, fileOk] = await Promise.all([
     assertOwnedThought(userId, thoughtId),
-    getTextFile(userId, textFileId).then((file) => file !== null),
+    // Only the person's own notes: a colleague's shared note is read-only for them.
+    getTextFile(userId, textFileId).then((file) => file?.editable === true),
   ])
 
   if (!thoughtOk) return { linked: false, reason: 'thought_not_found' }

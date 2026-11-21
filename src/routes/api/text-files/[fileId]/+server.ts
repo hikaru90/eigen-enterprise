@@ -1,5 +1,7 @@
 import type { RequestHandler } from './$types'
 import { error, isHttpError, json } from '@sveltejs/kit'
+import { withOwners } from '$lib/server/memory/memory-owners'
+import { isMemoryReadOnlyError } from '$lib/server/memory/memory-read-only'
 import { deleteTextFile, getTextFile, updateTextFile } from '$lib/server/text-files/service'
 
 export const GET: RequestHandler = async (event) => {
@@ -9,8 +11,9 @@ export const GET: RequestHandler = async (event) => {
   const fileId = event.params.fileId?.trim() ?? ''
   if (!fileId) error(400, 'fileId is required')
 
-  const textFile = await getTextFile(user.id, fileId)
-  if (!textFile) error(404, 'Text file not found')
+  const found = await getTextFile(user.id, fileId)
+  if (!found) error(404, 'Text file not found')
+  const [textFile] = await withOwners([found])
 
   return json({ textFile })
 }
@@ -47,6 +50,8 @@ export const PATCH: RequestHandler = async (event) => {
     return json({ textFile })
   } catch (e) {
     if (isHttpError(e)) throw e
+    // A colleague's shared note is read-only.
+    if (isMemoryReadOnlyError(e)) error(403, e.message)
     const message = e instanceof Error ? e.message : String(e)
     error(400, message)
   }
@@ -59,7 +64,13 @@ export const DELETE: RequestHandler = async (event) => {
   const fileId = event.params.fileId?.trim() ?? ''
   if (!fileId) error(400, 'fileId is required')
 
-  const deleted = await deleteTextFile(user.id, fileId)
+  let deleted: boolean
+  try {
+    deleted = await deleteTextFile(user.id, fileId)
+  } catch (e) {
+    if (isMemoryReadOnlyError(e)) error(403, e.message)
+    throw e
+  }
   if (!deleted) error(404, 'Text file not found')
 
   return json({ deleted: true, textFileId: fileId })

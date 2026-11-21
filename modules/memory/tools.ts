@@ -1,6 +1,8 @@
 import { z } from 'zod'
+import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
+  ASSISTANT_NEVER_SHARES,
   assistantCaptureThought,
   assistantCreateTextFile,
   assistantUpdateTextFile,
@@ -20,10 +22,13 @@ import { createTaskTools, type TaskToolDeps } from './task-tools'
  * the principal id is the user id. The heavy import is deferred to call time
  * so that bootstrapping the kernel never touches the DB or retrieval stack.
  * When the company brain acts for a person the principal IS that person
- * (CB3): reads see their own Memory under row-level security — only theirs —
- * and writes land with them, marked as coming through the brain (see
- * assistant-writes.ts). Every member reaches these tools (role 'member'):
- * Memory is per person, never the company's.
+ * (CB3): reads see what that person may see under row-level security — their
+ * own Memory plus the projects (with their tasks) and notes colleagues share
+ * with everyone (plan/shared-memory-voice-agent-tools.md §1), never anyone's
+ * private items or thoughts — and writes land with them, marked as coming
+ * through the brain (see assistant-writes.ts). Colleagues' items are
+ * read-only: a write to one fails loud (permission_denied). Every member
+ * reaches these tools (role 'member').
  */
 
 export type MemoryToolDeps = {
@@ -44,7 +49,17 @@ const WRITE_TOOLS = new Set<string>([
   'memory.capture_thought',
   'memory.create_text_file',
   'memory.update_text_file',
+  'memory.set_project_visibility',
+  'memory.set_text_file_visibility',
 ])
+
+/** Visibility changes: the assistant may make things private for the person, never share them. */
+const VISIBILITY_TOOLS = new Set<string>(['memory.set_project_visibility', 'memory.set_text_file_visibility'])
+
+const optionalScope = z
+  .enum(['mine', 'team', 'all'])
+  .optional()
+  .describe('mine = the person’s own, team = what colleagues share, all (default) = both.')
 
 const optionalPositiveInt = z.number().int().positive().optional()
 const optionalAuthorScope = z.enum(['user', 'agent', 'all']).optional()
@@ -75,6 +90,10 @@ async function runMemoryTool(
       return tools.runCreateTextFileTool(mcpCtx, input)
     case 'memory.update_text_file':
       return tools.runUpdateTextFileTool(mcpCtx, input)
+    case 'memory.set_project_visibility':
+      return tools.runSetProjectVisibilityTool(mcpCtx, input)
+    case 'memory.set_text_file_visibility':
+      return tools.runSetTextFileVisibilityTool(mcpCtx, input)
   }
   throw new Error(`no memory tool implementation wired for ${name}`)
 }
@@ -104,12 +123,25 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ctx: ToolContext,
     input: unknown,
   ): Promise<unknown> {
-    if (!WRITE_TOOLS.has(name)) return runMemoryTool(name, ctx, input)
-    const writer = requireWriter(await writerOf(ctx))
-    if (writer.kind === 'self') {
-      return runMemoryTool(name, { principal: { id: writer.userId } }, input)
+    try {
+      if (!WRITE_TOOLS.has(name)) return await runMemoryTool(name, ctx, input)
+      const writer = requireWriter(await writerOf(ctx))
+      if (writer.kind === 'self') {
+        return await runMemoryTool(name, { principal: { id: writer.userId } }, input)
+      }
+      if (VISIBILITY_TOOLS.has(name)) {
+        if ((input as { private?: unknown }).private !== true) {
+          throw new KernelError('permission_denied', ASSISTANT_NEVER_SHARES)
+        }
+        return await runMemoryTool(name, { principal: { id: writer.userId } }, input)
+      }
+      return await runAssistantWrite(name, writer.userId, input)
+    } catch (err) {
+      // A colleague's shared project or note is read-only: say so as a permission error.
+      const { isMemoryReadOnlyError } = await import('$lib/server/memory/memory-read-only')
+      if (isMemoryReadOnlyError(err)) throw new KernelError('permission_denied', err.message)
+      throw err
     }
-    return runAssistantWrite(name, writer.userId, input)
   }
 
   const tool = (
@@ -162,40 +194,63 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.list_projects',
-      'List GTD projects with ordered task waterfalls, milestones, deadlines, and next actions.',
+      'List GTD projects with ordered task waterfalls, milestones, deadlines, and next actions: the person’s own and the ones colleagues share with everyone (each with its owner; a colleague’s project is read-only).',
       'read',
       z.object({
         author: z.enum(['user', 'all']).optional(),
         include_agent: z.boolean().optional(),
+        scope: optionalScope,
       }),
     ),
     tool(
       'memory.get_project_timeline',
-      'Get one project timeline: ordered task waterfall, milestones, target deadline, and next action.',
+      'Get one project timeline (the person’s own or a colleague’s shared project): ordered task waterfall, milestones, target deadline, next action, owner.',
       'read',
       z.object({ project_entity_id: z.string().min(1) }),
     ),
     tool(
       'memory.list_text_files',
-      'List user text notes (newest updated first), optionally paginated.',
+      'List notes (newest updated first), optionally paginated: the person’s own and the ones colleagues share with everyone (each with its owner; a colleague’s note is read-only).',
       'read',
       z.object({
         limit: optionalPositiveInt,
         cursor_updated_at: z.string().optional(),
         cursor_id: z.string().optional(),
+        scope: optionalScope,
       }),
     ),
     tool(
       'memory.create_text_file',
-      'Write a note (title and/or body text) into Memory › Notes. Working for a person, it lands in their Notes marked as written by the assistant; returns the note id and title.',
+      'Write a note (title and/or body text) into Memory › Notes. It is shared with everyone in the company unless private is true. Working for a person, it lands in their Notes marked as written by the assistant; returns the note id and title.',
       'mutate',
       z.object({
         title: z.string().optional(),
         body: z.string().optional(),
+        private: z.boolean().optional().describe('true = only the person can read it; default false = shared with everyone.'),
         as_user: z.boolean().optional(),
         author: z.string().optional(),
       }),
       () => 'Wrote a note',
+    ),
+    tool(
+      'memory.set_project_visibility',
+      'Make one of the person’s projects private (only they see it and its tasks — no admin or owner override) or share it with everyone in the company (the default). Only the project’s owner; the Roadmap is always shared. Working for a person, the assistant may only make things private.',
+      'mutate',
+      z.object({
+        project_entity_id: z.string().min(1),
+        private: z.boolean(),
+      }),
+      (input) => ((input as { private?: boolean }).private ? 'Made a project private' : 'Shared a project with the company'),
+    ),
+    tool(
+      'memory.set_text_file_visibility',
+      'Make one of the person’s notes private (only they can read it — no admin or owner override) or share it with everyone in the company (the default). Only the note’s owner. Working for a person, the assistant may only make things private.',
+      'mutate',
+      z.object({
+        text_file_id: z.string().min(1),
+        private: z.boolean(),
+      }),
+      (input) => ((input as { private?: boolean }).private ? 'Made a note private' : 'Shared a note with the company'),
     ),
     tool(
       'memory.update_text_file',
@@ -210,19 +265,20 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.get_text_file',
-      'Get one user text note by ID.',
+      'Get one note by ID: the person’s own or a colleague’s shared note (with its owner; read-only).',
       'read',
       z.object({ text_file_id: z.string().min(1) }),
     ),
     tool(
       'memory.search_text_files',
-      'Lexical keyword search over user text notes (no embeddings — use memory.retrieve_thoughts for hybrid search).',
+      'Lexical keyword search over notes the person may read — their own and colleagues’ shared ones (no embeddings — use memory.retrieve_thoughts for hybrid search).',
       'read',
       z.object({
         query: z.string().min(1),
         top_k: optionalPositiveInt,
         author: optionalAuthorScope,
         include_agent: z.boolean().optional(),
+        scope: optionalScope,
       }),
     ),
     ...createOwnTaskTools({ writerOf: opts.writerOf, ...opts.ownTasks }),

@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearNextActionIfCompleted, designateNextAction } from './project-next-action'
 
+// Re-sealing keys to visibility (shared-memory-keys.ts) is covered by memory-sharing.integration.spec.ts.
+const { reconcileThoughtKeysMock, reconcileProjectKeysMock } = vi.hoisted(() => ({
+  reconcileThoughtKeysMock: vi.fn(async () => 0),
+  reconcileProjectKeysMock: vi.fn(async () => 0),
+}))
+vi.mock('$lib/server/memory/shared-memory-keys', () => ({
+  reconcileThoughtKeys: reconcileThoughtKeysMock,
+  reconcileProjectKeys: reconcileProjectKeysMock,
+}))
+
 const {
   getDbMock,
   upsertMentionEdgeMock,

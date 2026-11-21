@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
 import { thought } from '$lib/server/db/schema'
+import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
 
 export function isDecryptAuthFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)
@@ -73,6 +74,8 @@ export async function repairThoughtEncryptionFromPlaintext(
     .update(thought)
     .set({ rawTextEncrypted, normalizedTextEncrypted, metadataEncrypted, updatedAt: new Date() })
     .where(and(eq(thought.id, thoughtId), eq(thought.userId, userId)))
+  // Rewrites the thought's ciphertext: a task of a shared project stays sealed with the company key (shared-memory-keys.ts).
+  await reconcileThoughtKeys(userId, [thoughtId])
 
   return true
 }
