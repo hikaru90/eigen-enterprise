@@ -1,9 +1,6 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
 import { strToU8 } from 'fflate'
 import { relsPartOf, type OpcPackage } from '../ooxml/package'
-import { imageSize } from './media'
-import { PptxError, presentationPart, readDeck, sourceOf, walkShapes, type Deck, type GroupXfrm, type ShapeNode, type Slide, type Xfrm } from './model'
-import { findPlaceholder, resolveSlide, type RNode } from './resolve'
 import {
   CT_MODERN_AUTHORS,
   CT_MODERN_COMMENTS,
@@ -19,6 +16,9 @@ import {
   REL_MODERN_AUTHORS,
   REL_MODERN_COMMENTS,
 } from './comments'
+import { imageSize } from './media'
+import { PptxError, presentationPart, readDeck, sourceOf, walkShapes, type Deck, type GroupXfrm, type ShapeNode, type Slide, type Xfrm } from './model'
+import { findPlaceholder, resolveSlide, type RNode } from './resolve'
 import { a, attr, children, intAttr, isEl, kids, NS, p, REL_TYPE } from './xml'
 
 /**

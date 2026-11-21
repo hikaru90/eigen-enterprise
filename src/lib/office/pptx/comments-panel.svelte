@@ -4,13 +4,13 @@
 </script>
 
 <script lang="ts">
+  import type { Slide } from './model'
   import MapPinIcon from '@lucide/svelte/icons/map-pin'
   import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus'
   import XIcon from '@lucide/svelte/icons/x'
   import { Button } from '$lib/components/ui/button'
   import { anchorName } from './comment-view'
   import { isMember, type CommentPerson, type SlideComment } from './comments'
-  import type { Slide } from './model'
 
   /**
    * The comments panel (S3): the current slide's threads, or every slide's
