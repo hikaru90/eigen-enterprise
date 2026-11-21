@@ -5,6 +5,8 @@
   import PanelRightOpen from '@lucide/svelte/icons/panel-right-open'
   import Sparkles from '@lucide/svelte/icons/sparkles'
   import { onMount } from 'svelte'
+  import { dictateInto } from '$lib/voice/dictation-insert'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
 
   /**
    * The shell's top bar (polish P-1): one field to ask the company's
@@ -18,6 +20,11 @@
    * it and gives focus back to where it came from; asking closes it and the
    * answer streams into the panel as before. Always the one input, so ⌘K,
    * focusBar() and the draft stay exactly as they were.
+   *
+   * Dictation (plan/shared-memory-voice-agent-tools.md §2): the mic sits in the pill next to
+   * the field, the same control as Contribute. A tap opens the spotlight; while recording the
+   * voice bar takes the field's row; Done puts the words in at the cursor and gives the field
+   * focus back — the person reads, edits and presses Enter. Nothing is asked by itself.
    */
   let { assistant }: { assistant: AssistantController } = $props()
 
@@ -27,6 +34,10 @@
   // Which modifier the hint names; decided in the browser (the server cannot know).
   let isMac = $state(false)
   let active = $state(false)
+  /** The voice bar holds the row (recording, transcribing or saying why it can't). */
+  let voiceActive = $state(false)
+  /** The person put the cursor in the field (dictation goes there, else after the text). */
+  let cursorPlaced = false
   /** Where focus was before the spotlight took it; it goes back there on close. */
   let returnTo: HTMLElement | null = null
 
@@ -65,10 +76,16 @@
     else inputEl?.blur()
   }
 
+  function ontranscript(text: string): void {
+    if (!inputEl) throw new Error('assistant bar: the transcript arrived after the field went away')
+    dictateInto(inputEl, text, cursorPlaced)
+    cursorPlaced = true
+  }
+
   function submit(event: SubmitEvent): void {
     event.preventDefault()
     const text = value.trim()
-    if (!text || assistant.chat.busy) return
+    if (voiceActive || !text || assistant.chat.busy) return
     value = ''
     close(false)
     inputEl?.blur()
@@ -92,7 +109,9 @@
     }
     if (event.key !== 'Tab' || !dialogEl) return
     // Focus trap: Tab and Shift+Tab cycle through the dialog's own controls.
-    const focusables = [...dialogEl.querySelectorAll<HTMLElement>('input, button:not([disabled])')]
+    const focusables = [...dialogEl.querySelectorAll<HTMLElement>('input, button:not([disabled])')].filter((el) =>
+      el.checkVisibility(),
+    )
     if (focusables.length === 0) return
     event.preventDefault()
     const at = focusables.indexOf(document.activeElement as HTMLElement)
@@ -159,12 +178,33 @@
           aria-label="Ask the company brain"
           aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
           data-testid="assistant-bar-input"
+          onfocus={() => (cursorPlaced = true)}
           class={[
             'h-full w-full min-w-0 border-0 bg-transparent text-foreground outline-none placeholder:text-muted-foreground',
             active ? 'text-base' : 'text-sm',
+            voiceActive && 'hidden',
           ]}
         />
-        {#if active}
+        <!-- At rest a press must not move focus first: that floats the spotlight away from
+             under the pointer and the tap is lost. The tap records; the bar's Done button
+             takes focus and opens the spotlight around it. -->
+        <span
+          role="presentation"
+          class={['flex items-center', voiceActive ? 'min-w-0 flex-1' : 'shrink-0', !active && 'pr-1']}
+          onmousedown={(event) => {
+            if (!active) event.preventDefault()
+          }}
+        >
+          <VoiceDictation
+            bind:active={voiceActive}
+            testid="assistant-bar-voice"
+            {ontranscript}
+            onclose={() => inputEl?.focus({ preventScroll: true })}
+          />
+        </span>
+        {#if voiceActive}
+          <!-- the voice bar holds the row: no Esc hint or Ask until the words are in -->
+        {:else if active}
           <kbd
             class="chip chip-line pointer-events-none hidden shrink-0 text-muted-foreground sm:inline-flex"
             data-testid="assistant-spotlight-hint"

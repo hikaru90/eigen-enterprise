@@ -5,6 +5,9 @@ import { page } from 'vitest/browser'
 import AppShell from '$lib/components/app-shell.svelte'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
 import { buildShellNav } from '$lib/shell/nav'
+import { page as appPage } from '$app/state'
+import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
+import { DICTATION_MISSING_MESSAGE } from '$lib/voice/dictation-readiness'
 import { HANDOFF_PENDING_KEY } from './handoff'
 import { PANEL_DEFAULT_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH_KEY, panelMaxWidth } from './panel-width'
 
@@ -23,6 +26,8 @@ let calls: Call[] = []
 let conversation: Record<string, unknown>
 /** Scripted /api/chat replies, one per request (empty: the echo reply below). */
 let chatReplies: Array<(signal: AbortSignal | null | undefined) => Response> = []
+/** What the speech-to-text endpoint hears in a dictation test. */
+let voiceTranscript = ''
 
 function ndjson(lines: unknown[]): Response {
   return new Response(lines.map((l) => JSON.stringify(l)).join('\n') + '\n', {
@@ -39,7 +44,7 @@ function stubFetch(): void {
       const formBody = init?.body instanceof FormData ? init.body : null
       calls.push({
         url,
-        body: formBody ?? (init?.body ? JSON.parse(String(init.body)) : null),
+        body: formBody ?? (init?.body instanceof Blob ? init.body : init?.body ? JSON.parse(String(init.body)) : null),
       })
       if (url === '/api/assistant/conversation') return Response.json(conversation)
       if (url === '/api/assistant/attachments') {
@@ -99,6 +104,7 @@ function stubFetch(): void {
         })
       }
       if (url === '/api/tts') return new Response('{}', { status: 500 })
+      if (url === '/api/voice/transcribe') return Response.json({ transcript: voiceTranscript })
       throw new Error(`unexpected fetch ${url}`)
     }),
   )
@@ -663,5 +669,81 @@ describe('assistant panel', () => {
     const chat = calls.find((c) => c.url === '/api/chat')
     expect(chat?.body).toEqual({ bootstrap: true, onboardingHandoff: true, sessionId: 's-1' })
     expect(sessionStorage.getItem(HANDOFF_PENDING_KEY)).toBeNull()
+  })
+})
+
+describe('dictation in "Ask the company brain" (plan/shared-memory-voice-agent-tools.md §2)', () => {
+  let doubles: ReturnType<typeof installVoiceDoubles>
+
+  beforeEach(async () => {
+    await page.viewport(1400, 900)
+    doubles = installVoiceDoubles()
+    voiceTranscript = 'what did we ship this week'
+    appPage.data = { shell: { dictation: { ready: true } } }
+  })
+  afterEach(() => {
+    doubles.restore()
+    appPage.data = {}
+  })
+
+  async function dictate(testid: string): Promise<void> {
+    await page.getByTestId(`${testid}-mic`).click()
+    await expect.element(page.getByTestId(`${testid}-bar`)).toBeInTheDocument()
+    FakeMediaRecorder.instances.at(-1)!.emitChunk([1, 2, 3])
+    await page.getByTestId(`${testid}-send`).click()
+    await expect.element(page.getByTestId(`${testid}-mic`)).toBeInTheDocument()
+  }
+
+  it('the top bar field has the mic; the words land in the field, focused, and nothing is asked yet', async () => {
+    renderShell()
+    await barInput().fill('Hey brain,')
+    barInput().element().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    const mic = page.getByTestId('assistant-bar-voice-mic')
+    expect(page.getByTestId('assistant-spotlight').element().contains(mic.element())).toBe(true)
+    await dictate('assistant-bar-voice')
+    await expect.element(barInput()).toHaveValue('Hey brain, what did we ship this week')
+    await expect.element(barInput()).toHaveFocus()
+    // the spotlight is open around the dictated question, Ask is ready, nothing went out
+    await expect.element(page.getByTestId('assistant-spotlight')).toHaveAttribute('role', 'dialog')
+    await expect.element(page.getByTestId('assistant-spotlight-submit')).toBeEnabled()
+    expect(calls.some((c) => c.url === '/api/chat')).toBe(false)
+    expect(calls.filter((c) => c.url === '/api/voice/transcribe')).toHaveLength(1)
+  })
+
+  it('while recording the voice bar takes the field’s row and Ask waits', async () => {
+    renderShell()
+    await page.getByTestId('assistant-bar-voice-mic').click()
+    await expect.element(page.getByTestId('assistant-bar-voice-bar')).toBeInTheDocument()
+    await expect.element(page.getByTestId('assistant-spotlight-submit')).not.toBeInTheDocument()
+    await page.getByTestId('assistant-bar-voice-discard').click()
+    await expect.element(barInput()).toHaveFocus()
+    await expect.element(page.getByTestId('assistant-spotlight-submit')).toBeInTheDocument()
+  })
+
+  it('the panel composer: the mic left of Send works the same as Contribute', async () => {
+    renderShell()
+    await page.getByTestId('assistant-toggle').click()
+    await expect.element(panel()).toBeInTheDocument()
+    const composer = page.getByTestId('assistant-composer-input')
+    await composer.fill('Summarise:')
+    const wrapper = page.getByTestId('assistant-mic').element()
+    expect(wrapper.querySelector('[data-testid="assistant-voice-mic"]')).not.toBeNull()
+    await dictate('assistant-voice')
+    await expect.element(composer).toHaveValue('Summarise: what did we ship this week')
+    await expect.element(composer).toHaveFocus()
+    await expect.element(page.getByTestId('assistant-send')).toBeEnabled()
+    expect(calls.some((c) => c.url === '/api/chat')).toBe(false)
+  })
+
+  it('without speech-to-text the brain field’s mic says what is missing', async () => {
+    appPage.data = { shell: { dictation: { ready: false, missing: 'platform_key' } } }
+    renderShell()
+    const mic = page.getByTestId('assistant-bar-voice-mic')
+    await expect.element(mic).toHaveAttribute('aria-disabled', 'true')
+    await mic.click({ force: true }) // aria-disabled: still tappable, it explains itself
+    await expect
+      .element(page.getByTestId('assistant-bar-voice-error'))
+      .toHaveTextContent(DICTATION_MISSING_MESSAGE.platform_key)
+    expect(doubles.getUserMedia).not.toHaveBeenCalled()
   })
 })
