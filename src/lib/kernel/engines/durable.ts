@@ -188,15 +188,17 @@ function emitSurfaceEvent(
 async function kernelToolOutcome(
   toolName: string,
   run: () => Promise<unknown>,
-  onApproval?: (approvalId: string) => void,
+  onApproval?: (approvalId: string, tool: string) => void,
 ): Promise<unknown> {
   try {
     return await run()
   } catch (err) {
     if (err instanceof KernelError && err.code === 'approval_required') {
       const approvalId = approvalIdFromError(err)
-      onApproval?.(approvalId)
-      return approvalPendingResult(toolName)
+      // The gated tool, which a meta tool (the brain's `ee`) names in the error's details.
+      const gated = typeof err.details?.tool === 'string' ? err.details.tool : toolName
+      onApproval?.(approvalId, gated)
+      return approvalPendingResult(gated)
     }
     return toolErrorResult(toolName, err)
   }
@@ -210,7 +212,7 @@ function bridgeExecute(
     kernelToolOutcome(
       toolName,
       () => ctx.executeTool(toolName, args),
-      (approvalId) => emitSurfaceEvent(ctx, { type: 'approval.required', tool: toolName, approvalId }),
+      (approvalId, tool) => emitSurfaceEvent(ctx, { type: 'approval.required', tool, approvalId }),
     )
 }
 

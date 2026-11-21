@@ -18,8 +18,11 @@ audit → vcs), exactly like the MCP server and the web UI.
 
 ```
 ee status                                        # modules + pending approvals (admin+owner)
-ee tool list [--module <id>] [--json]            # active-module tools only (same fail-closed
+ee tool list [--module <id>] [--namespace <ns>] [--json]
+                                                 # active-module tools only (same fail-closed
                                                  #   activation filter as MCP tools/list)
+ee tool namespaces                               # tool-name prefixes with tool counts
+ee tool help <name>                              # one tool: description, input schema, approval, active
 ee tool run <name> --input '<json>'              # execute any registered tool
 ee module list | activate <id> | deactivate <id> # via kernel.module_* tools (admin)
 ee approvals list [--status pending|approved|denied]
@@ -28,10 +31,32 @@ ee openapi                                       # OpenAPI 3.1 document over the
 ```
 
 Global flags: `--json`, `--principal <id>`, plus `--input`, `--module`,
-`--status`, `--approve`, `--deny` per command (`--flag value` or `--flag=value`).
+`--namespace`, `--status`, `--approve`, `--deny` per command (`--flag value` or `--flag=value`).
 
 Exit codes: `0` ok · `1` error (structured `{ code, message }` on stderr) ·
 `3` approval_required (includes the pending `approvalId` when one exists).
+
+## The company brain's `ee` tool
+
+The "Ask the company brain" agent has the CLI as one tool, `ee`
+(`brain-tool.ts`, wired in `src/lib/server/boot.ts` as an agent meta tool next
+to its direct registry tools). The model passes the CLI words and, for
+`tool run`, the tool input as a JSON object:
+
+```json
+{ "args": ["tool", "namespaces"] }
+{ "args": ["tool", "list", "--namespace", "reminders"] }
+{ "args": ["tool", "help", "reminders.create"] }
+{ "args": ["tool", "run", "reminders.list"], "input": {} }
+```
+
+It runs in process through `executeCommand` (the same handlers as the
+terminal) as the **asking person** (the run's delegated principal): the
+registry's activation gate, role check, approvals, audit and RLS scope are
+the ones a direct call meets. Discovery shows only the tools the person may
+run (their roles ∩ the agent's tool scope), lists without schemas (`tool help`
+carries one), so the model's context stays small. `--principal` and `openapi`
+are refused; the agent's tool scope holds on `tool run` too.
 
 ## Kernel admin tools
 

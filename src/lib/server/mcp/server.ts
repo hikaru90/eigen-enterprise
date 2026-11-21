@@ -20,7 +20,7 @@ export type McpToolListing = {
  * store is given, tools of inactive modules are omitted (fail closed).
  */
 export async function listMcpTools(
-  registry: KernelRegistry,
+  registry: Pick<KernelRegistry, 'list'>,
   activations?: Pick<ActivationStore, 'get'>,
 ): Promise<McpToolListing[]> {
   const out: McpToolListing[] = []

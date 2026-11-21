@@ -25,6 +25,14 @@ describe('orchestrator persona: where results live', () => {
   })
 })
 
+describe('orchestrator persona: every tool through ee (plan/shared-memory-voice-agent-tools.md §3)', () => {
+  it('teaches the ee discovery path (namespaces → list → help → run) before "I cannot"', () => {
+    for (const step of ['"namespaces"', '"list","--namespace"', '"help"', '"run"']) expect(ORCHESTRATOR_PERSONA_PROMPT).toContain(step)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/find one before saying you cannot/i)
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/ee tool is the company CLI, run as this person/)
+  })
+})
+
 describe('orchestrator persona: reach beyond modules (Contribute d80e155d)', () => {
   it('answers "which model are you" from kernel.whoami, never "I do not know"', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('kernel.whoami')

@@ -2,7 +2,7 @@
  * Zero-dependency argv parser for the ee CLI.
  *
  * Grammar: ee <group> [action] [positional...] [--flag value | --flag=value]
- * Value flags: principal, input, module, status. Boolean flags: json, approve, deny.
+ * Value flags: principal, input, module, namespace, status. Boolean flags: json, approve, deny.
  * Pure function: throws CliArgsError on any malformed input — no process IO here.
  */
 
@@ -16,7 +16,7 @@ export type ParsedCliArgs = {
 export class CliArgsError extends Error {}
 
 const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['json', 'approve', 'deny'])
-const VALUE_FLAGS: ReadonlySet<string> = new Set(['principal', 'input', 'module', 'status'])
+const VALUE_FLAGS: ReadonlySet<string> = new Set(['principal', 'input', 'module', 'namespace', 'status'])
 
 export const KNOWN_FLAGS: readonly string[] = [...BOOLEAN_FLAGS, ...VALUE_FLAGS]
 

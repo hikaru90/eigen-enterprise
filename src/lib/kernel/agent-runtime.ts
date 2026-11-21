@@ -1,6 +1,7 @@
 import type { AgentConfig, LoopEngineId } from './agent'
 import type { EngineContext, EngineStreamSinks, EngineToolListing, LoopEngine } from './engine'
 import type { KernelRegistry } from './registry'
+import type { ToolPrincipal } from './types'
 import { randomUUID } from 'node:crypto'
 import { KERNEL_EVENT_SOURCE } from './cloudevents'
 import { KernelError } from './errors'
@@ -49,6 +50,25 @@ export type DispatchOptions = {
   turnId?: string
 }
 
+/** What a meta tool call runs with: the run's delegated person, its request id, the agent's tool scope. */
+export type AgentMetaToolContext = {
+  principal: ToolPrincipal
+  requestId: string
+  toolScope: AgentConfig['toolScope']
+}
+
+/**
+ * A harness-level tool an agent is offered next to its registry tools — not
+ * a company action itself, but a way to reach them (the brain's `ee` CLI
+ * tool, src/cli/brain-tool.ts). It runs with the run's delegated person and
+ * must reach company actions only through KernelRegistry.execute (the same
+ * gates as a direct call). Its name may not shadow a registry tool.
+ */
+export type AgentMetaTool = {
+  listing: EngineToolListing
+  execute(input: unknown, ctx: AgentMetaToolContext): Promise<unknown>
+}
+
 export type AgentRuntimeOptions = {
   registry: KernelRegistry
   /** Module activation gate; wire to ModuleRegistry.isToolActive (fail closed). */
@@ -63,6 +83,8 @@ export type AgentRuntimeOptions = {
    * no per-principal cost query exists in src/lib/server/llm today.
    */
   spendFn?: (agentId: string) => number
+  /** Meta tools offered on every agent's surface after its registry tools (production: the ee CLI tool). */
+  metaTools?: AgentMetaTool[]
 }
 
 /** Provenance on harness events: the person is principalId, the brain carried the turn. */
@@ -81,6 +103,7 @@ export class AgentRuntime {
   private readonly eventSink: EventSink
   private readonly engines: Map<LoopEngineId, LoopEngine>
   private readonly spendFn: ((agentId: string) => number) | undefined
+  private readonly metaTools: AgentMetaTool[]
   private readonly agents = new Map<string, AgentConfig>()
   /** Default spend accumulator (used when no spendFn is injected). */
   private readonly spendUsdByAgent = new Map<string, number>()
@@ -91,6 +114,7 @@ export class AgentRuntime {
     this.eventSink = options.eventSink
     this.engines = options.engines ?? new Map()
     this.spendFn = options.spendFn
+    this.metaTools = [...(options.metaTools ?? [])]
   }
 
   /** Register an agent config; duplicate ids fail loud. */
@@ -270,11 +294,25 @@ export class AgentRuntime {
       summary: tool.summary,
       inputJsonSchema: toolInputJsonSchema(tool.inputSchema),
     }))
+    const metaByName = new Map<string, AgentMetaTool>()
+    for (const meta of this.metaTools) {
+      const name = meta.listing.name
+      if (this.registry.get(name) !== undefined) {
+        throw new KernelError('duplicate_tool', `agent meta tool ${name} shadows the kernel tool ${name}`)
+      }
+      if (metaByName.has(name)) throw new KernelError('duplicate_tool', `agent meta tool registered twice: ${name}`)
+      metaByName.set(name, meta)
+      listings.push(meta.listing)
+    }
+    const metaCtx: AgentMetaToolContext = { principal, requestId, toolScope: agent.toolScope }
 
     return {
       agent,
       principal,
-      executeTool: (name, input) => this.registry.execute(name, input, { principal, requestId }),
+      executeTool: (name, input) => {
+        const meta = metaByName.get(name)
+        return meta ? meta.execute(input, metaCtx) : this.registry.execute(name, input, { principal, requestId })
+      },
       listTools: () => listings,
       emit: async (event) => {
         await emitKernelEvent(this.eventSink, {
