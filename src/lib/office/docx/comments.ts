@@ -1,5 +1,5 @@
 import type { OpcPackage } from '../ooxml/package'
-import { attr, children, descendants, isEl, NS, onOff, REL, wa } from './xml'
+import { attr, children, descendants, isEl, NS, REL, wa } from './xml'
 
 /**
  * Word comments (ECMA-376 Part 1 §17.13.4): the comments part (w:comments,

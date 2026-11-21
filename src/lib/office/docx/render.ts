@@ -2,8 +2,8 @@ import type { Block, DocxDocument, Inline, Paragraph, PlaceholderInline, Table, 
 import type { Border, EdgeBorders, ParagraphProps, RunProps } from './properties'
 import { fontStack } from './fonts'
 import { authorColor } from './review-colors'
-import { descendants, NS, wa, wc } from './xml'
 import { symbolChar, symbolText } from './symbols'
+import { descendants, NS, wa, wc } from './xml'
 
 /**
  * Renders the document model to DOM (browser only). Sizes are in points so

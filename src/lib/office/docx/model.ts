@@ -1,4 +1,5 @@
 import { OpcError, readPackage, REL_OFFICE_DOCUMENT, type OpcPackage, type Relationship } from '../ooxml/package'
+import { commentAnchors, parseComments, type CommentData } from './comments'
 import { ListCounter, parseNumbering, type ListLabel, type Numbering } from './numbering'
 import {
   EMPTY_THEME_FONTS,
@@ -33,7 +34,6 @@ import {
   type TableLayer,
   type TableRegion,
 } from './styles'
-import { commentAnchors, parseComments, type CommentData } from './comments'
 import { symbolChar } from './symbols'
 import { attr, children, child, descendants, GRAPHIC, isEl, NS, onOff, REL, twipsPt, wa, wc, wcs } from './xml'
 
