@@ -28,13 +28,25 @@ export const OWN_TASK_TOOL_NAMES = [
 /** Tasks assigned between members (task-tools.ts): the `tasks` namespace belongs to Memory. */
 export const TASK_TOOL_NAMES = ['tasks.assignees', 'tasks.assign', 'tasks.list', 'tasks.complete', 'tasks.comment'] as const
 
+/** A person's own recurring reminders (reminder-tools.ts): the `reminders` namespace belongs to Memory. */
+export const REMINDER_TOOL_NAMES = [
+  'reminders.create',
+  'reminders.list',
+  'reminders.update',
+  'reminders.pause',
+  'reminders.resume',
+  'reminders.delete',
+  'reminders.complete',
+  'reminders.snooze',
+] as const
+
 export const memoryManifest: ModuleManifest = {
   id: MEMORY_MODULE_ID,
   name: 'Memory',
   version: '0.1.0',
   description:
     'Thought capture, hybrid retrieval, and GTD project/text-note tools over the eigen memory system.',
-  toolNamespaces: [MEMORY_MODULE_ID, 'tasks'],
-  tools: [...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES],
+  toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders'],
+  tools: [...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

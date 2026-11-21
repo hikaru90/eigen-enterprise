@@ -87,6 +87,7 @@ test('Memory is one module page: nav → sub-pages → capture → task → comp
 
   for (const [tab, path, title] of [
     ['tasks', '/m/memory/tasks', /^Tasks · Memory · eigenEnterprise$/],
+    ['reminders', '/m/memory/reminders', /^Reminders · Memory · eigenEnterprise$/],
     ['projects', '/m/memory/projects', /^Projects · Memory · eigenEnterprise$/],
     ['notes', '/m/memory/notes', /^Notes · Memory · eigenEnterprise$/],
     ['capture', '/m/memory/capture', /^Capture · Memory · eigenEnterprise$/],

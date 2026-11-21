@@ -6,6 +6,7 @@ describe('MEMORY_TABS', () => {
     expect(MEMORY_TABS.map((t) => [t.label, t.href])).toEqual([
       ['Overview', '/m/memory'],
       ['Tasks', '/m/memory/tasks'],
+      ['Reminders', '/m/memory/reminders'],
       ['Projects', '/m/memory/projects'],
       ['Notes', '/m/memory/notes'],
       ['Capture', '/m/memory/capture'],
@@ -27,6 +28,7 @@ describe('activeMemorySurfaceTab', () => {
     ['/m/memory', 'overview'],
     ['/m/memory/', 'overview'],
     ['/m/memory/tasks', 'tasks'],
+    ['/m/memory/reminders', 'reminders'],
     ['/m/memory/projects', 'projects'],
     ['/m/memory/projects/7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f60', 'projects'],
     ['/m/memory/notes', 'notes'],

@@ -153,6 +153,7 @@ export default defineConfig({
       'src/routes/(nucleus)/m/memory/memory-privacy-note.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/settings/your-data.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/tasks/assigned-tasks.svelte.spec.ts',
+      'src/routes/(nucleus)/m/memory/reminders/reminders.svelte.spec.ts',
       'src/routes/timeline/temporal-event-delete-button.svelte.spec.ts',
       'src/routes/timeline/temporal-event-status-button.svelte.spec.ts',
       'src/routes/timeline/timeline-unassigned-tasks.svelte.spec.ts',

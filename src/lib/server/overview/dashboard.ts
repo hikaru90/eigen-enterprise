@@ -7,6 +7,8 @@ import { kernelEvents } from '$lib/server/db/kernel.schema'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { assignedTaskDeps } from '$lib/server/memory/assigned-tasks/live'
 import { needsYouTasks, type NeedsYouTasks } from '$lib/server/memory/assigned-tasks/service'
+import { reminderDeps } from '$lib/server/memory/reminders/live'
+import { needsYouReminders, type ReminderView } from '$lib/server/memory/reminders/service'
 import { buildOverview, type Overview } from '$lib/server/overview/overview'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 
@@ -19,6 +21,8 @@ export type Dashboard = {
   backup: BackupNotice | null
   /** Tasks other members assigned to this person (open), and news on the ones they assigned (unseen). */
   tasks: NeedsYouTasks
+  /** The person's own reminders with an open occurrence and no running snooze (one item per reminder). */
+  reminders: ReminderView[]
 }
 
 /**
@@ -62,6 +66,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     overview,
     backup: role === 'owner' ? await ownerBackupNotice() : null,
     tasks: await needsYouTasks(await assignedTaskDeps(), userId),
+    reminders: await needsYouReminders(await reminderDeps(), userId),
   }
 }
 

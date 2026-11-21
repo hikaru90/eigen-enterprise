@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks } = vi.hoisted(() => ({
+const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks, reminders } = vi.hoisted(() => ({
   assignedTasks: { deps: null as unknown },
+  reminders: { deps: null as unknown },
   kernelHolder: { kernel: null as unknown },
   roleMock: vi.fn(async (): Promise<string> => 'admin'),
   backupsMock: vi.fn(),
@@ -57,9 +58,12 @@ vi.mock('$lib/server/db', () => {
 })
 
 vi.mock('$lib/server/memory/assigned-tasks/live', () => ({ assignedTaskDeps: async () => assignedTasks.deps }))
+vi.mock('$lib/server/memory/reminders/live', () => ({ reminderDeps: async () => reminders.deps }))
 
 import { memoryAssignedTaskStore } from '$lib/server/memory/assigned-tasks/memory-store'
 import { assignTask, completeTask, type AssignedTaskDeps } from '$lib/server/memory/assigned-tasks/service'
+import { memoryReminderStore } from '$lib/server/memory/reminders/memory-store'
+import { createReminder, type ReminderDeps } from '$lib/server/memory/reminders/service'
 import { loadDashboard } from './dashboard'
 
 function taskDeps(): AssignedTaskDeps {
@@ -76,6 +80,14 @@ function taskDeps(): AssignedTaskDeps {
   return deps
 }
 taskDeps()
+
+const clock = { now: new Date('2026-11-21T12:00:00Z') }
+function reminderDeps(): ReminderDeps {
+  const deps: ReminderDeps = { store: memoryReminderStore(), timeZoneOf: async () => 'Europe/Berlin', now: () => clock.now }
+  reminders.deps = deps
+  return deps
+}
+reminderDeps()
 
 async function kernel(active: string[]) {
   const activations = new InMemoryActivationStore()
@@ -195,5 +207,16 @@ describe('the dashboard at / (loadDashboard)', () => {
     await completeTask(deps, { userId: 'ony', via: 'person' }, t.id)
     expect((await loadDashboard('owner')).tasks.updates).toMatchObject([{ title: 'Send the Q4 deck', update: { kind: 'completed' } }])
     expect((await loadDashboard('ony')).tasks.assignedToMe).toEqual([])
+  })
+
+  it('Needs you holds the person’s own due reminders — one item per reminder, never anyone else’s', async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    const deps = reminderDeps()
+    clock.now = new Date('2026-11-21T12:00:00Z')
+    await createReminder(deps, { userId: 'ony', via: 'person' }, { title: 'LinkedIn posts', weekdays: ['MO', 'TH'], time: '09:00' })
+    expect((await loadDashboard('ony')).reminders).toEqual([])
+    clock.now = new Date('2026-11-27T10:00:00Z')
+    expect((await loadDashboard('ony')).reminders).toMatchObject([{ title: 'LinkedIn posts', due: { oldestAt: '2026-11-23T08:00:00.000Z', count: 2 } }])
+    expect((await loadDashboard('owner')).reminders).toEqual([])
   })
 })
