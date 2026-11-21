@@ -8,6 +8,7 @@
   import Pencil from '@lucide/svelte/icons/pencil'
   import Phone from '@lucide/svelte/icons/phone'
   import PhoneMissed from '@lucide/svelte/icons/phone-missed'
+  import Plus from '@lucide/svelte/icons/plus'
   import Reply from '@lucide/svelte/icons/reply'
   import SmilePlus from '@lucide/svelte/icons/smile-plus'
   import Trash2 from '@lucide/svelte/icons/trash-2'
@@ -15,6 +16,7 @@
   import { resolve } from '$app/paths'
   import { callLineLabel } from '$lib/calls/format'
   import UserAvatar from '$lib/components/user-avatar.svelte'
+  import EmojiPicker from './emoji-picker.svelte'
   import { renderMessageMarkdown, type MentionOptions } from './markdown'
   import MessageEdit from './message-edit.svelte'
   import ReplyQuote from './reply-quote.svelte'
@@ -31,6 +33,8 @@
    * toolbar, the row's context menu (right-click, the menu key, Shift+F10) or
    * R on a focused row. A reply shows its quote above the text; clicking it
    * jumps to the original.
+   * The reaction picker is a quick row of frequent emoji plus "More emoji",
+   * which swaps it for the full picker (search, categories, recently used).
    */
   let {
     message: m,
@@ -85,6 +89,21 @@
   } = $props()
 
   let rowEl = $state<HTMLElement | null>(null)
+  let reactEl = $state<HTMLButtonElement | null>(null)
+  /** The full picker instead of the quick row; every open starts at the quick row. */
+  let fullPicker = $state(false)
+
+  function togglePicker() {
+    fullPicker = false
+    ontogglepicker()
+  }
+
+  /** Esc in the full picker: close it and give focus back to the react button. */
+  function closeFullPicker() {
+    fullPicker = false
+    ontogglepicker()
+    reactEl?.focus()
+  }
   let menuEl = $state<HTMLDivElement | null>(null)
   let menu = $state<{ x: number; y: number } | null>(null)
   const MENU_WIDTH = 200
@@ -295,7 +314,7 @@
           class="inline-flex h-6 items-center rounded-full border border-transparent px-1.5 text-muted-foreground opacity-0 group-hover/row:opacity-100 hover:border-border hover:text-foreground focus-visible:opacity-100"
           aria-label="Add reaction"
           title="Add reaction"
-          onclick={ontogglepicker}><SmilePlus class="size-3.5" /></button
+          onclick={togglePicker}><SmilePlus class="size-3.5" /></button
         >
       </div>
     {/if}
@@ -340,7 +359,8 @@
         aria-label="Add reaction"
         title="Add reaction"
         data-testid="messages-react"
-        onclick={ontogglepicker}><SmilePlus class="size-4" /></button
+        bind:this={reactEl}
+        onclick={togglePicker}><SmilePlus class="size-4" /></button
       >
       {#if onquote}
         <button
@@ -382,9 +402,13 @@
           onclick={() => ondelete?.()}><Trash2 class="size-4" /></button
         >
       {/if}
-      {#if pickerOpen}
+      {#if pickerOpen && fullPicker}
+        <div class="absolute top-full right-0 z-20 mt-1">
+          <EmojiPicker label="Pick a reaction" onpick={(emoji) => onreact(emoji)} onclose={closeFullPicker} />
+        </div>
+      {:else if pickerOpen}
         <div
-          class="absolute top-full right-0 z-20 mt-1 grid w-max grid-cols-5 gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-md"
+          class="absolute top-full right-0 z-20 mt-1 grid w-max grid-cols-6 gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-md"
           role="menu"
           aria-label="Pick a reaction"
           data-testid="messages-picker"
@@ -400,6 +424,15 @@
               onclick={() => onreact(emoji)}>{emoji}</button
             >
           {/each}
+          <button
+            type="button"
+            role="menuitem"
+            class="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+            aria-label="More emoji"
+            title="More emoji"
+            data-testid="messages-picker-more"
+            onclick={() => (fullPicker = true)}><Plus class="size-4" /></button
+          >
         </div>
       {/if}
     </div>
@@ -421,7 +454,7 @@
     >
       {#if onquote}{@render item('Reply', 'messages-menu-quote', Reply, onquote)}{/if}
       {#if !inThread && onreply}{@render item('Reply in thread', 'messages-menu-thread', MessageSquare, onreply)}{/if}
-      {@render item('Add reaction', 'messages-menu-react', SmilePlus, ontogglepicker)}
+      {@render item('Add reaction', 'messages-menu-react', SmilePlus, togglePicker)}
       {#if canEdit}{@render item('Edit', 'messages-menu-edit', Pencil, onstartedit)}{/if}
       {#if canDelete}{@render item('Delete', 'messages-menu-delete', Trash2, ondelete, true)}{/if}
     </div>

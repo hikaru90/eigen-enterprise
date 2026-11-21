@@ -1,5 +1,6 @@
 import type { AccessLevel, AccessPort, GrantInput } from './access-port'
 import { randomUUID } from 'node:crypto'
+import { isSingleEmoji } from '$lib/messages/emoji'
 import { attachmentMarker, quoteSnippet, type ReplyQuote } from '$lib/messages/quote'
 import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
 
@@ -21,7 +22,11 @@ export const MAX_ATTACHMENTS = 10
  */
 export const MAX_VOICE_CLIP_MS = 5 * 60 * 1000 + 10_000
 
-/** The reaction picker's set (C2): a compact, fixed list — anything else is refused. */
+/**
+ * The reaction picker's quick row (C2). Any other single emoji is a reaction too
+ * (Contribute 89815b8d): "More emoji" opens the full picker, and the server
+ * accepts every RGI emoji (`$lib/messages/emoji`).
+ */
 export const REACTION_EMOJI = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '👀', '✅', '🔥'] as const
 
 /** Kernel audit for moderation (an owner/admin deleting someone else's message). */
@@ -601,7 +606,7 @@ export async function listThread(
 
 /** Toggles the actor's reaction; returns the message as everyone now sees it. */
 export async function toggleReaction(d: MessagesDeps, actorId: string, messageId: string, emoji: string): Promise<MessageDto> {
-  if (!(REACTION_EMOJI as readonly string[]).includes(emoji)) throw new MessagesError('invalid', 'pick a reaction from the list')
+  if (!isSingleEmoji(emoji)) throw new MessagesError('invalid', 'a reaction is one emoji')
   const m = isId(messageId) ? await d.store.getMessage(messageId) : null
   if (!m || m.deletedAt) throw new MessagesError('not_found', 'message not found')
   await visible(d, actorId, m.conversationId, 'edit')

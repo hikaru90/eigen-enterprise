@@ -94,6 +94,8 @@
     "daisyui": "^5.7.28",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
+    "emojibase": "^18.0.0",
+    "emojibase-data": "^18.0.0",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-perfectionist": "^5.10.0",

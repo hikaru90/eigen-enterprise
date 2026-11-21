@@ -153,7 +153,19 @@ describe('reactions', () => {
     expect((await listMessages(deps, 'owner', ch.id)).messages[0].reactions).toHaveLength(1)
   })
 
-  it('only the picker’s emoji, only on visible live messages, only for people who may post', async () => {
+  it('any single emoji (Contribute 89815b8d), not only the quick row; never text or several', async () => {
+    const { deps } = depthFixture()
+    const ch = await createChannel(deps, 'owner', { name: 'general', private: false })
+    const { message } = await postMessage(deps, 'owner', ch.id, 'ship it')
+    await toggleReaction(deps, 'bea', message.id, '🦒')
+    const after = await toggleReaction(deps, 'carl', message.id, '👍🏽')
+    expect(after.reactions.map((r) => r.emoji)).toEqual(['🦒', '👍🏽'])
+    for (const bad of ['lol', '👍👍', '❤', ' 👍', '', '🦒'.repeat(20)]) {
+      await expect(toggleReaction(deps, 'bea', message.id, bad)).rejects.toMatchObject({ code: 'invalid', message: 'a reaction is one emoji' })
+    }
+  })
+
+  it('only on visible live messages, only for people who may post', async () => {
     const { deps } = depthFixture()
     const ch = await createChannel(deps, 'owner', { name: 'lead', private: true })
     const { message } = await postMessage(deps, 'owner', ch.id, 'x')
