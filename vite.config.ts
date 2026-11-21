@@ -5,6 +5,7 @@ import { sveltekit } from '@sveltejs/kit/vite'
 import tailwindcss from '@tailwindcss/vite'
 import { searchForWorkspaceRoot } from 'vite'
 import { defineConfig } from 'vitest/config'
+import { officePrebundle } from './scripts/office-prebundle.mjs'
 
 /** Watch / file-scoped re-runs only instrument a subset; thresholds would false-fail. */
 const enforceCoverageThresholds = process.env.CI === 'true' || process.argv.includes('run')
@@ -31,90 +32,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     // The office viewers (src/lib/office/viewers.ts) load lazily from the file
-    // page, so everything only they import is discovered at click time. Each
-    // late find re-runs dep optimization and reloads the page mid-interaction
-    // (a dev-server-only reload that wipes editor state — the e2e journeys
-    // caught it). Pre-bundle the office dep set instead. Dev-only; the build
-    // is unaffected.
-    include: [
-      '@lucide/svelte/icons/baseline',
-      '@lucide/svelte/icons/between-horizontal-end',
-      '@lucide/svelte/icons/between-vertical-end',
-      '@lucide/svelte/icons/bold',
-      '@lucide/svelte/icons/bring-to-front',
-      '@lucide/svelte/icons/check',
-      '@lucide/svelte/icons/chevron-down',
-      '@lucide/svelte/icons/chevron-left',
-      '@lucide/svelte/icons/chevron-right',
-      '@lucide/svelte/icons/chevron-up',
-      '@lucide/svelte/icons/circle-alert',
-      '@lucide/svelte/icons/copy',
-      '@lucide/svelte/icons/download',
-      '@lucide/svelte/icons/ellipsis',
-      '@lucide/svelte/icons/eye-off',
-      '@lucide/svelte/icons/file-output',
-      '@lucide/svelte/icons/file-plus',
-      '@lucide/svelte/icons/file-text',
-      '@lucide/svelte/icons/folder',
-      '@lucide/svelte/icons/highlighter',
-      '@lucide/svelte/icons/image',
-      '@lucide/svelte/icons/image-plus',
-      '@lucide/svelte/icons/info',
-      '@lucide/svelte/icons/italic',
-      '@lucide/svelte/icons/layout-grid',
-      '@lucide/svelte/icons/link',
-      '@lucide/svelte/icons/list',
-      '@lucide/svelte/icons/list-indent-decrease',
-      '@lucide/svelte/icons/list-indent-increase',
-      '@lucide/svelte/icons/list-ordered',
-      '@lucide/svelte/icons/list-tree',
-      '@lucide/svelte/icons/loader-circle',
-      '@lucide/svelte/icons/lock',
-      '@lucide/svelte/icons/maximize',
-      '@lucide/svelte/icons/moon',
-      '@lucide/svelte/icons/move-horizontal',
-      '@lucide/svelte/icons/notebook-text',
-      '@lucide/svelte/icons/panel-left',
-      '@lucide/svelte/icons/pencil',
-      '@lucide/svelte/icons/plus',
-      '@lucide/svelte/icons/presentation',
-      '@lucide/svelte/icons/redo-2',
-      '@lucide/svelte/icons/remove-formatting',
-      '@lucide/svelte/icons/rotate-ccw',
-      '@lucide/svelte/icons/rotate-cw',
-      '@lucide/svelte/icons/scissors',
-      '@lucide/svelte/icons/search',
-      '@lucide/svelte/icons/send-to-back',
-      '@lucide/svelte/icons/square-plus',
-      '@lucide/svelte/icons/strikethrough',
-      '@lucide/svelte/icons/table',
-      '@lucide/svelte/icons/text-align-center',
-      '@lucide/svelte/icons/text-align-end',
-      '@lucide/svelte/icons/text-align-justify',
-      '@lucide/svelte/icons/text-align-start',
-      '@lucide/svelte/icons/trash',
-      '@lucide/svelte/icons/trash-2',
-      '@lucide/svelte/icons/type',
-      '@lucide/svelte/icons/underline',
-      '@lucide/svelte/icons/undo-2',
-      '@lucide/svelte/icons/x',
-      '@lucide/svelte/icons/zoom-in',
-      '@lucide/svelte/icons/zoom-out',
-      '@xmldom/xmldom',
-      'fflate',
-      'pdf-lib',
-      'pdf-lib/dist/pdf-lib.esm.js',
-      'pdfjs-dist',
-      'prosemirror-commands',
-      'prosemirror-dropcursor',
-      'prosemirror-gapcursor',
-      'prosemirror-history',
-      'prosemirror-keymap',
-      'prosemirror-model',
-      'prosemirror-state',
-      'prosemirror-tables',
-      'prosemirror-view',
-    ],
+    // page, so everything only they import is discovered at click time; each
+    // late find reloads the page mid-interaction (dev-only). The list is
+    // derived from their imports so it cannot fall behind (scripts/office-prebundle.mjs).
+    include: officePrebundle(path.resolve(import.meta.dirname, 'src/lib/office')),
   },
   build: {
     // Hidden maps: uploaded to PostHog for error tracking, not served to browsers.

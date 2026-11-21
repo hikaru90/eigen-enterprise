@@ -102,3 +102,41 @@ describe('PDF text for agents (extractText)', () => {
     expect(await extractOfficeText('pdf', bytes)).toContain('Through the hook')
   })
 })
+
+describe('extractText: notes and markups (what reviewers wrote on the PDF)', () => {
+  it('lists each page’s notes, markups and text boxes under it, replies nested, review state shown', async () => {
+    const { applyPdfEdits } = await import('./edit')
+    const source = await makePdf([{ lines: ['Revenue grew in the third quarter'] }, { lines: ['Next steps'] }])
+    const now = new Date('2026-11-21T10:00:00Z')
+    const first = await applyPdfEdits(
+      { bytes: source },
+      {
+        annotations: [
+          { op: 'add', key: 'n1', annotation: { page: 0, shape: { kind: 'Text', at: [72, 700] }, color: [1, 0.8, 0], opacity: 1, contents: 'Check this number' } },
+          { op: 'add', key: 'h1', annotation: { page: 1, shape: { kind: 'Highlight', quads: [[72, 720, 160, 720, 72, 706, 160, 706]] }, color: [1, 1, 0], opacity: 0.4, contents: 'Owner?' } },
+          { op: 'add', key: 'i1', annotation: { page: 1, shape: { kind: 'Ink', paths: [[80, 600, 120, 620]], width: 2 }, color: [0, 0, 1], opacity: 1 } },
+        ],
+      },
+      { author: 'Ada Owner', now },
+    )
+    const second = await applyPdfEdits(
+      { bytes: first.bytes },
+      { annotations: [{ op: 'reply', key: 'r1', to: first.created.n1!, contents: 'It is right' }, { op: 'review', id: first.created.n1!, state: 'Completed' }] },
+      { author: 'Ben Member', now },
+    )
+    const md = await extractText(second.bytes)
+    const page1 = md.slice(md.indexOf('## Page 1'), md.indexOf('## Page 2'))
+    const page2 = md.slice(md.indexOf('## Page 2'))
+    expect(page1).toContain('> Note (Ada Owner, completed): Check this number')
+    expect(page1).toContain('>> Reply (Ben Member): It is right')
+    expect(page2).toContain('> Highlight (Ada Owner): Owner?')
+    // A drawing without words is still listed, so the agent knows it is there.
+    expect(page2).toContain('> Ink drawing (Ada Owner)')
+    expect(page2).not.toContain('Check this number')
+  })
+
+  it('a PDF without annotations reads as before (no comments section)', async () => {
+    const md = await extractText(await makePdf([{ lines: ['Plain page'] }]))
+    expect(md).not.toContain('> ')
+  })
+})

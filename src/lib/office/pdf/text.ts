@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import path from 'node:path'
+import type { PdfAnnotation } from './annotate-model'
 import { readingParagraphs, type PdfTextItem } from './reading'
 
 /** A PDF that needs a password before anything in it can be read. */
@@ -60,6 +61,7 @@ export async function extractText(bytes: Uint8Array): Promise<string> {
   }
   try {
     const out: string[] = []
+    const annotations = await annotationsOf(bytes)
     const title = await titleOf(doc)
     if (title) out.push(`# ${title}`, '')
     const labels = await doc.getPageLabels()
@@ -74,12 +76,66 @@ export async function extractText(bytes: Uint8Array): Promise<string> {
       const paragraphs = readingParagraphs(items)
       if (paragraphs.length === 0) out.push('_(no text on this page)_', '')
       for (const p of paragraphs) out.push(p, '')
+      out.push(...commentLines(annotations, n - 1))
       page.cleanup()
     }
     return out.join('\n')
   } finally {
     await task.destroy()
   }
+}
+
+/** The file's annotations through the same reader the editor uses (./annotate.ts). */
+async function annotationsOf(bytes: Uint8Array): Promise<PdfAnnotation[]> {
+  const [{ loadForEdit }, { readAnnotations }] = await Promise.all([import('./edit'), import('./annotate')])
+  return readAnnotations(await loadForEdit({ bytes: bytes.slice() }))
+}
+
+const KIND_LABEL: Record<PdfAnnotation['kind'], string> = {
+  Text: 'Note',
+  Highlight: 'Highlight',
+  Underline: 'Underline',
+  StrikeOut: 'Strikethrough',
+  Squiggly: 'Squiggly underline',
+  FreeText: 'Text box',
+  Ink: 'Ink drawing',
+  Square: 'Rectangle',
+  Circle: 'Ellipse',
+  Line: 'Line',
+  Other: 'Annotation',
+}
+
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+/**
+ * What reviewers wrote on one page, as Markdown quotes under its text:
+ * `> Note (Ada Owner, completed): text`, replies nested as `>> Reply (…)`.
+ * Kinds the editor does not model (links, stamps …) are listed only when
+ * they carry words. Top to bottom, as on the page.
+ */
+function commentLines(all: PdfAnnotation[], page: number): string[] {
+  const replies = new Map<string, PdfAnnotation[]>()
+  for (const a of all) if (a.inReplyTo) replies.set(a.inReplyTo, [...(replies.get(a.inReplyTo) ?? []), a])
+  const top = all
+    .filter((a) => a.page === page && !a.inReplyTo && (a.kind !== 'Other' || oneLine(a.contents)))
+    .sort((a, b) => b.rect[3] - a.rect[3] || a.rect[0] - b.rect[0])
+  if (top.length === 0) return []
+  const lines: string[] = []
+  const who = (a: PdfAnnotation) => {
+    const parts = [a.author ?? 'unknown author']
+    if (a.review && a.review.state !== 'None') parts.push(a.review.state.toLowerCase())
+    return parts.join(', ')
+  }
+  const say = (prefix: string, label: string, a: PdfAnnotation) => {
+    const text = oneLine(a.contents)
+    lines.push(`${prefix} ${label} (${who(a)})${text ? `: ${text}` : ''}`)
+  }
+  for (const a of top) {
+    say('>', a.kind === 'Other' ? a.subtype : KIND_LABEL[a.kind], a)
+    for (const r of replies.get(a.id) ?? []) say('>>', 'Reply', r)
+  }
+  lines.push('')
+  return lines
 }
 
 async function titleOf(doc: {
