@@ -1,6 +1,6 @@
 import type { Pathname } from '$app/types'
 
-export type MemorySurfaceTab = 'overview' | 'tasks' | 'projects' | 'notes' | 'capture'
+export type MemorySurfaceTab = 'overview' | 'tasks' | 'reminders' | 'projects' | 'notes' | 'capture'
 
 /**
  * The Memory module page's sub-navigation (phase-cohesion §3): one page at
@@ -10,6 +10,7 @@ export type MemorySurfaceTab = 'overview' | 'tasks' | 'projects' | 'notes' | 'ca
 export const MEMORY_TABS: ReadonlyArray<{ id: MemorySurfaceTab; label: string; href: Pathname }> = [
   { id: 'overview', label: 'Overview', href: '/m/memory' },
   { id: 'tasks', label: 'Tasks', href: '/m/memory/tasks' },
+  { id: 'reminders', label: 'Reminders', href: '/m/memory/reminders' },
   { id: 'projects', label: 'Projects', href: '/m/memory/projects' },
   { id: 'notes', label: 'Notes', href: '/m/memory/notes' },
   { id: 'capture', label: 'Capture', href: '/m/memory/capture' },

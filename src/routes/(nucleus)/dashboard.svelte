@@ -14,6 +14,7 @@
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { hideTile, showTile, TILE_LABELS, type TileId } from '$lib/dashboard/tiles'
   import { metaLine, updateLine } from '$lib/memory/assigned-task-format'
+  import { dueLine } from '$lib/memory/reminder-format'
   import type { Dashboard } from '$lib/server/overview/dashboard'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
@@ -89,10 +90,15 @@
   const activeModules = $derived(overview.modules.filter((m) => m.active))
   const switchedOff = $derived(overview.modules.length - activeModules.length)
   const tasks = $derived(dashboard.tasks)
-  const taskCount = $derived(tasks.assignedToMe.length + tasks.updates.length)
+  // The person's due reminders: one item each, however many occurrences are open.
+  const reminders = $derived(dashboard.reminders)
+  const taskCount = $derived(tasks.assignedToMe.length + tasks.updates.length + reminders.length)
   const needsYou = $derived(overview.approvals.length + taskCount + (dashboard.backup ? 1 : 0))
-  // Assigned tasks live in Memory › Tasks; the dashboard's buttons post to that page's actions.
+  // Assigned tasks live in Memory › Tasks, reminders in Memory › Reminders; the dashboard's buttons post to those pages' actions.
   const tasksPage = resolve('/m/memory/tasks')
+  const remindersPage = resolve('/m/memory/reminders')
+  /** The dashboard's snooze: later today (Memory › Reminders offers other lengths). */
+  const DASHBOARD_SNOOZE_MINUTES = 180
   const website = $derived(overview.modules.find((m) => m.id === 'website') ?? null)
   const countOf = (label: string) => website?.counts.find((c) => c.label === label)?.value ?? 0
   const apps = $derived.by(() => {
@@ -382,7 +388,7 @@
     >
       <div class="hairline pr-8">
         <h2 class="text-[15px] leading-snug font-medium">Needs you</h2>
-        <p class="on-soft text-sm">Approvals, tasks and warnings, waiting on a person</p>
+        <p class="on-soft text-sm">Approvals, tasks, reminders and warnings, waiting on a person</p>
       </div>
       {#if dashboard.backup}
         <div class={row} data-testid="overview-backup-notice" data-kind={dashboard.backup.kind}>
@@ -396,7 +402,7 @@
         </div>
       {/if}
       {#if taskCount > 0}
-        <!-- Tasks other members gave this person, and what happened on the ones they gave out. -->
+        <!-- Tasks other members gave this person, what happened on the ones they gave out, and their own due reminders. -->
         <ul class="flex flex-col gap-1.5" data-testid="dashboard-tasks">
           {#each tasks.assignedToMe as task (task.id)}
             <li class={taskRow} data-testid="dashboard-task-assigned">
@@ -434,6 +440,38 @@
                 <form method="POST" action="{tasksPage}?/seen" use:enhance>
                   <input type="hidden" name="task_id" value={task.id} />
                   <button type="submit" class={inkPill} data-testid="dashboard-task-seen">Got it</button>
+                </form>
+              </span>
+            </li>
+          {/each}
+          {#each reminders as reminder (reminder.id)}
+            <li class={taskRow} data-testid="dashboard-reminder">
+              <span class="flex min-w-0 items-center gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                  ><span class="size-2 rounded-full bg-coral"></span></span
+                >
+                <span class="flex min-w-0 flex-col">
+                  <span class="truncate">{reminder.title}</span>
+                  <span class="truncate text-muted-foreground">{dueLine(reminder)}{reminder.note ? ` · ${reminder.note}` : ''}</span>
+                </span>
+              </span>
+              <span class="flex shrink-0 items-center gap-1.5">
+                <a href="{remindersPage}#reminder-{reminder.id}" class={softPill}>Open</a>
+                <form method="POST" action="{remindersPage}?/snooze" use:enhance>
+                  <input type="hidden" name="reminder_id" value={reminder.id} />
+                  <input type="hidden" name="minutes" value={DASHBOARD_SNOOZE_MINUTES} />
+                  <button type="submit" class={softPill} title="Snooze for 3 hours" data-testid="dashboard-reminder-snooze">Later</button>
+                </form>
+                {#if reminder.due && reminder.due.count > 1}
+                  <form method="POST" action="{remindersPage}?/complete" use:enhance>
+                    <input type="hidden" name="reminder_id" value={reminder.id} />
+                    <input type="hidden" name="all" value="1" />
+                    <button type="submit" class={softPill} data-testid="dashboard-reminder-done-all">All {reminder.due.count} done</button>
+                  </form>
+                {/if}
+                <form method="POST" action="{remindersPage}?/complete" use:enhance>
+                  <input type="hidden" name="reminder_id" value={reminder.id} />
+                  <button type="submit" class={inkPill} data-testid="dashboard-reminder-done">Done</button>
                 </form>
               </span>
             </li>

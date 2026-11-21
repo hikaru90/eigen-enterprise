@@ -23,6 +23,7 @@ const navItems = buildShellNav(
 const dashboard: Dashboard = {
   backup: null,
   tasks: { assignedToMe: [], updates: [] },
+  reminders: [],
   overview: {
     modules: [
       {
@@ -63,13 +64,13 @@ const controller = () =>
 function renderDashboard(
   assistant: AssistantController | null,
   tiles: { hiddenTiles?: TileId[]; saveHiddenTiles?: (hidden: TileId[]) => Promise<void> } = {},
-  notices: { mailMissing?: boolean; tasks?: Dashboard['tasks'] } = {},
+  notices: { mailMissing?: boolean; tasks?: Dashboard['tasks']; reminders?: Dashboard['reminders'] } = {},
 ) {
   return render(Harness, {
     assistant,
     hiddenTiles: tiles.hiddenTiles ?? [],
     saveHiddenTiles: tiles.saveHiddenTiles ?? (async () => {}),
-    dashboard: notices.tasks ? { ...dashboard, tasks: notices.tasks } : dashboard,
+    dashboard: { ...dashboard, ...(notices.tasks ? { tasks: notices.tasks } : {}), ...(notices.reminders ? { reminders: notices.reminders } : {}) },
     greetingName: 'Alex',
     companyName: 'Kindred',
     navItems,
@@ -189,6 +190,32 @@ describe('dashboard.svelte', () => {
     await expect.element(links.first()).toHaveAttribute('href', '/m/memory/tasks#assigned-t1')
     // 1 approval + 2 tasks waiting.
     await expect.element(page.getByText('3 waiting on you')).toBeInTheDocument()
+  })
+
+  it('Needs you holds a due reminder as one row — the oldest open occurrence and the count — with Done, all done and Snooze', async () => {
+    const reminder = {
+      id: 'r1',
+      title: 'LinkedIn posts',
+      note: 'Prepare, check or send',
+      weekdays: ['MO' as const, 'TH' as const],
+      time: '09:00',
+      timeZone: 'Europe/Berlin',
+      status: 'active' as const,
+      createdVia: 'assistant' as const,
+      createdAt: '2026-11-21T12:00:00.000Z',
+      nextAt: '2026-11-30T08:00:00.000Z',
+      due: { oldestAt: '2026-11-23T08:00:00.000Z', latestAt: '2026-11-26T08:00:00.000Z', count: 2 },
+      snoozedUntil: null,
+    }
+    renderDashboard(controller(), {}, { reminders: [reminder] })
+    const row = page.getByTestId('dashboard-reminder')
+    await expect.element(row).toHaveTextContent(/LinkedIn posts.*Due since Mon 23 Nov, 09:00 · 2 open · Prepare, check or send/)
+    await expect.element(row.getByTestId('dashboard-reminder-done')).toHaveTextContent('Done')
+    await expect.element(row.getByTestId('dashboard-reminder-done-all')).toHaveTextContent('All 2 done')
+    await expect.element(row.getByTestId('dashboard-reminder-snooze')).toBeInTheDocument()
+    await expect.element(row.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/m/memory/reminders#reminder-r1')
+    // 1 approval + 1 reminder waiting (one item however many occurrences are open).
+    await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
   })
 
   it('with the Assistant off, a hidden Assistant tile is not offered back', async () => {
