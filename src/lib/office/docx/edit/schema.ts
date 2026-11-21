@@ -5,6 +5,7 @@ import { Schema, type DOMOutputSpec, type Mark, type MarkSpec, type Node as PMNo
 import { fontStack } from '../fonts'
 import { alignOfJc, mergeRun, type ParagraphProps, type RunProps } from '../properties'
 import { AUTO_SPACING_PT, borderCss, HIGHLIGHT, paragraphCss, runCss, UNDERLINE } from '../render'
+import { authorColor } from '../review-colors'
 import { paragraphRunBase, resolveParagraphProps } from '../styles'
 
 /**
@@ -41,6 +42,9 @@ export type DisplayContext = {
 /** Indents as written on w:ind, in twips (start/end also stand for left/right). */
 export type IndentTwips = { start?: number; end?: number; firstLine?: number; hanging?: number }
 
+/** A tracked change's identity (w:id, w:author, w:date as written). */
+export type RevisionInfo = { id: string; author: string | null; date: string | null }
+
 export type ParagraphAttrs = {
   ref: string | null
   styleId: string | null
@@ -50,7 +54,18 @@ export type ParagraphAttrs = {
   /** Direct w:numPr: numId ("0" switches a style's list off) and level. */
   numId: string | null
   ilvl: number | null
+  /** w:pPrChange: the paragraph's properties were changed while tracking. */
+  pChange?: RevisionInfo | null
+  /** Rejecting a w:pPrChange: the properties are written back from the ones it recorded. */
+  revertPPr?: boolean
+  /** The paragraph mark itself was inserted or deleted while tracking (w:pPr/w:rPr/w:ins|w:del). */
+  markChange?: (RevisionInfo & { kind: 'insert' | 'delete' }) | null
 }
+
+/** A format mark as plain data (what a tracked formatting change recorded as the formatting before). */
+export type MarkData = { type: string; attrs?: Record<string, unknown> }
+
+export const CHANGE_MARKS = ['insertion', 'deletion'] as const
 
 export const FORMAT_MARKS = ['charStyle', 'font', 'size', 'color', 'highlight', 'bold', 'italic', 'underline', 'strike', 'vertAlign'] as const
 export type FormatMark = (typeof FORMAT_MARKS)[number]
@@ -155,7 +170,17 @@ export function createDocxSchema(ctx: DisplayContext): Schema {
   const paragraph: NodeSpec = {
     group: 'block',
     content: 'inline*',
-    attrs: { ref: { default: null }, styleId: { default: null }, jc: { default: null }, ind: { default: null }, numId: { default: null }, ilvl: { default: null } },
+    attrs: {
+      ref: { default: null },
+      styleId: { default: null },
+      jc: { default: null },
+      ind: { default: null },
+      numId: { default: null },
+      ilvl: { default: null },
+      pChange: { default: null },
+      revertPPr: { default: false },
+      markChange: { default: null },
+    },
     parseDOM: [
       {
         tag: 'p',
@@ -194,6 +219,8 @@ export function createDocxSchema(ctx: DisplayContext): Schema {
         out.role = 'heading'
         out['aria-level'] = String(props.outlineLevel + 1)
       }
+      if (a.pChange) out['data-pchange'] = a.pChange.author ?? ''
+      if (a.markChange) out['data-markchange'] = a.markChange.kind
       return ['p', out, 0]
     },
   }
@@ -216,7 +243,15 @@ export function createDocxSchema(ctx: DisplayContext): Schema {
   })
 
   const nodes: Record<string, NodeSpec> = {
-    doc: { content: '(block | section_break)+' },
+    doc: {
+      content: '(block | section_break)+',
+      attrs: {
+        /** The comments (CommentData, plain data) — threads, text and resolved state are edited here. */
+        comments: { default: [] },
+        /** settings.xml w:trackRevisions. */
+        trackRevisions: { default: false },
+      },
+    },
     paragraph,
     table: {
       group: 'block',
@@ -383,6 +418,20 @@ export function createDocxSchema(ctx: DisplayContext): Schema {
         return ['img', { ...data, class: 'docx-image', src: url, alt: a.alt as string, title: a.floating ? 'Floating picture, shown in line' : (a.alt as string), style: `${size}max-width:100%;object-fit:contain;vertical-align:baseline` }]
       },
     },
+    comment_mark: {
+      /** A comment anchor: its range's start or end (w:commentRangeStart/End) or its reference mark (w:commentReference). */
+      group: 'inline',
+      inline: true,
+      atom: true,
+      selectable: false,
+      attrs: { ref: { default: null }, id: {}, edge: {}, level: { default: 'para' } },
+      // Not parsed from pasted HTML: a copied anchor would point a second range at the same comment.
+      toDOM: (node) => [
+        'span',
+        { class: `docx-comment-${node.attrs.edge as string}`, 'data-comment-edge': node.attrs.edge as string, 'data-comment-id': node.attrs.id as string, contenteditable: 'false' },
+      ],
+      leafText: () => '',
+    },
     opaque: {
       group: 'inline',
       inline: true,
@@ -395,7 +444,42 @@ export function createDocxSchema(ctx: DisplayContext): Schema {
   }
 
   const span = (css: string, data: Record<string, string>): DOMOutputSpec => ['span', { style: css, ...data }, 0]
+  const revision = (kind: 'insertion' | 'deletion'): MarkSpec => ({
+    attrs: { id: {}, author: { default: null }, date: { default: null }, move: { default: false }, ref: { default: null } },
+    inclusive: false,
+    toDOM(mark) {
+      const a = mark.attrs
+      const what = a.move ? (kind === 'insertion' ? 'Moved here' : 'Moved away') : kind === 'insertion' ? 'Inserted' : 'Deleted'
+      return [
+        kind === 'insertion' ? 'ins' : 'del',
+        {
+          class: `docx-${kind}`,
+          'data-change-id': a.id as string,
+          style: `color:${authorColor(a.author as string | null)};text-decoration-line:${kind === 'insertion' ? 'underline' : 'line-through'}${a.move ? ';text-decoration-style:double' : ''}`,
+          title: `${what} by ${(a.author as string | null) ?? 'an unknown author'}${a.date ? `, ${a.date as string}` : ''}`,
+        },
+        0,
+      ]
+    },
+  })
   const marks: Record<string, MarkSpec> = {
+    insertion: revision('insertion'),
+    deletion: revision('deletion'),
+    formatChange: {
+      /** w:rPrChange: `before` is the formatting marks the text had (MarkData[]); `ref` the source element. */
+      attrs: { id: {}, author: { default: null }, date: { default: null }, before: { default: [] }, ref: { default: null } },
+      inclusive: false,
+      toDOM: (mark) => [
+        'span',
+        {
+          class: 'docx-format-change',
+          'data-change-id': mark.attrs.id as string,
+          style: `outline:1px dotted ${authorColor(mark.attrs.author as string | null)}`,
+          title: `Formatting changed by ${(mark.attrs.author as string | null) ?? 'an unknown author'}`,
+        },
+        0,
+      ],
+    },
     link: {
       attrs: { href: { default: null }, anchor: { default: null }, tooltip: { default: null }, ref: { default: null } },
       inclusive: false,

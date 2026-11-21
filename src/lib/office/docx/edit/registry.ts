@@ -34,6 +34,8 @@ export type RunEntry = {
   direct: RunProps
 }
 export type LinkEntry = { kind: 'link'; el: Element; nodes: PMNode[] }
+/** A tracked insertion or deletion (w:ins, w:del, w:moveTo, w:moveFrom) and the inline nodes it held. */
+export type ChangeEntry = { kind: 'change'; el: Element; nodes: PMNode[] }
 /** Elements the editor carries unchanged: fields, bookmarks, content controls, tracked changes, … */
 export type OpaqueEntry = { kind: 'opaque'; els: Element[] }
 /** A single source element (w:tab, w:br, w:drawing, w:sectPr, an opaque block). */
@@ -43,7 +45,7 @@ export type RowEntry = { kind: 'row'; el: Element; node: PMNode | null }
 /** `css`: the cell's resolved borders, margins and shading (table style included), for the editor's look. */
 export type CellEntry = { kind: 'cell'; el: Element; node: PMNode | null; css: string }
 
-export type Entry = ParagraphEntry | RunEntry | LinkEntry | OpaqueEntry | ElementEntry | TableEntry | RowEntry | CellEntry
+export type Entry = ParagraphEntry | RunEntry | LinkEntry | ChangeEntry | OpaqueEntry | ElementEntry | TableEntry | RowEntry | CellEntry
 
 export class SourceRegistry {
   private readonly entries = new Map<string, Entry>()

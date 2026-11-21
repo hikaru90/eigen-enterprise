@@ -49,6 +49,9 @@ const DEFAULT_PREFIX: Record<string, string> = {
   [NS.a]: 'a',
   [NS.pic]: 'pic',
   [NS.xml]: 'xml',
+  [NS_W14]: 'w14',
+  'http://schemas.microsoft.com/office/word/2012/wordml': 'w15',
+  'http://schemas.microsoft.com/office/word/2016/wordml/cid': 'w16cid',
 }
 
 /** A writer into `doc`, using the prefixes its root element declares. */

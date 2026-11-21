@@ -101,7 +101,7 @@ describe('docx editing: lossless round trip', () => {
     const { docx } = session
     const pristine = docx.pkg.xml(docx.mainPart)
     const out = writeDocument(
-      { pkg: docx.pkg, mainPart: docx.mainPart, reg: session.registry, pristine, linkRels: new Map(), textWidthTwips: 9000, firstDocPrId: 100 },
+      { pkg: docx.pkg, mainPart: docx.mainPart, reg: session.registry, pristine, linkRels: new Map(), textWidthTwips: 9000, firstDocPrId: 100, newId: () => '999', hasCharStyle: () => false },
       session.initial,
     )
     expect(ser(out)).toBe(ser(pristine))

@@ -203,7 +203,8 @@ export function splitParagraph(session: DocxEditSession): Command {
       const next = wa(wc(style?.source ?? null, 'next'), 'val')
       if (next && next !== style?.id) return { type: node.type, attrs: { ref: null, styleId: next, jc: null, ind: null, numId: null, ilvl: null } }
     }
-    return { type: node.type, attrs }
+    // Revision marks stay with the paragraph they belong to.
+    return { type: node.type, attrs: { ...attrs, pChange: null, revertPPr: false, markChange: null } }
   })
   return chainCommands(endListItem(session, true), split)
 }
