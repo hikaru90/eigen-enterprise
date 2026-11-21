@@ -42,6 +42,7 @@
     idleMs = 60_000,
     onsaved,
     side,
+    sideShown = true,
   }: {
     fileId: string
     kind: 'markdown' | 'csv'
@@ -55,6 +56,8 @@
     onsaved?: (file: DriveItem) => void
     /** The file's details and sharing, shown above the revisions in the side panel. */
     side?: Snippet
+    /** False when the page has put the side panel away (or is in full view): the editor takes the width. */
+    sideShown?: boolean
   } = $props()
 
   type Mode =
@@ -373,7 +376,7 @@
   const fmtTime = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: 'short' })
 </script>
 
-<div class="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+<div class="grid min-h-0 flex-1 gap-6 {sideShown ? 'lg:grid-cols-[minmax(0,1fr)_20rem]' : ''}">
 <div class="flex min-w-0 flex-col gap-4">
   {#if mode.kind === 'watching'}
     <div
@@ -514,7 +517,13 @@
   </div>
 
 </div>
-<aside class="flex min-w-0 flex-col gap-6" data-testid="drive-file-side">
+<aside
+  id="drive-file-side"
+  class="flex min-w-0 flex-col gap-6"
+  hidden={!sideShown}
+  aria-label="Details"
+  data-testid="drive-file-side"
+>
   {@render side?.()}
   <RevisionsPanel
     {fileId}

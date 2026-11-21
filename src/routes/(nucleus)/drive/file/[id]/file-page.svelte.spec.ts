@@ -190,3 +190,128 @@ describe('drive file page: HTML files render as pages', () => {
     await expect.element(open).toHaveAttribute('rel', 'noopener noreferrer')
   })
 })
+
+describe('drive file page: the details pane can be put away', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.removeItem('ee.drive.file-details')
+  })
+
+  it('hides and shows the details pane from a labelled toggle, for any kind of file', async () => {
+    render(FilePage, props(data()))
+    const toggle = page.getByTestId('drive-file-side-toggle')
+    await expect.element(toggle).toHaveAccessibleName('Hide details')
+    await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect.element(toggle).toHaveAttribute('aria-controls', 'drive-file-side')
+    await expect.element(page.getByTestId('drive-file-side')).toBeVisible()
+    await toggle.click()
+    await expect.element(page.getByTestId('drive-file-side')).not.toBeVisible()
+    await expect.element(toggle).toHaveAccessibleName('Show details')
+    await expect.element(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.click()
+    await expect.element(page.getByTestId('drive-file-side')).toBeVisible()
+  })
+
+  it('remembers the choice in this browser', async () => {
+    const first = render(FilePage, props(data()))
+    await page.getByTestId('drive-file-side-toggle').click()
+    expect(localStorage.getItem('ee.drive.file-details')).toBe('hidden')
+    first.unmount()
+    render(FilePage, props(data()))
+    await expect.element(page.getByTestId('drive-file-side-toggle')).toHaveAccessibleName('Show details')
+    await expect.element(page.getByTestId('drive-file-side')).not.toBeVisible()
+  })
+})
+
+describe('drive file page: full view', () => {
+  const proto = HTMLElement.prototype as { requestFullscreen: HTMLElement['requestFullscreen'] }
+  const realRequest = proto.requestFullscreen
+  let fullscreenElement: Element | null = null
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.removeItem('ee.drive.file-details')
+    fullscreenElement = null
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fullscreenElement })
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: vi.fn(async () => {
+        fullscreenElement = null
+        document.dispatchEvent(new Event('fullscreenchange'))
+      }),
+    })
+    return () => {
+      proto.requestFullscreen = realRequest
+      delete (document as { fullscreenElement?: unknown }).fullscreenElement
+      delete (document as { exitFullscreen?: unknown }).exitFullscreen
+    }
+  })
+
+  const grantFullscreen = () => {
+    proto.requestFullscreen = vi.fn(async function (this: HTMLElement) {
+      fullscreenElement = document.documentElement === this ? document.documentElement : null
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+  }
+  const refuseFullscreen = () => {
+    proto.requestFullscreen = vi.fn(async () => {
+      throw new Error('refused')
+    })
+  }
+
+  it('goes full screen with the viewer alone; leaving full screen (Esc in the browser) restores the page', async () => {
+    grantFullscreen()
+    render(FilePage, props(data()))
+    const button = page.getByTestId('drive-file-full-view')
+    await expect.element(button).toHaveAccessibleName('Full view')
+    await button.click()
+    await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'screen')
+    // The whole document goes full screen (dialogs the viewers open live outside the file view), the file view fills it.
+    expect(fullscreenElement).toBe(document.documentElement)
+    await expect.element(page.getByTestId('drive-file-side')).not.toBeVisible()
+    await expect.element(button).toHaveAccessibleName('Exit full view')
+    await expect.element(button).toHaveAttribute('aria-pressed', 'true')
+    // The browser handles Esc in full screen: it leaves, then tells the page.
+    fullscreenElement = null
+    document.dispatchEvent(new Event('fullscreenchange'))
+    await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'off')
+    await expect.element(page.getByTestId('drive-file-side')).toBeVisible()
+    expect(gotoMock).not.toHaveBeenCalled()
+  })
+
+  it('the Exit full view button leaves full screen', async () => {
+    grantFullscreen()
+    render(FilePage, props(data()))
+    await page.getByTestId('drive-file-full-view').click()
+    await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'screen')
+    await page.getByTestId('drive-file-full-view').click()
+    expect(document.exitFullscreen).toHaveBeenCalled()
+    await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'off')
+  })
+
+  it('when the browser refuses full screen, maximises in the window and says so; Esc leaves it before closing the file', async () => {
+    refuseFullscreen()
+    render(FilePage, props(data()))
+    await page.getByTestId('drive-file-full-view').click()
+    await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'window')
+    await expect
+      .element(page.getByTestId('drive-file-full-view-note'))
+      .toHaveTextContent('Full screen is not available here')
+    await expect.element(page.getByTestId('drive-file-side')).not.toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'off')
+    expect(gotoMock).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
+    expect(gotoMock).toHaveBeenCalledWith('/drive/folder/f2')
+  })
+
+  it('leaving full view keeps a details pane the person had hidden hidden', async () => {
+    refuseFullscreen()
+    render(FilePage, props(data()))
+    await page.getByTestId('drive-file-side-toggle').click()
+    await page.getByTestId('drive-file-full-view').click()
+    await page.getByTestId('drive-file-full-view').click()
+    await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'off')
+    await expect.element(page.getByTestId('drive-file-side')).not.toBeVisible()
+  })
+})

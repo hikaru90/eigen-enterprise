@@ -20,18 +20,17 @@
   let open = $state(true)
   let grants = $state<GrantEntry[]>([])
   let targets = $state<ShareTargets>({ people: [], groups: [] })
-  let pick = $state('')
+  /** What is typed in the search; picking a match clears it (so anything left here is not picked yet). */
+  let query = $state('')
+  /** The access level people get when picked; each row can change its own afterwards. */
   let pickLevel = $state<AccessLevel>('view')
   let error = $state<string | null>(null)
+  let announce = $state('')
   let loading = $state(true)
   let saving = $state(false)
+  let search = $state<HTMLInputElement | null>(null)
 
   const keyOf = (s: GrantSubject) => (s.kind === 'user' ? `user:${s.userId}` : s.kind === 'group' ? `group:${s.groupId}` : 'company')
-  function subjectOf(key: string): GrantSubject {
-    if (key === 'company') return { kind: 'company' }
-    const [kind, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)]
-    return kind === 'user' ? { kind: 'user', userId: id } : { kind: 'group', groupId: id }
-  }
   function labelOf(s: GrantSubject): string {
     if (s.kind === 'company') return 'Everyone in the company'
     if (s.kind === 'group') return `Group: ${targets.groups.find((g) => g.id === s.groupId)?.name ?? 'unknown group'}`
@@ -39,6 +38,17 @@
     return p ? `${p.name || p.email} (${p.email})` : 'Unknown person'
   }
   const taken = $derived(new Set(grants.map((g) => keyOf(g.subject))))
+  /** Everyone not in the share yet, narrowed by the search (name, email or group name). */
+  const candidates = $derived.by(() => {
+    const all: GrantSubject[] = [
+      { kind: 'company' },
+      ...targets.groups.map((g): GrantSubject => ({ kind: 'group', groupId: g.id })),
+      ...targets.people.map((p): GrantSubject => ({ kind: 'user', userId: p.id })),
+    ]
+    const q = query.trim().toLowerCase()
+    return all.filter((s) => !taken.has(keyOf(s)) && (!q || labelOf(s).toLowerCase().includes(q)))
+  })
+  const levelLabel = (l: AccessLevel) => LEVELS.find((x) => x.id === l)?.label ?? l
 
   onMount(async () => {
     try {
@@ -52,14 +62,31 @@
     }
   })
 
-  function add() {
-    if (!pick || taken.has(pick)) return
-    grants = [...grants, { subject: subjectOf(pick), level: pickLevel }]
-    pick = ''
+  /** Picking someone puts them in the share right away (Save applies it); there is no separate Add. */
+  function pick(subject: GrantSubject) {
+    if (taken.has(keyOf(subject))) return
+    grants = [...grants, { subject, level: pickLevel }]
+    announce = `${labelOf(subject)} added: ${levelLabel(pickLevel)}.`
+    query = ''
+    error = null
+    search?.focus()
+  }
+
+  function onSearchKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    const first = candidates[0]
+    if (query.trim() && first) pick(first)
   }
 
   async function save() {
     error = null
+    // Text left in the search was never picked: say so rather than saving without it.
+    if (query.trim()) {
+      error = `“${query.trim()}” is typed but not picked. Pick them from the list, or clear the search.`
+      search?.focus()
+      return
+    }
     saving = true
     try {
       await driveApi.setGrants(item, grants)
@@ -105,21 +132,42 @@
         {/each}
       </ul>
 
-      <div class="flex flex-wrap items-center gap-2">
-        <select class="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm" bind:value={pick} aria-label="Share with" data-testid="drive-share-pick">
-          <option value="">Add people, a group or everyone…</option>
-          {#if !taken.has('company')}<option value="company">Everyone in the company</option>{/if}
-          {#each targets.groups as gr (gr.id)}
-            {#if !taken.has(`group:${gr.id}`)}<option value={`group:${gr.id}`}>Group: {gr.name}</option>{/if}
+      <div class="flex flex-col gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <input
+            bind:this={search}
+            bind:value={query}
+            type="search"
+            class="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
+            placeholder="Find people, a group or everyone…"
+            aria-label="Share with"
+            aria-describedby="drive-share-pick-help"
+            onkeydown={onSearchKeydown}
+            data-testid="drive-share-pick"
+          />
+          <select class="h-9 rounded-md border bg-background px-2 text-sm" bind:value={pickLevel} aria-label="Access for people you pick" data-testid="drive-share-pick-level">
+            {#each LEVELS as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
+          </select>
+        </div>
+        <p id="drive-share-pick-help" class="text-xs text-muted-foreground">Pick someone to add them; Save applies the changes.</p>
+        <ul class="flex max-h-48 flex-col overflow-y-auto rounded-md border text-sm" aria-label="People and groups to share with" data-testid="drive-share-candidates">
+          {#each candidates as c (keyOf(c))}
+            <li>
+              <button
+                type="button"
+                class="w-full truncate px-3 py-1.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                aria-label={`Share with ${labelOf(c)}`}
+                onclick={() => pick(c)}
+                data-testid="drive-share-candidate">{labelOf(c)}</button
+              >
+            </li>
+          {:else}
+            <li class="px-3 py-2 text-muted-foreground" data-testid={query.trim() ? 'drive-share-no-match' : undefined}>
+              {query.trim() ? `No one matches “${query.trim()}”.` : 'Everyone is in the share already.'}
+            </li>
           {/each}
-          {#each targets.people as p (p.id)}
-            {#if !taken.has(`user:${p.id}`)}<option value={`user:${p.id}`}>{p.name || p.email} ({p.email})</option>{/if}
-          {/each}
-        </select>
-        <select class="h-9 rounded-md border bg-background px-2 text-sm" bind:value={pickLevel} aria-label="Access level" data-testid="drive-share-pick-level">
-          {#each LEVELS as l (l.id)}<option value={l.id}>{l.label}</option>{/each}
-        </select>
-        <Button variant="outline" onclick={add} disabled={!pick} data-testid="drive-share-add">Add</Button>
+        </ul>
+        <p class="sr-only" aria-live="polite">{announce}</p>
       </div>
     {/if}
 
