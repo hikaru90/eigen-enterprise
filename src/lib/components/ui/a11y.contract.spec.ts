@@ -73,7 +73,7 @@ describe('ui primitives: accessibility contract', () => {
   it('gives every interactive primitive a visible focus ring', () => {
     for (const file of [
       'button/button-variants.ts',
-      'badge/badge.svelte',
+      'badge/badge-variants.ts',
       'input/input.svelte',
       'textarea/textarea.svelte',
       'checkbox/checkbox.svelte',
