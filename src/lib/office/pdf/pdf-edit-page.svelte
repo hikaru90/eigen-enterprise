@@ -29,7 +29,7 @@
     type Rgb,
   } from './annotate-model'
   import { linesOf, svgOf } from './annotate-svg'
-  import { canvasPixelRatio, CSS_PER_POINT } from './layout'
+  import { drawEditPage, layOutText } from './edit-page-view'
   import { type PdfJs, type PdfPage } from './pdfjs'
 
   /**
@@ -124,43 +124,19 @@
     const at = scale * window.devicePixelRatio
     if (drawnAt === at || destroyed) return
     drawnAt = at
-    const vp = page.getViewport({ scale })
-    const ratio = canvasPixelRatio(vp.width, vp.height, window.devicePixelRatio)
-    const canvas = document.createElement('canvas')
-    canvas.className = 'pdf-edit-canvas'
-    canvas.setAttribute('aria-hidden', 'true')
-    canvas.width = Math.floor(vp.width * ratio)
-    canvas.height = Math.floor(vp.height * ratio)
     try {
-      await page.render({
-        canvas,
-        viewport: vp,
-        annotationMode: lib.AnnotationMode.DISABLE,
-        transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0],
-      }).promise
+      await drawEditPage(lib, page, host, scale, window.devicePixelRatio)
     } catch (err) {
       drawnAt = 0
       onerror(`Page ${index + 1} could not be drawn: ${messageOf(err)}`)
       return
     }
-    if (destroyed) return
-    host.querySelector('.pdf-edit-canvas')?.remove()
-    host.prepend(canvas)
-    host.dataset.drawn = 'true'
-    if (!textReady) {
-      textReady = true
-      const div = document.createElement('div')
-      div.className = 'textLayer'
-      host.querySelector('.pdf-edit-text')?.append(div)
-      try {
-        await new lib.TextLayer({
-          textContentSource: await page.getTextContent(),
-          container: div,
-          viewport: page.getViewport({ scale: CSS_PER_POINT }),
-        }).render()
-      } catch (err) {
-        onerror(`The text of page ${index + 1} could not be laid out: ${messageOf(err)}`)
-      }
+    if (destroyed || textReady) return
+    textReady = true
+    try {
+      await layOutText(lib, page, host.querySelector<HTMLElement>('.pdf-edit-text')!)
+    } catch (err) {
+      onerror(`The text of page ${index + 1} could not be laid out: ${messageOf(err)}`)
     }
   }
 
