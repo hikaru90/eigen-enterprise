@@ -4,6 +4,7 @@ import {
   AGENT_ADMIN_MODULE_ID,
   createAgentAdminTools,
 } from '$lib/kernel/agent-admin'
+import type { AgentMetaTool } from '$lib/kernel/agent-runtime'
 import type { LoopEngine } from '$lib/kernel/engine'
 import type { AllowlistStore, SessionStore } from '$lib/kernel/gateway'
 import { InMemoryJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
@@ -84,6 +85,13 @@ export type OrchestratorBootOptions = {
   /** Assisted-onboarding facts (DB-backed in the composition root). Absent = hand-off never active. */
   onboardingFacts?: OnboardingFactsResolver
   /**
+   * Harness meta tools on the brain's surface next to its registry tools — the
+   * composition root injects the ee CLI tool (src/cli/brain-tool.ts) so the
+   * brain reaches every tool of the person's reach through ee. Injected: the
+   * orchestrator imports only the kernel.
+   */
+  metaTools?: AgentMetaTool[]
+  /**
    * The "Connected GitHub repos" block's data. Defaults to the port modules/index
    * registered while building the kernel (provideConnectedReposPort).
    */
@@ -137,6 +145,7 @@ export async function bootstrapOrchestrator(
       registry: kernel.registry,
       isToolActive: (name) => kernel.modules.isToolActive(name),
       eventSink: kernel.eventSink,
+      ...(options.metaTools ? { metaTools: options.metaTools } : {}),
       journeys: options.journeys ?? new InMemoryJourneyStore(),
       spec: WEBSITE_FOUNDING_JOURNEY,
       ...(options.onboardingFacts ? { onboardingFacts: options.onboardingFacts } : {}),

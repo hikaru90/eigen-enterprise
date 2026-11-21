@@ -20,6 +20,7 @@ import {
   type OrchestratorStatus,
 } from '../../../modules/orchestrator/bootstrap'
 import { ORCHESTRATOR_PERSONA_PROMPT } from '../../../modules/orchestrator/brain'
+import { createEeAgentTool } from '../../cli/brain-tool'
 
 /**
  * Startup composition root (phase-1b): kernel → orchestrator (the harness
@@ -182,6 +183,9 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
     env,
     people: lazyMemberDirectory,
     engines: [['durable', durable.engine]],
+    // The brain's ee CLI tool: every registry tool within the asking person's
+    // reach, discovered on demand, run as them (plan/shared-memory-voice-agent-tools.md §3).
+    metaTools: [createEeAgentTool({ registry: kernel.registry, activations: kernel.activations })],
     journeys,
     // Assisted onboarding facts (lazy DB import, like the journey store: boot
     // itself stays DB-free).

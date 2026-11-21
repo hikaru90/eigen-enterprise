@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
+import type { EngineContext } from '$lib/kernel/engine'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 import { InMemoryJourneyStore } from '$lib/kernel/playbook'
-import type { PrincipalStore } from '$lib/kernel/principals'
+import type { PersonRef, PrincipalStore } from '$lib/kernel/principals'
 import { buildKernel } from '../../../modules/index'
 import { ORCHESTRATOR_AGENT_ID } from '../../../modules/orchestrator/brain'
 import { bootApp } from './boot'
@@ -97,8 +98,135 @@ describe('bootApp — production wiring', () => {
   })
 })
 
+/**
+ * plan/shared-memory-voice-agent-tools.md §3 — the brain reaches every
+ * registry tool the asking person may run through the ee CLI tool: for each
+ * brain role set, `ee tool list` is exactly the tools those roles may run (all
+ * modules on), each has its input schema under `ee tool help`, and a member's
+ * `ee tool run` of an admin tool is refused by the registry. Nobody reaches
+ * the owner-only and service-only tools through the brain (CB3 decision: the
+ * kernel owner role stays off the brain — those stay a person's own clicks).
+ */
+describe('bootApp — the brain reaches every tool of the person through ee', () => {
+  it('per role: ee lists, explains and runs exactly the tools that role may run; admin-only refused for a member', async () => {
+    const boot = await bootApp({
+      env: {},
+      buildKernel: () =>
+        buildKernel({
+          activations: new InMemoryActivationStore(),
+          eventSink: new InMemoryEventSink(),
+          approvalStore: new InMemoryApprovalStore(),
+          principals: {} as PrincipalStore,
+          vcsCommitter: null,
+        }),
+      journeys: new InMemoryJourneyStore(),
+      recap: { startTick: false },
+    })
+    for (const t of boot.kernel.registry.list()) await boot.kernel.activations.set(t.module, true)
+    const runtime = boot.orchestrator.runtime
+    // A scripted probe agent on the SAME runtime (the brain's surface + meta tools), no model.
+    let script: (ctx: EngineContext) => Promise<unknown> = async () => undefined
+    let result: unknown
+    if (!runtime.getAgent('ee-probe')) {
+      runtime.registerEngine('ee-probe', {
+        run: async (_s, _i, ctx) => {
+          result = await script(ctx)
+          return 'ok'
+        },
+      })
+      runtime.registerAgent({
+        id: 'ee-probe',
+        personaName: 'probe',
+        description: 'boot.wiring ee probe',
+        loopEngine: 'ee-probe',
+        toolScope: 'all',
+        memoryScope: 'company',
+        verificationPolicy: 'none',
+        enabled: true,
+      })
+    }
+    const asPerson = async (person: PersonRef, run: (ctx: EngineContext) => Promise<unknown>) => {
+      script = run
+      await runtime.dispatch('ee-probe', 's', 'probe', undefined, { person })
+      return result
+    }
+
+    const all = boot.kernel.registry.list()
+    const mayRun = (roles: string[]) =>
+      all.filter((t) => t.permission.roles.some((r) => roles.includes(r))).map((t) => t.name).sort()
+    const member: PersonRef = { id: 'member-1', roles: ['member'] }
+    const admin: PersonRef = { id: 'admin-1', roles: ['admin', 'member'] }
+
+    for (const person of [member, admin]) {
+      const expected = mayRun(person.roles)
+      const { listed, direct, helps } = (await asPerson(person, async (ctx) => {
+        const listed = ((await ctx.executeTool('ee', { args: ['tool', 'list'] })) as Array<{ name: string }>).map((t) => t.name).sort()
+        const helps: Array<{ name: string; inputSchema: unknown }> = []
+        for (const name of listed) helps.push((await ctx.executeTool('ee', { args: ['tool', 'help', name] })) as never)
+        return { listed, direct: ctx.listTools().map((t) => t.name), helps }
+      })) as { listed: string[]; direct: string[]; helps: Array<{ name: string; inputSchema: { type?: unknown } }> }
+      expect(listed).toEqual(expected)
+      // The direct surface is unchanged (every tool still offered as itself) plus ee.
+      expect(direct.filter((n) => n !== 'ee').sort()).toEqual(expected)
+      expect(direct).toContain('ee')
+      expect(helps.map((h) => h.name)).toEqual(expected)
+      for (const h of helps) expect(h.inputSchema).toMatchObject({ type: 'object' })
+    }
+
+    // Admin-only tools: refused for a member, through ee, by the registry — help and run alike.
+    const adminOnly = mayRun(admin.roles).filter((n) => !mayRun(member.roles).includes(n))
+    expect(adminOnly.length).toBeGreaterThan(100)
+    const refusals = (await asPerson(member, async (ctx) => {
+      const codes: Record<string, string[]> = {}
+      for (const name of adminOnly) {
+        for (const args of [['tool', 'help', name], ['tool', 'run', name]]) {
+          try {
+            await ctx.executeTool('ee', { args, input: args[1] === 'run' ? {} : undefined })
+            ;(codes.ran ??= []).push(name)
+          } catch (err) {
+            const code = (err as { code?: string }).code ?? 'thrown'
+            ;(codes[code] ??= []).push(name)
+          }
+        }
+      }
+      return codes
+    })) as Record<string, string[]>
+    expect(Object.keys(refusals)).toEqual(['permission_denied'])
+    expect(refusals.permission_denied).toHaveLength(adminOnly.length * 2)
+
+    // No brain role set reaches the owner-only and service-only tools.
+    const nobody = all
+      .filter((t) => !t.permission.roles.some((r) => admin.roles.includes(r)))
+      .map((t) => t.name)
+      .sort()
+    expect(nobody).toEqual([...NO_BRAIN_REACH].sort())
+    const ownerOnly = (await asPerson(admin, async (ctx) => {
+      const codes: string[] = []
+      for (const name of nobody) {
+        try {
+          await ctx.executeTool('ee', { args: ['tool', 'run', name], input: {} })
+          codes.push('ran')
+        } catch (err) {
+          codes.push((err as { code?: string }).code ?? 'thrown')
+        }
+      }
+      return codes
+    })) as string[]
+    expect(new Set(ownerOnly)).toEqual(new Set(['permission_denied']))
+  })
+})
+
+/**
+ * Registry tools no person reaches through the brain: the kernel owner role
+ * stays off the brain (CB3) and service tools are webhooks' own. Not new — the
+ * same before ee; pinned so a new one is a visible decision.
+ */
+const NO_BRAIN_REACH = ['agent.disable', 'agent.enable', 'brand.picker_choose', 'github.auto_deploy', 'website.app_auto_deploy'] as const
+
 /** What a member (no admin role) reaches through the brain — as themselves, under their own access checks. */
 const MEMBER_KEEPS_VIA_BRAIN = [
+  // plan/shared-memory-voice-agent-tools.md §3: the ee CLI tool (discovery + run, as the person) — offered to everyone.
+  'ee',
   'brand.social_caption_suggest',
   'brand.social_post_create',
   'brand.social_post_get',
