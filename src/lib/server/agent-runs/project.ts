@@ -3,6 +3,7 @@ import type { AgentEvent, PiMessage, SnapshotEvent } from '$lib/server/agent/pi-
 import {
   OWNER_INPUT_ENTRY_KIND,
   TURN_FAILED_ENTRY_KIND,
+  TURN_SUPERSEDED_ENTRY_KIND,
   type OwnerInputEntryData,
   type TurnFailedEntryData,
 } from '$lib/server/agent/entry-kinds'
@@ -37,6 +38,8 @@ function entryItems(entry: EntryLike, withToolCalls: boolean): FeedItem[] {
     const data = entry.data as TurnFailedEntryData
     return [{ kind: 'run_failed', reason: data.reason, ...(data.detail ? { detail: data.detail } : {}) }]
   }
+  // Edit-and-resend: the turn before this marker is history the model no longer sees.
+  if (entry.kind === TURN_SUPERSEDED_ENTRY_KIND) return [{ kind: 'turn_superseded' }]
   const message = entry.model?.[0]
   if (!message) return []
   switch (message.role) {

@@ -1,11 +1,12 @@
 import type { AssistantAttachment } from './attachments'
 import type { ApprovalModeState, AssistantConversation } from './types'
+import { SvelteMap } from 'svelte/reactivity'
 import {
   ApprovalRequestFailed,
   postApprovalDecision,
   type ApprovalDecision,
 } from '$lib/chat/approvals-client'
-import { sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
+import { sanitizeFinalAnswerText, TURN_NOT_EDITABLE_MESSAGE } from '$lib/chat/chat-stream-types'
 import {
   chatFailureMessage,
   consumeChatNdjsonStream,
@@ -30,11 +31,26 @@ export type AssistantChatDeps = {
 }
 
 type ChatRequestBody =
-  | { message: string; attachments?: AssistantAttachment[]; sessionId?: string }
+  | {
+      message: string
+      attachments?: AssistantAttachment[]
+      sessionId?: string
+      /** Edit-and-resend: the stored message this one replaces (with everything after it). */
+      replacesMessageId?: string
+    }
   | { bootstrap: true; onboardingHandoff: true; sessionId?: string }
   | { bootstrap: true; approvalContinuation: string; sessionId?: string }
 
 export type ConversationLoad = 'idle' | 'loading' | 'ready' | 'failed'
+
+/** How an edited message went: sent, refused (the conversation stays as it was), or the turn failed. */
+export type ResendOutcome = 'sent' | 'refused' | 'failed'
+
+/** A stream's member turn: its entry (to name it once accepted) and, for an edit, what it replaced. */
+type StreamTurn = {
+  userKey: string
+  replaced?: { at: number; entries: NucleusChatEntry[] }
+}
 
 /**
  * The company agent's chat (moved from `/` into the assistant panel, polish
@@ -63,6 +79,12 @@ export class AssistantChat {
 
   #deps: AssistantChatDeps
   #seq = 0
+  /**
+   * The read files each message of this session carried (by entry key), so
+   * Edit can give them back. Browser memory only: the stored turn keeps only
+   * name, kind and size, so a reloaded message comes back without them.
+   */
+  #sentFiles = new SvelteMap<string, AssistantAttachment[]>()
   #abort: AbortController | null = null
   #loading: Promise<void> | null = null
 
@@ -74,11 +96,33 @@ export class AssistantChat {
     this.onchange?.()
   }
 
-  #append(turn: NucleusTurn | null): void {
-    if (!turn) return
+  #append(turn: NucleusTurn | null): string | null {
+    if (!turn) return null
     this.#seq += 1
-    this.entries.push({ ...turn, key: `assistant-${this.#seq}` })
+    const key = `assistant-${this.#seq}`
+    this.entries.push({ ...turn, key })
     this.#changed()
+    return key
+  }
+
+  /**
+   * The entry key of the one message Edit is offered on: the person's latest
+   * message, once the server stored it, while no reply runs, and not after an
+   * approval card (the decision is on record; a new message is the way on).
+   */
+  get editableKey(): string | null {
+    if (this.busy || this.decidingId) return null
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      const entry = this.entries[i]!
+      if (entry.role === 'approval') return null
+      if (entry.role === 'user') return entry.messageId ? entry.key : null
+    }
+    return null
+  }
+
+  /** The read files a message of this session carried (null: not kept, e.g. after a reload). */
+  sentFilesOf(key: string): AssistantAttachment[] | null {
+    return this.#sentFiles.get(key) ?? null
   }
 
   /** Load the current conversation once (first open); later calls wait for it. */
@@ -132,13 +176,61 @@ export class AssistantChat {
     if ((!message && attachments.length === 0) || this.busy) return
     this.#deps.cancelSpeak()
     await this.ensureLoaded()
-    this.#append(
+    const userKey = this.#appendMemberTurn(message, attachments)
+    await this.#stream(attachments.length > 0 ? { message, attachments } : { message }, { userKey })
+  }
+
+  /**
+   * Edit-and-resend (board a950ef11): the edited words replace the message
+   * `key` names and everything after it (a stopped or finished reply) — here
+   * and, on the server, in what the model sees — then the request runs again.
+   * A refusal (the message is no longer editable) puts the conversation back.
+   */
+  async resend(key: string, text: string, attachments: AssistantAttachment[] = []): Promise<ResendOutcome> {
+    const message = text.trim()
+    if ((!message && attachments.length === 0) || this.busy) return 'refused'
+    const at = this.entries.findIndex((e) => e.key === key)
+    const target = this.entries[at]
+    if (this.editableKey !== key || !target || target.role !== 'user' || !target.messageId) {
+      this.#append(failedTurn(TURN_NOT_EDITABLE_MESSAGE))
+      return 'refused'
+    }
+    this.#deps.cancelSpeak()
+    const replaced = { at, entries: this.entries.slice(at) }
+    this.entries = this.entries.slice(0, at)
+    const userKey = this.#appendMemberTurn(message, attachments)
+    const body = {
+      message,
+      ...(attachments.length > 0 ? { attachments } : {}),
+      replacesMessageId: target.messageId,
+    }
+    return this.#stream(body, { userKey, replaced })
+  }
+
+  #appendMemberTurn(message: string, attachments: AssistantAttachment[]): string {
+    const key = this.#append(
       userTurn(
         message,
         attachments.map(({ name, kind, sizeBytes }) => ({ name, kind, sizeBytes })),
       ),
-    )
-    await this.#stream(attachments.length > 0 ? { message, attachments } : { message })
+    )!
+    if (attachments.length > 0) this.#sentFiles.set(key, attachments)
+    return key
+  }
+
+  /** The server stored the member turn: name its entry, and continue its session. */
+  #accepted(userKey: string, event: { sessionId: string; messageId: string }): void {
+    this.sessionId = event.sessionId
+    const entry = this.entries.find((e) => e.key === userKey)
+    if (entry && entry.role === 'user') entry.messageId = event.messageId
+    this.#changed()
+  }
+
+  /** A refused edit: the edited entry leaves, the replaced turn comes back, the refusal is said. */
+  #restoreReplaced(userKey: string, replaced: NonNullable<StreamTurn['replaced']>): void {
+    this.#sentFiles.delete(userKey)
+    this.entries = [...this.entries.filter((e) => e.key !== userKey), ...replaced.entries]
+    this.#append(failedTurn(TURN_NOT_EDITABLE_MESSAGE))
   }
 
   /** The agent's first turn after the scripted onboarding (no member speech). */
@@ -151,6 +243,7 @@ export class AssistantChat {
   reset(): void {
     this.stop()
     this.entries = []
+    this.#sentFiles.clear()
     this.sessionId = null
     this.status = null
     this.approvalErrors = {}
@@ -191,7 +284,7 @@ export class AssistantChat {
     await this.#stream({ bootstrap: true, approvalContinuation: approvalId })
   }
 
-  async #stream(request: ChatRequestBody): Promise<void> {
+  async #stream(request: ChatRequestBody, turn?: StreamTurn): Promise<ResendOutcome> {
     this.busy = true
     this.status = null
     this.#changed()
@@ -210,6 +303,12 @@ export class AssistantChat {
         headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
         body: JSON.stringify(body),
       })
+      if (res.status === 409 && turn?.replaced && generation === this.generation) {
+        // The edit was refused before anything changed on the server.
+        console.error('[assistant] edit refused: HTTP 409')
+        this.#restoreReplaced(turn.userKey, turn.replaced)
+        return 'refused'
+      }
       // The status/body are for the console only — never rendered to the user.
       if (!res.ok) throw new Error(`chat request failed: HTTP ${res.status}`)
 
@@ -217,6 +316,10 @@ export class AssistantChat {
       const done = await consumeChatNdjsonStream(
         res,
         (event) => {
+          if (event.type === 'turn.accepted') {
+            if (turn && generation === this.generation) this.#accepted(turn.userKey, event)
+            return
+          }
           if (event.type === 'tool_result' && event.tool === 'answer_question') {
             answerPreview = event.preview
           }
@@ -228,15 +331,16 @@ export class AssistantChat {
       )
 
       const responseText = sanitizeFinalAnswerText(done.response ?? '', answerPreview)
-      if (generation !== this.generation) return
+      if (generation !== this.generation) return 'failed'
       if (done.sessionId) this.sessionId = done.sessionId
-      const turn = assistantTurnFromResponse(responseText)
-      if (turn) {
-        this.#deps.speak(turn.content)
-        this.#append(turn)
+      const reply = assistantTurnFromResponse(responseText)
+      if (reply) {
+        this.#deps.speak(reply.content)
+        this.#append(reply)
       }
+      return 'sent'
     } catch (err) {
-      if (generation !== this.generation) return
+      if (generation !== this.generation) return 'failed'
       if ((err as Error)?.name === 'AbortError') {
         this.#append(failedTurn('Stopped.'))
       } else {
@@ -248,6 +352,7 @@ export class AssistantChat {
         if (notConfigured) this.providerReady = false
         this.#append(failedTurn(message, notConfigured ? { providerSetup: true } : undefined))
       }
+      return 'failed'
     } finally {
       if (this.#abort === ac) {
         this.busy = false

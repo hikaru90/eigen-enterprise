@@ -232,6 +232,45 @@ describe('AgentRuntime — dispatch', () => {
   })
 })
 
+describe('AgentRuntime — edit-and-resend (board a950ef11)', () => {
+  it('a dispatch carries its member turn id to the engine', async () => {
+    let seen: string | undefined
+    const fx = makeFixture({
+      engineRun: async (_sessionId, _input, ctx) => {
+        seen = ctx.turnId
+        return 'ok'
+      },
+    })
+    fx.runtime.registerAgent(agentConfig())
+    await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, { ...asAnn, turnId: 'm-1' })
+    expect(seen).toBe('m-1')
+  })
+
+  it('supersedeTurn reaches the engine as the person (their gateway identity and turn ids)', async () => {
+    const fx = makeFixture()
+    const supersede = vi.fn(async (_s: string, _t: string, _r: string, _ctx: EngineContext) => {})
+    fx.engine.supersedeTurn = supersede
+    fx.runtime.registerAgent(agentConfig())
+    await fx.runtime.supersedeTurn('agent-1', 's', 'm-1', 'm-2', asAnn)
+    expect(supersede).toHaveBeenCalledOnce()
+    const [sessionId, turnId, replacementTurnId, ctx] = supersede.mock.calls[0]!
+    expect([sessionId, turnId, replacementTurnId]).toEqual(['s', 'm-1', 'm-2'])
+    expect(ctx.llmUserId).toBe('ann')
+    expect(ctx.turnId).toBe('m-2')
+  })
+
+  it('an engine that cannot edit turns fails loud; no person, no edit', async () => {
+    const fx = makeFixture()
+    fx.runtime.registerAgent(agentConfig())
+    await expect(fx.runtime.supersedeTurn('agent-1', 's', 'm-1', 'm-2', asAnn)).rejects.toMatchObject({
+      code: 'turn_not_editable',
+    })
+    await expect(
+      fx.runtime.supersedeTurn('agent-1', 's', 'm-1', 'm-2', {} as never),
+    ).rejects.toMatchObject({ code: 'no_person' })
+  })
+})
+
 describe('AgentRuntime — budget', () => {
   it('throws budget_exceeded and emits agent.budget_exceeded when the cap is reached', async () => {
     const fx = makeFixture({ spendFn: () => 5 })

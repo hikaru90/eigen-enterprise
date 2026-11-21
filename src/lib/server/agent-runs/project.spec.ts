@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentEvent, SnapshotEvent } from '$lib/server/agent/pi-durable'
-import { OWNER_INPUT_ENTRY_KIND, TURN_FAILED_ENTRY_KIND } from '$lib/server/agent/entry-kinds'
+import {
+  OWNER_INPUT_ENTRY_KIND,
+  TURN_FAILED_ENTRY_KIND,
+  TURN_SUPERSEDED_ENTRY_KIND,
+} from '$lib/server/agent/entry-kinds'
 import { projectEvents, projectSnapshot } from './project'
 
 const usage = {}
@@ -155,5 +159,19 @@ describe('projectEvents', () => {
     // An app-made turn (no owner words) shows no Input line at all.
     const handoff = { ...composed, data: { ownerText: '' } }
     expect(projectSnapshot(snapshot({ entries: [handoff] as never })).items).toEqual([])
+  })
+
+  it('the edit marker of a superseded turn projects as turn_superseded, live and in a snapshot', () => {
+    const marker = {
+      id: 9,
+      conversationId: 1,
+      kind: TURN_SUPERSEDED_ENTRY_KIND,
+      data: { turnId: 'm1', replacementTurnId: 'm2' },
+      edits: [{ target: 3, action: 'omit' }],
+    }
+    expect(projectEvents([{ type: 'entry_appended', entry: marker }] as unknown as AgentEvent[])).toEqual([
+      { kind: 'turn_superseded' },
+    ])
+    expect(projectSnapshot(snapshot({ entries: [marker] as never })).items).toEqual([{ kind: 'turn_superseded' }])
   })
 })

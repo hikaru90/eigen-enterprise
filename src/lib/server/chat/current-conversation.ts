@@ -3,6 +3,7 @@ import type { PersistedChatMessage } from '$lib/chat/normalize-messages'
 import type { getDb } from '$lib/server/db'
 import { chatMessage, chatSession } from '$lib/server/db/brain.schema'
 import { kernelApprovals } from '$lib/server/db/kernel.schema'
+import { liveTranscriptRows } from './turn-edit'
 
 export type CurrentConversation = {
   /** The user's current nucleus chat session (null until they first chat). */
@@ -32,6 +33,7 @@ export async function loadCurrentConversation(
 
   const rows = await db
     .select({
+      id: chatMessage.id,
       role: chatMessage.role,
       content: chatMessage.content,
       metadata: chatMessage.metadata,
@@ -40,13 +42,14 @@ export async function loadCurrentConversation(
     .where(and(eq(chatMessage.sessionId, session.id), eq(chatMessage.userId, userId)))
     .orderBy(asc(chatMessage.createdAt))
 
+  // Turns the person edited and sent again stay in storage as history; the
+  // chat shows the conversation as the model now sees it (turn-edit.ts).
+  const live = liveTranscriptRows(
+    rows.map((r) => ({ ...r, metadata: (r.metadata as Record<string, unknown> | null) ?? null })),
+  )
   return {
     sessionId: session.id,
-    messages: rows.map((r) => ({
-      role: r.role,
-      content: r.content,
-      metadata: (r.metadata as Record<string, unknown> | null) ?? null,
-    })),
+    messages: live.map((r) => ({ id: r.id, role: r.role, content: r.content, metadata: r.metadata })),
   }
 }
 

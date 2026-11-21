@@ -57,6 +57,21 @@ export class ComposerAttachments {
     this.errors = []
   }
 
+  /** Put already-read files back as ready chips (Edit gives a sent message's files back). */
+  restore(attachments: AssistantAttachment[]): void {
+    this.errors = []
+    this.items = attachments.map((attachment) => {
+      this.#seq += 1
+      return {
+        key: `attachment-${this.#seq}`,
+        status: 'ready' as const,
+        name: attachment.name,
+        sizeBytes: attachment.sizeBytes,
+        attachment,
+      }
+    })
+  }
+
   /** The read files for the message being sent; the composer is empty afterwards. */
   take(): AssistantAttachment[] {
     const ready = this.ready

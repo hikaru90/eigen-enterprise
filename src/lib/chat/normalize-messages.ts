@@ -53,6 +53,8 @@ export type StoredChatStep = {
 
 /** Row shape returned by GET /api/chat/sessions/:id */
 export type PersistedChatMessage = {
+  /** chat_message id (the edit action names a user message by it). */
+  id?: string
   role: 'user' | 'assistant' | 'system'
   content: string
   metadata?: Record<string, unknown> | null

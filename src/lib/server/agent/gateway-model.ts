@@ -305,9 +305,26 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
   const stream = (
     model: Model<string>,
     context: TranscriptContext,
-    options?: { sessionId?: string },
+    options?: { sessionId?: string; signal?: AbortSignal },
   ) => {
     const events = createAssistantMessageEventStream()
+    // A stopped conversation (edit-and-resend aborts the turn) ends the
+    // request at once; the gateway call already in flight finishes on its own
+    // and its answer is dropped (its cost is still tracked by the gateway).
+    let ended = false
+    const signal = options?.signal
+    const onAbort = () => {
+      if (ended) return
+      ended = true
+      const error: AssistantMessage = { ...errorAssistantMessage(model, 'aborted'), stopReason: 'aborted' }
+      events.push({ type: 'error', reason: 'aborted', error })
+      events.end(error)
+    }
+    if (signal?.aborted) {
+      onAbort()
+      return events
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
     void (async () => {
       try {
         const providerSessionId = options?.sessionId
@@ -326,7 +343,9 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
           aiSessionId: providerSessionId,
           logContext: GATEWAY_LOG_CONTEXT,
         })
+        if (ended) return
         const message = assistantMessageFromGatewayResponse(raw, model, providerSessionId)
+        ended = true
         if (message.stopReason === 'error') {
           const error = errorAssistantMessage(model, message.errorMessage ?? 'gateway error')
           events.push({ type: 'error', reason: 'error', error })
@@ -335,9 +354,13 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
         }
         emitMessage(events, message, message.stopReason as Extract<StopReason, 'stop' | 'length' | 'toolUse'>)
       } catch (err) {
+        if (ended) return
+        ended = true
         const error = errorAssistantMessage(model, err)
         events.push({ type: 'error', reason: 'error', error })
         events.end(error)
+      } finally {
+        signal?.removeEventListener('abort', onAbort)
       }
     })()
     return events

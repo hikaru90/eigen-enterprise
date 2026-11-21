@@ -12,12 +12,15 @@ import type {
   SettledDurableTurn,
 } from '$lib/kernel/engines/durable'
 import { DurableRunError } from '$lib/kernel/engines/durable'
+import { KernelError } from '$lib/kernel/errors'
 import { dbScopedGatewayComplete } from './db-scoped-complete'
 import {
   OWNER_INPUT_ENTRY_KIND,
   TURN_FAILED_ENTRY_KIND,
+  TURN_SUPERSEDED_ENTRY_KIND,
   type OwnerInputEntryData,
   type TurnFailedEntryData,
+  type TurnSupersededEntryData,
 } from './entry-kinds'
 import {
   createGatewayModelCatalog,
@@ -588,14 +591,21 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
   ): DurableEngineConversation {
     const key = String(conversation.id)
 
-    async function runTurn(content: string, ownerText: string | undefined): Promise<SettledDurableTurn> {
+    async function runTurn(
+      content: string,
+      input: { ownerText?: string; turnId?: string },
+    ): Promise<SettledDurableTurn> {
       activeBridges.set(key, new Map(tools.map((t) => [t.name, t])))
       let settled
       try {
-        const ownerEntry =
+        // A tagged turn always carries its entry (the owner's words default to
+        // the whole input), so edit-and-resend can find every input of it.
+        const ownerText = input.ownerText ?? (input.turnId !== undefined ? content : undefined)
+        const data: OwnerInputEntryData | undefined =
           ownerText === undefined
-            ? {}
-            : { entry: { kind: OWNER_INPUT_ENTRY_KIND, data: { ownerText } satisfies OwnerInputEntryData } }
+            ? undefined
+            : { ownerText, ...(input.turnId !== undefined ? { turnId: input.turnId } : {}) }
+        const ownerEntry = data === undefined ? {} : { entry: { kind: OWNER_INPUT_ENTRY_KIND, data } }
         const submission = await conversation.submit({ type: 'input', content, ...ownerEntry }, BACKGROUND_CONTEXT)
         settled = await submission.wait(BACKGROUND_CONTEXT)
       } finally {
@@ -612,24 +622,68 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       return { status: 'done', reply: await replyOf(conversation, settled.answer) }
     }
 
+    /**
+     * One turn at a time per conversation: work that arrives while a turn is
+     * in flight (e.g. the owner typing during the onboarding greeting) waits
+     * for it, then runs — never a conversation_busy error.
+     */
+    async function inTurnQueue<T>(work: () => Promise<T>): Promise<T> {
+      const previous = turnQueues.get(key)
+      let release!: () => void
+      const mine = new Promise<void>((resolve) => (release = resolve))
+      const tail = (previous ?? Promise.resolve()).then(() => mine)
+      turnQueues.set(key, tail)
+      await previous
+      try {
+        return await work()
+      } finally {
+        release()
+        if (turnQueues.get(key) === tail) turnQueues.delete(key)
+      }
+    }
+
+    /**
+     * Omit turn `turnId` — from its first tagged input to the tail — from the
+     * model context: one marker entry whose context edits omit every entry
+     * that still contributes model messages. Storage keeps them all.
+     */
+    async function omitTurn(turnId: string, replacementTurnId: string): Promise<void> {
+      const view = await conversation.context(BACKGROUND_CONTEXT)
+      const start = view.entries.findIndex((entry) => {
+        if (entry.kind !== OWNER_INPUT_ENTRY_KIND) return false
+        const data = entry.data as OwnerInputEntryData | undefined
+        return data?.turnId === turnId
+      })
+      if (start < 0) {
+        throw new KernelError(
+          'turn_not_editable',
+          `turn ${turnId} is not in the model context of durable conversation ${key}: it was sent before turns were tagged, was compacted away, or never existed`,
+        )
+      }
+      const edits = view.entries
+        .slice(start)
+        .filter((_entry, i) => (view.contributions[start + i]?.length ?? 0) > 0)
+        .map((entry) => ({ target: entry.id, action: 'omit' as const }))
+      const data: TurnSupersededEntryData = { turnId, replacementTurnId }
+      const placed = await conversation.submit(
+        { type: 'write', entry: { kind: TURN_SUPERSEDED_ENTRY_KIND, data, edits } },
+        BACKGROUND_CONTEXT,
+      )
+      const settled = await placed.wait(BACKGROUND_CONTEXT)
+      if (settled.status !== 'done') {
+        throw new Error(`the edit marker of turn ${turnId} was not placed in durable conversation ${key}: ${settled.status}`)
+      }
+    }
+
     return {
       id: key,
-      submitAndSettle: async (content: string, ownerText?: string): Promise<SettledDurableTurn> => {
-        // One turn at a time per conversation: a message that arrives while a
-        // turn is in flight (e.g. the owner typing during the onboarding
-        // greeting) waits for it, then runs — never a conversation_busy error.
-        const previous = turnQueues.get(key)
-        let release!: () => void
-        const mine = new Promise<void>((resolve) => (release = resolve))
-        const tail = (previous ?? Promise.resolve()).then(() => mine)
-        turnQueues.set(key, tail)
-        await previous
-        try {
-          return await runTurn(content, ownerText)
-        } finally {
-          release()
-          if (turnQueues.get(key) === tail) turnQueues.delete(key)
-        }
+      submitAndSettle: (content, input = {}) => inTurnQueue(() => runTurn(content, input)),
+      supersedeTurn: async (turnId, replacementTurnId) => {
+        // The person pressed Stop: their browser stopped listening, the durable
+        // run did not. Abort it first (it settles unanswered), so the turn's
+        // tail is final before the edit marker goes in after it.
+        await conversation.abort(BACKGROUND_CONTEXT)
+        await inTurnQueue(() => omitTurn(turnId, replacementTurnId))
       },
     }
   }

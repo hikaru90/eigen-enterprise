@@ -3,6 +3,7 @@
   import KeyRound from '@lucide/svelte/icons/key-round'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import Paperclip from '@lucide/svelte/icons/paperclip'
+  import Pencil from '@lucide/svelte/icons/pencil'
   import SendHorizontal from '@lucide/svelte/icons/send-horizontal'
   import Square from '@lucide/svelte/icons/square'
   import { onMount } from 'svelte'
@@ -63,7 +64,7 @@
     const text = assistant.draft.trim()
     voiceStopFn?.()
     assistant.draft = ''
-    assistant.ask(text, attachments.take())
+    assistant.submitComposer(text, attachments.take())
   }
 
   function handleFilesChosen(e: Event): void {
@@ -78,6 +79,9 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
+    } else if (e.key === 'Escape' && assistant.editing) {
+      e.preventDefault()
+      assistant.cancelEdit()
     }
   }
 
@@ -142,9 +146,12 @@
     >
       {#each chat.entries as entry (entry.key)}
         {#if entry.role === 'user'}
-          <div class="flex w-full flex-row justify-end py-1.5">
+          <div class="group/message flex w-full flex-col items-end py-1.5">
             <div
-              class="flex max-w-[85%] min-w-0 flex-col gap-1.5 rounded-sm bg-primary px-3.5 py-2 wrap-break-word text-primary-foreground"
+              class={[
+                'flex max-w-[85%] min-w-0 flex-col gap-1.5 rounded-sm bg-primary px-3.5 py-2 wrap-break-word text-primary-foreground',
+                assistant.editing?.key === entry.key && 'opacity-50',
+              ]}
             >
               {#if entry.attachments?.length}
                 <ul class="flex flex-wrap gap-1.5" aria-label="Attached files">
@@ -163,6 +170,19 @@
                 <ChatMarkdown content={entry.content} tone="user" />
               {/if}
             </div>
+            {#if chat.editableKey === entry.key && assistant.editing?.key !== entry.key}
+              <button
+                type="button"
+                class="mt-0.5 inline-flex cursor-pointer items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+                aria-label="Edit message"
+                title="Edit and send again"
+                data-testid="assistant-message-edit"
+                onclick={() => assistant.startEdit(entry.key)}
+              >
+                <Pencil class="size-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+                Edit
+              </button>
+            {/if}
           </div>
         {:else if entry.role === 'assistant'}
           {#if entry.failed}
@@ -217,6 +237,33 @@
   {/if}
 
   <footer class="shrink-0 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    {#if assistant.editing}
+      <div
+        class="mb-1.5 flex flex-col gap-0.5 rounded-sm bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground"
+        data-testid="assistant-editing"
+      >
+        <div class="flex items-center justify-between gap-2">
+          <span class="flex items-center gap-1.5">
+            <Pencil class="size-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            Editing your message — sending replaces it and the reply after it.
+          </span>
+          <button
+            type="button"
+            class="cursor-pointer rounded-sm px-1.5 py-0.5 text-foreground hover:bg-foreground/[0.06]"
+            aria-label="Cancel editing"
+            onclick={() => assistant.cancelEdit()}>Cancel</button
+          >
+        </div>
+        {#if assistant.editing.missingFiles.length > 0}
+          {@const files = assistant.editing.missingFiles}
+          <p>
+            Attach {files.join(', ')} again if the edited message still needs {files.length === 1
+              ? 'it'
+              : 'them'}.
+          </p>
+        {/if}
+      </div>
+    {/if}
     {#if attachments.items.length > 0}
       <ul class="mb-1.5 flex flex-wrap gap-1.5 px-0.5" aria-label="Files to send">
         {#each attachments.items as item (item.key)}

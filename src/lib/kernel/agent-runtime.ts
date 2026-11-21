@@ -41,6 +41,12 @@ export type DispatchOptions = {
    * is the owner's; '' : the turn carries no owner words (an app-made turn).
    */
   ownerText?: string
+  /**
+   * The member turn this dispatch belongs to (the chat's user message id).
+   * Every dispatch of one turn (follow-ups included) passes the same id, so
+   * edit-and-resend can supersede the whole turn (supersedeTurn).
+   */
+  turnId?: string
 }
 
 export type AgentRuntimeOptions = {
@@ -64,8 +70,9 @@ const VIA_BRAIN = { via: BRAIN_VIA } as const
 
 /**
  * Harness events: agent.dispatched / agent.replied / agent.stopped /
- * agent.budget_exceeded. Payloads carry metadata only — NEVER message or
- * reply content.
+ * agent.budget_exceeded / agent.turn_superseded (audit only; the activity
+ * feed and recap whitelists do not show it). Payloads carry metadata only —
+ * NEVER message or reply content.
  */
 
 export class AgentRuntime {
@@ -176,6 +183,48 @@ export class AgentRuntime {
   }
 
   /**
+   * Edit-and-resend (board a950ef11): the person replaces their turn `turnId`
+   * with `replacementTurnId` — the engine stops it if it still runs and takes
+   * it (and everything after it) out of what the model sees; history keeps
+   * it. Dispatch the replacement afterwards with `turnId: replacementTurnId`.
+   * An engine without supersedeTurn fails loud ('turn_not_editable').
+   */
+  async supersedeTurn(
+    agentId: string,
+    sessionId: string,
+    turnId: string,
+    replacementTurnId: string,
+    options: DispatchOptions,
+  ): Promise<void> {
+    requirePerson(options?.person)
+    const agent = this.requireAgent(agentId)
+    const engineId = options.loopEngine ?? agent.loopEngine
+    const engine = this.engines.get(engineId)
+    if (!engine) {
+      throw new KernelError(
+        'unknown_engine',
+        `agent ${agentId} references unregistered loop engine "${engineId}"`,
+      )
+    }
+    if (!engine.supersedeTurn) {
+      throw new KernelError(
+        'turn_not_editable',
+        `loop engine "${engineId}" of agent ${agentId} cannot supersede turns`,
+      )
+    }
+    const ctx = await this.buildContext(agent, options.person, undefined, {
+      ...options,
+      turnId: replacementTurnId,
+    })
+    await engine.supersedeTurn(sessionId, turnId, replacementTurnId, ctx)
+    await this.emitAgentEvent(options.person.id, 'agent.turn_superseded', {
+      agentId,
+      sessionId,
+      ...VIA_BRAIN,
+    })
+  }
+
+  /**
    * v0 stop: marks the agent disabled and emits 'agent.stopped'. True
    * cancellation of an in-flight run is engine-dependent (LoopEngine has no
    * cancel hook yet) — in-flight turns run to completion; only new dispatches
@@ -239,6 +288,7 @@ export class AgentRuntime {
       // The person's gateway identity pays for (and is attributed) the run's model calls.
       llmUserId: person.id,
       ...(options?.ownerText !== undefined ? { ownerText: options.ownerText } : {}),
+      ...(options?.turnId !== undefined ? { turnId: options.turnId } : {}),
       ...(sinks?.stream ? { stream: sinks.stream } : {}),
       ...(sinks?.surfaceEvent ? { surfaceEvent: sinks.surfaceEvent } : {}),
     }

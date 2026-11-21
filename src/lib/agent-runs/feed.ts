@@ -28,6 +28,8 @@ export type FeedItem =
   /** The turn settled without an answer: pi-durable's reason (+ detail). */
   | { kind: 'run_failed'; reason: string; detail?: string }
   | { kind: 'user_input'; text: string }
+  /** Edit-and-resend: the member replaced the request above; the model no longer sees it. */
+  | { kind: 'turn_superseded' }
   | { kind: 'text_delta'; delta: string }
   | { kind: 'assistant_text'; text: string }
   | { kind: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
@@ -98,6 +100,13 @@ export function applyBatch(state: FeedState, items: readonly FeedItem[]): FeedSt
       }
       case 'user_input':
         push({ kind: 'user', text: item.text, status: 'done' })
+        break
+      case 'turn_superseded':
+        push({
+          kind: 'run',
+          text: 'Edited and sent again: the agent no longer sees the request above',
+          status: 'done',
+        })
         break
       case 'text_delta': {
         const open = streamingIndex()
