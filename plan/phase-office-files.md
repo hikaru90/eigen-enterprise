@@ -118,8 +118,18 @@ Every stream:
   - SVG rendering, thumbnail rail, presenter mode
   - `extractText` (slide titles, body, notes)
 - **S2 Editing:** edit text, move/resize shapes and pictures, add/duplicate/delete/reorder slides, undo/redo, lossless save.
-- **Later:** comments, export to PDF, co-editing.
+- **S3 Comments:** read and write PowerPoint comments: the modern threaded comments (`p188` parts) and, read-only, legacy `p:cmLst` comments. Comments are anchored to a slide, or to a shape and a position. Includes replies, resolve and reopen, and a comments panel.
+- **Later:** export to PDF, co-editing.
 - Preset-shape geometry is written from the ECMA-376 text. We never copy the reference's generated tables, which are Ecma-copyrighted.
+
+## 4b. Milestone 3 scope (owner go-ahead 2026-11-21)
+
+- **In:** P3 (PDF annotate & forms + metadata), D3 (Word comments & tracked changes), S3 (PowerPoint comments).
+- **Next wave, not in M3:**
+  - Export to PDF (Word/PowerPoint → PDF) needs a server-side rendering path shared by both formats.
+  - Co-editing needs a realtime backend (CRDT over a Drive channel) that replaces the single-editor lock. Each is cross-cutting and gets its own plan before any code.
+- **P4** (redaction, passwords, signatures, OCR) still needs its own approval.
+- Comments stay inside the file, in the format's own parts, so they travel with the download. Mirroring them into the Drive's activity or messages is a later decision.
 
 ## 5. Order and integration
 
