@@ -17,6 +17,16 @@ const mockGatewayUrl = `http://127.0.0.1:${mockGatewayPort}`
 const mockHubPort = Number(process.env.MOCK_HUB_PORT ?? 5198)
 const mockHubUrl = `http://127.0.0.1:${mockHubPort}`
 /**
+ * GitHub repos in Drive (plan/github-drive-full-mirror.md §8 M4): a mock
+ * GitHub (scripts/mock-github.ts) with one fixture repo, kindred/shop. Two
+ * origins like GitHub's: the REST API and codeload, where the tarball
+ * redirect points (the token client follows it to that exact origin only).
+ */
+const mockGitHubPort = Number(process.env.MOCK_GITHUB_PORT ?? 5197)
+const mockGitHubCodeloadPort = Number(process.env.MOCK_GITHUB_CODELOAD_PORT ?? 5196)
+const mockGitHubUrl = `http://127.0.0.1:${mockGitHubPort}`
+const mockGitHubCodeloadUrl = `http://127.0.0.1:${mockGitHubCodeloadPort}`
+/**
  * Browser baseURL must match ORIGIN (localhost) so Better Auth serves /api/auth/* on the
  * host it signs cookies for. Vite binds [::1] only, so the readiness poll uses
  * localhost too (127.0.0.1 never answers).
@@ -119,6 +129,9 @@ export default defineConfig({
         COMPANY_KEYS_DIR: process.env.COMPANY_KEYS_DIR ?? path.resolve('test-results/ee-company-keys'),
         // ...and it sends to the mock central board below (never the real one).
         CONTRIBUTE_HUB_URL: mockHubUrl,
+        // The repos plugin's fine-grained-token client reads the mock GitHub above.
+        GITHUB_TOKEN_API_BASE_URL: mockGitHubUrl,
+        GITHUB_CODELOAD_BASE_URL: mockGitHubCodeloadUrl,
         // Secrets sealed during a run (provider keys, SES keys) need the tenant
         // master key; a throwaway harness gets a throwaway key when .env has none
         // (an unset key crashes the server on the first provider save).
@@ -146,6 +159,17 @@ export default defineConfig({
       command: `tsx scripts/mock-hub.ts`,
       env: { ...process.env, MOCK_HUB_PORT: String(mockHubPort) },
       url: `${mockHubUrl}/__mock-hub/requests`,
+      timeout: 30_000,
+      reuseExistingServer: false,
+    },
+    {
+      command: `tsx scripts/mock-github.ts`,
+      env: {
+        ...process.env,
+        MOCK_GITHUB_PORT: String(mockGitHubPort),
+        MOCK_GITHUB_CODELOAD_PORT: String(mockGitHubCodeloadPort),
+      },
+      url: `${mockGitHubUrl}/__mock-github/health`,
       timeout: 30_000,
       reuseExistingServer: false,
     },
