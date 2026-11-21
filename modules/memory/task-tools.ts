@@ -66,7 +66,7 @@ export function createTaskTools(opts: TaskToolDeps = {}): ToolDescriptor[] {
       ...base,
       name: 'tasks.assign',
       summary:
-        "Assign a task to another member of the company (assignee_id from tasks.assignees): a title, optional context and due day (YYYY-MM-DD). It appears in their Needs you and task list, marked as assigned by the person you work for, who is notified when it is completed or commented on. For the person's own tasks use memory.capture_thought.",
+        "Assign a task to another member of the company (assignee_id from tasks.assignees): a title, optional context and due day (YYYY-MM-DD). It appears in their Needs you and task list, marked as assigned by the person you work for, who is notified when it is completed or commented on. For the person's own tasks use memory.create_task.",
       auditClass: 'mutate',
       activity: (input: z.infer<typeof assignInput>, output: unknown) => {
         const t = view(output)

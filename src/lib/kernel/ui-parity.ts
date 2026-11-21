@@ -52,7 +52,7 @@ export type UiParity =
   | { transport: string }
 
 /** The number of `debt` entries. Lower it when you clear debt; the spec fails if it is not exact. */
-export const DEBT_CEILING = 131
+export const DEBT_CEILING = 129
 
 const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
@@ -198,7 +198,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/contacts/sharing POST': debt('contacts', 'Share many contacts at once, or make them private.'),
 
   // ─── Memory ───────────────────────────────────────────────────────────────
-  '/(nucleus)/m/memory ?/deleteTask': debt('memory', 'Delete a task (the thought it is) for good.'),
+  '/(nucleus)/m/memory ?/deleteTask': tool('memory.delete_task'),
   '/(nucleus)/m/memory/capture ?/completeOnboarding': noEffect(VIEW_STATE),
   '/(nucleus)/m/memory/capture ?/skipOnboarding': noEffect(VIEW_STATE),
   '/(nucleus)/m/memory/projects/roadmap ?/add': tool('roadmap.add_item'),
@@ -229,7 +229,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/scheduled-tasks/[taskId] PATCH': debt('memory', 'Pause or resume a scheduled task.'),
   '/api/scheduled-tasks/[taskId] POST': debt('memory', 'Run a scheduled task now.'),
   '/api/scheduled-tasks/[taskId]/retry POST': debt('memory', 'Retry a failed scheduled task.'),
-  '/api/temporal-events/[id] DELETE': debt('memory', 'Delete a timeline item (its thought) for good.'),
+  '/api/temporal-events/[id] DELETE': tool('memory.delete_task'),
   '/api/temporal-events/[id]/action POST': debt('memory', 'Reschedule, snooze or complete a timeline item.'),
   '/api/text-files POST': tool('memory.create_text_file'),
   '/api/text-files/[fileId] DELETE': debt('memory', 'Delete a note.'),
