@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { OfficeViewerProps } from '../viewers'
+  import type { CommentData } from './comments'
   import type { RenderEnv } from './render'
   import type { Node as PMNode } from 'prosemirror-model'
   import type { EditorState } from 'prosemirror-state'
@@ -9,6 +10,7 @@
   import InfoIcon from '@lucide/svelte/icons/info'
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
   import LockIcon from '@lucide/svelte/icons/lock'
+  import MessageSquareIcon from '@lucide/svelte/icons/message-square'
   import MoveHorizontalIcon from '@lucide/svelte/icons/move-horizontal'
   import PencilIcon from '@lucide/svelte/icons/pencil'
   import ZoomInIcon from '@lucide/svelte/icons/zoom-in'
@@ -20,13 +22,16 @@
   import { driveApi, type LockHolder } from '$lib/drive/api'
   import { createAutosave, type Autosave, type AutosaveState } from '$lib/drive/autosave'
   import { createOfficeEditSession } from '../edit-session'
+  import CommentsPanel from './comments-panel.svelte'
   import EditToolbar from './edit-toolbar.svelte'
   import { insertImage, linkAt, setLink } from './edit/commands'
   import { createDocxEditor, type DocxEditorView } from './edit/editor'
+  import { addComment, deleteComment, editComment, replyToComment, reviewerOf, setCommentDone } from './edit/review'
   import { IMAGE_TYPES, openForEditing, type DocxEditSession } from './edit/session'
   import { parseDocx } from './model'
   import { LayoutAborted, paginate } from './paginate'
   import { PX_PER_PT } from './render'
+  import ReviewBar from './review-bar.svelte'
 
   /**
    * Word documents (plan/phase-office-files.md D1 + D2). The Print layout
@@ -43,6 +48,12 @@
    * model. When someone else holds or takes the lock, this copy turns
    * read-only, says who, keeps the unsaved changes on screen (and to
    * download), and offers Take over. Leaving waits for the last save.
+   *
+   * Review (D3): comments show in a margin beside both layouts, with their
+   * ranges highlighted; tracked changes are drawn in each author's colour
+   * with a change bar. In the Edit layout the signed-in member (`author`)
+   * comments, replies, resolves, tracks changes and accepts or rejects them.
+   * Without `author`, commenting and tracking stay off, and say so.
    */
   let {
     fileId,
@@ -50,6 +61,7 @@
     canEdit,
     heartbeatMs,
     onsaved,
+    author,
     saveDelayMs = 1500,
     idleMs = 60_000,
   }: OfficeViewerProps & { saveDelayMs?: number; idleMs?: number } = $props()
@@ -93,6 +105,17 @@
   let fileInput = $state<HTMLInputElement>()
   /** Whether this copy has changes the server doesn't have. */
   let dirty = $state(false)
+
+  // ---------------------------------------------------------------- review state
+
+  /** Who comments and tracked changes are by (never anonymous: null turns both off). */
+  const reviewer = $derived(author ? reviewerOf(author) : null)
+  /** The comments of the pages shown in the Print layout. */
+  let printComments = $state.raw<CommentData[]>([])
+  let showComments = $state(false)
+  let activeComment = $state<string | null>(null)
+  /** An edit was refused (tracking on, author unknown). */
+  let refused = $state(false)
 
   /** The file as last loaded or saved (what Print shows when nothing changed). */
   let bytes: Uint8Array | null = null
@@ -157,6 +180,8 @@
   function onClick(event: MouseEvent) {
     const target = event.target
     if (!(target instanceof Element) || !host) return
+    const commented = target.closest<HTMLElement>('[data-comments]')
+    if (commented) selectComment(commented.dataset.comments!.split(' ').at(-1)!)
     const a = target.closest<HTMLAnchorElement>('a[data-anchor]')
     if (!a) return
     event.preventDefault()
@@ -239,6 +264,8 @@
     pageUrls = []
     const doc = parseDocx(source)
     notices = doc.notices
+    printComments = doc.comments
+    if (doc.comments.length > 0 && phase === 'loading') showComments = true
     widestPt = Math.max(...doc.sections.map((s) => s.props.pageWidthPt))
     phase = 'layout'
     pageCount = 0
@@ -314,9 +341,12 @@
     editHost.replaceChildren()
     editor = createDocxEditor(editHost, made, {
       editable: lock.kind !== 'locked',
+      reviewer: untrack(() => reviewer),
       onChange,
       onState: (s) => (pmState = s),
       onLink: openLink,
+      onCommentClick: (id) => selectComment(id),
+      onRefused: () => (refused = true),
     })
     pmState = editor.view.state
   }
@@ -503,6 +533,33 @@
     }
   }
 
+  // ---------------------------------------------------------------- comments
+
+  const shownComments = $derived(layout === 'edit' && session && pmState ? session.liveComments(pmState.doc) : printComments)
+
+  /** Shows a comment: its thread marked in the margin, its text highlighted and scrolled to. */
+  function selectComment(id: string) {
+    activeComment = id
+    showComments = true
+    const sel = `.docx-comment[data-comments~="${CSS.escape(id)}"]`
+    if (layout === 'edit') {
+      editor?.setActiveComment(id)
+      editHost?.querySelector(sel)?.scrollIntoView({ block: 'nearest' })
+      return
+    }
+    if (!host) return
+    for (const el of host.querySelectorAll('.docx-comment-active')) el.classList.remove('docx-comment-active')
+    const spans = host.querySelectorAll(sel)
+    for (const el of spans) el.classList.add('docx-comment-active')
+    spans[0]?.scrollIntoView({ block: 'nearest' })
+  }
+
+  /** Runs a comment command as the signed-in member (the panel offers them only then). */
+  function onComment(make: (who: NonNullable<typeof reviewer>, s: DocxEditSession) => Parameters<DocxEditorView['run']>[0]) {
+    if (!reviewer || !session || !editor) return
+    editor.run(make(reviewer, session))
+  }
+
   const readOnly = $derived(lock.kind === 'locked')
   const fmtTime = (d: Date) => d.toLocaleTimeString(undefined, { timeStyle: 'short' })
 </script>
@@ -541,6 +598,17 @@
       {/if}
     {/if}
     <div class="ms-auto flex items-center gap-1">
+      <Button
+        variant={showComments ? 'secondary' : 'ghost'}
+        size="sm"
+        aria-pressed={showComments}
+        onclick={() => (showComments = !showComments)}
+        disabled={phase === 'error'}
+        data-testid="docx-comments-toggle"
+      >
+        <MessageSquareIcon />
+        Comments{shownComments.length ? ` (${shownComments.length})` : ''}
+      </Button>
       {#if layout === 'print'}
         <Button variant="ghost" size="icon-sm" aria-label="Zoom out" onclick={() => zoomBy(-0.1)} disabled={phase === 'error'}>
           <ZoomOutIcon />
@@ -613,6 +681,10 @@
   {/if}
   {#if layout === 'edit' && session && editor && pmState}
     <EditToolbar {session} {editor} {pmState} disabled={readOnly} onlink={openLink} onimage={() => fileInput?.click()} />
+    <ReviewBar {session} {editor} {pmState} {reviewer} disabled={readOnly} />
+    {#if refused && pmState.doc.attrs.trackRevisions && !reviewer}
+      <p class="border-b px-3 py-1.5 text-xs text-destructive" role="alert" data-testid="docx-track-refused">This document tracks changes, but your name isn’t known here, so your edit wasn’t made.</p>
+    {/if}
     {#if linkOpen}
       <form class="flex flex-wrap items-center gap-2 border-b px-3 py-1.5 text-sm" onsubmit={applyLink} data-testid="docx-link-form">
         <label class="text-xs text-muted-foreground" for="docx-link-target">Link to</label>
@@ -628,6 +700,8 @@
     {#if imageError}<p class="border-b px-3 py-1.5 text-xs text-destructive" role="alert" data-testid="docx-image-error">{imageError}</p>{/if}
   {/if}
   <input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/gif" class="hidden" onchange={onPicture} data-testid="docx-image-input" />
+  <div class="flex min-h-0 flex-1">
+  <div class="flex min-w-0 flex-1 flex-col">
   <div
     bind:this={scroller}
     class="relative min-h-[75vh] flex-1 overflow-auto bg-muted/60"
@@ -658,6 +732,24 @@
       data-testid="docx-edit-page"
     ></div>
   </div>
+  </div>
+  {#if showComments && phase !== 'error'}
+    <CommentsPanel
+      comments={shownComments}
+      me={reviewer?.name ?? null}
+      editable={layout === 'edit' && !readOnly && !!editor}
+      canAdd={!!pmState && !pmState.selection.empty}
+      active={activeComment}
+      hint={canEdit ? 'Choose Edit to add, answer or resolve comments.' : null}
+      onselect={selectComment}
+      onadd={(text) => onComment((who, s) => addComment(s, who, text))}
+      onreply={(id, text) => onComment((who, s) => replyToComment(s, who, id, text))}
+      onedit={(id, text) => onComment((who) => editComment(who, id, text))}
+      ondone={(id, done) => onComment((_, s) => setCommentDone(s, id, done))}
+      ondelete={(id) => onComment(() => deleteComment(id))}
+    />
+  {/if}
+  </div>
 </div>
 
 <style>
@@ -673,6 +765,32 @@
   }
   .docx-pages :global(.docx-page a[href]) {
     cursor: pointer;
+  }
+  /* Review: comment ranges and the change bar, in both layouts. */
+  .docx-pages :global(.docx-comment),
+  .docx-edit-page :global(.docx-comment) {
+    background: rgb(250 204 21 / 0.35);
+    cursor: pointer;
+  }
+  .docx-pages :global(.docx-comment-done),
+  .docx-edit-page :global(.docx-comment-done) {
+    background: rgb(250 204 21 / 0.12);
+  }
+  .docx-pages :global(.docx-comment-active),
+  .docx-edit-page :global(.docx-comment-active) {
+    background: rgb(250 204 21 / 0.7);
+  }
+  .docx-pages :global(.docx-changed),
+  .docx-edit-page :global(.docx-changed) {
+    position: relative;
+  }
+  .docx-pages :global(.docx-changed)::before,
+  .docx-edit-page :global(.docx-changed)::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: -12pt;
+    border-inline-start: 2px solid #6b7280;
   }
   .docx-pages :global(.docx-page ::selection) {
     background: rgb(59 130 246 / 0.3);

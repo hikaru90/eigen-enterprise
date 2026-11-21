@@ -1,5 +1,5 @@
 import type { SourceRegistry } from './registry'
-import type { IndentTwips, ParagraphAttrs } from './schema'
+import type { IndentTwips, MarkData, ParagraphAttrs, RevisionInfo } from './schema'
 import { Mark, type Node as PMNode, type Schema } from 'prosemirror-model'
 import { inlineText, type Block, type DocxDocument, type Inline, type Table, type TableCell } from '../model'
 import { parseParagraphProps, parseRunProps } from '../properties'
@@ -93,13 +93,28 @@ function indexModel(doc: DocxDocument) {
   return { inlines, cells, tables }
 }
 
-/** The body as a ProseMirror document (the final w:sectPr stays outside: it is written back as it was). */
+/**
+ * The body as a ProseMirror document (the final w:sectPr stays outside: it is
+ * written back as it was). The document's attrs carry the comments and the
+ * track-changes setting, so editing them is undoable and saved like text.
+ */
 export function toProseMirror(doc: DocxDocument, schema: Schema, reg: SourceRegistry): PMNode {
   const root = doc.pkg.xml(doc.mainPart).documentElement!
   const body = wc(root, 'body')!
   const ctx: Ctx = { schema, reg, doc, ...indexModel(doc) }
   const blocks = readBlocks(ctx, body, true)
-  return schema.node('doc', null, blocks.length > 0 ? blocks : [schema.node('paragraph')])
+  const attrs = { comments: doc.comments.map((c) => ({ ...c })), trackRevisions: doc.settings.trackRevisions }
+  return schema.node('doc', attrs, blocks.length > 0 ? blocks : [schema.node('paragraph')])
+}
+
+/** The w:id, w:author and w:date of a revision element. */
+export const revisionOf = (el: Element): RevisionInfo => ({ id: wa(el, 'id') ?? '', author: wa(el, 'author'), date: wa(el, 'date') })
+
+const CHANGE_ELEMENTS: Record<string, { mark: 'insertion' | 'deletion'; move: boolean }> = {
+  ins: { mark: 'insertion', move: false },
+  del: { mark: 'deletion', move: false },
+  moveTo: { mark: 'insertion', move: true },
+  moveFrom: { mark: 'deletion', move: true },
 }
 
 function opaqueBlock(ctx: Ctx, el: Element): PMNode {
@@ -185,7 +200,13 @@ export function readIndent(ind: Element | null): IndentTwips | null {
 /** The editable paragraph attributes a w:pPr gives. */
 export function paragraphAttrs(pPr: Element | null, ref: string | null): ParagraphAttrs {
   const numPr = wc(pPr, 'numPr')
+  const pChange = wc(pPr, 'pPrChange')
+  const markRPr = wc(pPr, 'rPr')
+  const mark = (['ins', 'del', 'moveTo', 'moveFrom'] as const).map((n) => wc(markRPr, n)).find((e) => e !== null) ?? null
   return {
+    pChange: pChange ? revisionOf(pChange) : null,
+    revertPPr: false,
+    markChange: mark ? { ...revisionOf(mark), kind: mark.localName === 'ins' || mark.localName === 'moveTo' ? 'insert' : 'delete' } : null,
     ref,
     styleId: wa(wc(pPr, 'pStyle'), 'val'),
     jc: wa(wc(pPr, 'jc'), 'val'),
@@ -200,14 +221,14 @@ function readParagraph(ctx: Ctx, p: Element): { node: PMNode; sectPr: Element | 
   const sectPr = wc(pPr, 'sectPr')
   const entry = { kind: 'paragraph' as const, el: p, node: null as PMNode | null, sectPr, direct: parseParagraphProps(pPr, ctx.doc.themeFonts) }
   const ref = ctx.reg.add(entry)
-  const node = ctx.schema.node('paragraph', paragraphAttrs(pPr, ref), readInlines(ctx, p, null))
+  const node = ctx.schema.node('paragraph', paragraphAttrs(pPr, ref), readInlines(ctx, p, []))
   entry.node = node
   // The runs and links as built: an untouched one is written back as its original XML.
   node.forEach((child) => {
     for (const m of child.marks) {
-      if (m.type.name === 'run' || m.type.name === 'link') {
+      if (m.type.name === 'run' || m.type.name === 'link' || m.type.name === 'insertion' || m.type.name === 'deletion') {
         const e = ctx.reg.get(m.attrs.ref as string)
-        if (e && (e.kind === 'run' || e.kind === 'link')) e.nodes.push(child)
+        if (e && (e.kind === 'run' || e.kind === 'link' || e.kind === 'change')) e.nodes.push(child)
       }
     }
   })
@@ -247,10 +268,10 @@ function fieldChip(ctx: Ctx, els: Element[], level: 'para' | 'run', marks: reado
   return ctx.schema.node('opaque', { ref, kind: 'chip', label: fallback, title: fallback, level }, undefined, marks)
 }
 
-/** Inline content of a paragraph or hyperlink. */
-function readInlines(ctx: Ctx, container: Element, link: Mark | null): PMNode[] {
+/** Inline content of a paragraph, hyperlink or tracked change; `outer`: the link and change marks around it. */
+function readInlines(ctx: Ctx, container: Element, outer: readonly Mark[]): PMNode[] {
   const out: PMNode[] = []
-  const linkMarks = link ? [link] : []
+  const linkMarks = outer
   const kids = children(container)
   for (let i = 0; i < kids.length; i++) {
     const c = kids[i]!
@@ -265,7 +286,19 @@ function readInlines(ctx: Ctx, container: Element, link: Mark | null): PMNode[] 
           continue
         }
       }
-      out.push(...readRun(ctx, c, link))
+      out.push(...readRun(ctx, c, outer))
+      continue
+    }
+    const change = c.namespaceURI === NS.w ? CHANGE_ELEMENTS[c.localName] : undefined
+    if (change) {
+      const ref = ctx.reg.add({ kind: 'change', el: c, nodes: [] })
+      const m = ctx.schema.marks[change.mark]!.create({ ...revisionOf(c), move: change.move, ref })
+      out.push(...readInlines(ctx, c, [...outer, m]))
+      continue
+    }
+    if (isEl(c, NS.w, 'commentRangeStart') || isEl(c, NS.w, 'commentRangeEnd')) {
+      const ref = ctx.reg.add({ kind: 'opaque', els: [c] })
+      out.push(ctx.schema.node('comment_mark', { ref, id: wa(c, 'id') ?? '', edge: c.localName === 'commentRangeStart' ? 'start' : 'end', level: 'para' }, undefined, outer))
       continue
     }
     if (isEl(c, NS.w, 'hyperlink')) {
@@ -277,7 +310,7 @@ function readInlines(ctx: Ctx, container: Element, link: Mark | null): PMNode[] 
         tooltip: wa(c, 'tooltip'),
         ref,
       })
-      out.push(...readInlines(ctx, c, m))
+      out.push(...readInlines(ctx, c, [...outer, m]))
       continue
     }
     if (isEl(c, NS.w, 'fldSimple')) {
@@ -316,6 +349,9 @@ function paraOpaque(ctx: Ctx, c: Element, marks: readonly Mark[]): PMNode {
 
 // ---------------------------------------------------------------- runs
 
+/** A mark as plain data (for attrs). */
+export const markData = (m: Mark): MarkData => (Object.keys(m.attrs).length ? { type: m.type.name, attrs: { ...m.attrs } } : { type: m.type.name })
+
 /** The formatting marks a w:rPr sets directly (what the toolbar edits). */
 export function marksOf(schema: Schema, rPr: Element | null): Mark[] {
   if (!rPr) return []
@@ -343,18 +379,27 @@ export function marksOf(schema: Schema, rPr: Element | null): Mark[] {
   return Mark.setFrom(out) as Mark[]
 }
 
-function readRun(ctx: Ctx, r: Element, link: Mark | null): PMNode[] {
+function readRun(ctx: Ctx, r: Element, outer: readonly Mark[]): PMNode[] {
   const { schema, reg } = ctx
   const rPr = wc(r, 'rPr')
   const content = contentOf(r)
   if (content.length === 0) {
     // An empty run: nothing to show, its XML kept in place.
     const ref = reg.add({ kind: 'opaque', els: [r] })
-    return [schema.node('opaque', { ref, kind: 'marker', label: '', title: 'w:r', level: 'para' }, undefined, link ? [link] : [])]
+    return [schema.node('opaque', { ref, kind: 'marker', label: '', title: 'w:r', level: 'para' }, undefined, outer)]
+  }
+  if (content.length === 1 && isEl(content[0]!, NS.w, 'commentReference')) {
+    // The comment's mark, in a run of its own as Word writes it: the whole run is the anchor.
+    const ref = reg.add({ kind: 'opaque', els: [r] })
+    return [schema.node('comment_mark', { ref, id: wa(content[0]!, 'id') ?? '', edge: 'ref', level: 'para' }, undefined, outer)]
   }
   const fmt = marksOf(schema, rPr)
   const runRef = reg.add({ kind: 'run', el: r, nodes: [], marks: fmt, direct: parseRunProps(rPr, ctx.doc.themeFonts) })
-  const marks = Mark.setFrom([schema.marks.run!.create({ ref: runRef }), ...(link ? [link] : []), ...fmt])
+  const rPrChange = wc(rPr, 'rPrChange')
+  const fc = rPrChange
+    ? [schema.marks.formatChange!.create({ ...revisionOf(rPrChange), before: marksOf(schema, wc(rPrChange, 'rPr')).map(markData), ref: reg.add({ kind: 'element', el: rPrChange }) })]
+    : []
+  const marks = Mark.setFrom([schema.marks.run!.create({ ref: runRef }), ...outer, ...fmt, ...fc])
   const out: PMNode[] = []
   const element = (el: Element) => reg.add({ kind: 'element', el })
   const opaque = (el: Element, kind: 'chip' | 'marker' | 'text', label: string, title: string) =>
@@ -362,10 +407,14 @@ function readRun(ctx: Ctx, r: Element, link: Mark | null): PMNode[] {
   for (const c of content) {
     const n = c.localName
     if (c.namespaceURI === NS.w) {
-      if (n === 't') {
+      if (n === 't' || n === 'delText') {
         const text = c.textContent ?? ''
         if (text) out.push(schema.text(text, marks))
-        else out.push(opaque(c, 'marker', '', 'w:t'))
+        else out.push(opaque(c, 'marker', '', `w:${n}`))
+        continue
+      }
+      if (n === 'commentReference') {
+        out.push(schema.node('comment_mark', { ref: reg.add({ kind: 'opaque', els: [c] }), id: wa(c, 'id') ?? '', edge: 'ref', level: 'run' }, undefined, marks))
         continue
       }
       if (n === 'tab') {

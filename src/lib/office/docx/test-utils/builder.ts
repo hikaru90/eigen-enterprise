@@ -49,7 +49,7 @@ export type DocxSpec = {
   media?: Record<string, { name: string; bytes: Uint8Array }>
   /** External hyperlinks: relationship id → URL. */
   links?: Record<string, string>
-  /** Extra internal parts the document points at: relationship id → { type (last URI segment), target, xml }. */
+  /** Extra internal parts the document points at: relationship id → { type (last URI segment, or a full URI), target, xml }. */
   parts?: Record<string, { type: string; target: string; xml: string; contentType: string }>
 }
 
@@ -70,7 +70,7 @@ export function buildDocx(spec: DocxSpec): Uint8Array {
   const rels: string[] = []
   const rel = (id: string, type: string, target: string, external = false) =>
     rels.push(
-      `<Relationship Id="${id}" Type="${REL}/${type}" Target="${target}"${external ? ' TargetMode="External"' : ''}/>`,
+      `<Relationship Id="${id}" Type="${type.startsWith('http') ? type : `${REL}/${type}`}" Target="${target}"${external ? ' TargetMode="External"' : ''}/>`,
     )
   const part = (path: string, ct: string, xml: string) => {
     files[path] = strToU8(decl + xml)

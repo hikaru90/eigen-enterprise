@@ -1,4 +1,5 @@
 import { OpcError, readPackage, REL_OFFICE_DOCUMENT, type OpcPackage, type Relationship } from '../ooxml/package'
+import { commentAnchors, parseComments, type CommentData } from './comments'
 import { ListCounter, parseNumbering, type ListLabel, type Numbering } from './numbering'
 import {
   EMPTY_THEME_FONTS,
@@ -96,7 +97,17 @@ export type BookmarkInline = { type: 'bookmark'; name: string; source: Element }
 export type NoteRefInline = { type: 'noteRef'; kind: 'footnote' | 'endnote'; id: string; mark: string; run: RunProps; source: Element }
 /** The note's own number inside its text (w:footnoteRef / w:endnoteRef). */
 export type NoteMarkInline = { type: 'noteMark'; kind: 'footnote' | 'endnote'; mark: string; run: RunProps; source: Element }
-export type ChangeInline = { type: 'change'; kind: 'insert' | 'delete'; author: string | null; children: Inline[]; source: Element }
+export type ChangeInline = {
+  type: 'change'
+  kind: 'insert' | 'delete'
+  /** w:moveTo / w:moveFrom: the inserted or deleted side of a move. */
+  move: boolean
+  id: string | null
+  author: string | null
+  date: string | null
+  children: Inline[]
+  source: Element
+}
 export type RubyInline = { type: 'ruby'; base: Inline[]; text: Inline[]; source: Element }
 export type PlaceholderInline = {
   type: 'placeholder'
@@ -179,7 +190,12 @@ export type Note = { id: string; kind: 'footnote' | 'endnote'; mark: string; blo
 
 export type FontInfo = { name: string; altName: string | null; family: string | null; pitch: string | null }
 
-export type DocxSettings = { defaultTabStopPt: number; evenAndOddHeaders: boolean }
+export type DocxSettings = {
+  defaultTabStopPt: number
+  evenAndOddHeaders: boolean
+  /** w:trackRevisions (§17.15.1.90): edits are recorded as tracked changes. */
+  trackRevisions: boolean
+}
 
 export type DocxDocument = {
   pkg: OpcPackage
@@ -195,6 +211,12 @@ export type DocxDocument = {
   /** Notes in reference order (the order of their marks). */
   footnotes: Note[]
   endnotes: Note[]
+  /** The comments (comments.xml with its thread and id extensions), in file order. */
+  comments: CommentData[]
+  /** Text elements (w:t, w:delText) of every story → the comments whose ranges hold them. */
+  commentAnchors: Map<Element, string[]>
+  /** Tracked changes of any kind (w:ins, w:del, moves, w:rPrChange, w:pPrChange) in the body. */
+  hasChanges: boolean
   /** Things the document has that this view does not show, for a visible notice. */
   notices: string[]
 }
@@ -383,7 +405,7 @@ class ParagraphReader {
         case 'moveFrom': {
           this.ctx.flags.changes = true
           const kind = n === 'ins' || n === 'moveTo' ? 'insert' : 'delete'
-          const ch: ChangeInline = { type: 'change', kind, author: wa(c, 'author'), children: [], source: c }
+          const ch: ChangeInline = { type: 'change', kind, move: n === 'moveTo' || n === 'moveFrom', id: wa(c, 'id'), author: wa(c, 'author'), date: wa(c, 'date'), children: [], source: c }
           this.emit(sink, ch)
           this.nested(c, ch.children, deleted || kind === 'delete')
           break
@@ -885,6 +907,7 @@ function settingsOf(doc: XMLDocument | null): DocxSettings {
   return {
     defaultTabStopPt: tab && tab > 0 ? tab : 36,
     evenAndOddHeaders: onOff(evenOdd) ?? false,
+    trackRevisions: onOff(wc(root, 'trackRevisions')) ?? false,
   }
 }
 
@@ -998,8 +1021,11 @@ export function parseDocx(bytes: Uint8Array): DocxDocument {
   const endnotes = readNotes('endnote', REL.endnotes)
 
   const notices: string[] = []
-  if (partOfType(pkg, mainPart, REL.comments)) notices.push('Comments are not shown yet.')
-  if (ctx.flags.changes) notices.push('Tracked changes are shown marked up: insertions underlined, deletions struck through.')
+  const comments = parseComments(pkg, mainPart).list
+  const commentAnchorMap = commentAnchors(root)
+  for (const part of headerFooters.keys()) for (const [k, v] of commentAnchors(safeXml(pkg, part).documentElement!)) commentAnchorMap.set(k, v)
+  for (const kind of ['footnote', 'endnote'] as const) for (const el of ctx.notes[kind].values()) for (const [k, v] of commentAnchors(el)) commentAnchorMap.set(k, v)
+  const hasChanges = ctx.flags.changes || descendants(body, NS.w, 'rPrChange').length > 0 || descendants(body, NS.w, 'pPrChange').length > 0
 
   return {
     pkg,
@@ -1013,6 +1039,9 @@ export function parseDocx(bytes: Uint8Array): DocxDocument {
     headerFooters,
     footnotes,
     endnotes,
+    comments,
+    commentAnchors: commentAnchorMap,
+    hasChanges,
     notices,
   }
 }

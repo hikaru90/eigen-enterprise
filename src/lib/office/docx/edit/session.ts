@@ -1,10 +1,12 @@
 import type { Node as PMNode, Schema } from 'prosemirror-model'
 import { DOMParser, XMLSerializer, type Node as XmldomNode } from '@xmldom/xmldom'
 import { strToU8 } from 'fflate'
+import { NS_W14, NS_W15, NS_W16CID, parseComments, referencedComments, type CommentData } from '../comments'
 import { parseDocx, type DocxDocument } from '../model'
 import { parseNumbering, type Numbering } from '../numbering'
-import { children, descendants, intOr, NS, REL, wa } from '../xml'
+import { children, descendants, intOr, NS, REL, wa, wc } from '../xml'
 import { SourceRegistry } from './registry'
+import { reviewParts } from './review-parts'
 import { createDocxSchema, type DisplayContext } from './schema'
 import { writeDocument } from './serialize'
 import { toProseMirror } from './to-pm'
@@ -39,7 +41,13 @@ export type DocxEditSession = {
   addImage(bytes: Uint8Array, contentType: string): { part: string; rId: string }
   /** The text width of the first section (new tables span it), in points. */
   textWidthPt: number
-  /** The .docx with `doc` as its body. */
+  /** A new annotation id (w:id for a comment or a tracked change), unique in the document. */
+  newId(): string
+  /** A new w14:paraId / w16cid:durableId (8 hex digits below 0x80000000, unique in the document). */
+  newParaId(): string
+  /** The comments `doc` keeps: anchored in the body, anchored elsewhere in the file, or replies to one of those. */
+  liveComments(doc: PMNode): CommentData[]
+  /** The .docx with `doc` as its body, its comments and its track-changes setting. */
   serialize(doc: PMNode): Uint8Array
 }
 
@@ -70,6 +78,42 @@ export function openForEditing(bytes: Uint8Array, opts: { imageUrl?: DisplayCont
   let firstDocPrId = 1
   for (const d of descendants(pristine.documentElement!, NS.wp, 'docPr')) firstDocPrId = Math.max(firstDocPrId, (intOr(d.getAttribute('id')) ?? 0) + 1)
   const linkRels = new Map<string, string>()
+
+  // Comments and the track-changes setting (written only when they change).
+  const parsedComments = parseComments(pkg, mainPart)
+  const settingsRel = pkg.relationships(mainPart).find((r) => r.type === REL.settings && !r.external && r.part && pkg.has(r.part))
+  const review = reviewParts({
+    pkg,
+    mainPart,
+    parsed: parsedComments,
+    settingsPart: settingsRel?.part ?? null,
+    initialTrack: docx.settings.trackRevisions,
+    hasParagraphStyle: (id) => docx.styles.styles.get(id)?.type === 'paragraph',
+    hasCharStyle: (id) => docx.styles.styles.get(id)?.type === 'character',
+  })
+  const bodyRefs = referencedComments(wc(pristine.documentElement!, 'body')!)
+  /** Comments anchored outside the body (headers, notes): kept whatever the body does. */
+  const elsewhere = new Set(parsedComments.list.filter((c) => !bodyRefs.has(c.id)).map((c) => c.id))
+
+  // Ids: above every w:id the file uses; paragraph ids unlike any it has.
+  let lastId = 0
+  const paraIds = new Set<string>()
+  const scanIds = (doc: XMLDocument) => {
+    const all = doc.getElementsByTagName('*')
+    for (let i = 0; i < all.length; i++) {
+      const el = all[i]!
+      const id = intOr(wa(el, 'id'))
+      if (id !== null) lastId = Math.max(lastId, id)
+      for (const ns of [NS_W14, NS_W15, NS_W16CID]) for (const a of ['paraId', 'textId', 'durableId', 'paraIdParent']) {
+        const v = el.getAttributeNodeNS(ns, a)?.value
+        if (v) paraIds.add(v.toUpperCase())
+      }
+    }
+  }
+  for (const part of pkg.partNames()) {
+    if (!part.startsWith(mainPart.slice(0, mainPart.lastIndexOf('/') + 1)) || !part.endsWith('.xml')) continue
+    scanIds(pkg.xml(part))
+  }
 
   function numberingRoot(): Element {
     if (!numberingDoc) {
@@ -126,6 +170,23 @@ export function openForEditing(bytes: Uint8Array, opts: { imageUrl?: DisplayCont
     return numId
   }
 
+  function liveComments(doc: PMNode): CommentData[] {
+    const anchored = new Set<string>()
+    doc.descendants((n) => {
+      if (n.type.name === 'comment_mark' && n.attrs.edge === 'ref') anchored.add(n.attrs.id as string)
+      return true
+    })
+    const all = doc.attrs.comments as CommentData[]
+    const byId = new Map(all.map((c) => [c.id, c]))
+    const live = (c: CommentData, seen: Set<string>): boolean => {
+      if (anchored.has(c.id) || elsewhere.has(c.id)) return true
+      if (!c.parentId || seen.has(c.id)) return false
+      const parent = byId.get(c.parentId)
+      return !!parent && live(parent, new Set([...seen, c.id]))
+    }
+    return all.filter((c) => live(c, new Set()))
+  }
+
   return {
     docx,
     schema,
@@ -158,12 +219,37 @@ export function openForEditing(bytes: Uint8Array, opts: { imageUrl?: DisplayCont
       const rId = pkg.addRelationship(mainPart, REL.image, `media/added-${n}.${ext}`)
       return { part, rId }
     },
+    newId: () => String(++lastId),
+    newParaId() {
+      for (;;) {
+        const v = Math.floor(Math.random() * 0x7fffffff) + 1
+        const hex = v.toString(16).toUpperCase().padStart(8, '0')
+        if (!paraIds.has(hex)) {
+          paraIds.add(hex)
+          return hex
+        }
+      }
+    },
+    liveComments,
     serialize(doc) {
-      if (doc.eq(initial)) pkg.setBytes(mainPart, mainBytes)
+      if (doc.content.eq(initial.content)) pkg.setBytes(mainPart, mainBytes)
       else
         pkg.setXml(
           mainPart,
-          writeDocument({ pkg, mainPart, reg: registry, pristine, linkRels, textWidthTwips: Math.round(textWidthPt * 20), firstDocPrId }, doc),
+          writeDocument(
+            {
+              pkg,
+              mainPart,
+              reg: registry,
+              pristine,
+              linkRels,
+              textWidthTwips: Math.round(textWidthPt * 20),
+              firstDocPrId,
+              newId: () => String(++lastId),
+              hasCharStyle: (id) => docx.styles.styles.get(id)?.type === 'character',
+            },
+            doc,
+          ),
         )
       if (numberingDirty && numberingDoc) {
         if (numberingPart) pkg.setXml(numberingPart, numberingDoc)
@@ -177,6 +263,8 @@ export function openForEditing(bytes: Uint8Array, opts: { imageUrl?: DisplayCont
         }
         numberingDirty = false
       }
+      review.writeComments(liveComments(doc))
+      review.writeTrackRevisions(doc.attrs.trackRevisions as boolean)
       return pkg.toBytes()
     },
   }

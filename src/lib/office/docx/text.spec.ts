@@ -2,7 +2,7 @@ import { strToU8 } from 'fflate'
 import { describe, expect, it } from 'vitest'
 import { DocxError } from './model'
 import { buildDocx, inlineImage, p, PNG_1PX, r, sectPr } from './test-utils/builder'
-import { extractText } from './text'
+import { CHANGES_NOTE, extractText } from './text'
 
 const STYLES = `
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
@@ -84,7 +84,7 @@ describe('docx extractText (Markdown for agents)', () => {
     expect(md).toBe('![Revenue chart](image)\n\n![](image)\n\nSee [our site](https://example.com) for more[^1].\n\n[^1]: Source: survey.\n')
   })
 
-  it('leaves out headers, footers, hidden and deleted text; keeps inserted text and field results', async () => {
+  it('leaves out headers, footers and hidden text; shows tracked changes readably under a note; keeps field results', async () => {
     const md = await extractText(
       buildDocx({
         headers: { rIdH: p(r('HEADER TEXT')) },
@@ -95,7 +95,36 @@ describe('docx extractText (Markdown for agents)', () => {
           sectPr('<w:headerReference w:type="default" r:id="rIdH"/><w:footerReference w:type="default" r:id="rIdF"/>'),
       }),
     )
-    expect(md).toBe('Visible added\n\n20 Nov 2026\n')
+    expect(md).toBe(`${CHANGES_NOTE}\n\nVisible{- gone-}{+ added+}\n\n20 Nov 2026\n`)
+  })
+
+  it('has no changes note when nothing is tracked, and none for formatting-only changes', async () => {
+    const md = await extractText(
+      buildDocx({ body: p(`<w:r><w:rPr><w:b/><w:rPrChange w:id="1" w:author="A"><w:rPr/></w:rPrChange></w:rPr><w:t>Bold now</w:t></w:r>`) + sectPr() }),
+    )
+    expect(md).toBe('Bold now\n')
+  })
+
+  it('appends comments as quotes with their author, replies under them and the resolved state', async () => {
+    const W14 = 'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"'
+    const W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+    const md = await extractText(
+      buildDocx({
+        body: p('<w:commentRangeStart w:id="0"/>' + r('Revenue grew') + '<w:commentRangeEnd w:id="0"/><w:r><w:commentReference w:id="0"/></w:r>') + sectPr(),
+        comments:
+          `<w:comment w:id="0" w:author="Ann Lee" w:initials="AL" w:date="2026-11-20T09:00:00Z"><w:p w14:paraId="00000001" ${W14}>${r('Source?')}</w:p></w:comment>` +
+          `<w:comment w:id="1" w:author="Bo" w:date="2026-11-20T10:00:00Z"><w:p w14:paraId="00000002" ${W14}>${r('Q3 report,')}</w:p><w:p ${W14} w14:paraId="00000003">${r('page 4')}</w:p></w:comment>`,
+        parts: {
+          rIdEx: {
+            type: 'http://schemas.microsoft.com/office/2011/relationships/commentsExtended',
+            target: 'commentsExtended.xml',
+            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml',
+            xml: `<w15:commentsEx xmlns:w15="${W15}"><w15:commentEx w15:paraId="00000001" w15:done="1"/><w15:commentEx w15:paraId="00000003" w15:paraIdParent="00000001" w15:done="0"/></w15:commentsEx>`,
+          },
+        },
+      }),
+    )
+    expect(md).toBe('Revenue grew\n\n> Comment (Ann Lee, resolved): Source?\n>> Reply (Bo): Q3 report, page 4\n')
   })
 
   it('says what it could not extract instead of dropping it, and keeps text box text', async () => {
