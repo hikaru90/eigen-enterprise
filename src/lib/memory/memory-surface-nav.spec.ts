@@ -11,6 +11,15 @@ describe('MEMORY_TABS', () => {
       ['Capture', '/m/memory/capture'],
     ])
   })
+
+  it('every tab says in one short line what it holds (Contribute d5e61e1f)', () => {
+    for (const tab of MEMORY_TABS) {
+      expect(tab.description.length).toBeGreaterThan(0)
+      expect(tab.description).not.toContain('\n')
+      expect(tab.description.length).toBeLessThanOrEqual(90)
+    }
+    expect(new Set(MEMORY_TABS.map((t) => t.description)).size).toBe(MEMORY_TABS.length)
+  })
 })
 
 describe('activeMemorySurfaceTab', () => {

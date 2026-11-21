@@ -12,6 +12,7 @@
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
   const current = $derived(activeMemorySurfaceTab(page.url.pathname))
   const tabs = MEMORY_TABS.map((t) => ({ id: t.id, label: t.label, href: t.href }))
+  const currentDescription = $derived(MEMORY_TABS.find((t) => t.id === current)?.description ?? null)
 
   // Memory shows a person's private text: while it is open, product analytics gets nothing read
   // off the page (no autocaptured element text, no session-replay snapshots) — posthog-client.ts.
@@ -51,6 +52,11 @@
         </a>
       {/snippet}
     </PageHeader>
+    {#if currentDescription}
+      <p class="mt-3 max-w-[65ch] text-sm text-muted-foreground" data-testid="memory-tab-description">
+        {currentDescription}
+      </p>
+    {/if}
   </div>
   <div class="flex min-h-0 w-full flex-1 flex-col">
     {@render children()}
