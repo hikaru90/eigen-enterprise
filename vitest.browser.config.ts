@@ -116,6 +116,7 @@ export default defineConfig({
       'src/lib/messages/message-row.svelte.spec.ts',
       'src/lib/messages/message-edit.svelte.spec.ts',
       'src/lib/messages/message-composer.svelte.spec.ts',
+      'src/lib/messages/emoji-picker.svelte.spec.ts',
       'src/lib/messages/reply-quote.svelte.spec.ts',
       'src/lib/messages/voice-player.svelte.spec.ts',
       'src/lib/messages/presence-dot.svelte.spec.ts',

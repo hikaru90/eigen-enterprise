@@ -4,6 +4,7 @@
   import Italic from '@lucide/svelte/icons/italic'
   import Link from '@lucide/svelte/icons/link'
   import Paperclip from '@lucide/svelte/icons/paperclip'
+  import Plus from '@lucide/svelte/icons/plus'
   import SendHorizontal from '@lucide/svelte/icons/send-horizontal'
   import Smile from '@lucide/svelte/icons/smile'
   import Strikethrough from '@lucide/svelte/icons/strikethrough'
@@ -13,6 +14,7 @@
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
   import type { VoiceRecording } from '$lib/voice/voice-message'
   import { applyFormat, insertAt, type Edit, type Format } from './composer'
+  import EmojiPicker from './emoji-picker.svelte'
 
   /**
    * The message box, Slack-style: a bordered box with a formatting row
@@ -71,6 +73,8 @@
   } = $props()
 
   let emojiOpen = $state(false)
+  /** The full picker instead of the quick row ("More emoji"). */
+  let emojiFull = $state(false)
   let voiceActive = $state(false)
 
   async function addTranscript(text: string, recording: VoiceRecording) {
@@ -95,8 +99,20 @@
     void apply(applyFormat(value, el?.selectionStart ?? value.length, el?.selectionEnd ?? value.length, f))
   }
 
+  function toggleEmoji() {
+    emojiFull = false
+    emojiOpen = !emojiOpen
+  }
+
+  function closeEmoji() {
+    emojiOpen = false
+    emojiFull = false
+    textarea?.focus()
+  }
+
   function addEmoji(e: string) {
     emojiOpen = false
+    emojiFull = false
     const el = textarea
     void apply(insertAt(value, el?.selectionStart ?? value.length, el?.selectionEnd ?? value.length, e))
   }
@@ -187,11 +203,15 @@
         title="Emoji"
         aria-expanded={emojiOpen}
         data-testid="composer-emoji"
-        onclick={() => (emojiOpen = !emojiOpen)}><Smile class="size-4" /></button
+        onclick={toggleEmoji}><Smile class="size-4" /></button
       >
-      {#if emojiOpen}
+      {#if emojiOpen && emojiFull}
+        <div class="absolute bottom-full left-1.5 z-20 mb-1">
+          <EmojiPicker label="Insert emoji" onpick={addEmoji} onclose={closeEmoji} />
+        </div>
+      {:else if emojiOpen}
         <div
-          class="absolute bottom-full left-1.5 z-20 mb-1 grid w-max grid-cols-5 gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-md"
+          class="absolute bottom-full left-1.5 z-20 mb-1 grid w-max grid-cols-6 gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-md"
           role="menu"
           aria-label="Insert emoji"
         >
@@ -204,6 +224,15 @@
               onclick={() => addEmoji(e)}>{e}</button
             >
           {/each}
+          <button
+            type="button"
+            role="menuitem"
+            class="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+            aria-label="More emoji"
+            title="More emoji"
+            data-testid="composer-emoji-more"
+            onclick={() => (emojiFull = true)}><Plus class="size-4" /></button
+          >
         </div>
       {/if}
       {#if hint}

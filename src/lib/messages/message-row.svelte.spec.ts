@@ -124,6 +124,36 @@ describe('message-row.svelte', () => {
     expect(onreact).toHaveBeenCalledWith('🎉')
   })
 
+  it('"More emoji" in the quick row opens the full picker; any emoji reacts; Esc closes it', async () => {
+    localStorage.clear()
+    const onreact = vi.fn()
+    const ontogglepicker = vi.fn()
+    render(MessageRow, props({ onreact, ontogglepicker, pickerOpen: true }))
+    await page.getByRole('menuitem', { name: 'More emoji' }).click()
+    const picker = page.getByRole('dialog', { name: 'Pick a reaction' })
+    await expect.element(picker).toBeInTheDocument()
+    expect(page.getByRole('menu', { name: 'Pick a reaction' }).elements()).toHaveLength(0)
+    await picker.getByRole('searchbox', { name: 'Search emoji' }).fill('giraffe')
+    await picker.getByRole('button', { name: 'giraffe', exact: true }).click()
+    expect(onreact).toHaveBeenCalledWith('🦒')
+    expect(ontogglepicker).not.toHaveBeenCalled()
+    await picker.getByRole('searchbox', { name: 'Search emoji' }).click()
+    await userEvent.keyboard('{Escape}')
+    expect(ontogglepicker).toHaveBeenCalledOnce()
+  })
+
+  it('reopening the picker starts at the quick row again', async () => {
+    const ontogglepicker = vi.fn()
+    const r = render(MessageRow, props({ ontogglepicker, pickerOpen: true }))
+    await page.getByRole('menuitem', { name: 'More emoji' }).click()
+    await expect.element(page.getByRole('dialog', { name: 'Pick a reaction' })).toBeInTheDocument()
+    await page.getByTestId('messages-react').click()
+    expect(ontogglepicker).toHaveBeenCalledOnce()
+    await r.rerender({ pickerOpen: false })
+    await r.rerender({ pickerOpen: true })
+    await expect.element(page.getByRole('menu', { name: 'Pick a reaction' })).toBeInTheDocument()
+  })
+
   it('a thread summary shows the reply count and the repliers’ avatars', async () => {
     render(
       MessageRow,

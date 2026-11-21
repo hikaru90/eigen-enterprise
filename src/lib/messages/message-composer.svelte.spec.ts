@@ -41,6 +41,22 @@ describe('message-composer.svelte', () => {
     expect(ondraft).toHaveBeenLastCalledWith('hi🎉****')
   })
 
+  it('"More emoji" opens the full picker; the picked emoji goes in at the cursor', async () => {
+    localStorage.clear()
+    const ondraft = vi.fn()
+    render(MessageComposer, props({ ondraft }))
+    await page.getByTestId('composer').click()
+    await userEvent.keyboard('hi ')
+    await page.getByTestId('composer-emoji').click()
+    await page.getByRole('menuitem', { name: 'More emoji' }).click()
+    const picker = page.getByRole('dialog', { name: 'Insert emoji' })
+    await picker.getByRole('searchbox', { name: 'Search emoji' }).fill('giraffe')
+    await userEvent.keyboard('{Enter}')
+    expect(ondraft).toHaveBeenLastCalledWith('hi 🦒')
+    expect(page.getByRole('dialog', { name: 'Insert emoji' }).elements()).toHaveLength(0)
+    await expect.element(page.getByTestId('composer')).toHaveFocus()
+  })
+
   it('opens with a restored draft', async () => {
     render(MessageComposer, props({ value: 'halb fertig\nzweite Zeile' }))
     await expect.element(page.getByTestId('composer')).toHaveValue('halb fertig\nzweite Zeile')
