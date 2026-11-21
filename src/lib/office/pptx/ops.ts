@@ -1,6 +1,21 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
 import { strToU8 } from 'fflate'
 import { relsPartOf, type OpcPackage } from '../ooxml/package'
+import {
+  CT_MODERN_AUTHORS,
+  CT_MODERN_COMMENTS,
+  EXT_COMMENT_REL,
+  legacyCommentPart,
+  modernAuthorsPart,
+  modernCommentPart,
+  NS_A16,
+  NS_AC,
+  NS_P188,
+  NS_PC,
+  PROVIDER,
+  REL_MODERN_AUTHORS,
+  REL_MODERN_COMMENTS,
+} from './comments'
 import { imageSize } from './media'
 import { PptxError, presentationPart, readDeck, sourceOf, walkShapes, type Deck, type GroupXfrm, type ShapeNode, type Slide, type Xfrm } from './model'
 import { findPlaceholder, resolveSlide, type RNode } from './resolve'
@@ -66,8 +81,18 @@ export type DeckOp =
   | { kind: 'moveSlide'; slide: string; to: number }
   | { kind: 'setHidden'; slide: string; hidden: boolean }
   | { kind: 'setNotes'; slide: string; text: string }
+  | { kind: 'addComment'; slide: string; id: string; author: CommentMember; created: string; text: string; anchor: NewCommentAnchor; pos: { x: number; y: number } | null }
+  | { kind: 'replyComment'; slide: string; comment: string; id: string; author: CommentMember; created: string; text: string }
+  | { kind: 'editComment'; slide: string; comment: string; reply: string | null; author: CommentMember; text: string }
+  | { kind: 'setCommentStatus'; slide: string; comment: string; status: 'active' | 'resolved' }
+  | { kind: 'deleteComment'; slide: string; comment: string; reply: string | null; author: CommentMember }
   | { kind: 'batch'; ops: DeckOp[] }
   | { kind: 'restoreParts'; parts: PartState[] }
+
+/** The signed-in member writing a comment (the Drive's member id and name). */
+export type CommentMember = { id: string; name: string }
+/** Where a new comment goes: the slide, or a shape on it (by cNvPr id). */
+export type NewCommentAnchor = { kind: 'slide' } | { kind: 'shape'; shape: string }
 
 export type OpResult = {
   /** Puts every changed part back exactly as it was. */
@@ -89,7 +114,6 @@ const CT_THEME = 'application/vnd.openxmlformats-officedocument.theme+xml'
 const CT_RELS = 'application/vnd.openxmlformats-package.relationships+xml'
 const NS_REL = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const NS_P14 = 'http://schemas.microsoft.com/office/powerpoint/2010/main'
-const REL_MODERN_COMMENTS = 'http://schemas.microsoft.com/office/2018/10/relationships/comments'
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
 const NS_DECL = `xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p="${NS.p}"`
 
@@ -259,6 +283,16 @@ function run(rec: Rec, op: DeckOp): OpResult['created'] {
       return setHidden(rec, op)
     case 'setNotes':
       return setNotes(rec, op)
+    case 'addComment':
+      return addComment(rec, op)
+    case 'replyComment':
+      return replyComment(rec, op)
+    case 'editComment':
+      return editComment(rec, op)
+    case 'setCommentStatus':
+      return setCommentStatus(rec, op)
+    case 'deleteComment':
+      return deleteComment(rec, op)
   }
 }
 
@@ -1030,6 +1064,8 @@ function deleteSlide(rec: Rec, op: Extract<DeckOp, { kind: 'deleteSlide' }>) {
     rec.drop(notes)
     if (rec.pkg.has(relsPartOf(notes))) rec.drop(relsPartOf(notes))
   }
+  // Its comments go with it (a comment part belongs to one slide).
+  for (const part of [modernCommentPart(rec.pkg, slide.part), legacyCommentPart(rec.pkg, slide.part)]) if (part) rec.drop(part)
   rec.drop(slide.part)
   if (rec.pkg.has(relsPartOf(slide.part))) rec.drop(relsPartOf(slide.part))
   return null
@@ -1169,4 +1205,217 @@ function notesMasterOf(rec: Rec, deck: Deck): string {
   list.appendChild(id)
   rec.save(pres, doc)
   return part
+}
+
+// ---------------------------------------------------------------------------
+// Comments (modern threaded comments; legacy ones are read-only, ./comments.ts)
+
+const COMMENT_DECL = `xmlns:a="${NS.a}" xmlns:r="${NS.r}" xmlns:p188="${NS_P188}"`
+/** Child order of p188:cm and p188:reply. */
+const CM_ORDER = ['sldMkLst', 'deMkLst', 'txMkLst', 'unknownAnchor', 'pos', 'replyLst', 'txBody', 'extLst']
+/** Child order of p:sld. */
+const SLD_ORDER = ['cSld', 'clrMapOvr', 'transition', 'timing', 'extLst']
+/** The drawing-element moniker for each shape element. */
+const MONIKER: Record<string, string> = { sp: 'spMk', pic: 'picMk', grpSp: 'grpSpMk', cxnSp: 'cxnSpMk', graphicFrame: 'graphicFrameMk' }
+
+function commentText(text: string): string {
+  const t = text.replace(/\r\n?/g, '\n')
+  if (t.trim() === '') throw new PptxError('A comment needs some text.')
+  const paras = t.split('\n').map((line) => (line ? `<a:p><a:r><a:rPr lang="en-US"/><a:t>${escXml(line)}</a:t></a:r></a:p>` : '<a:p><a:endParaRPr lang="en-US"/></a:p>'))
+  return `<p188:txBody><a:bodyPr/><a:lstStyle/>${paras.join('')}</p188:txBody>`
+}
+
+/** Parses comment markup (a/r/p188 prefixes, others declared inline) into `doc`. */
+function commentFragment(doc: XMLDocument, xml: string): Element {
+  const wrap = new DOMParser().parseFromString(`<w ${COMMENT_DECL}>${xml}</w>`, 'application/xml') as unknown as XMLDocument
+  const el = elementKids(wrap.documentElement!)[0]
+  if (!el) throw new Error('Empty fragment.')
+  return doc.importNode(el, true) as Element
+}
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return ''
+  return (words.length === 1 ? words[0]!.slice(0, 1) : `${words[0]![0]}${words.at(-1)![0]}`).toUpperCase()
+}
+
+const guid = () => `{${crypto.randomUUID().toUpperCase()}}`
+
+function authorEls(doc: XMLDocument): Element[] {
+  return elementKids(doc.documentElement as unknown as Element).filter((k) => k.namespaceURI === NS_P188 && k.localName === 'author')
+}
+
+const isMemberEl = (el: Element, member: CommentMember) => el.getAttribute('providerId') === PROVIDER && el.getAttribute('userId') === member.id
+
+/** The member's author id in the deck's author list; the list (and the member in it) is made when missing. */
+function authorIdOf(rec: Rec, member: CommentMember): string {
+  if (!member.id || !member.name.trim()) throw new PptxError('A comment needs a signed-in author.')
+  const pres = presentationPart(rec.pkg)
+  let part = modernAuthorsPart(rec.pkg, pres)
+  if (!part) {
+    part = rec.pkg.has('/ppt/authors.xml') ? freshPart(rec.pkg, '/ppt', 'authors', 'xml') : '/ppt/authors.xml'
+    rec.put(part, strToU8(`${XML_DECL}<p188:authorLst ${COMMENT_DECL}/>`), CT_MODERN_AUTHORS)
+    rec.rel(pres, REL_MODERN_AUTHORS, relativeTarget(pres, part))
+  }
+  const doc = rec.doc(part)
+  const found = authorEls(doc).find((el) => isMemberEl(el, member))
+  if (found) return found.getAttribute('id') ?? ''
+  const id = guid()
+  const el = mk(doc, NS_P188, 'author', { id, name: member.name, initials: initials(member.name), userId: member.id, providerId: PROVIDER })
+  doc.documentElement!.appendChild(el)
+  rec.save(part, doc)
+  return id
+}
+
+/** Throws unless the author with this id is the member. */
+function mustOwn(rec: Rec, authorId: string, member: CommentMember, what: string) {
+  const part = modernAuthorsPart(rec.pkg, presentationPart(rec.pkg))
+  const el = part ? authorEls(rec.doc(part)).find((e) => e.getAttribute('id') === authorId) : undefined
+  if (!el || !isMemberEl(el, member)) throw new PptxError(`You can only ${what} your own comments.`)
+}
+
+type CommentDoc = { part: string; doc: XMLDocument; root: Element }
+
+function commentDoc(rec: Rec, slide: Slide): CommentDoc | null {
+  const part = modernCommentPart(rec.pkg, slide.part)
+  if (!part) return null
+  const doc = rec.doc(part)
+  return { part, doc, root: doc.documentElement as unknown as Element }
+}
+
+function findComment(rec: Rec, slidePart: string, id: string): CommentDoc & { slide: Slide; cm: Element } {
+  const slide = slideOf(deckOf(rec), slidePart)
+  const cd = commentDoc(rec, slide)
+  const cm = cd ? elementKids(cd.root).find((k) => k.namespaceURI === NS_P188 && k.localName === 'cm' && k.getAttribute('id') === id) : undefined
+  if (!cd || !cm) {
+    if (slide.comments.threads.some((t) => t.format === 'legacy' && (t.id === id || t.replies.some((r) => r.id === id)))) throw new PptxError('Older-format comments are read-only.')
+    throw new PptxError(`Slide ${slide.number} has no comment ${id}.`)
+  }
+  return { ...cd, slide, cm }
+}
+
+const kid = (el: Element, ns: string, name: string) => elementKids(el).find((k) => k.namespaceURI === ns && k.localName === name) ?? null
+
+function findReply(cm: Element, id: string): Element {
+  const list = kid(cm, NS_P188, 'replyLst')
+  const reply = list ? elementKids(list).find((k) => k.namespaceURI === NS_P188 && k.localName === 'reply' && k.getAttribute('id') === id) : undefined
+  if (!reply) throw new PptxError(`The comment has no reply ${id}.`)
+  return reply
+}
+
+/** The slide's modern comment part, made (with its relationship and the slide's commentRel extension) when missing. */
+function ensureCommentDoc(rec: Rec, slide: Slide, sldId: string): CommentDoc {
+  const have = commentDoc(rec, slide)
+  if (have) return have
+  const part = freshPart(rec.pkg, '/ppt/comments', `modernComment_${Number(sldId).toString(16).toUpperCase()}_`, 'xml')
+  rec.put(part, strToU8(`${XML_DECL}<p188:cmLst ${COMMENT_DECL}/>`), CT_MODERN_COMMENTS)
+  const rId = rec.rel(slide.part, REL_MODERN_COMMENTS, relativeTarget(slide.part, part))
+  const sdoc = rec.doc(slide.part)
+  const ext = ensure(sdoc.documentElement as unknown as Element, NS.p, 'extLst', SLD_ORDER)
+  const el = mk(sdoc, NS.p, 'ext', { uri: EXT_COMMENT_REL })
+  const ref = sdoc.createElementNS(NS_P188, 'p188:commentRel')
+  ref.setAttributeNS(NS.r, `${sdoc.documentElement!.lookupPrefix(NS.r) ?? 'r'}:id`, rId)
+  el.appendChild(ref)
+  ext.appendChild(el)
+  rec.save(slide.part, sdoc)
+  const doc = rec.doc(part)
+  return { part, doc, root: doc.documentElement as unknown as Element }
+}
+
+function addComment(rec: Rec, op: Extract<DeckOp, { kind: 'addComment' }>) {
+  const deck = deckOf(rec)
+  const slide = slideOf(deck, op.slide)
+  const body = commentText(op.text)
+  if (!op.id) throw new PptxError('A new comment needs an id.')
+  if (slide.comments.threads.some((t) => t.id === op.id)) throw new PptxError(`Slide ${slide.number} already has a comment ${op.id}.`)
+  const sldId = sldIdOf(slideList(rec), slide.part).getAttribute('id') ?? ''
+  // The slide's creation id when it has one (p14); 0 says it is not known.
+  const sdoc = rec.doc(slide.part)
+  const cId = sdoc.getElementsByTagNameNS(NS_P14, 'creationId')[0]?.getAttribute('val') ?? '0'
+  const sldMk = `<pc:sldMk cId="${escXml(cId)}" sldId="${escXml(sldId)}"/>`
+  let monikers: string
+  if (op.anchor.kind === 'shape') {
+    const found = shapeOf(rec, deck, slide.part, op.anchor.shape)
+    const mkName = MONIKER[found.el.localName]
+    if (!mkName) throw new PptxError(`Shape ${op.anchor.shape} can't take a comment.`)
+    const creation = cNvPrOf(found.el)?.getElementsByTagNameNS(NS_A16, 'creationId')[0]?.getAttribute('id') ?? null
+    monikers = `<ac:deMkLst xmlns:ac="${NS_AC}" xmlns:pc="${NS_PC}"><pc:docMk/>${sldMk}<ac:${mkName} id="${escXml(op.anchor.shape)}"${creation ? ` creationId="${escXml(creation)}"` : ''}/></ac:deMkLst>`
+  } else monikers = `<pc:sldMkLst xmlns:pc="${NS_PC}"><pc:docMk/>${sldMk}</pc:sldMkLst>`
+  const authorId = authorIdOf(rec, op.author)
+  const cd = ensureCommentDoc(rec, slide, sldId)
+  const pos = op.pos ? `<p188:pos x="${Math.round(op.pos.x)}" y="${Math.round(op.pos.y)}"/>` : ''
+  cd.root.appendChild(commentFragment(cd.doc, `<p188:cm id="${escXml(op.id)}" authorId="${escXml(authorId)}" created="${escXml(op.created)}">${monikers}${pos}${body}</p188:cm>`))
+  rec.save(cd.part, cd.doc)
+  return null
+}
+
+function replyComment(rec: Rec, op: Extract<DeckOp, { kind: 'replyComment' }>) {
+  const body = commentText(op.text)
+  if (!op.id) throw new PptxError('A new reply needs an id.')
+  const c = findComment(rec, op.slide, op.comment)
+  const authorId = authorIdOf(rec, op.author)
+  let list = kid(c.cm, NS_P188, 'replyLst')
+  if (!list) {
+    list = mk(c.doc, NS_P188, 'replyLst')
+    insertOrdered(c.cm, list, CM_ORDER)
+  }
+  list.appendChild(commentFragment(c.doc, `<p188:reply id="${escXml(op.id)}" authorId="${escXml(authorId)}" created="${escXml(op.created)}">${body}</p188:reply>`))
+  rec.save(c.part, c.doc)
+  return null
+}
+
+function editComment(rec: Rec, op: Extract<DeckOp, { kind: 'editComment' }>) {
+  const body = commentText(op.text)
+  const c = findComment(rec, op.slide, op.comment)
+  const el = op.reply === null ? c.cm : findReply(c.cm, op.reply)
+  mustOwn(rec, el.getAttribute('authorId') ?? '', op.author, 'edit')
+  const old = kid(el, NS_P188, 'txBody')
+  const made = commentFragment(c.doc, body)
+  if (old) el.replaceChild(made, old)
+  else insertOrdered(el, made, CM_ORDER)
+  rec.save(c.part, c.doc)
+  return null
+}
+
+function setCommentStatus(rec: Rec, op: Extract<DeckOp, { kind: 'setCommentStatus' }>) {
+  const c = findComment(rec, op.slide, op.comment)
+  const now = c.cm.getAttribute('status') === 'resolved' ? 'resolved' : 'active'
+  if (now === op.status) return null
+  if (op.status === 'resolved') c.cm.setAttribute('status', 'resolved')
+  else c.cm.removeAttribute('status')
+  rec.save(c.part, c.doc)
+  return null
+}
+
+function deleteComment(rec: Rec, op: Extract<DeckOp, { kind: 'deleteComment' }>) {
+  const c = findComment(rec, op.slide, op.comment)
+  const el = op.reply === null ? c.cm : findReply(c.cm, op.reply)
+  mustOwn(rec, el.getAttribute('authorId') ?? '', op.author, 'delete')
+  const parent = el.parentNode as Element
+  parent.removeChild(el)
+  if (op.reply !== null && elementKids(parent).length === 0) c.cm.removeChild(parent)
+  if (elementKids(c.root).some((k) => k.namespaceURI === NS_P188 && k.localName === 'cm')) {
+    rec.save(c.part, c.doc)
+    return null
+  }
+  // The slide's last comment: the part, its relationship and the slide's reference to it go.
+  const rel = rec.pkg.relationships(c.slide.part).find((r) => r.type === REL_MODERN_COMMENTS && r.part?.toLowerCase() === c.part.toLowerCase())
+  rec.drop(c.part)
+  if (!rel) return null
+  const relsPart = relsPartOf(c.slide.part)
+  const relsDoc = rec.doc(relsPart)
+  for (const r of elementKids(relsDoc.documentElement as unknown as Element)) if (r.getAttribute('Id') === rel.id) r.parentNode!.removeChild(r)
+  rec.save(relsPart, relsDoc)
+  const sdoc = rec.doc(c.slide.part)
+  const refs = sdoc.getElementsByTagNameNS(NS_P188, 'commentRel')
+  for (let i = refs.length - 1; i >= 0; i--) {
+    const ref = refs[i]!
+    if (ref.getAttributeNS(NS.r, 'id') !== rel.id) continue
+    const ext = ref.parentNode as Element
+    const list = ext.parentNode as Element
+    list.removeChild(ext)
+    if (elementKids(list).length === 0) list.parentNode!.removeChild(list)
+    rec.save(c.slide.part, sdoc)
+  }
+  return null
 }
