@@ -3,7 +3,7 @@ import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import { settingsSchema, type DesiredState } from '../company-repo.ts'
 import { EE_VERSION } from '../version.ts'
 import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
-import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest } from './protocol.ts'
+import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest, type DomainClaimV1 } from './protocol.ts'
 
 const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
 const CP = 'https://hosting.example.com'
@@ -33,6 +33,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
   const commits: string[] = []
   const logs: Array<{ type: string; message: string }> = []
   let answer: (url: string) => Response = () => Response.json({ protocol: 1, pollSeconds: 60 })
+  let claims: DomainClaimV1[] | null = null
   const host = {
     read: async () => structuredClone(state),
     change: vi.fn(async (message: string, mutate: (s: typeof state) => typeof state) => {
@@ -84,6 +85,9 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     }),
     now: () => new Date('2026-11-16T12:00:00Z'),
     log: async (type: string, message: string) => void logs.push({ type, message }),
+    saveClaims: vi.fn(async (c: DomainClaimV1[] | null) => {
+      claims = c === null ? null : structuredClone(c)
+    }),
   }
   return {
     host: host as unknown as FleetHost & typeof host,
@@ -93,6 +97,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     commits,
     logs,
     state: () => state,
+    claims: () => claims,
     setAnswer: (a: (url: string) => Response) => (answer = a),
     setBackup: (c: BackupConfig | null, r: BackupRun[] = [], h?: Health) => {
       backupCfg = c
@@ -467,6 +472,47 @@ describe('fleet: desired state (level-triggered)', () => {
     expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(['EE_DOMAINS_API_BASE', 'EE_DOMAINS_TOKEN']))
     expect(f.commits).toHaveLength(n)
     expect(f.host.reconcile).not.toHaveBeenCalled()
+  })
+
+  it('claims: announced; each poll stores the latest desired.claims; null or absent clears them', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const claims = [
+      { host: 'www.acme.com', verified: false, txtName: '_ee-verify.www.acme.com', txtValue: 'company-token' },
+      { host: 'acme.com', verified: true, txtName: '_ee-verify.acme.com', txtValue: 'company-token' },
+    ]
+    f.setAnswer(desired({ claims }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(JSON.parse(String(f.calls[0]!.init.body)).features).toContain('claims')
+    expect(f.claims()).toEqual(claims)
+    const verified = claims.map((c) => ({ ...c, verified: true }))
+    f.setAnswer(desired({ claims: verified }))
+    await agent.poll()
+    expect(f.claims()).toEqual(verified)
+    f.setAnswer(desired({ claims: [] }))
+    await agent.poll()
+    expect(f.claims()).toEqual([])
+    f.setAnswer(desired({ claims: null }))
+    await agent.poll()
+    expect(f.claims()).toBeNull()
+    f.setAnswer(desired({ claims }))
+    await agent.poll()
+    f.setAnswer(desired())
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.claims()).toBeNull()
+    // Storing claims is no change to the company repo.
+    expect(f.commits).toEqual([])
+  })
+
+  it('claims: a failed store is a poll error, and the other fields still apply', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    f.host.saveClaims.mockRejectedValueOnce(new Error('disk full'))
+    f.setAnswer(desired({ suspended: true, claims: [] }))
+    const r = await agent.poll()
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('claims: disk full') })
+    expect(f.state().settings.suspended).toBe(true)
   })
 
   it('backup: configures the fleet target, reconfigures only on change, null removes only its own', async () => {

@@ -101,3 +101,19 @@ describe('ee client: domains and certificates (plan/domains-one-claim.md D1)', (
     expect(s.certificates).toEqual(certificates)
   })
 })
+
+describe('ee client: domain claims on a managed box (plan/domains-one-claim.md D4)', () => {
+  it('status carries the claims the control plane sent, as ee sends them', async () => {
+    const claims: EeStatus['claims'] = [
+      { host: 'eigenenterprise.app', verified: false, txtName: '_ee-verify.eigenenterprise.app', txtValue: 'company-token' },
+      { host: 'www.eigenenterprise.app', verified: true, txtName: '_ee-verify.www.eigenenterprise.app', txtValue: 'company-token' },
+    ]
+    const { client } = recording(() => ({ status: 200, data: { certificates: [], claims } }))
+    expect((await client.status()).claims).toEqual(claims)
+  })
+
+  it('status: claims is null on a box that is not managed (or has received nothing yet)', async () => {
+    const { client } = recording(() => ({ status: 200, data: { certificates: [], claims: null } }))
+    expect((await client.status()).claims).toBeNull()
+  })
+})

@@ -31,6 +31,8 @@ export const PATHS = {
   restoreState: '/var/lib/ee/restore.json',
   /** The last update from Settings → Updates (upgrade-job.ts); outlives the update's restarts. */
   upgradeState: '/var/lib/ee/upgrade.json',
+  /** Managed boxes: the company's domain claims as the control plane last sent them (fleet/claims.ts). */
+  fleetClaims: '/var/lib/ee/fleet-claims.json',
   /** Root-only scratch for one backup/restore run (emptied after). */
   backupTmp: '/var/lib/ee/backup-tmp',
   /**

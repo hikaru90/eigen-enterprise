@@ -36,6 +36,7 @@ export class FakeEe implements AppsEe {
       lastReconcileError: null,
       settings: { consoleHost: this.consoleHost, publicHost: null, acmeEmail: null, callsHost: null },
       certificates: [],
+      claims: null,
       routes: this.routes,
       workloads: this.workloads.map((w) => ({ ...w, secrets: this.secretNames[w.name] ?? [] })),
       events: this.journal.slice(-50),

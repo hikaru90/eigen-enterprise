@@ -132,6 +132,8 @@ export type EeStatus = {
   routes: Array<{ host: string; workload: string; allowPaths?: string[] }>
   /** One per host ee serves (console, calls, every route), observed from Caddy (ee/src/certificates.ts). */
   certificates: EeCertificate[]
+  /** Managed box: every domain claim the company holds at the control plane, with its TXT; null = not managed / nothing received yet (ee/src/fleet/claims.ts). */
+  claims: EeClaim[] | null
   workloads: Array<{
     name: string
     tier: 'system' | 'module' | 'app'
@@ -194,6 +196,14 @@ export type EeCertificate = {
   lastError: string | null
   nextRetryAt: string | null
   notAfter: string | null
+}
+
+/** A custom host is routed on a managed box only once `txtName` (`_ee-verify.<host>`) holds `txtValue` (fleet protocol `desired.claims`). */
+export type EeClaim = {
+  host: string
+  verified: boolean
+  txtName: string
+  txtValue: string
 }
 
 /** An S3-compatible bucket (ee/src/backup/s3.ts). */

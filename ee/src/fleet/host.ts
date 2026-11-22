@@ -6,7 +6,9 @@ import type { Ee } from '../daemon.ts'
 import { saveJournal } from '../journal.ts'
 import { emit, OS_INTERNAL_PORT } from '../reconcile.ts'
 import { mustRun } from '../system.ts'
+import { PATHS } from '../paths.ts'
 import { FLEET_AUTHOR, UPGRADE_UNIT, type FleetHost } from './agent.ts'
+import { writeClaims } from './claims.ts'
 
 /** GET on os's loopback port with the fleet bearer token; rejects on a connection error or timeout. */
 /** os's answer as JSON; anything but a 200 with JSON throws, naming the status (never the body: it may echo secrets). */
@@ -123,6 +125,9 @@ export function fleetHost(ee: Ee): FleetHost {
       console.error(`fleet: ${message}`)
       emit(ee.journal, sys, type, null, message)
       await saveJournal(sys, ee.journal)
+    },
+    saveClaims: async (claims) => {
+      await writeClaims(sys, PATHS.fleetClaims, claims)
     },
   }
 }

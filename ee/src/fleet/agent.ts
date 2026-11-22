@@ -16,6 +16,7 @@ import {
   reportV1,
   signFleetRequest,
   type DesiredV1,
+  type DomainClaimV1,
   type FleetFeature,
   type ReportV1,
 } from './protocol.ts'
@@ -110,6 +111,8 @@ export type FleetHost = {
   now(): Date
   /** Loud: journal (when new) + stderr. Never given a secret value. */
   log(type: string, message: string): Promise<void>
+  /** Store the company's domain claims as the control plane sent them (fleet/claims.ts); null clears them. */
+  saveClaims(claims: DomainClaimV1[] | null): Promise<void>
 }
 
 export type PollResult = { at: string; ok: boolean; error: string | null; ignoredFields: string[] }
@@ -279,6 +282,8 @@ export class FleetAgent {
     if (d.platformAi !== undefined) await step('platformAi', () => this.applyPlatformAi(d.platformAi!))
     if (d.mail !== undefined) await step('mail', () => this.applyMail(d.mail!))
     if (d.domains !== undefined) await step('domains', () => this.applyDomains(d.domains!))
+    // Absent = a control plane that doesn't send claims: nothing to show, so nothing kept.
+    await step('claims', () => this.host.saveClaims(d.claims ?? null))
     if (d.backup !== undefined) await step('backup', () => this.applyBackup(d.backup!))
     if (d.escrowBackupKey === true) await step('escrowBackupKey', () => this.applyEscrowBackupKey())
     if (d.backupRequestedAt !== undefined && d.backupRequestedAt !== null) await step('backupRequestedAt', () => this.applyBackupNow(d.backupRequestedAt!))

@@ -48,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 const base64 = z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/)
@@ -167,6 +167,21 @@ export const managedDomainsV1 = z
   })
   .strict()
 
+/**
+ * One domain claim the company holds at the control plane (plan/domains-one-claim.md D4): a custom
+ * host is routed only once `txtName` (`_ee-verify.<host>`) holds `txtValue` (the company's token).
+ * The box shows it so the person knows exactly which TXT record to add.
+ */
+export const domainClaimV1 = z
+  .object({
+    host: z.string().min(1).max(253),
+    verified: z.boolean(),
+    txtName: z.string().min(1).max(300),
+    txtValue: z.string().min(1).max(512),
+  })
+  .strict()
+export type DomainClaimV1 = z.infer<typeof domainClaimV1>
+
 /** Known fields, each optional so a box can tell "not sent" from "sent as null". */
 const desiredKnown = {
   protocol: z.literal(FLEET_PROTOCOL),
@@ -192,6 +207,8 @@ const desiredKnown = {
   mail: managedMailV1.nullable().optional(),
   /** Managed domains: os's credential for the control plane's domains API; null = none. */
   domains: managedDomainsV1.nullable().optional(),
+  /** Every domain claim the company holds (verified or not, with its TXT); null = none to show. */
+  claims: z.array(domainClaimV1).max(500).nullable().optional(),
 }
 
 export const desiredV1 = z.object(desiredKnown).strip()
