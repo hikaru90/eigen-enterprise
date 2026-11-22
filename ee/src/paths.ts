@@ -18,6 +18,12 @@ export const PATHS = {
   unitDir: '/etc/systemd/system',
   caddyConfig: '/etc/caddy/ee.json',
   caddyAdminSocket: '/run/caddy/admin.sock',
+  /**
+   * Caddy's data directory (certificates, ACME account, locks). The default of the
+   * Debian package's caddy user ($HOME/.local/share/caddy), pinned in the rendered
+   * config so ee reads certificates from where Caddy writes them (certificates.ts).
+   */
+  caddyStorage: '/var/lib/caddy/.local/share/caddy',
   postgresSocketDir: '/var/run/postgresql',
   /** Backup run records (plan/phase-backups.md); config + key live sealed in the secret store. */
   backupRuns: '/var/lib/ee/backups.json',

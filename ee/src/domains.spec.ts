@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDomain, callsHostFor, removeDomain, setConsoleHost, withCallsHost } from './domains.ts'
+import { addDomain, callsHostFor, removeDomain, setConsoleHost, setDomain, withCallsHost } from './domains.ts'
 import { livekitWorkload } from './livekit.ts'
 import { workloadSchema } from './spec.ts'
 
@@ -58,5 +58,39 @@ describe('the calls host (rtc.<console host> → livekit)', () => {
 
   it('livekit gets no app hosts (a system workload)', () => {
     expect(() => addDomain(base(), { host: 'meet.example.com', workload: 'livekit', role: 'app' })).toThrow(/system workload/)
+  })
+})
+
+describe('setting what a host shows replaces its previous target and says which', () => {
+  const shop = workloadSchema.parse({ name: 'shop', tier: 'app', source })
+  const withSite = () => setDomain(base([os, lk, site, shop]), { host: 'www.example.com', workload: 'site', role: 'app' }).state
+
+  it('a new host replaced nothing', () => {
+    const r = setDomain(base(), { host: 'www.example.com', workload: 'site', role: 'app' })
+    expect(r.replaced).toBeNull()
+    expect(r.state.routes).toContainEqual({ host: 'www.example.com', workload: 'site' })
+  })
+
+  it('switching a host to another app names the app it showed before', () => {
+    const r = setDomain(withSite(), { host: 'www.example.com', workload: 'shop', role: 'app' })
+    expect(r.replaced).toBe('site')
+    expect(r.state.routes.filter((x) => x.host === 'www.example.com')).toEqual([{ host: 'www.example.com', workload: 'shop' }])
+  })
+
+  it('making an app host the public website names the app', () => {
+    expect(setDomain(withSite(), { host: 'www.example.com', workload: 'os', role: 'public' }).replaced).toBe('site')
+  })
+
+  it('making an app host the console host names the app', () => {
+    expect(setDomain(withSite(), { host: 'www.example.com', workload: 'os', role: 'console' }).replaced).toBe('site')
+  })
+
+  it('setting the same target again replaced nothing', () => {
+    expect(setDomain(withSite(), { host: 'www.example.com', workload: 'site', role: 'app' }).replaced).toBeNull()
+  })
+
+  it('addDomain is the state half of setDomain', () => {
+    const i = { host: 'www.example.com', workload: 'shop', role: 'app' } as const
+    expect(addDomain(withSite(), i)).toEqual(setDomain(withSite(), i).state)
   })
 })

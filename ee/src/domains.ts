@@ -94,6 +94,20 @@ export function addDomain(s: State, i: { host: string; workload: string; role: '
   return { ...s, routes }
 }
 
+/**
+ * Set what a host shows. The company owns the domain, so a host that showed
+ * another workload is switched (owner decision, plan/domains-one-claim.md) —
+ * and the workload it replaced is returned so the change is never silent.
+ */
+export function setDomain(
+  s: State,
+  i: { host: string; workload: string; role: 'console' | 'public' | 'app' },
+): { state: State; replaced: string | null } {
+  const previous = s.routes.find((r) => r.host === i.host)?.workload ?? null
+  const state = addDomain(s, i)
+  return { state, replaced: previous !== null && previous !== i.workload ? previous : null }
+}
+
 export function removeDomain(s: State, host: string): State {
   if (host === s.settings.consoleHost) throw new Error('the console host cannot be removed; set another one first')
   if (host === s.settings.callsHost) throw new Error('the calls host follows the console host and cannot be removed on its own')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EeClient, PREVIEW_BUSY, PreviewBusyError, SubstrateError, type EeTransport, type PreviewView } from './client'
+import { EeClient, PREVIEW_BUSY, PreviewBusyError, SubstrateError, type EeStatus, type EeTransport, type PreviewView } from './client'
 
 const view = (over: Partial<PreviewView> = {}): PreviewView => ({
   id: 'pv3f9a0c12be47',
@@ -65,5 +65,39 @@ describe('ee client: /v1/previews (the Drive app preview contract)', () => {
   it('an unknown id is a plain SubstrateError 404', async () => {
     const { client } = recording(() => ({ status: 404, data: { type: 'urn:ee:not_found', detail: 'no such preview' } }))
     await expect(client.preview('pv3f9a0c12be47')).rejects.toMatchObject({ status: 404, message: 'no such preview' })
+  })
+})
+
+describe('ee client: domains and certificates (plan/domains-one-claim.md D1)', () => {
+  it('addDomain returns the workload the host showed before', async () => {
+    const { client, calls } = recording(() => ({ status: 200, data: { rev: 'r', reconcileError: null, replaced: 'site' } }))
+    const out = await client.addDomain({ host: 'www.example.com', workload: 'shop', role: 'app', author: 'human:u1' })
+    expect(out).toEqual({ rev: 'r', reconcileError: null, replaced: 'site' })
+    expect(calls).toEqual([{ method: 'POST', path: '/v1/domains', body: { host: 'www.example.com', workload: 'shop', role: 'app', author: 'human:u1' } }])
+  })
+
+  it('retryCertificate posts the host (and who asked)', async () => {
+    const { client, calls } = recording(() => ({ status: 200, data: { host: 'www.example.com', reloaded: true } }))
+    expect(await client.retryCertificate('www.example.com', 'human:u1')).toEqual({ host: 'www.example.com', reloaded: true })
+    expect(calls).toEqual([{ method: 'POST', path: '/v1/certificates/retry', body: { host: 'www.example.com', author: 'human:u1' } }])
+  })
+
+  it('a host ee does not serve is a 404 with ee’s plain sentence', async () => {
+    const detail = 'this server does not serve x.example.com, so it has no certificate to retry; set the domain first'
+    const { client } = recording(() => ({ status: 404, data: { type: 'urn:ee:error', detail } }))
+    await expect(client.retryCertificate('x.example.com', 'human:u1')).rejects.toMatchObject({ status: 404, message: detail })
+  })
+
+  it('status carries callsHost and certificates as ee sends them', async () => {
+    const certificates: EeStatus['certificates'] = [
+      { host: 'eigenenterprise.app', state: 'failing', lastError: 'timeout', nextRetryAt: '2026-11-22T10:10:01.000Z', notAfter: null },
+    ]
+    const { client } = recording(() => ({
+      status: 200,
+      data: { settings: { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com' }, certificates },
+    }))
+    const s = await client.status()
+    expect(s.settings.callsHost).toBe('rtc.os.example.com')
+    expect(s.certificates).toEqual(certificates)
   })
 })

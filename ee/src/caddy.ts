@@ -139,6 +139,8 @@ export function renderCaddyConfig(input: CaddyInput): Json {
 
   return {
     admin: { listen: `unix/${PATHS.caddyAdminSocket}` },
+    // Pinned (the package default) so certificates.ts reads where Caddy writes.
+    storage: { module: 'file_system', root: PATHS.caddyStorage },
     apps: {
       http: { servers },
       ...(policies.length > 0 ? { tls: { automation: { policies } } } : {}),

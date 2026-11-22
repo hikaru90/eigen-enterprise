@@ -122,8 +122,16 @@ export type EeStatus = {
   appliedRev: string | null
   desiredRev: string
   lastReconcileError: string | null
-  settings: { consoleHost: string; publicHost: string | null; acmeEmail: string | null }
+  settings: {
+    consoleHost: string
+    publicHost: string | null
+    acmeEmail: string | null
+    /** rtc.<console host> → livekit while calls run; null otherwise (ee/src/domains.ts). */
+    callsHost: string | null
+  }
   routes: Array<{ host: string; workload: string; allowPaths?: string[] }>
+  /** One per host ee serves (console, calls, every route), observed from Caddy (ee/src/certificates.ts). */
+  certificates: EeCertificate[]
   workloads: Array<{
     name: string
     tier: 'system' | 'module' | 'app'
@@ -171,6 +179,22 @@ export type EeDeploy = {
 }
 
 export type ChangeResult = { rev: string; reconcileError: string | null }
+
+/** POST /v1/domains: the change, plus the workload the host showed before (null: it showed nothing else). */
+export type DomainSetResult = ChangeResult & { replaced: string | null }
+
+/**
+ * A host's certificate as ee observes it: issued (a valid one is stored), failing
+ * (no valid one; Caddy's last attempt failed), pending (no valid one yet, no failure
+ * seen). lastError is Caddy's own text; nextRetryAt null = not known or not waiting.
+ */
+export type EeCertificate = {
+  host: string
+  state: 'issued' | 'pending' | 'failing'
+  lastError: string | null
+  nextRetryAt: string | null
+  notAfter: string | null
+}
 
 /** An S3-compatible bucket (ee/src/backup/s3.ts). */
 export type BackupTarget = {
@@ -376,8 +400,12 @@ export class EeClient {
     workload: string
     role: 'console' | 'public' | 'app'
     author: string
-  }): Promise<ChangeResult> {
+  }): Promise<DomainSetResult> {
     return this.call('POST', '/v1/domains', i)
+  }
+  /** Caddy retries the host's certificate now (graceful reload; ends an ACME backoff). 404: ee does not serve the host. */
+  retryCertificate(host: string, author: string): Promise<{ host: string; reloaded: true }> {
+    return this.call('POST', '/v1/certificates/retry', { host, author })
   }
   removeDomain(i: { host: string; author: string }): Promise<ChangeResult> {
     return this.call('DELETE', '/v1/domains', i)
