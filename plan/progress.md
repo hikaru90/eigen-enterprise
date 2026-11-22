@@ -2,7 +2,11 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
-## 2026-11-21 — Every error: a sentence for the person + "Copy agent instructions" (owner: "we should always provide the user with understandable error messages … there should always be a button saying copy agent instructions"; committed on main on top of v0.5.33, not pushed, not released)
+## 2026-11-22 — v0.5.34 released: every error is a sentence for the person + "Copy agent instructions" (owner: "we should always provide the user with understandable error messages … there should always be a button saying copy agent instructions" · "go, commit" · "push after" · "Yes, release")
+
+- **Released:** `ab2f3aa4` plus `[release] v0.5.34` `137b3740` and tag `v0.5.34`, pushed through the local gate (unit 8,644, components 816).
+- **Local box:** arm64 bundle built in the main checkout (`dist/release`), `box.sh install os.ee.localhost` ✓, `/api/health` 200.
+- **ee-one and os.cerberusblue.com:** not upgraded from here; the owner sets the /ops target to 0.5.34.
 
 - **Concept (decision log, owner may veto):**
   1. **One error shape** for every surface: `ErrorReport = { error, agent }` (`src/lib/errors/agent-report.ts`, isomorphic). `error` is the plain sentence for the person (what happened, what to do). `agent` (`AgentReport`) is for a coding or ops agent: what was attempted, the registry tool, its input (secrets redacted), the error code (`KernelError` code or error class), `details` (redacted), the cause chain, and next steps.
