@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-22 — Domains one claim system, wave 1 merged (plan/domains-one-claim.md; owner: "Yes, start building")
+
+- **D1 ee** (`93d65b13`): `POST /v1/domains` returns `replaced` and journals `domain.replaced` ("<host> now shows <new> instead of <old>"); `GET /v1/status` → `certificates[]` (issued from Caddy storage, failing/pending from Caddy's `tls.obtain`/`tls.renew` JSON journal lines); `POST /v1/certificates/retry {host, author}` (graceful `systemctl reload caddy.service`) + `ee certificate retry <host>`; kernel `EeStatus.settings.callsHost`. ee 480 specs.
+  - Caddy storage is now set explicitly to `/var/lib/caddy/.local/share/caddy` (checked on ee-one and the cerberusblue box: both already store there as user `caddy`, so no re-issue).
+  - Limits: `nextRetryAt` only when one host is failing (Caddy's "will retry" line carries no identifier); only the last 5000 journal lines are read.
+  - (Mine) `author` added to the retry request so it appears in the activity like other changes.
+- **D3 DNS observer** (`3e40bc54`, `modules/domains/dns/`): expected records (web A/AAAA, `_ee-verify` TXT, calls A, mail adapter), `observe()` ok | missing | wrong | lookup_failed with observed values, cached resolver with `forget()`. 36 specs. Known: DMARC compared exactly (a stricter existing policy shows "wrong"; D2/D5 to handle).
+- **Cloud D4a** (eigenEnterprise-cloud `4707c2d`, `89a016c`, pushed, not deployed): claims per (company, host), at most one verified per host, the TXT decides and moves the route; verified claims re-checked hourly; ops shows other claimants + "Drop claim"; a failed TXT lookup no longer aborts the sweep. Migration `0009_claims_per_company`. 263 tests.
+- main: `npm run check` 0 errors; modules + ee client 2,579 passed.
+- **Next:** wave 2 running — claims protocol (`desired.claims` → ee status) and D2 kernel `domains` module; then D5 page, D6 proof.
+
 ## 2026-11-22 — eigenenterprise.app (the website) on ee-one: host router fix in the control plane; one claim system for domains (owner: "I would say we have one claim system" · "Yes, make it")
 
 - **Diagnosis:** the app `eigen-enterprise-website` (repo `hikaru90/eigen-enterprise-website`, release `e90153d`) is healthy on ee-one with domain `eigenenterprise.app`; DNS is right (`@` and `*` → 159.195.209.90). The host router (ee-host HAProxy on rs500-1) only had `one.` and `rtc.one.`: the control plane never routed the hosted domain itself to any box.
