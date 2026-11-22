@@ -44,6 +44,8 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
   ee reconcile
   ee domain add <host> [--workload os] [--role console|public|app]
   ee domain remove <host>
+  ee certificate retry <host>            (Caddy retries that host's certificate now: graceful reload,
+                                          ends an ACME backoff; status shows each host's certificate)
   ee secret set <workload> <NAME>        (value read from stdin)
   ee logs <workload>
   ee backup [--scheduled]                (take a snapshot now; the nightly timer passes --scheduled)
@@ -332,6 +334,11 @@ async function main(argv: string[]): Promise<void> {
       }
       if (verb === 'remove') return print(call('DELETE', '/v1/domains', { host, author: who() }))
       throw new Error(USAGE)
+    }
+    case 'certificate': {
+      const [verb, host] = rest
+      if (verb !== 'retry' || !host) throw new Error(USAGE)
+      return print(call('POST', '/v1/certificates/retry', { host, author: who() }))
     }
     case 'secret': {
       const [verb, workload, name] = rest

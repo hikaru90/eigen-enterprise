@@ -34,7 +34,8 @@ export class FakeEe implements AppsEe {
       appliedRev: 'x',
       desiredRev: 'x',
       lastReconcileError: null,
-      settings: { consoleHost: this.consoleHost, publicHost: null, acmeEmail: null },
+      settings: { consoleHost: this.consoleHost, publicHost: null, acmeEmail: null, callsHost: null },
+      certificates: [],
       routes: this.routes,
       workloads: this.workloads.map((w) => ({ ...w, secrets: this.secretNames[w.name] ?? [] })),
       events: this.journal.slice(-50),
@@ -135,7 +136,7 @@ export class FakeEe implements AppsEe {
   async addDomain(i: Parameters<AppsEe['addDomain']>[0]) {
     this.calls.push({ verb: 'addDomain', input: i })
     this.routes = [...this.routes, { host: i.host, workload: i.workload }]
-    return { rev: 's2', reconcileError: null }
+    return { rev: 's2', reconcileError: null, replaced: null }
   }
   async setSecret(i: Parameters<AppsEe['setSecret']>[0]) {
     this.calls.push({ verb: 'setSecret', input: i })

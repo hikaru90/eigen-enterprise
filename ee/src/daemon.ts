@@ -12,7 +12,8 @@ import { previewRoute, PreviewService, type PreviewDeps } from './previews.ts'
 import { SecretStore } from './secret-store.ts'
 import { appContractSchema, assertInCatalog, CATALOG, CatalogGapError, gitSource, NAME, routeSchema, workloadSchema, type Route, type Workload } from './spec.ts'
 import { mustRun, type System } from './system.ts'
-import { addDomain, removeDomain, setConsoleHost } from './domains.ts'
+import { removeDomain, setConsoleHost, setDomain } from './domains.ts'
+import { readCertificates, servedHosts } from './certificates.ts'
 import { fetchSource, readRepoFile, readTree, SourceReadError, TREE_MAX_DEPTH } from './sources.ts'
 import { checkDeployKey, createDeployKey, deleteDeployKey, KEY_ID, REPO } from './deploy-keys.ts'
 import { claimState, claimUrl, newClaim, newOwnerLink, OWNER_LINK_SECRETS, ownerLinkUrl } from './claim.ts'
@@ -235,7 +236,26 @@ export class Ee {
       }),
       events: this.journal.events.slice(-50),
       backups: await this.backups.status(),
+      certificates: await readCertificates(this.sys, servedHosts(desired.settings, desired.routes)),
     }
+  }
+
+  /**
+   * Make Caddy try a host's certificate now: a graceful forced reload of the
+   * edge config it already runs (`systemctl reload caddy` → `caddy reload --force`)
+   * restarts certificate management and so ends an ACME backoff. Serving continues.
+   */
+  async retryCertificate(host: string, author: string): Promise<{ host: string; reloaded: true }> {
+    const desired = await this.repo.read()
+    if (!servedHosts(desired.settings, desired.routes).includes(host)) {
+      throw new HttpError(404, `this server does not serve ${host}, so it has no certificate to retry; set the domain first`)
+    }
+    const next = this.edgeQueue.then(() => mustRun(this.sys, 'systemctl', ['reload', 'caddy.service']))
+    this.edgeQueue = next.catch(() => undefined)
+    await next
+    emit(this.journal, this.sys, 'certificate.retry', null, `certificate for ${host}: Caddy reloaded to retry now (by ${author})`, { host })
+    await saveJournal(this.sys, this.journal)
+    return { host, reloaded: true }
   }
 }
 
@@ -354,7 +374,25 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
       }
       if (route === 'POST /v1/domains') {
         const i = domainInput.parse(await body(req))
-        return send(res, 200, await ee.change(`domain: ${i.host} → ${i.workload} (${i.role})`, i.author, (s) => addDomain(s, i)))
+        let replaced: string | null = null
+        const result = await ee.change(`domain: ${i.host} → ${i.workload} (${i.role})`, i.author, (s) => {
+          const out = setDomain(s, i)
+          replaced = out.replaced
+          return out.state
+        })
+        if (replaced !== null) {
+          emit(ee.journal, ee.sys, 'domain.replaced', i.workload, `${i.host} now shows ${i.workload} instead of ${replaced} (set by ${i.author})`, {
+            host: i.host,
+            previous: replaced,
+            next: i.workload,
+          })
+          await saveJournal(ee.sys, ee.journal)
+        }
+        return send(res, 200, { ...result, replaced })
+      }
+      if (route === 'POST /v1/certificates/retry') {
+        const i = z.object({ host: routeSchema.shape.host, author }).strict().parse(await body(req))
+        return send(res, 200, await ee.retryCertificate(i.host, i.author))
       }
       if (route === 'DELETE /v1/domains') {
         const i = z.object({ host: z.string(), author }).strict().parse(await body(req))

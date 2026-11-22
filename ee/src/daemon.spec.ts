@@ -197,6 +197,88 @@ describe('control API: owner link (back in as the owner)', () => {
   })
 })
 
+describe('control API: domains and certificates (plan/domains-one-claim.md D1)', () => {
+  const release = { kind: 'release', tarball: '/var/lib/ee/releases/x.tar.gz', sha256: 'a'.repeat(64) }
+  const state = () => ({
+    workloads: [
+      { name: 'os', tier: 'system', source: release, env: {}, secrets: [], deploy: { auto: false } },
+      { name: 'site', tier: 'app', source: release, env: {}, secrets: [], deploy: { auto: false } },
+      { name: 'shop', tier: 'app', source: release, env: {}, secrets: [], deploy: { auto: false } },
+    ],
+    routes: [
+      { host: 'os.example.com', workload: 'os' },
+      { host: 'www.example.com', workload: 'site' },
+    ],
+    settings: { consoleHost: 'os.example.com', publicHost: null, callsHost: 'rtc.os.example.com' },
+  })
+  /** commit runs the verb's mutation against `state()`; reconcile is a no-op. */
+  function committing(ee: Ee) {
+    vi.spyOn(ee.repo, 'commit').mockImplementation(async (_m, _a, mutate) => {
+      mutate(state() as never)
+      return 'r'.repeat(40)
+    })
+    vi.spyOn(ee, 'reconcile').mockResolvedValue(undefined as never)
+  }
+
+  it('POST /v1/domains switches a host and says which workload it replaced (journaled)', async () => {
+    const { ee, call } = await start()
+    committing(ee)
+    const r = await call('POST', '/v1/domains', { host: 'www.example.com', workload: 'shop', role: 'app', author: 'human:u1' })
+    expect(r.status).toBe(200)
+    expect(r.data).toEqual({ rev: 'r'.repeat(40), reconcileError: null, replaced: 'site' })
+    const e = ee.journal.events.find((x) => x.type === 'domain.replaced')
+    expect(e).toMatchObject({ workload: 'shop', message: 'www.example.com now shows shop instead of site (set by human:u1)', data: { host: 'www.example.com', previous: 'site', next: 'shop' } })
+  })
+
+  it('POST /v1/domains on a new host replaced nothing', async () => {
+    const { ee, call } = await start()
+    committing(ee)
+    const r = await call('POST', '/v1/domains', { host: 'shop.example.com', workload: 'shop', role: 'app', author: 'human:u1' })
+    expect(r.data).toMatchObject({ replaced: null })
+    expect(ee.journal.events.map((x) => x.type)).not.toContain('domain.replaced')
+  })
+
+  it('GET /v1/status reports a certificate for every host ee serves (routes + calls host)', async () => {
+    const { ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({ rev: 'x', ...state() } as never)
+    const r = await call('GET', '/v1/status')
+    expect(r.status).toBe(200)
+    const certs = (r.data as { certificates: Array<{ host: string; state: string }> }).certificates
+    expect(certs.map((c) => c.host)).toEqual(['os.example.com', 'rtc.os.example.com', 'www.example.com'])
+    expect(certs[0]).toEqual({ host: 'os.example.com', state: 'pending', lastError: null, nextRetryAt: null, notAfter: null })
+  })
+
+  it('POST /v1/certificates/retry reloads Caddy gracefully for a host ee serves', async () => {
+    const { sys, ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({ rev: 'x', ...state() } as never)
+    const run = vi.spyOn(sys, 'run')
+    const r = await call('POST', '/v1/certificates/retry', { host: 'www.example.com', author: 'human:u1' })
+    expect(r.status).toBe(200)
+    expect(r.data).toEqual({ host: 'www.example.com', reloaded: true })
+    expect(run).toHaveBeenCalledWith('systemctl', ['reload', 'caddy.service'], undefined)
+    expect(ee.journal.events.map((x) => x.type)).toContain('certificate.retry')
+  })
+
+  it('POST /v1/certificates/retry refuses a host ee does not serve (404, plain words) and reloads nothing', async () => {
+    const { sys, ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({ rev: 'x', ...state() } as never)
+    const run = vi.spyOn(sys, 'run')
+    const r = await call('POST', '/v1/certificates/retry', { host: 'other.example.com', author: 'human:u1' })
+    expect(r.status).toBe(404)
+    expect((r.data as { detail: string }).detail).toBe('this server does not serve other.example.com, so it has no certificate to retry; set the domain first')
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('POST /v1/certificates/retry says when the reload failed', async () => {
+    const { sys, ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue({ rev: 'x', ...state() } as never)
+    vi.spyOn(sys, 'run').mockResolvedValue({ code: 1, stdout: '', stderr: 'Job for caddy.service failed' })
+    const r = await call('POST', '/v1/certificates/retry', { host: 'www.example.com', author: 'human:u1' })
+    expect(r.status).toBe(500)
+    expect((r.data as { detail: string }).detail).toMatch(/systemctl reload caddy.service failed .*Job for caddy.service failed/)
+  })
+})
+
 describe('control API: deploy keys', () => {
   it('create → check → delete; only the public key ever comes back', async () => {
     const { sys, ee, call } = await start()
