@@ -9,7 +9,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **What confused the owner:** Company site settings refused the domain with "already assigned to another route" without naming the owner (the app). The website module has two website kinds (company site `/s`, apps) and Settings › Domains shows only bought + mail domains, not web routes.
 
 **Decisions:**
-- **Owner: one claim system for domains.** Company site and apps (and mail) claim hostnames through one model; Settings › Domains becomes the one place listing each zone's hostnames, their owner (linked) and the DNS records each needs vs what DNS says. Not built yet — concept to be planned.
+- **Owner: one claim system for domains.** Company site and apps (and mail) claim hostnames through one model; Settings › Domains becomes the one place listing each zone's hostnames, their owner (linked) and the DNS records each needs vs what DNS says. **Plan drafted:** [`plan/domains-one-claim.md`](domains-one-claim.md) (D1–D6), waiting for approval + two product answers.
 - **Owner:** websites and apps deploy on ee instances; Coolify is being retired and only still runs the control plane.
 
 ## 2026-11-22 — v0.5.34 released: every error is a sentence for the person + "Copy agent instructions" (owner: "we should always provide the user with understandable error messages … there should always be a button saying copy agent instructions" · "go, commit" · "push after" · "Yes, release")
