@@ -31,6 +31,9 @@ const data = {
   // Declared + set names (the substrate read); app.env holds the ones with a sealed value.
   secretNames: ['SHOP_REGION', 'SHOP_SECRET'],
   managed: true,
+  // Domains are a global setting: the app only shows what points at it (plan/domains-one-claim.md).
+  addresses: [{ host: 'shop.example.com', label: 'Live', on: true }],
+  addressesError: null,
   howtoUrl: 'https://os.example.com/docs/send-mail.md',
 }
 
@@ -47,9 +50,9 @@ describe('app detail settings', () => {
     renderDetail()
     await expect.element(page.getByRole('button', { name: 'Redeploy', exact: true })).toBeVisible()
     await expect.element(page.getByText('Ready to serve')).toBeVisible()
-    await expect.element(page.getByText('Domains & routing', { exact: true })).not.toBeVisible()
+    await expect.element(page.getByText('Domains', { exact: true })).not.toBeVisible()
     await page.getByRole('link', { name: 'App settings', exact: true }).click()
-    await expect.element(page.getByText('Domains & routing', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('Domains', { exact: true })).toBeVisible()
     await expect.element(page.getByText('Build settings', { exact: true })).toBeVisible()
     // One "Environment variables & secrets" list, each name once: sealed, or declared but unset.
     await expect.element(page.getByText(/^SHOP_REGION\s+sealed$/)).toBeVisible()
@@ -60,16 +63,16 @@ describe('app detail settings', () => {
     await expect.element(page.getByRole('button', { name: 'Redeploy', exact: true })).toBeVisible()
   })
 
-  it('a domain owner link opens directly to app settings', async () => {
+  it('a link to the app opens app settings, where its address links to Settings › Domains', async () => {
     window.history.replaceState(
       null,
       '',
       `${window.location.pathname}${window.location.search}#settings`,
     )
     renderDetail()
-    await expect.element(page.getByText('Domains & routing', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('Domains', { exact: true })).toBeVisible()
     await expect
-      .element(page.getByRole('link', { name: 'HTTPS & certificate settings' }))
-      .toHaveAttribute('href', '/m/website/settings#https')
+      .element(page.getByRole('link', { name: 'Change in Settings › Domains' }))
+      .toHaveAttribute('href', '/settings/domains#shop.example.com')
   })
 })
