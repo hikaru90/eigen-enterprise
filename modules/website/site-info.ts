@@ -23,14 +23,27 @@ export function sitePageUrl(origin: string, slug: string): string {
   return `${origin}${SITE_BASE_PATH}/${encodeURIComponent(slug)}`
 }
 
-export function buildSiteInfo(origin: string, pages: WebsitePage[]): SiteInfo {
+/**
+ * Site URLs (plan/domains-one-claim.md): on the site's own host (ee's
+ * publicHost) when it has one, else on the console. A draft is previewable
+ * only by the signed-in owner, and the session lives on the console, so a
+ * draft's link stays on the console either way.
+ */
+export function buildSiteInfo(
+  origins: { console: string; site: string | null },
+  pages: WebsitePage[],
+): SiteInfo {
+  const live = origins.site ?? origins.console
   return {
-    url: `${origin}${SITE_BASE_PATH}`,
-    pages: pages.map((page) => ({
-      slug: page.slug,
-      title: page.title,
-      status: page.visibility === 'public' ? 'published' : 'draft',
-      url: sitePageUrl(origin, page.slug),
-    })),
+    url: `${live}${SITE_BASE_PATH}`,
+    pages: pages.map((page) => {
+      const published = page.visibility === 'public'
+      return {
+        slug: page.slug,
+        title: page.title,
+        status: published ? 'published' : 'draft',
+        url: sitePageUrl(published ? live : origins.console, page.slug),
+      }
+    }),
   }
 }

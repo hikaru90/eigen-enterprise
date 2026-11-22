@@ -137,7 +137,7 @@ export const actions: Actions = {
     const host = field(f, 'host')
     const replace = field(f, 'replace')
     try {
-      const out = await ownerRun<{ host: string; domains: string[] }>(
+      const out = await ownerRun<{ host: string; domains: string[]; message: string }>(
         user,
         'website.app_domain_set',
         {
@@ -149,9 +149,8 @@ export const actions: Actions = {
       return {
         action: 'domainSet' as const,
         ok: true,
-        message: replace
-          ? `This app now runs at ${out.host}.`
-          : `${out.host} now points at this app.`,
+        // What the host showed before, in the shared rule's words (never a silent switch).
+        message: out.message,
       }
     } catch (err) {
       logAppFailure('website.app_domain_set', err)
@@ -169,14 +168,18 @@ export const actions: Actions = {
     const user = await requireAdmin(event.locals.user)
     const host = field(await event.request.formData(), 'host')
     try {
-      await ownerRun<{ host: string; domains: string[] }>(user, 'website.app_domain_remove', {
-        name: event.params.name,
-        host,
-      })
+      const out = await ownerRun<{ host: string; domains: string[]; message: string }>(
+        user,
+        'website.app_domain_remove',
+        {
+          name: event.params.name,
+          host,
+        },
+      )
       return {
         action: 'domainRemove' as const,
         ok: true,
-        message: `${host} no longer serves this app.`,
+        message: out.message,
       }
     } catch (err) {
       logAppFailure('website.app_domain_remove', err)

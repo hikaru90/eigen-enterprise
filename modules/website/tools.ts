@@ -26,6 +26,8 @@ export type WebsiteToolDeps = {
   origin?: () => string | Promise<string>
   /** Public website content or an internal document? Production: the LLM gateway (page-audience.ts). */
   classify?: PageAudienceClassifier
+  /** The site's own host (ee's publicHost); null = none, the site lives on the console. Production: ee's status. */
+  siteHost?: () => Promise<string | null>
 }
 
 /** Where internal documents go instead (named in descriptions and in the refusal). */
@@ -38,6 +40,17 @@ const PUBLIC_ONLY =
 async function configuredOrigin(): Promise<string> {
   const { env } = await import('$env/dynamic/private')
   return siteOrigin(env.ORIGIN)
+}
+
+/** ee's public website host; without ee there is none (any other ee failure stays loud). */
+async function eeSiteHost(): Promise<string | null> {
+  const { EeClient, SubstrateUnavailableError } = await import('$lib/server/ee/client')
+  try {
+    return (await new EeClient().status()).settings.publicHost
+  } catch (err) {
+    if (err instanceof SubstrateUnavailableError) return null
+    throw err
+  }
 }
 
 const createPageInput = z.object({
@@ -106,6 +119,7 @@ async function requirePublicContent(
 export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[] {
   const store = deps.store ?? defaultWebsiteStore()
   const origin = deps.origin ?? configuredOrigin
+  const siteHost = deps.siteHost ?? eeSiteHost
   const classify = deps.classify ?? createPageAudienceClassifier({ chat: liveAudienceChat })
 
   return [
@@ -224,11 +238,14 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
       name: 'website.site_info',
       module: WEBSITE_MODULE_ID,
       summary:
-        'Where the website is on this server: {url, pages:[{slug,title,status,url}]} with absolute, openable links (drafts are previewable by the signed-in owner). Use it to give the owner a link.',
+        "Where the website is: {url, pages:[{slug,title,status,url}]} with absolute, openable links — on the site's own domain when it has one, else on this console (drafts link to the console, where the signed-in owner previews them). Use it to give the owner a link.",
       auditClass: 'read',
       inputSchema: z.object({}),
       permission: { roles: ['admin', 'agent'] },
-      handler: async () => buildSiteInfo(await origin(), await store.listPages()),
+      handler: async () => {
+        const [console_, host, pages] = await Promise.all([origin(), siteHost(), store.listPages()])
+        return buildSiteInfo({ console: console_, site: host ? siteOrigin(host) : null }, pages)
+      },
     },
   ]
 }

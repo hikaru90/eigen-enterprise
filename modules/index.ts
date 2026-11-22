@@ -1,6 +1,7 @@
 import type { CallContextPort, CallLogPort } from './calls/context-port'
 import type { CallsHub } from './calls/hub'
 import type { CallsService } from './calls/service'
+import type { MailDomain } from './domains/view'
 import type { MessagesDeps } from './messages/service'
 import type { DriveSourcePort } from './repos/drive-port'
 import { join } from 'node:path'
@@ -45,6 +46,8 @@ import { contributeHubManifest } from './contribute/hub/manifest'
 import { createContributeHubTools } from './contribute/hub/tools'
 import { CONTRIBUTE_MODULE_ID, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
+import { DOMAINS_MODULE_ID, domainsManifest } from './domains/manifest'
+import { createDomainsTools } from './domains/tools'
 import { driveSourceWriter } from './drive'
 import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
 import { resolveDriveStorageDir } from './drive/storage'
@@ -110,6 +113,7 @@ export const moduleManifests = [
   // self-seeded — off until the owner switches it on, on os.cerberusblue.com only.
   contributeHubManifest,
   assistantManifest,
+  domainsManifest,
 ] as const
 
 /**
@@ -146,6 +150,8 @@ export const SYSTEM_MODULE_IDS = [
   // Assistant (round 5): the shell's top bar and panel and the conversations — an
   // official plugin, switchable; the agent engine, registry and approvals stay core.
   ASSISTANT_MODULE_ID,
+  // Domains (plan/domains-one-claim.md D2): a global setting, core like Members.
+  DOMAINS_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -258,6 +264,31 @@ function reposDrivePort(): DriveSourcePort {
   }
 }
 
+/**
+ * The email platform's mail domains as the domains module reads them (modules
+ * never import each other; the composition root adapts). Lazy: building the
+ * kernel touches no database.
+ */
+async function liveMailDomains(): Promise<MailDomain[]> {
+  const { emailPlatform } = await import('./email/platform/service')
+  return (await emailPlatform().listDomains()).map((d) => ({
+    name: d.name,
+    sendable: d.sendable,
+    receiving: d.receiving,
+    records: d.records,
+  }))
+}
+
+/** Domains bought through eigenEnterprise; a box without the domains service (EE_DOMAINS_* unset) has none. */
+async function liveBoughtDomains(): Promise<string[]> {
+  const [{ domainsFromEnv }, { domainsClient }] = await Promise.all([
+    import('$lib/server/domains/env'),
+    import('$lib/server/domains/client'),
+  ])
+  const config = domainsFromEnv()
+  return config ? (await domainsClient(config).list()).map((d) => d.name) : []
+}
+
 export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   const db: DbHandle =
     options.db ??
@@ -354,6 +385,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createContactsTools(),
     ...createReposTools(),
     ...createCalendarTools(),
+    ...createDomainsTools({ mail: liveMailDomains, bought: liveBoughtDomains }),
   ])
 
   return {

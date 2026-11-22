@@ -1,7 +1,9 @@
 import { z } from 'zod'
+import { hostnameSchema } from '$lib/domains/hostname'
 import { KernelError } from '$lib/kernel/errors'
 import { isViaBrain, principalRef } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { HostTargetError, planTarget, setTarget } from '$lib/server/domains/targets'
 import {
   EeClient,
   SubstrateError,
@@ -64,6 +66,7 @@ export type AppsEe = Pick<
   | 'sourceFile'
   | 'createApp'
   | 'addDomain'
+  | 'removeDomain'
   | 'setSecret'
   | 'events'
   | 'logs'
@@ -115,14 +118,7 @@ const NAME = z
   .regex(/^[a-z][a-z0-9-]{1,30}$/, 'app name: lowercase letters, digits, dashes (2–31)')
 const REPO = z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, 'repository as owner/name')
 const BRANCH = z.string().regex(/^[A-Za-z0-9._/-]{1,200}$/, 'a branch name')
-const HOST = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .regex(
-    /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/,
-    'a host name like shop.example.com',
-  )
+const HOST = hostnameSchema
 const ENV_KEY = z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'a variable name in CAPITALS, like API_KEY')
 
 const deployInput = z
@@ -284,6 +280,8 @@ export type DeployResult = {
   url: string | null
   state: 'healthy'
   contractSource: 'repo' | 'form'
+  /** Each address that changed, in plain words ("shop.kindred.dev now shows the app shop instead of the company website."). */
+  addresses: string[]
 }
 
 /** Human, or the agent past the approval gate (APP_AGENT_GATED_TOOLS). Never a service. */
@@ -299,8 +297,19 @@ function deployer(ctx: ToolContext, tool: string): string {
 }
 
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
-const urlFor = (s: Pick<Service, 'kind' | 'host'>) =>
-  s.kind === 'web' && s.host ? `https://${s.host}` : null
+/** A web app's address: its first route on this server (ee's routes are the store). */
+const urlFor = (kind: ServiceKind, host: string | null | undefined) =>
+  kind === 'web' && host ? `https://${host}` : null
+
+/** The shared domain rule's plain sentence as an app error. */
+function asAppError<T>(call: () => T): T {
+  try {
+    return call()
+  } catch (err) {
+    if (err instanceof HostTargetError) throw new AppUserError(err.message, { cause: err })
+    throw err
+  }
+}
 
 /** ee failures in plain words; the original stays in the server log and as `cause`. */
 async function viaEe<T>(what: string, call: () => Promise<T>): Promise<T> {
@@ -367,12 +376,6 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
   }
 
   /** Fetch → contract → app → route → health. Records the outcome on the service row. */
-  /** Whose host is this, in plain words (the console, the company site, another app). */
-  function hostOwnerName(host: string, workload: string, status: EeStatus): string {
-    if (host === status.settings.consoleHost) return 'this console'
-    if (host === status.settings.publicHost) return 'the company site'
-    return workload === 'os' ? 'Eigen Enterprise itself' : `the app ${workload}`
-  }
 
   async function deploy(i: z.infer<typeof deployInput>, author: string): Promise<DeployResult> {
     const startedAt = now()
@@ -409,16 +412,13 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
 
     // The given domains (deduplicated, order kept); the first is the app's main address.
     const given = [...new Set(i.hosts ?? (i.host ? [i.host] : []))]
-    for (const h of given) {
-      const route = status.routes.find((r) => r.host === h)
-      if (route && route.workload !== i.name)
-        throw new AppUserError(
-          `${h} already serves ${hostOwnerName(h, route.workload, status)}. Pick another address for ${i.name}.`,
-        )
-    }
+    // What each address shows now is the domains rule's to judge (it may switch to this app,
+    // never the console or calls); checked before anything is built.
+    for (const h of given) asAppError(() => planTarget(status, h, { kind: 'app', app: i.name }))
     let host: string | null = null
     if (kind === 'web') {
-      host = given[0] ?? existing?.host ?? appHost(status.settings.consoleHost, i.name)
+      const current = status.routes.find((r) => r.workload === i.name)?.host
+      host = given[0] ?? current ?? appHost(status.settings.consoleHost, i.name)
       if (!host) {
         throw new AppUserError(
           `This server has no automatic address for apps. Give ${i.name} a domain (for example ${i.name}.yourdomain.com) and point its DNS at this server.`,
@@ -462,7 +462,6 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
       branch,
       repoId: repo.repoId,
       authKind: repo.authKind,
-      host,
       autoDeploy,
       createdBy: author,
     })
@@ -484,6 +483,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
         at: now(),
         contract,
       })
+    const addresses: string[] = []
     try {
       await ee.createApp({
         name: i.name,
@@ -495,10 +495,14 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
         author,
       })
       for (const h of host ? [...new Set([host, ...given])] : []) {
-        if (!status.routes.some((r) => r.host === h))
-          await ee.addDomain({ host: h, workload: i.name, role: 'app', author })
+        const change = await setTarget(ee, { host: h, shows: { kind: 'app', app: i.name }, author })
+        if (change.changed) addresses.push(change.message)
       }
     } catch (err) {
+      if (err instanceof HostTargetError) {
+        await record('failed', err.message, keep)
+        throw new AppUserError(err.message, { cause: err })
+      }
       const plain =
         err instanceof SubstrateError && err.type === 'urn:ee:catalog_gap'
           ? gapError((err.body as { missing?: string[] } | null)?.missing ?? [], catalog)
@@ -523,9 +527,10 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
         branch,
         kind,
         commit: fetched.rev,
-        url: urlFor({ kind, host }),
+        url: urlFor(kind, host),
         state: 'healthy',
         contractSource: resolved.source,
+        addresses,
       }
     }
     const message = await failureMessage(
@@ -581,7 +586,7 @@ export function createAppTools(deps: AppToolDeps = {}): ToolDescriptor[] {
           branch: s.branch,
           authKind: s.authKind,
           status: statusOf(s, w),
-          url: urlFor(s),
+          url: urlFor(s.kind, status.routes.find((r) => r.workload === s.name)?.host),
           shortSha: s.lastRev ? s.lastRev.slice(0, 7) : null,
           lastDeployedAt: s.lastDeployedAt ? s.lastDeployedAt.toISOString() : null,
           lastError: s.lastError,

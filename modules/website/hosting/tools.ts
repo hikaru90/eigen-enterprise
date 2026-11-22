@@ -1,5 +1,6 @@
 import { WEBSITE_MODULE_ID } from '../manifest'
 import { z } from 'zod'
+import { hostnameSchema } from '$lib/domains/hostname'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
@@ -15,11 +16,8 @@ import { AppUserError } from '../apps/contract'
 
 export type SubstrateToolDeps = { client?: EeClient }
 
-const HOST = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .regex(/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/, 'not a valid hostname')
+/** The one kernel-side hostname rule ($lib/domains/hostname). */
+const HOST = hostnameSchema
 
 const domainAddInput = z.object({
   host: HOST,

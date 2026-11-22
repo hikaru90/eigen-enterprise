@@ -2,13 +2,16 @@ import type { Actions, PageServerLoad } from './$types'
 import { fail } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import { HostTargetError, type TargetChange } from '$lib/server/domains/targets'
 import { SubstrateError, type EeStatus } from '$lib/server/ee/client'
 import { ownerRun } from '$lib/server/website/owner-run'
 
 /**
  * /m/website/site: the company site's public domain (D-W1 — exactly one
  * synthesized site per company). The domain is the owner's click, so every
- * change runs through substrate tools as the signed-in human (D11).
+ * change runs through the domains module (domains.set_target / domains.remove)
+ * as the signed-in human (D11). Switching a host that showed something else is
+ * an ordinary change; the answer says what it showed before.
  */
 
 type Status = ({ managed: true } & EeStatus) | { managed: false; reason: string }
@@ -37,7 +40,7 @@ export const load: PageServerLoad = async (event): Promise<SiteData> => {
 
 /** code ↔ owner: a plain sentence for the page; details go to the server log. */
 function plainDomainMessage(err: unknown): string {
-  if (err instanceof SubstrateError) return err.message
+  if (err instanceof HostTargetError || err instanceof SubstrateError) return err.message
   if (err instanceof KernelError) {
     if (err.code === 'permission_denied') return 'Only an admin can do this.'
     if (err.code === 'invalid_input')
@@ -74,24 +77,15 @@ export const actions: Actions = {
             "This EigenEnterprise copy runs without ee, the server's deploy agent, so it cannot give the site its own domain.",
         })
       }
-      if (
-        host === status.settings.consoleHost ||
-        (host !== status.settings.publicHost && status.routes.some((route) => route.host === host))
-      ) {
-        return fail(400, {
-          action: 'domainSet' as const,
-          error: `${host} is already assigned to another route. Remove it from its current owner first.`,
-        })
-      }
-      const out = await ownerRun<{ reconcileError: string | null }>(user, 'substrate.domain_add', {
+      const out = await ownerRun<TargetChange>(user, 'domains.set_target', {
         host,
-        role: 'public',
-        workload: 'os',
+        shows: { kind: 'site' },
       })
       return {
         action: 'domainSet' as const,
         ok: true,
         host,
+        message: out.message,
         ...(out.reconcileError ? { reconcileError: out.reconcileError } : {}),
       }
     } catch (err) {
@@ -103,8 +97,8 @@ export const actions: Actions = {
     const user = await requireAdmin(event.locals.user)
     const host = String((await event.request.formData()).get('host') ?? '').trim()
     try {
-      await ownerRun(user, 'substrate.domain_remove', { host })
-      return { action: 'domainRemove' as const, ok: true }
+      const out = await ownerRun<TargetChange>(user, 'domains.remove', { host })
+      return { action: 'domainRemove' as const, ok: true, message: out.message }
     } catch (err) {
       logSiteFailure('domainRemove', err)
       return fail(400, { action: 'domainRemove' as const, error: plainDomainMessage(err) })

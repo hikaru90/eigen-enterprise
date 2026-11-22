@@ -167,6 +167,7 @@ describe('moduleManifests', () => {
       'calendar',
       'contribute-hub',
       'assistant',
+      'domains',
     ])
   })
 })
@@ -191,6 +192,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'calendar',
       'contribute-hub',
       'assistant',
+      'domains',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')

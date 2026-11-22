@@ -24,7 +24,7 @@ describe('website.site_info', () => {
     const store = new InMemoryWebsiteStore()
     await store.createPage({ slug: 'home', title: 'Home', body: 'x', visibility: 'public' })
     await store.createPage({ slug: 'about', title: 'About', body: 'y' })
-    const tool = createWebsiteTools({ store, origin: () => 'https://os.ee.localhost' }).find(
+    const tool = createWebsiteTools({ store, origin: () => 'https://os.ee.localhost', siteHost: async () => null }).find(
       (t) => t.name === 'website.site_info',
     )
     expect(tool?.auditClass).toBe('read')
@@ -42,10 +42,27 @@ describe('website.site_info', () => {
   it('url-encodes slugs', async () => {
     const store = new InMemoryWebsiteStore()
     await store.createPage({ slug: 'a b', title: 'T', body: 'x' })
-    const tool = createWebsiteTools({ store, origin: () => 'https://h.test' }).find(
+    const tool = createWebsiteTools({ store, origin: () => 'https://h.test', siteHost: async () => null }).find(
       (t) => t.name === 'website.site_info',
     )!
     const result = (await tool.handler(ctx, {})) as { pages: { url: string }[] }
     expect(result.pages[0]?.url).toBe('https://h.test/s/a%20b')
+  })
+
+  it("with its own domain: the site and published pages link there, drafts stay on the console", async () => {
+    const store = new InMemoryWebsiteStore()
+    await store.createPage({ slug: 'home', title: 'Home', body: 'x', visibility: 'public' })
+    await store.createPage({ slug: 'about', title: 'About', body: 'y' })
+    const tool = createWebsiteTools({
+      store,
+      origin: () => 'https://one.eigenenterprise.app',
+      siteHost: async () => 'eigenenterprise.app',
+    }).find((t) => t.name === 'website.site_info')!
+    const result = (await tool.handler(ctx, {})) as { url: string; pages: { slug: string; url: string }[] }
+    expect(result.url).toBe('https://eigenenterprise.app/s')
+    expect(Object.fromEntries(result.pages.map((p) => [p.slug, p.url]))).toEqual({
+      home: 'https://eigenenterprise.app/s/home',
+      about: 'https://one.eigenenterprise.app/s/about',
+    })
   })
 })
