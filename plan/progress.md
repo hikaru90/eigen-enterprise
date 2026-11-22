@@ -2,6 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-22 — eigenenterprise.app (the website) on ee-one: host router fix in the control plane; one claim system for domains (owner: "I would say we have one claim system" · "Yes, make it")
+
+- **Diagnosis:** the app `eigen-enterprise-website` (repo `hikaru90/eigen-enterprise-website`, release `e90153d`) is healthy on ee-one with domain `eigenenterprise.app`; DNS is right (`@` and `*` → 159.195.209.90). The host router (ee-host HAProxy on rs500-1) only had `one.` and `rtc.one.`: the control plane never routed the hosted domain itself to any box.
+- **Fix (eigenEnterprise-cloud `bbbff1e`, pushed, not deployed):** required env `PLATFORM_SITE_INSTANCE`; the hosted domain + `www.` route to that slug's box only. Goes live once the cloud app has `PLATFORM_SITE_INSTANCE=one` and is redeployed.
+- **What confused the owner:** Company site settings refused the domain with "already assigned to another route" without naming the owner (the app). The website module has two website kinds (company site `/s`, apps) and Settings › Domains shows only bought + mail domains, not web routes.
+
+**Decisions:**
+- **Owner: one claim system for domains.** Company site and apps (and mail) claim hostnames through one model; Settings › Domains becomes the one place listing each zone's hostnames, their owner (linked) and the DNS records each needs vs what DNS says. Not built yet — concept to be planned.
+- **Owner:** websites and apps deploy on ee instances; Coolify is being retired and only still runs the control plane.
+
 ## 2026-11-22 — v0.5.34 released: every error is a sentence for the person + "Copy agent instructions" (owner: "we should always provide the user with understandable error messages … there should always be a button saying copy agent instructions" · "go, commit" · "push after" · "Yes, release")
 
 - **Released:** `ab2f3aa4` plus `[release] v0.5.34` `137b3740` and tag `v0.5.34`, pushed through the local gate (unit 8,644, components 816).
