@@ -2,6 +2,21 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-22 — Domains one claim system, wave 2 merged: claims protocol + kernel `domains` module
+
+- **Claims protocol (D4b)** (`787a8c78`; cloud `469565b`, pushed, not deployed): fleet feature `claims`; `desired.claims [{host, verified, txtName, txtValue}]` for the company's own claims; ee stores them (`/var/lib/ee/fleet-claims.json`, null clears) and `GET /v1/status` → `claims` (null = not managed). ee 490, cloud 268.
+- **D2 kernel `domains` module** (`153ce95f`): `domains.list` (domains → hostnames → what each shows, email, observed records incl. `_ee-verify`, claim, certificate), `domains.set_target` / `remove` / `retry_certificate` (human-only, like `substrate.*`), `domains.recheck`. One rule in `src/lib/server/domains/targets.ts`; one hostname validator `src/lib/domains/hostname.ts` (spec holds it equal to ee's `HOSTNAME`); grouping by the public suffix list (`tldts`). Migration `0165_website_services_drop_host` (applied to the test DB). Full unit suite on main: 8,737 passed; check 0 errors.
+- **Changed behaviour (announced to the owner):** the three "host already used" refusals (site page, `website.app_domain_set`, `website.app_deploy`) are gone — a hostname that showed the website or another app now switches, and the answer says what it showed before ("eigenenterprise.app now shows the app shop instead of the company website."). Console and calls hosts are still refused. `website_services.host` and its constraint are dropped (an app's addresses are ee's routes; "a web app keeps at least one address" is enforced in the tool). Site-page ui-parity now points at `domains.set_target`/`remove`.
+
+**Decisions (mine; owner may veto):**
+- The shared rule is kernel-level (`src/lib/server/domains/`), because modules may not import each other.
+- The box's public address for A/AAAA records is ee's `rtcNodeIp` (set explicitly at install, `--node-ip`); missing → `not_configured`, never guessed.
+- Public suffix list incl. private suffixes (`acme.github.io` is its own domain).
+- `website.site_info`: published pages use the site's own host; drafts stay on the console (sign-in only works there).
+- Mail domains are listed even with the Email plugin off.
+
+**Next:** D5 Settings › Domains page (running; also: per-source errors instead of failing whole, DMARC tag parsing, module pages show + link), then a release and D6 proof on ee-one.
+
 ## 2026-11-22 — Domains one claim system, wave 1 merged (plan/domains-one-claim.md; owner: "Yes, start building")
 
 - **D1 ee** (`93d65b13`): `POST /v1/domains` returns `replaced` and journals `domain.replaced` ("<host> now shows <new> instead of <old>"); `GET /v1/status` → `certificates[]` (issued from Caddy storage, failing/pending from Caddy's `tls.obtain`/`tls.renew` JSON journal lines); `POST /v1/certificates/retry {host, author}` (graceful `systemctl reload caddy.service`) + `ee certificate retry <host>`; kernel `EeStatus.settings.callsHost`. ee 480 specs.
