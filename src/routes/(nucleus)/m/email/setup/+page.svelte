@@ -322,6 +322,12 @@
         {#if isAdmin && data.domains.length > 0}
           <div class="mt-3">{@render addDomainForm('list')}</div>
         {/if}
+        <p class="mt-3 text-xs text-muted-foreground" data-testid="email-domains-settings-link">
+          Every company domain — what its addresses show, its DNS records and certificates — is in
+          <a class="underline underline-offset-2" href={resolve('/settings/domains')}
+            >Settings › Domains</a
+          >.
+        </p>
       </section>
     {/if}
   </section>

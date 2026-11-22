@@ -30,16 +30,11 @@ const ee: EeStatus = {
   events: [],
 }
 
-describe('website settings: the routing rows', () => {
-  it('the calls host is "Calls", never a link to an app page that does not exist', async () => {
+describe('website settings: a summary of the addresses, edited in Settings › Domains', () => {
+  it('counts what points at this server by what each shows (calls is "calls", never an app)', async () => {
     status.current = { managed: true, ...ee }
     const data = await loadWebsiteSettings({ locals: { user: { id: 'u1' } } } as never)
     if (!data.managed) throw new Error('expected managed')
-    expect(data.domains.map((d) => [d.host, d.role, d.owner.kind])).toEqual([
-      ['one.eigenenterprise.app', 'Console', 'console'],
-      ['kindred.digital', 'Site', 'site'],
-      ['rtc.one.eigenenterprise.app', 'Calls', 'calls'],
-      ['shop.kindred.digital', 'App', 'app'],
-    ])
+    expect(data.domains).toEqual({ total: 4, console: 1, site: 1, apps: 1, calls: 1 })
   })
 })

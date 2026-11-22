@@ -1,5 +1,7 @@
 import { isIP } from 'node:net'
+import type { BoughtDomain } from '$lib/domains/contract'
 import { registrableDomainOf } from '$lib/domains/hostname'
+import type { ErrorReport } from '$lib/errors/agent-report'
 import { KernelError } from '$lib/kernel/errors'
 import { showsOf, type Shows } from '$lib/server/domains/targets'
 import type { EeCertificate, EeStatus } from '$lib/server/ee/client'
@@ -49,14 +51,27 @@ export type DomainView = {
   name: string
   /** Bought through eigenEnterprise (renewal at the control plane) or the company's own DNS. */
   source: 'bought' | 'connected'
+  /** Bought only: the control plane's state, its error, renewal date and switch; null for connected. */
+  bought: Omit<BoughtDomain, 'name'> | null
   hosts: HostView[]
 }
+
+/**
+ * One source of the view that could not be read (the control plane's bought
+ * domains, ee's status, the mail domains): the rest is still listed, and this
+ * says plainly what is missing — loud, but local.
+ */
+export type DomainsSourceError = ErrorReport & { source: 'bought' | 'server' | 'mail' }
 
 export type DomainsList = {
   /** False when this copy runs without ee: no web hosts, only what the other stores know. */
   managed: boolean
   reason: string | null
   domains: DomainView[]
+  /** The apps a hostname can show (ee's app workloads), for the "Shows" picker. */
+  apps: string[]
+  /** Sources that failed; empty when everything was read. */
+  errors: DomainsSourceError[]
 }
 
 /** A host before its records are looked up. */
@@ -145,21 +160,35 @@ export function domainOf(host: string): string {
 }
 
 /** Hosts grouped into their domains (apex first), bought domains included even before anything uses them. */
-export function groupDomains(hosts: readonly HostView[], bought: readonly string[]): DomainView[] {
-  const boughtSet = new Set(bought.map(normalizeName))
+export function groupDomains(
+  hosts: readonly HostView[],
+  bought: readonly BoughtDomain[],
+): DomainView[] {
+  const boughtBy = new Map(bought.map((b) => [normalizeName(b.name), b]))
   const byDomain = new Map<string, HostView[]>()
-  for (const name of boughtSet) byDomain.set(name, [])
+  for (const name of boughtBy.keys()) byDomain.set(name, [])
   for (const h of hosts) {
     const name = domainOf(h.host)
     byDomain.set(name, [...(byDomain.get(name) ?? []), h])
   }
   return [...byDomain.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, list]) => ({
-      name,
-      source: boughtSet.has(name) ? ('bought' as const) : ('connected' as const),
-      hosts: [...list].sort((a, b) =>
-        a.host === name ? -1 : b.host === name ? 1 : a.host.localeCompare(b.host),
-      ),
-    }))
+    .map(([name, list]): DomainView => {
+      const owned = boughtBy.get(name)
+      return {
+        name,
+        source: owned ? 'bought' : 'connected',
+        bought: owned
+          ? {
+              state: owned.state,
+              error: owned.error,
+              renewsAt: owned.renewsAt,
+              autoRenew: owned.autoRenew,
+            }
+          : null,
+        hosts: [...list].sort((a, b) =>
+          a.host === name ? -1 : b.host === name ? 1 : a.host.localeCompare(b.host),
+        ),
+      }
+    })
 }

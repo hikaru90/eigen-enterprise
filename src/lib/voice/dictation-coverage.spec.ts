@@ -24,6 +24,7 @@ const NO_DICTATION: Record<string, string> = {
   'src/lib/components/auth-code-step.svelte': 'one-time sign-in code',
   'src/lib/components/domains/domain-buy.svelte': 'domain names and the registrant’s legal contact record (addresses, phone)',
   'src/lib/components/domains/domain-connect.svelte': 'a domain name',
+  'src/lib/components/domains/domain-section.svelte': 'a hostname label (www, shop)',
   'src/lib/components/drive/csv-editor.svelte': 'spreadsheet cells in a grid',
   'src/lib/components/drive/drive-browser.svelte': 'search-as-filter by file name',
   'src/lib/components/provider-onboarding.svelte': 'model ids and routing rules; runs before any speech-to-text exists',

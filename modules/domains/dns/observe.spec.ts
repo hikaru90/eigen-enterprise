@@ -144,6 +144,43 @@ describe('observe', () => {
     })
   })
 
+  describe('DMARC (RFC 7489 tag-value, not exact text)', () => {
+    const dmarc: ExpectedRecord = {
+      name: '_dmarc.kindred.com',
+      type: 'TXT',
+      value: 'v=DMARC1; p=none;',
+      purpose: 'mail_dmarc',
+    }
+
+    it.each(['v=DMARC1; p=quarantine; rua=mailto:d@kindred.com', 'v=DMARC1;p=reject'])(
+      'a stricter policy the company already has is ok: %s',
+      async (existing) => {
+        const { resolver } = fakeResolver({ TXT: { '_dmarc.kindred.com': [[existing]] } })
+        expect((await observe([dmarc], resolver))[0]).toMatchObject({
+          status: 'ok',
+          observed: [existing],
+        })
+      },
+    )
+
+    it('an invalid policy or two DMARC records is wrong', async () => {
+      const bad = fakeResolver({ TXT: { '_dmarc.kindred.com': [['v=DMARC1; p=maybe']] } })
+      expect((await observe([dmarc], bad.resolver))[0]!.status).toBe('wrong')
+      const two = fakeResolver({
+        TXT: { '_dmarc.kindred.com': [['v=DMARC1; p=none'], ['v=DMARC1; p=reject']] },
+      })
+      expect((await observe([dmarc], two.resolver))[0]!.status).toBe('wrong')
+    })
+
+    it('other TXT records keep the exact comparison', async () => {
+      const claim: ExpectedRecord = { ...dmarc, name: '_ee-verify.kindred.com', purpose: 'claim' }
+      const { resolver } = fakeResolver({
+        TXT: { '_ee-verify.kindred.com': [['v=DMARC1; p=reject']] },
+      })
+      expect((await observe([claim], resolver))[0]!.status).toBe('wrong')
+    })
+  })
+
   it('CNAME compares case-insensitively without trailing dot', async () => {
     const cname: ExpectedRecord = {
       name: 't._domainkey.kindred.com',

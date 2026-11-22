@@ -5,24 +5,22 @@ import type { EeStatus } from '$lib/server/ee/client'
 import { ownerRun } from '$lib/server/website/owner-run'
 
 /**
- * /m/website/hosting: this server, read-only (D-W3). Domains are listed and
- * linked to whatever owns them — a domain's role is structural, never guessed
- * from text: what each host shows is the domains rule's answer (showsOf: the
- * console, the site, calls — rtc.<console host> — or an app). Domains are
- * changed on the app or site that owns them (D-W2), never here.
+ * /m/website/settings: this server, read-only (D-W3). The domains themselves —
+ * every hostname, what it shows, its DNS and certificate — are a global
+ * setting in Settings › Domains (plan/domains-one-claim.md D5); this page
+ * gives a short summary of what points here and links there. What each host
+ * shows is the domains rule's answer (showsOf), never guessed from text.
  */
 
 type Status = ({ managed: true } & EeStatus) | { managed: false; reason: string }
 
-export type HostingDomainRow = {
-  host: string
-  url: string
-  role: 'Console' | 'Site' | 'Calls' | 'App'
-  owner:
-    | { kind: 'console' }
-    | { kind: 'calls' }
-    | { kind: 'site'; href: '/m/website/site' }
-    | { kind: 'app'; name: string; href: string }
+/** How many addresses point at this server, by what they show. */
+export type HostingDomainSummary = {
+  total: number
+  console: number
+  site: number
+  apps: number
+  calls: number
 }
 
 export type HostingData =
@@ -37,7 +35,7 @@ export type HostingData =
         desiredRev: string
         lastReconcileError: string | null
       }
-      domains: HostingDomainRow[]
+      domains: HostingDomainSummary
     }
 
 export const loadWebsiteSettings = async (
@@ -48,33 +46,14 @@ export const loadWebsiteSettings = async (
   if (!status.managed) return { managed: false, reason: status.reason }
 
   const { settings, routes } = status
-  const domains = routes.map((route): HostingDomainRow => {
-    const url = `https://${route.host}`
+  const domains: HostingDomainSummary = { total: 0, console: 0, site: 0, apps: 0, calls: 0 }
+  for (const route of routes) {
     const shows = showsOf(status, route.host)
-    switch (shows.kind) {
-      case 'console':
-        return { host: route.host, url, role: 'Console', owner: { kind: 'console' } }
-      case 'site':
-        return {
-          host: route.host,
-          url,
-          role: 'Site',
-          owner: { kind: 'site', href: '/m/website/site' },
-        }
-      case 'calls':
-        // The calls (signalling) host: no page of its own, never an app link.
-        return { host: route.host, url, role: 'Calls', owner: { kind: 'calls' } }
-      case 'app':
-        return {
-          host: route.host,
-          url,
-          role: 'App',
-          owner: { kind: 'app', name: shows.app, href: `/m/website/apps/${shows.app}` },
-        }
-      case 'nothing':
-        throw new Error(`ee lists a route for ${route.host} that shows nothing`)
-    }
-  })
+    if (shows.kind === 'nothing') continue
+    domains.total++
+    if (shows.kind === 'app') domains.apps++
+    else domains[shows.kind]++
+  }
   return {
     managed: true,
     server: {

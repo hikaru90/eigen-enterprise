@@ -6,6 +6,8 @@ import {
 } from '$lib/kernel/approvals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import { EeClient } from '$lib/server/ee/client'
+import { cachedResolver, type DnsResolver } from '../../../../../../../modules/domains/dns'
+import { createDomainsTools } from '../../../../../../../modules/domains/tools'
 import {
   createDomainTools,
   type DomainEe,
@@ -49,8 +51,26 @@ vi.mock('$lib/server/approvals/owner-decision', () => ({
 
 import { actions, load } from './+page.server'
 
-/** FakeEe plus the removeDomain verb the per-app domain tools use. */
+const BOX = '203.0.113.7'
+const none = () => Promise.reject(Object.assign(new Error('nodata'), { code: 'ENODATA' }))
+/** DNS: every host points at the box. */
+const dns: DnsResolver = {
+  resolve4: async () => [BOX],
+  resolve6: none,
+  resolveCname: none,
+  resolveTxt: none,
+  resolveMx: none,
+}
+
+/** FakeEe plus the removeDomain verb the per-app domain tools use, and the box's public address. */
 class FakeEeWithDomains extends FakeEe implements DomainEe {
+  override async status() {
+    const s = await super.status()
+    return { ...s, settings: { ...s.settings, rtcNodeIp: BOX } as typeof s.settings }
+  }
+  async retryCertificate(host: string) {
+    return { host, reloaded: true as const }
+  }
   removed: Array<{ host: string; author: string }> = []
   async removeDomain(i: { host: string; author: string }) {
     this.calls.push({ verb: 'removeDomain', input: i })
@@ -137,6 +157,12 @@ async function setup() {
     ...createAppTools({ ee, repos, services, mintToken: async () => 'x', mailKeys }),
     ...createDomainTools({ ee, services }),
     ...createSubstrateTools({ client }),
+    ...createDomainsTools({
+      ee,
+      mail: async () => [],
+      bought: async () => [],
+      resolver: cachedResolver(dns, 60_000, () => 0),
+    }),
   ])
     registry.register(t)
   holder.registry = registry
@@ -174,6 +200,17 @@ describe('/m/website/apps/[name]', () => {
     expect(data.logs).toEqual(['listening on 4100'])
   })
 
+  it('shows its addresses with their status; changing them is Settings › Domains’ job', async () => {
+    await setup()
+    const data = (await load(event({ params: { name: 'shop' } }))) as Record<string, unknown>
+    expect(data).toMatchObject({
+      addresses: [{ host: 'shop.ee.localhost', label: 'Live', on: true }],
+      addressesError: null,
+    })
+    expect(Object.keys(actions)).not.toContain('domainSet')
+    expect(Object.keys(actions)).not.toContain('domainRemove')
+  })
+
   it('an unknown app is a plain 404', async () => {
     await setup()
     await expect(load(event({ params: { name: 'ghost' } }))).rejects.toMatchObject({ status: 404 })
@@ -203,76 +240,6 @@ describe('/m/website/apps/[name]', () => {
       runtime: 'node@22',
       install: 'npm install --omit=dev',
       start: 'node index.js',
-    })
-  })
-
-  describe('domainSet', () => {
-    it('adds a domain through website.app_domain_set and answers in plain words', async () => {
-      const { ee, services } = await setup()
-      const out = (await actions.domainSet(
-        event({ params: { name: 'shop' }, request: formRequest({ host: 'shop.kindred.dev' }) }),
-      )) as { action: string; ok: boolean; message: string }
-      expect(out.ok).toBe(true)
-      expect(out.message).toContain('shop.kindred.dev')
-      expect(ee.calls).toContainEqual({
-        verb: 'addDomain',
-        input: { host: 'shop.kindred.dev', workload: 'shop', role: 'app', author: 'human:u1' },
-      })
-      expect((await services.get('shop'))?.host).toBe('shop.ee.localhost')
-    })
-
-    it('with replace, the old address moves: removed, then the new one added', async () => {
-      const { ee } = await setup()
-      const out = await actions.domainSet(
-        event({
-          params: { name: 'shop' },
-          request: formRequest({ host: 'shop.kindred.dev', replace: 'shop.ee.localhost' }),
-        }),
-      )
-      expect(out).toMatchObject({
-        ok: true,
-        message: 'shop.kindred.dev now shows the app shop. shop.ee.localhost no longer shows the app shop.',
-      })
-      expect(ee.removed).toEqual([{ host: 'shop.ee.localhost', author: 'human:u1' }])
-    })
-
-    it('a host in use comes back as a plain sentence naming the owner', async () => {
-      const { ee } = await setup()
-      const out = (await actions.domainSet(
-        event({ params: { name: 'shop' }, request: formRequest({ host: 'os.ee.localhost' }) }),
-      )) as { status: number; data: { action: string; error: string } }
-      expect(out.status).toBe(400)
-      expect(out.data.action).toBe('domainSet')
-      expect(out.data.error).toMatch(/console/)
-      expect(ee.calls).toEqual([])
-    })
-  })
-
-  describe('domainRemove', () => {
-    it('removes through website.app_domain_remove', async () => {
-      const { ee } = await setup()
-      await actions.domainSet(
-        event({ params: { name: 'shop' }, request: formRequest({ host: 'shop.kindred.dev' }) }),
-      )
-      ee.calls = []
-      const out = await actions.domainRemove(
-        event({
-          params: { name: 'shop' },
-          request: formRequest({ host: 'shop.kindred.dev' }),
-        }),
-      )
-      expect(out).toMatchObject({ ok: true })
-      expect(ee.removed).toEqual([{ host: 'shop.kindred.dev', author: 'human:u1' }])
-    })
-
-    it('removing the last address of a web app is refused in plain words', async () => {
-      const { ee } = await setup()
-      const out = (await actions.domainRemove(
-        event({ params: { name: 'shop' }, request: formRequest({ host: 'shop.ee.localhost' }) }),
-      )) as { status: number; data: { action: string; error: string } }
-      expect(out.status).toBe(400)
-      expect(out.data.error).toBe('A web app needs one address; change it instead of removing it')
-      expect(ee.calls).toEqual([])
     })
   })
 

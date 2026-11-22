@@ -7,14 +7,13 @@
   import AppBuildForm from '$lib/components/app-build-form.svelte'
   import AppDeployProgress from '$lib/components/app-deploy-progress.svelte'
   import AppStatusDot from '$lib/components/app-status-dot.svelte'
+  import HostAddresses from '$lib/components/domains/host-addresses.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Badge } from '$lib/components/ui/badge'
   import { Button, buttonVariants } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { Input } from '$lib/components/ui/input'
-  import { Label } from '$lib/components/ui/label'
-  import * as Table from '$lib/components/ui/table'
   import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
   import { deployModeText } from './deploy-mode'
@@ -22,8 +21,7 @@
   let { data, form }: { data: PageData; form: ActionData } = $props()
   const formError = $derived(shownErrorOf(form))
 
-  type Busy =
-    'domainSet' | 'domainRemove' | 'env' | 'secretSet' | 'remove' | 'mailEnable' | 'mailDisable'
+  type Busy = 'env' | 'secretSet' | 'remove' | 'mailEnable' | 'mailDisable'
   let busy = $state<Busy | null>(null)
   let starting = $state(false)
   let panel = $state<ReturnType<typeof AppDeployProgress> | null>(null)
@@ -211,113 +209,25 @@
   <details id="settings" bind:open={settingsOpen} class="mt-8 rounded-lg border border-border p-5">
     <summary class="cursor-pointer text-base font-semibold">App settings</summary>
     <p class="mt-2 text-sm text-muted-foreground">
-      Domains, build configuration, environment, secrets and app services.
+      Addresses, build configuration, environment, secrets and app services.
     </p>
     <a class="mt-3 inline-block text-sm underline" href={resolve('/m/website/settings')}
-      >Website settings: all domains &amp; server status</a
+      >Website settings: server status</a
     >
-    <Card.Root class="mt-6">
+    <Card.Root class="mt-6" data-testid="app-domains">
       <Card.Header>
-        <Card.Title>Domains &amp; routing</Card.Title>
+        <Card.Title>Domains</Card.Title>
         <Card.Description>
-          Each domain routes visitors to this app. Point its A or AAAA DNS records at the server;
-          Caddy manages HTTPS certificates automatically once DNS and ports 80/443 are reachable.
+          The addresses that show this app. Domains are set for the whole company in Settings ›
+          Domains.
         </Card.Description>
       </Card.Header>
-      <Card.Content class="flex flex-col gap-4">
-        <p class="text-xs text-muted-foreground">
-          Certificate issuance status is not reported.
-          <a class="underline" href={resolve('/m/website/settings#https')}
-            >HTTPS &amp; certificate settings</a
-          >.
-        </p>
-        {#if data.app.domains.length === 0}
-          <p class="text-sm text-muted-foreground">No address yet.</p>
-        {:else}
-          <Table.Root>
-            <Table.Body>
-              {#each data.app.domains as d (d)}
-                <Table.Row>
-                  <Table.Cell class="break-all font-mono text-xs">{d}</Table.Cell>
-                  <Table.Cell class="w-full max-w-xs">
-                    <form
-                      method="POST"
-                      action="?/domainSet"
-                      use:enhance={track('domainSet')}
-                      class="flex items-center gap-2"
-                    >
-                      <input type="hidden" name="replace" value={d} />
-                      <Input
-                        dictation={false}
-                        name="host"
-                        required
-                        placeholder="new.example.com"
-                        aria-label={`Replace ${d}`}
-                        class="h-8 min-w-0 flex-1 font-mono text-xs"
-                      />
-                      <Button type="submit" variant="outline" size="sm" disabled={busy !== null}
-                        >Save</Button
-                      >
-                    </form>
-                  </Table.Cell>
-                  <Table.Cell class="w-24">
-                    <AlertDialog.Root>
-                      <AlertDialog.Trigger class={buttonVariants({ variant: 'ghost', size: 'sm' })}
-                        >Remove</AlertDialog.Trigger
-                      >
-                      <AlertDialog.Content>
-                        <AlertDialog.Header>
-                          <AlertDialog.Title>Remove {d}?</AlertDialog.Title>
-                          <AlertDialog.Description>
-                            It stops serving this app. DNS can keep pointing here; nothing else
-                            changes.
-                          </AlertDialog.Description>
-                        </AlertDialog.Header>
-                        <form
-                          method="POST"
-                          action="?/domainRemove"
-                          use:enhance={track('domainRemove')}
-                        >
-                          <input type="hidden" name="host" value={d} />
-                          <AlertDialog.Footer>
-                            <AlertDialog.Cancel disabled={busy !== null}>Keep it</AlertDialog.Cancel
-                            >
-                            <AlertDialog.Action
-                              type="submit"
-                              variant="destructive"
-                              disabled={busy !== null}
-                            >
-                              {busy === 'domainRemove' ? 'Removing…' : 'Remove address'}
-                            </AlertDialog.Action>
-                          </AlertDialog.Footer>
-                        </form>
-                      </AlertDialog.Content>
-                    </AlertDialog.Root>
-                  </Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-        {/if}
-        <form
-          method="POST"
-          action="?/domainSet"
-          use:enhance={track('domainSet')}
-          class="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-end"
-        >
-          <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-            <Label for="add-domain">Add a domain</Label>
-            <Input
-              dictation={false}
-              id="add-domain"
-              name="host"
-              required
-              placeholder="shop.example.com"
-              class="font-mono text-xs"
-            />
-          </div>
-          <Button type="submit" variant="outline" disabled={busy !== null}>Add domain</Button>
-        </form>
+      <Card.Content>
+        <HostAddresses
+          addresses={data.addresses}
+          error={data.addressesError}
+          empty="No address shows this app yet."
+        />
       </Card.Content>
     </Card.Root>
 

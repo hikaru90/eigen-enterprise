@@ -9,17 +9,16 @@ describe('website settings', () => {
     await expect.element(page.getByText('Deployment server not connected')).toBeInTheDocument()
     await expect.element(page.getByText('No ee control socket.')).toBeInTheDocument()
     await expect
-      .element(page.getByRole('link', { name: 'company site settings', exact: true }))
-      .toHaveAttribute('href', '/m/website/site')
+      .element(page.getByRole('link', { name: 'Settings › Domains' }).first())
+      .toHaveAttribute('href', '/settings/domains')
     // The tabs above the page hold the area navigation: no "Back to repositories" here.
     await expect
       .element(page.getByRole('link', { name: 'Back to repositories' }))
       .not.toBeInTheDocument()
     await expect.element(page.getByRole('heading', { level: 2, name: 'Settings' })).toBeVisible()
-    await expect.element(page.getByText(/Certificate status is not reported/)).toBeInTheDocument()
   })
 
-  it('links domain routing to app settings and reports real server errors', async () => {
+  it('summarises the addresses, links to Settings › Domains and reports real server errors', async () => {
     render(WebsiteSettings, {
       data: {
         managed: true,
@@ -31,23 +30,19 @@ describe('website settings', () => {
           desiredRev: 'b'.repeat(40),
           lastReconcileError: 'Caddy reload failed',
         },
-        domains: [
-          {
-            host: 'shop.example.org',
-            url: 'https://shop.example.org',
-            role: 'App',
-            owner: { kind: 'app', name: 'shop', href: '/m/website/apps/shop' },
-          },
-        ],
+        domains: { total: 3, console: 1, site: 1, apps: 1, calls: 0 },
       },
     })
     await expect.element(page.getByText('Caddy reload failed')).toBeInTheDocument()
     await expect
-      .element(page.getByRole('link', { name: 'shop', exact: true }))
-      .toHaveAttribute('href', '/m/website/apps/shop#settings')
+      .element(page.getByTestId('hosting-domains'))
+      .toHaveTextContent(
+        '3 addresses point at this server: the console, the company website and 1 app.',
+      )
     await expect
-      .element(page.getByRole('link', { name: 'shop.example.org' }))
-      .toHaveAttribute('href', 'https://shop.example.org')
-    await expect.element(page.getByText(/Certificate status is not reported/)).toBeInTheDocument()
+      .element(
+        page.getByTestId('hosting-domains').getByRole('link', { name: 'Settings › Domains' }),
+      )
+      .toHaveAttribute('href', '/settings/domains')
   })
 })
