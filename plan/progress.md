@@ -5,7 +5,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 ## 2026-11-22 — eigenenterprise.app (the website) on ee-one: host router fix in the control plane; one claim system for domains (owner: "I would say we have one claim system" · "Yes, make it")
 
 - **Diagnosis:** the app `eigen-enterprise-website` (repo `hikaru90/eigen-enterprise-website`, release `e90153d`) is healthy on ee-one with domain `eigenenterprise.app`; DNS is right (`@` and `*` → 159.195.209.90). The host router (ee-host HAProxy on rs500-1) only had `one.` and `rtc.one.`: the control plane never routed the hosted domain itself to any box.
-- **Fix (eigenEnterprise-cloud `bbbff1e`, pushed, not deployed):** required env `PLATFORM_SITE_INSTANCE`; the hosted domain + `www.` route to that slug's box only. Goes live once the cloud app has `PLATFORM_SITE_INSTANCE=one` and is redeployed.
+- **Fix (eigenEnterprise-cloud `89f4139`, pushed, not deployed):** the hosted domain itself and `www.` are claimable like any custom domain (`claimableHost`); a verified `_ee-verify.<host>` TXT routes them to the claiming company's box. A first try with a fixed env (`PLATFORM_SITE_INSTANCE`) was rejected by the owner and reverted. Live after a cloud redeploy + TXT `_ee-verify.eigenenterprise.app` = company `one`'s token.
 - **What confused the owner:** Company site settings refused the domain with "already assigned to another route" without naming the owner (the app). The website module has two website kinds (company site `/s`, apps) and Settings › Domains shows only bought + mail domains, not web routes.
 
 **Decisions:**
