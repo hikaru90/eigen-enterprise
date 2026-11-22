@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { controlHandler, Ee } from './daemon.ts'
 import { DeployRun, forgetDeploys } from './deploys.ts'
+import { fleetHost } from './fleet/host.ts'
 import { emptyJournal } from './journal.ts'
 import { PATHS } from './paths.ts'
 import { PreviewBox } from './preview-test-box.ts'
@@ -592,5 +593,42 @@ describe('control API: Drive app previews (plan/phase-drive-app-preview.md)', ()
     expect(outside.status).toBe(422)
     expect(outside.data.type).toBe('urn:ee:preview_rejected')
     expect((await call('DELETE', `/v1/previews/${ID}`, { author: 'user:alex' })).status).toBe(404)
+  })
+})
+
+describe('control API: domain claims on a managed box (plan/domains-one-claim.md D4)', () => {
+  const release = { kind: 'release', tarball: '/var/lib/ee/releases/x.tar.gz', sha256: 'a'.repeat(64) }
+  const state = (managed: boolean) => ({
+    rev: 'x',
+    workloads: [{ name: 'os', tier: 'system', source: release, env: {}, secrets: [], deploy: { auto: false } }],
+    routes: [{ host: 'os.example.com', workload: 'os' }],
+    settings: {
+      consoleHost: 'os.example.com',
+      publicHost: null,
+      callsHost: null,
+      managed: managed ? { controlPlane: 'https://hosting.example.com', boxId: '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e', pollSeconds: 60 } : null,
+    },
+  })
+  const claims = [{ host: 'www.example.com', verified: false, txtName: '_ee-verify.www.example.com', txtValue: 'company-token' }]
+
+  it('GET /v1/status: claims is null until the control plane sent some, then the stored list; cleared again on null', async () => {
+    const { sys, ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue(state(true) as never)
+    expect(((await call('GET', '/v1/status')).data as { claims: unknown }).claims).toBeNull()
+    await fleetHost(ee).saveClaims(claims)
+    expect(JSON.parse(sys.files.get(PATHS.fleetClaims)!)).toEqual({ version: 1, claims })
+    const r = await call('GET', '/v1/status')
+    expect(r.status).toBe(200)
+    expect((r.data as { claims: unknown }).claims).toEqual(claims)
+    await fleetHost(ee).saveClaims(null)
+    expect(sys.files.has(PATHS.fleetClaims)).toBe(false)
+    expect(((await call('GET', '/v1/status')).data as { claims: unknown }).claims).toBeNull()
+  })
+
+  it('GET /v1/status: a box that is not managed reports claims: null', async () => {
+    const { sys, ee, call } = await start()
+    sys.files.set(PATHS.fleetClaims, JSON.stringify({ version: 1, claims }))
+    vi.spyOn(ee.repo, 'read').mockResolvedValue(state(false) as never)
+    expect(((await call('GET', '/v1/status')).data as { claims: unknown }).claims).toBeNull()
   })
 })

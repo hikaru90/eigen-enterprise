@@ -159,6 +159,33 @@ describe('managed domains', () => {
   })
 })
 
+describe('domain claims (plan/domains-one-claim.md D4)', () => {
+  const claim = { host: 'www.acme.com', verified: false, txtName: '_ee-verify.www.acme.com', txtValue: 'tok-' + 'a'.repeat(40) }
+
+  it('claims is a feature, appended at the end', () => {
+    expect(FLEET_FEATURES.at(-1)).toBe('claims')
+    expect(FLEET_FEATURES.indexOf('claims')).toBe(FLEET_FEATURES.indexOf('domains') + 1)
+  })
+
+  it('desired.claims is a strict, nullable, optional list of { host, verified, txtName, txtValue }', () => {
+    const verified = { ...claim, host: 'acme.com', txtName: '_ee-verify.acme.com', verified: true }
+    expect(parseDesired({ protocol: 1, pollSeconds: 60, claims: [claim, verified] })).toEqual({
+      desired: { protocol: 1, pollSeconds: 60, claims: [claim, verified] },
+      ignoredFields: [],
+    })
+    expect(parseDesired({ protocol: 1, pollSeconds: 60, claims: [] }).desired.claims).toEqual([])
+    expect(parseDesired({ protocol: 1, pollSeconds: 60, claims: null }).desired.claims).toBeNull()
+    expect(parseDesired({ protocol: 1, pollSeconds: 60 }).desired.claims).toBeUndefined()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, claims: [{ ...claim, extra: 1 }] })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, claims: [{ ...claim, verified: 'yes' }] })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, claims: [{ ...claim, host: '' }] })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, claims: [{ ...claim, txtValue: '' }] })).toThrow()
+    const { txtName: _n, ...partial } = claim
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, claims: [partial] })).toThrow()
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, claims: claim })).toThrow()
+  })
+})
+
 describe('escrow (the control plane keeps a copy of the backup key)', () => {
   const backupKey = Buffer.alloc(32, 7).toString('base64')
 
