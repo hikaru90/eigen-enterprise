@@ -2,6 +2,21 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-22 — Domains one claim system, D5 merged: Settings › Domains is the one place
+
+- **Settings › Domains** (`5f3d1db5`) on `domains.list`: per domain (bought/connected, renewal) its hostnames with a "Shows" picker (asks first: "X shows A now. Show B instead?"), email, DNS (all ok / N to fix), claim (managed), certificate (issued until / pending / failing with Caddy's last error + next retry); "Records to add" (only missing/wrong, copyable, with what DNS shows now); Add a hostname, Remove, Check now, Retry certificate — all form actions on the registry tools. Deep links `/settings/domains#<host>`.
+- `domains.list` returns per-source `errors[]` (bought domains, ee status, mail domains) instead of failing whole; DMARC read as a policy (RFC 7489): an existing `p=quarantine`/`reject` is ok.
+- Checks on main: unit 8,747 passed; components 821 (2 app-detail specs updated to the new contract by me); svelte-check 0 errors. **No e2e:** the Playwright harness has no fake ee socket and DNS uses the system resolver; adding either needs a test-only env switch (forbidden). Covered by page-server specs with a real registry + fake ee/DNS and component tests.
+
+**Removed / moved (announced to the owner):**
+1. Company-website page: its domain add/change/remove form and the `domainSet`/`domainRemove` actions → address(es) with status + "Change in Settings › Domains".
+2. Each app's Settings: its domain add/replace/remove fields and actions → the same.
+3. Website › Settings' "Domains & routing" table → a one-line summary + link.
+4. Settings › Domains no longer links each mail domain to Email's "DNS records" page (those records are in "Records to add"; Email's pages unchanged; Email's domain list links here).
+5. `domainRows` (`src/lib/domains/rows.ts`) removed; `website.app_domain_set/remove` stay as registry tools.
+
+**Next:** push + release, cloud redeploy (migration 0009 + `claims`), then D6 proof on ee-one.
+
 ## 2026-11-22 — Domains one claim system, wave 2 merged: claims protocol + kernel `domains` module
 
 - **Claims protocol (D4b)** (`787a8c78`; cloud `469565b`, pushed, not deployed): fleet feature `claims`; `desired.claims [{host, verified, txtName, txtValue}]` for the company's own claims; ee stores them (`/var/lib/ee/fleet-claims.json`, null clears) and `GET /v1/status` → `claims` (null = not managed). ee 490, cloud 268.
