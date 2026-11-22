@@ -1,7 +1,9 @@
 import type { DomainsList, MailDomain } from './view'
 import { describe, expect, it } from 'vitest'
+import type { BoughtDomain } from '$lib/domains/contract'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
-import { SubstrateUnavailableError, type EeStatus } from '$lib/server/ee/client'
+import { DomainsApiError } from '$lib/server/domains/client'
+import { SubstrateError, SubstrateUnavailableError, type EeStatus } from '$lib/server/ee/client'
 import { cachedResolver, type DnsResolver } from './dns'
 import { createDomainsTools, type DomainsEe } from './tools'
 
@@ -19,6 +21,7 @@ const BOX = '159.195.209.90'
 class Ee implements DomainsEe {
   calls: Array<{ verb: string; input: unknown }> = []
   unavailable = false
+  broken = false
   status_: EeStatus = {
     appliedRev: 'x',
     desiredRev: 'x',
@@ -52,11 +55,35 @@ class Ee implements DomainsEe {
         txtValue: 'tok-1',
       },
     ],
-    workloads: [],
+    workloads: [
+      {
+        name: 'eigen-enterprise-website',
+        tier: 'app',
+        source: { kind: 'release' },
+        deploy: { auto: false },
+        contract: null,
+        secrets: [],
+        declaredSecrets: [],
+        live: null,
+        lastError: null,
+      },
+      {
+        name: 'livekit',
+        tier: 'system',
+        source: { kind: 'release' },
+        deploy: { auto: false },
+        contract: null,
+        secrets: [],
+        declaredSecrets: [],
+        live: null,
+        lastError: null,
+      },
+    ],
     events: [],
   }
   async status() {
     if (this.unavailable) throw new SubstrateUnavailableError('ENOENT')
+    if (this.broken) throw new SubstrateError(500, 'reconcile lock held')
     return this.status_
   }
   async addDomain(i: Parameters<DomainsEe['addDomain']>[0]) {
@@ -122,8 +149,21 @@ const mail: MailDomain[] = [
   },
 ]
 
+const boughtDomain = (name: string): BoughtDomain => ({
+  name,
+  state: 'active',
+  error: null,
+  renewsAt: '2027-11-18T00:00:00.000Z',
+  autoRenew: true,
+})
+
 function tools(
-  o: { ee?: Ee; mail?: MailDomain[]; bought?: string[]; dns?: Record<string, string[]> } = {},
+  o: {
+    ee?: Ee
+    mail?: MailDomain[] | (() => Promise<MailDomain[]>)
+    bought?: BoughtDomain[] | (() => Promise<BoughtDomain[]>)
+    dns?: Record<string, string[]>
+  } = {},
 ) {
   const ee = o.ee ?? new Ee()
   const dns = fakeDns(
@@ -137,8 +177,15 @@ function tools(
   const resolver = cachedResolver(dns.r, 60_000, () => t)
   const list = createDomainsTools({
     ee,
-    mail: async () => o.mail ?? mail,
-    bought: async () => o.bought ?? ['eigenenterprise.app', 'kindred.digital'],
+    mail: typeof o.mail === 'function' ? o.mail : async () => (o.mail as MailDomain[]) ?? mail,
+    bought:
+      typeof o.bought === 'function'
+        ? o.bought
+        : async () =>
+            (o.bought as BoughtDomain[] | undefined) ?? [
+              boughtDomain('eigenenterprise.app'),
+              boughtDomain('kindred.digital'),
+            ],
     resolver,
   })
   const by = new Map(list.map((d) => [d.name, d] as [string, ToolDescriptor]))
@@ -158,6 +205,19 @@ describe('domains.list: domain → hostnames → what each shows → records →
       ],
       ['kindred.digital', 'bought', []],
     ])
+    expect(out.domains[0]!.bought).toEqual({
+      state: 'active',
+      error: null,
+      renewsAt: '2027-11-18T00:00:00.000Z',
+      autoRenew: true,
+    })
+    expect(out.errors).toEqual([])
+  })
+
+  it('lists the apps a host can show (ee app workloads only)', async () => {
+    const { by } = tools()
+    const out = (await by.get('domains.list')!.handler(agent, {})) as DomainsList
+    expect(out.apps).toEqual(['eigen-enterprise-website'])
   })
 
   it('each host: what it shows, email, records with what DNS says, claim, certificate', async () => {
@@ -228,6 +288,58 @@ describe('domains.list: domain → hostnames → what each shows → records →
       }),
     ])
     expect(out.domains[0]!.hosts[0]!.records.map((r) => r.purpose)).toEqual(['mail_inbound_mx'])
+  })
+})
+
+describe('domains.list: a failed source is loud but local', () => {
+  it('the control plane fails: ee hosts and mail still listed, the failure in errors[]', async () => {
+    const { by } = tools({
+      bought: async () => {
+        throw new DomainsApiError(502, 'The domain service failed (HTTP 503).')
+      },
+    })
+    const out = (await by.get('domains.list')!.handler(agent, {})) as DomainsList
+    expect(out.managed).toBe(true)
+    expect(out.domains.map((d) => [d.name, d.source])).toEqual([
+      ['eigenenterprise.app', 'connected'],
+    ])
+    expect(out.errors).toEqual([
+      expect.objectContaining({
+        source: 'bought',
+        error: 'The domain service failed (HTTP 503).',
+        agent: expect.objectContaining({ tool: 'domains.list', code: 'DomainsApiError' }),
+      }),
+    ])
+  })
+
+  it('ee status fails: bought + mail domains still listed, the failure in errors[]', async () => {
+    const ee = new Ee()
+    ee.broken = true
+    const { by } = tools({ ee })
+    const out = (await by.get('domains.list')!.handler(agent, {})) as DomainsList
+    expect(out.domains.map((d) => [d.name, d.hosts.map((h) => h.host)])).toEqual([
+      ['eigenenterprise.app', ['eigenenterprise.app']],
+      ['kindred.digital', []],
+    ])
+    expect(out.apps).toEqual([])
+    expect(out.errors).toEqual([
+      expect.objectContaining({
+        source: 'server',
+        error: expect.stringMatching(/deploy agent could not read the server status/),
+      }),
+    ])
+  })
+
+  it('mail domains fail: the rest listed, the failure in errors[]', async () => {
+    const { by } = tools({
+      mail: async () => {
+        throw new Error('db down')
+      },
+    })
+    const out = (await by.get('domains.list')!.handler(agent, {})) as DomainsList
+    expect(out.domains[0]!.hosts[0]!.email).toBeNull()
+    expect(out.errors.map((e) => e.source)).toEqual(['mail'])
+    expect(out.errors[0]!.agent.cause).toMatch(/db down/)
   })
 })
 

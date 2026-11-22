@@ -1,25 +1,37 @@
 <script lang="ts">
-  import ErrorNotice from '$lib/components/error-notice.svelte'
-  import type { HostingData } from '../../routes/(nucleus)/m/website/settings/settings-data.server'
-  import ExternalLink from '@lucide/svelte/icons/external-link'
+  import type {
+    HostingData,
+    HostingDomainSummary,
+  } from '../../routes/(nucleus)/m/website/settings/settings-data.server'
   import { resolve } from '$app/paths'
-  import * as Alert from '$lib/components/ui/alert'
-  import { Badge } from '$lib/components/ui/badge'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import SectionHeader from '$lib/components/page/section-header.svelte'
+  import * as Alert from '$lib/components/ui/alert'
   import * as Card from '$lib/components/ui/card'
-  import * as Table from '$lib/components/ui/table'
   import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: HostingData } = $props()
 
   /**
    * Shared settings surface for the canonical settings route and legacy hosting link.
-   * Routing comes from ee; domain changes stay with the app or company site owner.
+   * Domains are a global setting: a summary here, everything else in Settings › Domains.
    */
 
   const shortRev = (rev: string | null) => (rev ? rev.slice(0, 7) : 'not applied yet')
-  const roleVariant = (role: 'Console' | 'Site' | 'Calls' | 'App') =>
-    role === 'Console' || role === 'Calls' ? 'secondary' : role === 'Site' ? 'default' : 'outline'
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+  /** "4 addresses point at this server: the console, the company website, 1 app and calls." */
+  function summary(d: HostingDomainSummary): string {
+    if (d.total === 0) return 'No address points at this server yet.'
+    const parts = [
+      d.console ? 'the console' : null,
+      d.site ? 'the company website' : null,
+      d.apps ? plural(d.apps, 'app', 'apps') : null,
+      d.calls ? 'calls' : null,
+    ].filter((p): p is string => p !== null)
+    const list =
+      parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0]
+    return `${plural(d.total, 'address points', 'addresses point')} at this server: ${list}.`
+  }
 </script>
 
 <svelte:head><title>{docTitle('Settings', 'Website')}</title></svelte:head>
@@ -44,16 +56,15 @@
     </Alert.Root>
     <Card.Root class="mt-6" id="domains">
       <Card.Header>
-        <Card.Title>Domains &amp; routing</Card.Title>
+        <Card.Title>Domains</Card.Title>
         <Card.Description
-          >Live routes appear here when a deployment server is connected.</Card.Description
+          >What points at this server appears here when a deployment server is connected.</Card.Description
         >
       </Card.Header>
       <Card.Content class="text-sm text-muted-foreground">
-        Manage the company domain in <a class="underline" href={resolve('/m/website/site')}
-          >company site settings</a
-        >. For an app, open its App settings to manage its domains. Each domain belongs to one
-        destination.
+        The company’s domains are in <a class="underline" href={resolve('/settings/domains')}
+          >Settings › Domains</a
+        >. Each address shows one thing: the console, the company website, an app or nothing.
       </Card.Content>
     </Card.Root>
   {:else}
@@ -116,58 +127,14 @@
 
       <Card.Root id="domains" data-testid="hosting-domains">
         <Card.Header>
-          <Card.Title>Domains &amp; routing</Card.Title>
-          <Card.Description
-            >Every domain pointing at this server, and what it belongs to.</Card.Description
-          >
+          <Card.Title>Domains</Card.Title>
+          <Card.Description>{summary(data.domains)}</Card.Description>
         </Card.Header>
-        <Card.Content>
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.Head>Domain</Table.Head>
-                <Table.Head>Role</Table.Head>
-                <Table.Head>Belongs to</Table.Head>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {#each data.domains as row (row.host)}
-                <Table.Row>
-                  <Table.Cell>
-                    <a
-                      class="inline-flex items-center gap-1 underline underline-offset-2"
-                      href={row.url}
-                      target="_blank"
-                      rel="external noopener noreferrer"
-                    >
-                      {row.host}
-                      <ExternalLink class="size-3 shrink-0" aria-hidden="true" />
-                    </a>
-                  </Table.Cell>
-                  <Table.Cell><Badge variant={roleVariant(row.role)}>{row.role}</Badge></Table.Cell>
-                  <Table.Cell>
-                    {#if row.owner.kind === 'console'}
-                      Console
-                    {:else if row.owner.kind === 'calls'}
-                      Calls
-                    {:else}
-                      <a
-                        class="underline underline-offset-2"
-                        href={row.owner.kind === 'app'
-                          ? resolve(`/m/website/apps/${row.owner.name}#settings`)
-                          : resolve('/m/website/site')}
-                      >
-                        {row.owner.kind === 'site' ? 'Company site' : row.owner.name}
-                      </a>
-                    {/if}
-                  </Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-          <p class="text-muted-foreground mt-3 text-xs">
-            Open an app’s Settings or Company site settings to add, change or remove its domains.
-          </p>
+        <Card.Content class="text-sm text-muted-foreground">
+          Every address, what it shows, its DNS records and its certificate are in
+          <a class="underline underline-offset-2" href={resolve('/settings/domains')}
+            >Settings › Domains</a
+          >, the one place to change them.
         </Card.Content>
       </Card.Root>
     </div>
@@ -190,8 +157,11 @@
         trusted on your device.
       </p>
       <p>
-        Certificate status is not reported by the deployment server. A configured route does not
-        confirm that a certificate has been issued; server errors appear above.
+        Each address’s certificate — issued, pending, or failing with the last error and the next
+        try — is shown in <a
+          class="underline underline-offset-2"
+          href={resolve('/settings/domains')}>Settings › Domains</a
+        >, with “Retry certificate”.
       </p>
     </Card.Content>
   </Card.Root>

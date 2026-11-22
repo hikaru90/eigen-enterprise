@@ -4,6 +4,7 @@ import type { Actions, PageServerLoad } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import type { ErrorReport } from '$lib/errors/agent-report'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import { addressesShowing } from '$lib/server/domains/addresses'
 import type { EeStatus } from '$lib/server/ee/client'
 import { refusalReport } from '$lib/server/errors/report'
 import { lastAttempt, startOwnerDeploy } from '$lib/server/website/deploy-runner'
@@ -22,8 +23,9 @@ import { contractFields, formContract } from '../form'
 
 /**
  * /m/website/apps/[name]: one app — Redeploy (in the background, followed
- * through deploy-progress; it replays the saved build settings), its domains
- * (add/change/remove per app, D-W2), build settings, env variables (names
+ * through deploy-progress; it replays the saved build settings), its addresses
+ * with their status (shown and linked: domains are edited only in Settings ›
+ * Domains, plan/domains-one-claim.md D5), build settings, env variables (names
  * only; values stored sealed by ee), secrets (write-only via
  * substrate.secret_set), deploy history, recent logs.
  */
@@ -87,8 +89,15 @@ export const load: PageServerLoad = async (event) => {
   const secretNames = workload
     ? [...new Set([...workload.declaredSecrets, ...workload.secrets])].sort()
     : []
+  const { addresses, addressesError } = await addressesShowing(
+    user,
+    `the app ${name}`,
+    (shows) => shows.kind === 'app' && shows.app === name,
+  )
   return {
     app,
+    addresses,
+    addressesError,
     logs,
     logsError,
     lastDeploy,
@@ -130,68 +139,6 @@ export const actions: Actions = {
       ...(contract ? { contract } : {}),
     })
     return { action: 'deploy' as const, jobId: job.id, name: event.params.name }
-  },
-  domainSet: async (event) => {
-    const user = await requireAdmin(event.locals.user)
-    const f = await event.request.formData()
-    const host = field(f, 'host')
-    const replace = field(f, 'replace')
-    try {
-      const out = await ownerRun<{ host: string; domains: string[]; message: string }>(
-        user,
-        'website.app_domain_set',
-        {
-          name: event.params.name,
-          host,
-          ...(replace ? { replace } : {}),
-        },
-      )
-      return {
-        action: 'domainSet' as const,
-        ok: true,
-        // What the host showed before, in the shared rule's words (never a silent switch).
-        message: out.message,
-      }
-    } catch (err) {
-      logAppFailure('website.app_domain_set', err)
-      return fail(400, {
-        action: 'domainSet' as const,
-        ...appErrorReport(err, {
-          attempted: `Pointing ${host} at ${event.params.name}`,
-          tool: 'website.app_domain_set',
-          input: { name: event.params.name, host, ...(replace ? { replace } : {}) },
-        }),
-      })
-    }
-  },
-  domainRemove: async (event) => {
-    const user = await requireAdmin(event.locals.user)
-    const host = field(await event.request.formData(), 'host')
-    try {
-      const out = await ownerRun<{ host: string; domains: string[]; message: string }>(
-        user,
-        'website.app_domain_remove',
-        {
-          name: event.params.name,
-          host,
-        },
-      )
-      return {
-        action: 'domainRemove' as const,
-        ok: true,
-        message: out.message,
-      }
-    } catch (err) {
-      logAppFailure('website.app_domain_remove', err)
-      return fail(400, {
-        action: 'domainRemove' as const,
-        ...appErrorReport(err, {
-          attempted: `Removing ${host} from ${event.params.name}`,
-          tool: 'website.app_domain_remove',
-          input: { name: event.params.name, host },
-        }),
-      })
-    }
   },
   env: async (event) => {
     const user = await requireAdmin(event.locals.user)

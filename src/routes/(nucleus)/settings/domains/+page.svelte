@@ -1,29 +1,44 @@
 <script lang="ts">
   import type { PageProps } from './$types'
   import { invalidateAll } from '$app/navigation'
-  import { resolve } from '$app/paths'
   import DomainBuy from '$lib/components/domains/domain-buy.svelte'
   import DomainConnect from '$lib/components/domains/domain-connect.svelte'
   import DomainProgress from '$lib/components/domains/domain-progress.svelte'
-  import DnsStatus from '$lib/components/email/dns-status.svelte'
+  import DomainSection from '$lib/components/domains/domain-section.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { STATE_LABEL } from '$lib/domains/contract'
   import { EMPTY_REGISTRANT } from '$lib/domains/registrant-defaults'
+  import { shownErrorOf } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
 
   /**
-   * Settings › Domains (plan/managed-domains.md): the company's domains with
-   * their state and renewal, "Buy a domain" on managed boxes and "Connect one
-   * you have" — the same components as the onboarding's Domain act.
+   * Settings › Domains — the one place (plan/domains-one-claim.md): every
+   * domain the company has, each hostname under it with what it shows, its
+   * email, DNS, claim and certificate, and the records still to add. Domains
+   * are a global setting edited only here; the company website, apps and
+   * Email show their address and link here. "Buy a domain" (managed boxes)
+   * and "Connect one you have" stay as they were.
    */
-  let { data }: PageProps = $props()
+  let { data, form }: PageProps = $props()
 
   let panel = $state<'buy' | 'connect' | null>(null)
   /** A purchase just made here: its progress shows until it is ready. */
   let buying = $state<string | null>(null)
 
-  const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' })
+  const list = $derived(data.list)
+  const answer = $derived.by(() => {
+    if (!form || !('action' in form)) return null
+    const failed = shownErrorOf(form)
+    if (failed) return { kind: 'error' as const, ...failed }
+    const f = form as { message?: string; reconcileError?: string | null }
+    if (f.reconcileError)
+      return {
+        kind: 'error' as const,
+        error: `${f.message ?? 'Saved.'} The server could not apply it yet: ${f.reconcileError}`,
+        agent: null,
+      }
+    return { kind: 'ok' as const, text: f.message ?? 'Done.' }
+  })
 
   function onBought(detail: { name: string }): void {
     panel = null
@@ -43,63 +58,47 @@
 
 <h2 class="text-base font-semibold tracking-tight">Domains</h2>
 <p class="mt-1 text-sm text-foreground/60">
-  The company’s addresses on the internet: email goes out from them, and later the website lives on
-  them.
+  The company’s addresses on the internet. Each address shows one thing — the console, the company
+  website, an app, calls, or nothing — and email rides along on the same names. This is the one
+  place to change them.
 </p>
 
-{#if data.boughtError}
-  <ErrorNotice class="mt-4" {...data.boughtError} />
+{#if data.listError}
+  <ErrorNotice class="mt-4" error={data.listError.error} agent={data.listError.agent} />
+{/if}
+{#each list?.errors ?? [] as e (e.source)}
+  <ErrorNotice class="mt-4" error={e.error} agent={e.agent} testid={`domains-error-${e.source}`} />
+{/each}
+{#if list && !list.managed && list.reason}
+  <p class="mt-4 text-xs text-muted-foreground" data-testid="domains-unmanaged">
+    What each address shows is set on a server with ee, its deploy agent: {list.reason}
+  </p>
 {/if}
 
-<div class="mt-8 rounded-lg border border-border" data-testid="settings-domains">
-  {#if data.rows.length === 0}
-    <p class="px-4 py-6 text-sm text-muted-foreground">No domains yet.</p>
-  {:else}
-    <ul class="divide-y divide-border">
-      {#each data.rows as row (row.name)}
-        <li
-          class="flex flex-wrap items-start justify-between gap-3 px-4 py-3"
-          data-testid="domain-row"
-        >
-          <div class="min-w-0">
-            <p class="truncate text-sm font-medium">{row.name}</p>
-            <p class="mt-0.5 text-xs text-muted-foreground">
-              {#if row.source === 'bought'}
-                Bought through eigenEnterprise
-                {#if row.renewsAt}
-                  · {row.autoRenew
-                    ? `Renews ${date(row.renewsAt)}`
-                    : `Runs out ${date(row.renewsAt)} (renewal off)`}
-                {/if}
-              {:else}
-                In your own DNS
-              {/if}
-            </p>
-            {#if row.error}<ErrorNotice
-                class="mt-1 text-xs"
-                error={row.error}
-                attempted={`Registering the bought domain ${row.name} (the control plane reported it failed)`}
-              />{/if}
-            {#if row.mailNote}<p class="mt-1 text-xs text-muted-foreground">{row.mailNote}</p>{/if}
-          </div>
-          <div class="flex shrink-0 items-center gap-3">
-            {#if row.state}
-              <span class="text-xs text-muted-foreground" data-testid="domain-state"
-                >{STATE_LABEL[row.state]}</span
-              >
-            {/if}
-            {#if row.mail}
-              <DnsStatus status={row.mail.status} />
-              <a
-                class="text-xs underline-offset-4 hover:underline"
-                href={resolve(`/m/email/domains/${row.mail.id}`)}>DNS records</a
-              >
-            {/if}
-          </div>
-        </li>
-      {/each}
-    </ul>
+{#if answer}
+  <div class="mt-4" role="status" data-testid="domains-answer">
+    {#if answer.kind === 'ok'}
+      <p class="text-sm">{answer.text}</p>
+    {:else}
+      <ErrorNotice error={answer.error} agent={answer.agent} />
+    {/if}
+  </div>
+{/if}
+
+<div data-testid="settings-domains">
+  {#if list && list.domains.length === 0}
+    <p class="mt-8 rounded-lg border border-border px-4 py-6 text-sm text-muted-foreground">
+      No domains yet.
+    </p>
   {/if}
+  {#each list?.domains ?? [] as d (d.name)}
+    <DomainSection
+      domain={d}
+      managed={list?.managed ?? false}
+      apps={list?.apps ?? []}
+      mailNote={data.mailNotes[d.name] ?? null}
+    />
+  {/each}
 </div>
 
 {#if buying}
@@ -134,6 +133,9 @@
   </div>
 {:else if panel === 'connect'}
   <div class="mt-6 rounded-lg border border-border p-4">
+    <p class="mb-3 text-xs text-muted-foreground" data-testid="domains-connect-note">
+      Connecting a domain adds it for email; add hostnames below to use it for the website or apps.
+    </p>
     <DomainConnect onconnected={() => void invalidateAll()} />
   </div>
 {/if}

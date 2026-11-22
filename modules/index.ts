@@ -5,6 +5,7 @@ import type { MailDomain } from './domains/view'
 import type { MessagesDeps } from './messages/service'
 import type { DriveSourcePort } from './repos/drive-port'
 import { join } from 'node:path'
+import type { BoughtDomain } from '$lib/domains/contract'
 import { CachedActivationStore } from '$lib/kernel/activation-cache'
 import {
   ModeAwareApprovalPolicy,
@@ -280,13 +281,13 @@ async function liveMailDomains(): Promise<MailDomain[]> {
 }
 
 /** Domains bought through eigenEnterprise; a box without the domains service (EE_DOMAINS_* unset) has none. */
-async function liveBoughtDomains(): Promise<string[]> {
+async function liveBoughtDomains(): Promise<BoughtDomain[]> {
   const [{ domainsFromEnv }, { domainsClient }] = await Promise.all([
     import('$lib/server/domains/env'),
     import('$lib/server/domains/client'),
   ])
   const config = domainsFromEnv()
-  return config ? (await domainsClient(config).list()).map((d) => d.name) : []
+  return config ? domainsClient(config).list() : []
 }
 
 export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {

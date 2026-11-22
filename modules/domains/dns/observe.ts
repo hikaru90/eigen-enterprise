@@ -1,5 +1,6 @@
 import type { ExpectedRecord, ObservedRecord, RecordType } from './records'
 import { Resolver } from 'node:dns/promises'
+import { DMARC_PURPOSE, dmarcSatisfied } from './dmarc'
 
 /** The lookups the observer needs; `node:dns/promises` Resolver in the app, a fake in tests. */
 export type DnsResolver = {
@@ -84,6 +85,11 @@ function judge(record: ExpectedRecord, answer: Answer): ObservedRecord {
     case 'txt': {
       const observed = answer.values
       if (observed.length === 0) return { ...record, status: 'missing', observed, error: null }
+      if (answer.kind === 'txt' && record.purpose === DMARC_PURPOSE) {
+        // The expected `p=none` is a minimum: any valid policy the company has is ok (RFC 7489).
+        const ok = dmarcSatisfied(observed)
+        return { ...record, status: ok ? 'ok' : 'wrong', observed, error: null }
+      }
       const key =
         answer.kind === 'txt'
           ? (v: string) => v
