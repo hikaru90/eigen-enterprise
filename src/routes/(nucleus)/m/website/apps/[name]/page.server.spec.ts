@@ -222,16 +222,18 @@ describe('/m/website/apps/[name]', () => {
     })
 
     it('with replace, the old address moves: removed, then the new one added', async () => {
-      const { ee, services } = await setup()
+      const { ee } = await setup()
       const out = await actions.domainSet(
         event({
           params: { name: 'shop' },
           request: formRequest({ host: 'shop.kindred.dev', replace: 'shop.ee.localhost' }),
         }),
       )
-      expect(out).toMatchObject({ ok: true })
+      expect(out).toMatchObject({
+        ok: true,
+        message: 'shop.kindred.dev now shows the app shop. shop.ee.localhost no longer shows the app shop.',
+      })
       expect(ee.removed).toEqual([{ host: 'shop.ee.localhost', author: 'human:u1' }])
-      expect((await services.get('shop'))?.host).toBe('shop.kindred.dev')
     })
 
     it('a host in use comes back as a plain sentence naming the owner', async () => {

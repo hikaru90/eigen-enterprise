@@ -77,12 +77,13 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator, members, contribute and contribute-hub modules are internal (no owner-facing card); the others are not', () => {
+  it('the orchestrator, members, contribute, contribute-hub and domains modules are internal (no owner-facing card); the others are not', () => {
     expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
       'orchestrator',
       'members',
       'contribute',
       'contribute-hub',
+      'domains',
     ])
   })
 
@@ -178,8 +179,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos, calendar and assistant, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar', 'assistant'])
+  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos, calendar, assistant and domains, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar', 'assistant', 'domains'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
@@ -201,6 +202,8 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('contacts.list')).toBe(true)
     // Calendar (plan/calendar.md): an official plugin, on from the start.
     expect(await k.modules.isToolActive('calendar.list')).toBe(true)
+    // Domains (plan/domains-one-claim.md): a global setting, core.
+    expect(await k.modules.isToolActive('domains.list')).toBe(true)
     // Assistant (round 5): an official plugin, on from the start — on an existing company too (no record yet).
     expect(await activations.get('assistant')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.

@@ -6,6 +6,7 @@ import {
   type EeStatus,
   type EeTransport,
 } from '$lib/server/ee/client'
+import { createDomainsTools } from '../../../../../../modules/domains/tools'
 import { createSubstrateTools } from '../../../../../../modules/website/hosting/tools'
 
 const { holder } = vi.hoisted(() => ({ holder: { registry: null as unknown } }))
@@ -49,14 +50,24 @@ function eeHarness(
       return { status: fail.status, data: { detail: fail.detail } }
     }
     if (method === 'GET' && path === '/v1/status') return { status: 200, data: status }
+    if (method === 'POST' && path === '/v1/domains') {
+      const replaced = status.routes.find((r) => r.host === (body as { host: string }).host)?.workload ?? null
+      return { status: 200, data: { rev: 'r1', reconcileError: null, replaced } }
+    }
     return { status: 200, data: { rev: 'r1', reconcileError: null } }
   }
   return { calls, transport }
 }
 
+function register(registry: KernelRegistry, transport: EeTransport) {
+  const ee = new EeClient(transport)
+  for (const t of createSubstrateTools({ client: ee })) registry.register(t)
+  for (const t of createDomainsTools({ ee, mail: async () => [], bought: async () => [] })) registry.register(t)
+}
+
 function setup(transport: EeTransport) {
   const registry = new KernelRegistry()
-  for (const t of createSubstrateTools({ client: new EeClient(transport) })) registry.register(t)
+  register(registry, transport)
   holder.registry = registry
 }
 
@@ -136,8 +147,14 @@ describe('/m/website/site actions', () => {
       string,
       unknown
     >
-    expect(out).toMatchObject({ action: 'domainSet', ok: true, host: 'kindred.digital' })
+    expect(out).toMatchObject({
+      action: 'domainSet',
+      ok: true,
+      host: 'kindred.digital',
+      message: 'kindred.digital now shows the company website.',
+    })
     expect(ee.calls).toEqual([
+      { method: 'GET', path: '/v1/status' },
       { method: 'GET', path: '/v1/status' },
       {
         method: 'POST',
@@ -163,8 +180,14 @@ describe('/m/website/site actions', () => {
       string,
       unknown
     >
-    expect(out).toMatchObject({ action: 'domainSet', ok: true, host: 'kindred.digital' })
+    expect(out).toMatchObject({
+      action: 'domainSet',
+      ok: true,
+      host: 'kindred.digital',
+      message: 'kindred.digital now shows the company website. old.kindred.digital no longer shows it.',
+    })
     expect(ee.calls).toEqual([
+      { method: 'GET', path: '/v1/status' },
       { method: 'GET', path: '/v1/status' },
       {
         method: 'POST',
@@ -174,32 +197,46 @@ describe('/m/website/site actions', () => {
     ])
   })
 
-  it.each(['not a host', 'os.ee.localhost', 'shop.kindred.digital'])(
-    'rejects %s without removing the existing domain',
-    async (host) => {
-      const status = eeStatus({
-        settings: {
-          consoleHost: 'os.ee.localhost',
-          publicHost: 'old.kindred.digital',
-          acmeEmail: null,
-        },
-        routes: [
-          { host: 'os.ee.localhost', workload: 'os' },
-          { host: 'old.kindred.digital', workload: 'os' },
-          { host: 'shop.kindred.digital', workload: 'shop' },
-        ],
-      })
-      const ee = eeHarness(status)
-      setup(ee.transport)
-      const out = (await actions.domainSet(formEvent({ host }))) as {
-        status: number
-        data: { error: string }
-      }
-      expect(out.status).toBe(400)
-      expect(out.data.error).toMatch(/valid domain|already assigned/)
-      expect(ee.calls.filter((call) => call.method !== 'GET')).toEqual([])
-    },
-  )
+  const takenStatus = () =>
+    eeStatus({
+      settings: {
+        consoleHost: 'os.ee.localhost',
+        publicHost: 'old.kindred.digital',
+        acmeEmail: null,
+        callsHost: null,
+      },
+      routes: [
+        { host: 'os.ee.localhost', workload: 'os' },
+        { host: 'old.kindred.digital', workload: 'os' },
+        { host: 'shop.kindred.digital', workload: 'shop' },
+      ],
+    })
+
+  it.each([
+    ['not a host', /valid domain/],
+    ['os.ee.localhost', /^os\.ee\.localhost shows the console\. Give the console another address first/],
+  ])('rejects %s without touching the existing domain', async (host, error) => {
+    const ee = eeHarness(takenStatus())
+    setup(ee.transport)
+    const out = (await actions.domainSet(formEvent({ host }))) as {
+      status: number
+      data: { error: string }
+    }
+    expect(out.status).toBe(400)
+    expect(out.data.error).toMatch(error)
+    expect(ee.calls.filter((call) => call.method !== 'GET')).toEqual([])
+  })
+
+  it('a host that shows an app switches to the site, and says so (an ordinary change, never silent)', async () => {
+    const ee = eeHarness(takenStatus())
+    setup(ee.transport)
+    const out = await actions.domainSet(formEvent({ host: 'shop.kindred.digital' }))
+    expect(out).toMatchObject({
+      ok: true,
+      message:
+        'shop.kindred.digital now shows the company website instead of the app shop. old.kindred.digital no longer shows it.',
+    })
+  })
 
   it('an ee rejection never removes the old public domain', async () => {
     const ee = eeHarness(
@@ -218,8 +255,10 @@ describe('/m/website/site actions', () => {
       data: { error: string }
     }
     expect(out.status).toBe(400)
-    expect(out.data.error).toBe('new domain rejected')
-    expect(ee.calls.map((call) => call.method)).toEqual(['GET', 'POST'])
+    expect(out.data.error).toBe(
+      'The server did not point new.kindred.digital at the company website: new domain rejected.',
+    )
+    expect(ee.calls.map((call) => call.method)).toEqual(['GET', 'GET', 'POST'])
   })
 
   it('saving the current public domain is allowed', async () => {
@@ -235,20 +274,33 @@ describe('/m/website/site actions', () => {
     )
     setup(ee.transport)
     const out = await actions.domainSet(formEvent({ host: 'kindred.digital' }))
-    expect(out).toMatchObject({ ok: true, host: 'kindred.digital' })
-    expect(ee.calls.map((call) => call.method)).toEqual(['GET', 'POST'])
+    expect(out).toMatchObject({ ok: true, host: 'kindred.digital', message: 'kindred.digital already shows the company website.' })
+    expect(ee.calls.map((call) => call.method)).toEqual(['GET', 'GET'])
   })
 
-  it('domainRemove: removes exactly the host asked for', async () => {
-    const ee = eeHarness(eeStatus())
+  it('domainRemove: removes exactly the host asked for, and says what it no longer shows', async () => {
+    const ee = eeHarness(
+      eeStatus({
+        settings: { consoleHost: 'os.ee.localhost', publicHost: 'kindred.digital', acmeEmail: null, callsHost: null },
+        routes: [
+          { host: 'os.ee.localhost', workload: 'os' },
+          { host: 'kindred.digital', workload: 'os' },
+        ],
+      }),
+    )
     setup(ee.transport)
 
     const out = (await actions.domainRemove(formEvent({ host: 'kindred.digital' }))) as Record<
       string,
       unknown
     >
-    expect(out).toMatchObject({ action: 'domainRemove', ok: true })
+    expect(out).toMatchObject({
+      action: 'domainRemove',
+      ok: true,
+      message: 'kindred.digital no longer shows the company website.',
+    })
     expect(ee.calls).toEqual([
+      { method: 'GET', path: '/v1/status' },
       {
         method: 'DELETE',
         path: '/v1/domains',
@@ -272,7 +324,9 @@ describe('/m/website/site actions', () => {
     }
     expect(out.status).toBe(400)
     expect(out.data.action).toBe('domainSet')
-    expect(out.data.error).toBe('this host is already the console host')
+    expect(out.data.error).toBe(
+      'The server did not point x.example.com at the company website: this host is already the console host.',
+    )
   })
 
   it('a malformed host is a plain sentence, not a schema dump', async () => {
@@ -293,7 +347,7 @@ describe('/m/website/site actions', () => {
     const transport: EeTransport = async () => {
       throw new SubstrateUnavailableError('ECONNREFUSED')
     }
-    for (const t of createSubstrateTools({ client: new EeClient(transport) })) registry.register(t)
+    register(registry, transport)
     holder.registry = registry
 
     const out = (await actions.domainSet(formEvent({ host: 'kindred.digital' }))) as {

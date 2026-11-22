@@ -1,13 +1,14 @@
 import type { RequestEvent } from '@sveltejs/kit'
 import { requireAdmin } from '$lib/server/auth/require-admin'
+import { showsOf } from '$lib/server/domains/targets'
 import type { EeStatus } from '$lib/server/ee/client'
 import { ownerRun } from '$lib/server/website/owner-run'
 
 /**
  * /m/website/hosting: this server, read-only (D-W3). Domains are listed and
  * linked to whatever owns them — a domain's role is structural, never guessed
- * from text: the console host is the Console, the site's public host is the
- * Site, anything else belongs to the route's workload (an App). Domains are
+ * from text: what each host shows is the domains rule's answer (showsOf: the
+ * console, the site, calls — rtc.<console host> — or an app). Domains are
  * changed on the app or site that owns them (D-W2), never here.
  */
 
@@ -16,9 +17,10 @@ type Status = ({ managed: true } & EeStatus) | { managed: false; reason: string 
 export type HostingDomainRow = {
   host: string
   url: string
-  role: 'Console' | 'Site' | 'App'
+  role: 'Console' | 'Site' | 'Calls' | 'App'
   owner:
     | { kind: 'console' }
+    | { kind: 'calls' }
     | { kind: 'site'; href: '/m/website/site' }
     | { kind: 'app'; name: string; href: string }
 }
@@ -48,22 +50,29 @@ export const loadWebsiteSettings = async (
   const { settings, routes } = status
   const domains = routes.map((route): HostingDomainRow => {
     const url = `https://${route.host}`
-    if (route.host === settings.consoleHost) {
-      return { host: route.host, url, role: 'Console', owner: { kind: 'console' } }
-    }
-    if (route.host === settings.publicHost) {
-      return {
-        host: route.host,
-        url,
-        role: 'Site',
-        owner: { kind: 'site', href: '/m/website/site' },
-      }
-    }
-    return {
-      host: route.host,
-      url,
-      role: 'App',
-      owner: { kind: 'app', name: route.workload, href: `/m/website/apps/${route.workload}` },
+    const shows = showsOf(status, route.host)
+    switch (shows.kind) {
+      case 'console':
+        return { host: route.host, url, role: 'Console', owner: { kind: 'console' } }
+      case 'site':
+        return {
+          host: route.host,
+          url,
+          role: 'Site',
+          owner: { kind: 'site', href: '/m/website/site' },
+        }
+      case 'calls':
+        // The calls (signalling) host: no page of its own, never an app link.
+        return { host: route.host, url, role: 'Calls', owner: { kind: 'calls' } }
+      case 'app':
+        return {
+          host: route.host,
+          url,
+          role: 'App',
+          owner: { kind: 'app', name: shows.app, href: `/m/website/apps/${shows.app}` },
+        }
+      case 'nothing':
+        throw new Error(`ee lists a route for ${route.host} that shows nothing`)
     }
   })
   return {

@@ -10,7 +10,8 @@ import { websiteServices } from '$lib/server/db/website-services.schema'
  * Env values live in ee's sealed store; `contract` (migration 0101) is the
  * saved build settings of the last healthy deploy — the config "Redeploy"
  * replays and the owner-side record when ee no longer holds the workload's
- * contract. The runtime source of a form-built app stays ee's company repo.
+ * contract. An app's addresses are ee's routes (migration 0165 dropped the
+ * copy in `host`; plan/domains-one-claim.md D2). The runtime source of a form-built app stays ee's company repo.
  */
 
 export type ServiceKind = 'web' | 'backend'
@@ -23,8 +24,6 @@ export type Service = {
   branch: string
   repoId: number | null
   authKind: RepoAuthKind
-  /** Web apps: the host they're served at. Back-end services: null (no public route). */
-  host: string | null
   /** Push-to-deploy; only github_app repos get webhooks. */
   autoDeploy: boolean
   state: ServiceState
@@ -49,7 +48,6 @@ export type NewService = Pick<
   | 'branch'
   | 'repoId'
   | 'authKind'
-  | 'host'
   | 'autoDeploy'
   | 'createdBy'
 >
@@ -77,7 +75,6 @@ export type ServiceStore = {
 }
 
 function validate(s: NewService): void {
-  if (s.kind === 'web' && !s.host) throw new Error(`the web app ${s.name} needs a host`)
   if (s.autoDeploy && (s.authKind !== 'github_app' || s.repoId === null)) {
     throw new Error(
       `push-to-deploy needs a repo connected through the GitHub App (${s.repoFullName} is ${s.authKind})`,
@@ -153,7 +150,6 @@ const fromRow = (r: Row): Service => ({
   branch: r.branch,
   repoId: r.repoId,
   authKind: r.authKind,
-  host: r.host,
   autoDeploy: r.autoDeploy,
   state: r.state,
   lastRev: r.lastRev,

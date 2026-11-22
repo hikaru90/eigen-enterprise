@@ -295,10 +295,10 @@ describe('website.app_deploy builds the right ee calls', () => {
     ])
   })
 
-  it('a domain another app serves is refused before anything is fetched or deployed', async () => {
+  it('the console address is refused before anything is fetched or deployed', async () => {
     const { ee, run } = await setup()
     ee.consoleHost = 'os.kindred.dev'
-    ee.routes = [...ee.routes, { host: 'www.kindred.dev', workload: 'blog' }]
+    ee.routes = [{ host: 'os.kindred.dev', workload: 'os' }]
     await expect(
       run('website.app_deploy', {
         repo: 'kindred/shop',
@@ -306,10 +306,38 @@ describe('website.app_deploy builds the right ee calls', () => {
         name: 'shop',
         kind: 'web',
         contract: form,
-        hosts: ['shop.kindred.dev', 'www.kindred.dev'],
+        hosts: ['shop.kindred.dev', 'os.kindred.dev'],
       }),
-    ).rejects.toThrow('www.kindred.dev already serves the app blog. Pick another address for shop.')
+    ).rejects.toThrow('os.kindred.dev shows the console. Give the console another address first')
     expect(verbs(ee)).toEqual([])
+  })
+
+  it('a domain another app showed switches to this app, and the result says so (never silent)', async () => {
+    const { ee, run } = await setup()
+    ee.consoleHost = 'os.kindred.dev'
+    ee.routes = [...ee.routes, { host: 'www.kindred.dev', workload: 'blog' }]
+    const out = (await run('website.app_deploy', {
+      repo: 'kindred/shop',
+      branch: 'main',
+      name: 'shop',
+      kind: 'web',
+      contract: form,
+      hosts: ['shop.kindred.dev', 'www.kindred.dev'],
+    })) as { addresses: string[] }
+    expect(out.addresses).toEqual([
+      'shop.kindred.dev now shows the app shop.',
+      'www.kindred.dev now shows the app shop instead of the app blog.',
+    ])
+  })
+
+  it('a redeploy keeps the app on its own route (its address is ee’s, not a stored copy)', async () => {
+    const { ee, run } = await setup()
+    ee.consoleHost = 'os.kindred.dev'
+    const first = { repo: 'kindred/shop', branch: 'main', name: 'shop', kind: 'web', contract: form, host: 'shop.kindred.dev' }
+    await run('website.app_deploy', first)
+    const again = (await run('website.app_deploy', { name: 'shop' })) as { url: string; addresses: string[] }
+    expect(again.url).toBe('https://shop.kindred.dev')
+    expect(again.addresses).toEqual([])
   })
 
   it('host and hosts together are refused as input', async () => {

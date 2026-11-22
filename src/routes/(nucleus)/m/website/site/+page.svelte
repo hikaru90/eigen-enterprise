@@ -33,7 +33,7 @@
               kind: 'error' as const,
               text: `Saved, but the server could not apply it: ${form.reconcileError}`,
             }
-          : { kind: 'ok' as const, text: 'Done.' }
+          : { kind: 'ok' as const, text: 'message' in form && form.message ? form.message : 'Done.' }
       : null
 
   function doneClosingChange(): ({ update }: { update: () => Promise<void> }) => Promise<void> {

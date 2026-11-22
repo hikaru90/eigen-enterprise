@@ -18,8 +18,8 @@
    */
 
   const shortRev = (rev: string | null) => (rev ? rev.slice(0, 7) : 'not applied yet')
-  const roleVariant = (role: 'Console' | 'Site' | 'App') =>
-    role === 'Console' ? 'secondary' : role === 'Site' ? 'default' : 'outline'
+  const roleVariant = (role: 'Console' | 'Site' | 'Calls' | 'App') =>
+    role === 'Console' || role === 'Calls' ? 'secondary' : role === 'Site' ? 'default' : 'outline'
 </script>
 
 <svelte:head><title>{docTitle('Settings', 'Website')}</title></svelte:head>
@@ -148,6 +148,8 @@
                   <Table.Cell>
                     {#if row.owner.kind === 'console'}
                       Console
+                    {:else if row.owner.kind === 'calls'}
+                      Calls
                     {:else}
                       <a
                         class="underline underline-offset-2"

@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { getDomain } from 'tldts'
+import { isHostname } from '$lib/domains/hostname'
 
 /**
  * Sender-domain DNS (ported from Owlery's domain-service): our own DKIM key
@@ -50,8 +51,6 @@ export class InvalidDomainError extends Error {
   }
 }
 
-const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/
-
 /**
  * A domain the owner typed, normalised (lowercase, no scheme/path/trailing dot)
  * — or a plain-language error. It must sit under a public suffix (kindred.com,
@@ -62,7 +61,8 @@ export function normalizeDomain(input: string): string {
   if (d.includes('@')) throw new InvalidDomainError('Enter just the domain (like yourcompany.com), not an email address.')
   d = d.replace(/^[a-z]+:\/\//, '').replace(/\/.*$/, '').replace(/\.$/, '')
   if (!d) throw new InvalidDomainError('Enter a domain, like yourcompany.com.')
-  if (d.length > 253 || !d.split('.').every((l) => LABEL.test(l))) {
+  // The one kernel-side hostname rule ($lib/domains/hostname), then the public suffix list.
+  if (!isHostname(d)) {
     throw new InvalidDomainError(`"${input.trim()}" is not a domain name. It looks like yourcompany.com.`)
   }
   const registrable = getDomain(d)

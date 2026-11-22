@@ -5,7 +5,8 @@ import { bigint, boolean, index, jsonb, pgTable, text, timestamp, uuid } from 'd
  * into schema.ts, like the GitHub tables; consumed only by modules/website/apps.
  * No env values here (ee's sealed store). `contract` is the build-form values
  * of the last healthy deploy (migration 0101), kept as the saved deploy
- * config behind "Redeploy"; ee's company repo stays the runtime source.
+ * config behind "Redeploy"; ee's company repo stays the runtime source. An
+ * app's addresses are ee's routes (the `host` copy was dropped, migration 0165).
  */
 export const websiteServices = pgTable(
   'website_services',
@@ -16,7 +17,6 @@ export const websiteServices = pgTable(
     branch: text('branch').notNull(),
     repoId: bigint('repo_id', { mode: 'number' }),
     authKind: text('auth_kind', { enum: ['public', 'github_app', 'deploy_key'] }).notNull(),
-    host: text('host'),
     autoDeploy: boolean('auto_deploy').default(false).notNull(),
     state: text('state', { enum: ['new', 'deploying', 'healthy', 'failed'] })
       .default('new')

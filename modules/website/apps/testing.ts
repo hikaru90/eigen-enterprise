@@ -136,8 +136,15 @@ export class FakeEe implements AppsEe {
   }
   async addDomain(i: Parameters<AppsEe['addDomain']>[0]) {
     this.calls.push({ verb: 'addDomain', input: i })
-    this.routes = [...this.routes, { host: i.host, workload: i.workload }]
-    return { rev: 's2', reconcileError: null, replaced: null }
+    // ee moves an existing host and names what it showed before (ee/src/domains.ts setDomain).
+    const previous = this.routes.find((r) => r.host === i.host)?.workload ?? null
+    this.routes = [...this.routes.filter((r) => r.host !== i.host), { host: i.host, workload: i.workload }]
+    return { rev: 's2', reconcileError: null, replaced: previous !== null && previous !== i.workload ? previous : null }
+  }
+  async removeDomain(i: { host: string; author: string }) {
+    this.calls.push({ verb: 'removeDomain', input: i })
+    this.routes = this.routes.filter((r) => r.host !== i.host)
+    return { rev: 's4', reconcileError: null }
   }
   async setSecret(i: Parameters<AppsEe['setSecret']>[0]) {
     this.calls.push({ verb: 'setSecret', input: i })
