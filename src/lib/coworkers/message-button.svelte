@@ -31,7 +31,7 @@
         failed = shownErrorOf(body) ?? { error: m.coworkers_message_failed(), agent: null }
         return
       }
-      await goto(`${resolve('/messages')}?c=${encodeURIComponent(body.conversation.id)}`)
+      await goto(resolve(`/messages?c=${encodeURIComponent(body.conversation.id)}`))
     } catch (err) {
       failed = { error: err instanceof Error ? err.message : String(err), agent: null }
     } finally {

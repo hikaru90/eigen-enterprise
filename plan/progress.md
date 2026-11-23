@@ -2,6 +2,33 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers C3: co-workers answer in Messages as themselves and pull each other in (merge `4ad43792`, not pushed, not on the box)
+
+- **Built** (`752b60dd` `5e3046e0` `c0a6ffde`):
+  - **Messages tools:** co-workers may `list_channels/read/thread/members/open_dm/post/react/mark_read` with their own access. Channel creation, uploads, edit/delete, moderation and DND stay person-only.
+  - **@handle** = the co-worker's slug; co-workers get no push.
+  - **Trigger:** an @mention in a channel, or a person's message in a DM, queues one turn.
+    - It is idempotent across processes: a unique index on (co-worker, trigger message).
+    - Turns run in order per thread under an advisory lock, with a heartbeat; a turn silent for 2 minutes is marked `interrupted`, and a sweep resumes queued turns.
+  - **The turn:** `assembleCoworkerPrompt` builds the prompt from the role card, the org chart with handles, the company name/positioning/tone, the last 30 messages, the trigger and the collaboration rules. It runs through `dispatchAsAgent` and the answer is posted as the co-worker in the thread.
+  - **Budgets:** 8 co-worker turns per thread without a person's message. When the thread budget, the daily cap, the model or the post fails, the co-worker posts a note @mentioning its accountable human. No retries. `coworker_run` records the stop reason and per-turn cost (from the turn's trace).
+  - **Migration 0172_coworker_turns.**
+  - **Tool `coworkers.runs`** (read): the run log.
+  - **Boot** wires the cost-ledger cap and starts the turns. `shutdown.onShutdownSignal` stops the listener on SIGTERM.
+  - **Member daily cap** skips co-workers: a co-worker is limited by its own cap only.
+- **Decisions:**
+  - in a DM, a co-worker's message triggers another co-worker only through an @mention (no endless group-DM ping-pong);
+  - in a channel, a top-level trigger opens a thread;
+  - turns reload agents from the DB first, so changes made in another process apply on the next turn.
+- **Orchestrator fix on merge:** C5's `message-button.svelte` `goto` now goes through `resolve()` (lint).
+- **Verified on merged main:** svelte-check 0 errors. 1127 messages/coworkers/memory/kernel/agent/llm/boot specs pass, including the Postgres integration. It walks the chain person → Marketing → GTM → Marketing → person across two simulated processes, each request with its own model and prompt and its cost on that co-worker, and checks that the ping-pong stops at 8 with a visible note.
+- **Gaps:**
+  - a co-worker created in *another* process is heard there only after a change or a restart;
+  - client-side mention highlighting doesn't know co-worker slugs;
+  - C1's integration spec can hit "no owner" on the shared test DB (harness owner);
+  - the run log has no UI yet.
+- **Next:** C6 (rhythms + assignment triggers + run log on the profile), C8 (eval). C7 (event reactions) waits for CB2.
+
 ## 2026-11-23 — AI Co-workers C5: UI (org chart, Settings → Co-workers, profile, AI mark; merged into main, not pushed, not on the box)
 
 - **Org chart** `/settings/org` (Settings section next to Members & invites, open to every member): nested lists of people and co-workers (picture/initials, name → profile, AI mark + model family, title, accountabilities). "Edit seat" in place → `org.set_position`; owner/admins edit anyone incl. reports-to (no options below the seat), a member only their own title/accountabilities.
