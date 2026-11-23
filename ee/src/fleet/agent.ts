@@ -1,5 +1,6 @@
 import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import type { DesiredState, Settings } from '../company-repo.ts'
+import { addDomain, removeDomain } from '../domains.ts'
 import { generateSecret } from '../secrets.ts'
 import { releaseOf } from '../upgrade.ts'
 import { EE_VERSION } from '../version.ts'
@@ -18,8 +19,10 @@ import {
   type DesiredV1,
   type DomainClaimV1,
   type FleetFeature,
+  type HostedAddressV1,
   type ReportV1,
 } from './protocol.ts'
+import type { HostedAddressRecord } from './hosted-address.ts'
 
 /**
  * Managed mode (plan/phase-managed-box.md M4): a box enrolled with a hosting
@@ -57,8 +60,7 @@ export const FLEET_BACKUP_SCHEDULE = { hour: 3 } as const
 export const FLEET_BACKUP_RETENTION_DAYS = 30
 
 /** Exactly the desired-state features this box implements. */
-// hostedAddress is announced once ee applies it (plan/hosted-address.md HA-ee).
-export const IMPLEMENTED_FEATURES: FleetFeature[] = FLEET_FEATURES.filter((f) => f !== 'hostedAddress')
+export const IMPLEMENTED_FEATURES: FleetFeature[] = [...FLEET_FEATURES]
 
 export class FleetError extends Error {
   constructor(
@@ -114,6 +116,9 @@ export type FleetHost = {
   log(type: string, message: string): Promise<void>
   /** Store the company's domain claims as the control plane sent them (fleet/claims.ts); null clears them. */
   saveClaims(claims: DomainClaimV1[] | null): Promise<void>
+  /** The stored hosted address + the public host the fleet added (fleet/hosted-address.ts); throws on a broken file. */
+  readHostedAddress(): Promise<HostedAddressRecord>
+  saveHostedAddress(record: HostedAddressRecord): Promise<void>
 }
 
 export type PollResult = { at: string; ok: boolean; error: string | null; ignoredFields: string[] }
@@ -285,11 +290,60 @@ export class FleetAgent {
     if (d.domains !== undefined) await step('domains', () => this.applyDomains(d.domains!))
     // Absent = a control plane that doesn't send claims: nothing to show, so nothing kept.
     await step('claims', () => this.host.saveClaims(d.claims ?? null))
+    if (d.hostedAddress !== undefined) await step('hostedAddress', () => this.applyHostedAddress(d.hostedAddress!))
     if (d.backup !== undefined) await step('backup', () => this.applyBackup(d.backup!))
     if (d.escrowBackupKey === true) await step('escrowBackupKey', () => this.applyEscrowBackupKey())
     if (d.backupRequestedAt !== undefined && d.backupRequestedAt !== null) await step('backupRequestedAt', () => this.applyBackupNow(d.backupRequestedAt!))
     if (d.release !== undefined && d.release !== null) await step('release', () => this.applyRelease(d.release!))
     return errors
+  }
+
+  /**
+   * The free hosted address (plan/hosted-address.md H5). Stored for os (ee status), and its `siteHost`
+   * becomes os's public host only while os has none. One public host: an own domain the owner connects
+   * (addDomain role public) replaces the fleet's siteHost, and the fleet then lets it go (journaled)
+   * and never takes the website back while the owner's host stays. null removes siteHost only when the
+   * fleet added it and it is still the public host. Absent (not sent) leaves everything as is.
+   */
+  private async applyHostedAddress(want: HostedAddressV1 | null): Promise<void> {
+    const stored = await this.host.readHostedAddress()
+    const save = async (record: HostedAddressRecord) => {
+      if (JSON.stringify(record) !== JSON.stringify({ hostedAddress: stored.hostedAddress, fleetSiteHost: stored.fleetSiteHost })) await this.host.saveHostedAddress(record)
+    }
+    const pub = (await this.host.read()).settings.publicHost
+    let fleetSiteHost = stored.fleetSiteHost
+    if (fleetSiteHost !== null && pub !== null && pub !== fleetSiteHost) {
+      await this.host.log('fleet.hosted_site_displaced', `the website now runs on ${pub}; the free hosted address ${fleetSiteHost} is no longer the public host (the own domain wins)`)
+      fleetSiteHost = null
+    }
+    if (want === null) {
+      if (fleetSiteHost !== null && pub === fleetSiteHost) {
+        const host = fleetSiteHost
+        await this.changeOrThrow(`managed: free hosted address ${host} removed as the website host`, (s) => removeDomain(s, host))
+        await this.host.log('fleet.hosted_site_removed', `the free hosted address ${host} is no longer the website host (the control plane withdrew it)`)
+      }
+      await save({ hostedAddress: null, fleetSiteHost: null })
+      return
+    }
+    // Ours to (re)place: no public host at all, or the fleet's own one under an old name.
+    const place = pub === null || (fleetSiteHost !== null && pub === fleetSiteHost && pub !== want.siteHost)
+    if (!place) {
+      await save({ hostedAddress: want, fleetSiteHost })
+      return
+    }
+    const site = want.siteHost
+    const state = await this.host.read()
+    const taken = state.routes.find((r) => r.host === site && r.workload !== 'os')
+    if (taken) throw new Error(`${site} is already routed to ${taken.workload}; it cannot become the website host`)
+    // Provenance first: a host this step adds is the fleet's even if ee stops before the commit.
+    await save({ hostedAddress: want, fleetSiteHost: site })
+    await this.changeOrThrow(`managed: free hosted address ${site} is the website host`, (s) => addDomain(s, { host: site, workload: 'os', role: 'public' }))
+    await this.host.log('fleet.hosted_site_added', `the website runs on the free hosted address ${site} until the company connects its own domain`)
+  }
+
+  private async changeOrThrow(message: string, mutate: Mutate): Promise<void> {
+    const r = await this.host.change(message, mutate)
+    if (r.reconcileError) throw new Error(r.reconcileError)
   }
 
   /** Hand the control plane a copy of the sealed backup key (owner decision D7). None sealed yet → a later poll sends it. */

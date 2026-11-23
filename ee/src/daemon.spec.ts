@@ -625,6 +625,27 @@ describe('control API: domain claims on a managed box (plan/domains-one-claim.md
     expect(((await call('GET', '/v1/status')).data as { claims: unknown }).claims).toBeNull()
   })
 
+  it('GET /v1/status: hostedAddress is null until the control plane sent one, then { mailDomain, siteHost } (plan/hosted-address.md H5)', async () => {
+    const { sys, ee, call } = await start()
+    vi.spyOn(ee.repo, 'read').mockResolvedValue(state(true) as never)
+    expect(((await call('GET', '/v1/status')).data as { hostedAddress: unknown }).hostedAddress).toBeNull()
+    const hostedAddress = { mailDomain: 'acme.eigenenterprise.app', siteHost: 'www.acme.eigenenterprise.app' }
+    await fleetHost(ee).saveHostedAddress({ hostedAddress, fleetSiteHost: hostedAddress.siteHost })
+    expect(JSON.parse(sys.files.get(PATHS.fleetHostedAddress)!)).toEqual({ version: 1, hostedAddress, fleetSiteHost: hostedAddress.siteHost })
+    expect(await fleetHost(ee).readHostedAddress()).toEqual({ hostedAddress, fleetSiteHost: hostedAddress.siteHost })
+    expect(((await call('GET', '/v1/status')).data as { hostedAddress: unknown }).hostedAddress).toEqual(hostedAddress)
+    await fleetHost(ee).saveHostedAddress({ hostedAddress: null, fleetSiteHost: null })
+    expect(sys.files.has(PATHS.fleetHostedAddress)).toBe(false)
+    expect(((await call('GET', '/v1/status')).data as { hostedAddress: unknown }).hostedAddress).toBeNull()
+  })
+
+  it('GET /v1/status: a box that is not managed reports hostedAddress: null', async () => {
+    const { sys, ee, call } = await start()
+    sys.files.set(PATHS.fleetHostedAddress, JSON.stringify({ version: 1, hostedAddress: { mailDomain: 'a.b', siteHost: 'www.a.b' }, fleetSiteHost: null }))
+    vi.spyOn(ee.repo, 'read').mockResolvedValue(state(false) as never)
+    expect(((await call('GET', '/v1/status')).data as { hostedAddress: unknown }).hostedAddress).toBeNull()
+  })
+
   it('GET /v1/status: a box that is not managed reports claims: null', async () => {
     const { sys, ee, call } = await start()
     sys.files.set(PATHS.fleetClaims, JSON.stringify({ version: 1, claims }))

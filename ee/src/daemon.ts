@@ -24,6 +24,7 @@ import { RestoreService, type RestoreDeps } from './backup/restore.ts'
 import { FleetAgent, FleetError } from './fleet/agent.ts'
 import { fleetHost } from './fleet/host.ts'
 import { readClaims } from './fleet/claims.ts'
+import { readHostedAddress } from './fleet/hosted-address.ts'
 import { UPGRADE_UNIT as FLEET_UPGRADE_UNIT } from './fleet/agent.ts'
 import { fetchReleaseText, hostArch, installedOsRelease } from './upgrade.ts'
 import { UPGRADE_UNIT, upgradeRoute, UpgradeService, type UpgradeServiceDeps } from './upgrade-job.ts'
@@ -240,6 +241,11 @@ export class Ee {
       certificates: await readCertificates(this.sys, servedHosts(desired.settings, desired.routes)),
       /** Managed box: the domain claims the control plane last sent (fleet/claims.ts); null = not managed / nothing received yet. */
       claims: desired.settings.managed ? await readClaims(this.sys, PATHS.fleetClaims) : null,
+      /**
+       * Managed box: the company's free hosted address `{ mailDomain, siteHost }` the control plane last sent
+       * (plan/hosted-address.md H5, fleet/hosted-address.ts); null = not managed / none (adopted, or nothing received yet).
+       */
+      hostedAddress: desired.settings.managed ? (await readHostedAddress(this.sys, PATHS.fleetHostedAddress)).hostedAddress : null,
     }
   }
 

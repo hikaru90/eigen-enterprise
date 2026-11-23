@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import { settingsSchema, type DesiredState } from '../company-repo.ts'
+import { addDomain, OS_HOME_PATH, OS_PUBLIC_SURFACE } from '../domains.ts'
 import { EE_VERSION } from '../version.ts'
 import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, IMPLEMENTED_FEATURES, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
+import type { HostedAddressRecord } from './hosted-address.ts'
 import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest, type DomainClaimV1 } from './protocol.ts'
 
 const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
@@ -34,12 +36,13 @@ function fakeHost(opts: { managed?: boolean } = {}) {
   const logs: Array<{ type: string; message: string }> = []
   let answer: (url: string) => Response = () => Response.json({ protocol: 1, pollSeconds: 60 })
   let claims: DomainClaimV1[] | null = null
+  let hosted: HostedAddressRecord = { hostedAddress: null, fleetSiteHost: null }
   const host = {
     read: async () => structuredClone(state),
     change: vi.fn(async (message: string, mutate: (s: typeof state) => typeof state) => {
       state = mutate(structuredClone(state))
       commits.push(message)
-      return { reconcileError: null }
+      return { reconcileError: null as string | null }
     }),
     reconcile: vi.fn(async () => {}),
     secrets: {
@@ -88,6 +91,10 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     saveClaims: vi.fn(async (c: DomainClaimV1[] | null) => {
       claims = c === null ? null : structuredClone(c)
     }),
+    readHostedAddress: vi.fn(async () => structuredClone(hosted)),
+    saveHostedAddress: vi.fn(async (r: HostedAddressRecord) => {
+      hosted = structuredClone(r)
+    }),
   }
   return {
     host: host as unknown as FleetHost & typeof host,
@@ -98,6 +105,8 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     logs,
     state: () => state,
     claims: () => claims,
+    hosted: () => hosted,
+    setState: (mutate: (s: Omit<DesiredState, 'rev'>) => Omit<DesiredState, 'rev'>) => (state = mutate(structuredClone(state))),
     setAnswer: (a: (url: string) => Response) => (answer = a),
     setBackup: (c: BackupConfig | null, r: BackupRun[] = [], h?: Health) => {
       backupCfg = c
@@ -513,6 +522,161 @@ describe('fleet: desired state (level-triggered)', () => {
     const r = await agent.poll()
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining('claims: disk full') })
     expect(f.state().settings.suspended).toBe(true)
+  })
+
+  describe('hostedAddress (plan/hosted-address.md H5)', () => {
+    const hostedAddress = { mailDomain: 'acme.eigenenterprise.app', siteHost: 'www.acme.eigenenterprise.app' }
+    const siteRoute = { host: hostedAddress.siteHost, workload: 'os', allowPaths: OS_PUBLIC_SURFACE, rootRewrite: OS_HOME_PATH }
+
+    it('is announced: every enroll and report lists every feature', async () => {
+      expect(IMPLEMENTED_FEATURES).toEqual([...FLEET_FEATURES])
+      const f = fakeHost({ managed: true })
+      f.setAnswer(desired())
+      await new FleetAgent(f.host).poll()
+      expect(JSON.parse(String(f.calls[0]!.init.body)).features).toContain('hostedAddress')
+    })
+
+    it('no public host yet: siteHost becomes the public host (website surface only), stored with its provenance; idempotent across polls', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ hostedAddress }))
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBe(hostedAddress.siteHost)
+      expect(f.state().routes).toContainEqual(siteRoute)
+      expect(f.hosted()).toEqual({ hostedAddress, fleetSiteHost: hostedAddress.siteHost })
+      expect(f.logs.map((l) => l.type)).toContain('fleet.hosted_site_added')
+      const commits = f.commits.length
+      expect(commits).toBe(1)
+      for (let i = 0; i < 3; i++) expect((await agent.poll()).ok).toBe(true)
+      expect(f.commits).toHaveLength(commits)
+      expect(f.state().routes.filter((r) => r.host === hostedAddress.siteHost)).toHaveLength(1)
+      expect(f.host.saveHostedAddress).toHaveBeenCalledTimes(1)
+    })
+
+    it('an own public host the owner set is never replaced; the address is still stored for os', async () => {
+      const f = fakeHost({ managed: true })
+      f.setState((s) => addDomain(s, { host: 'www.acme.com', workload: 'os', role: 'public' }))
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ hostedAddress }))
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBe('www.acme.com')
+      expect(f.state().routes.some((r) => r.host === hostedAddress.siteHost)).toBe(false)
+      expect(f.hosted()).toEqual({ hostedAddress, fleetSiteHost: null })
+      expect(f.commits).toEqual([])
+    })
+
+    it("the owner's own domain wins: connecting it displaces the fleet's siteHost, which is dropped and never comes back while the owner's host stays", async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ hostedAddress }))
+      await agent.poll()
+      // The owner connects their domain as the website (POST /v1/domains → setDomain → addDomain).
+      f.setState((s) => addDomain(s, { host: 'www.acme.com', workload: 'os', role: 'public' }))
+      expect(f.state().routes.some((r) => r.host === hostedAddress.siteHost)).toBe(false)
+      const commits = f.commits.length
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBe('www.acme.com')
+      expect(f.hosted()).toEqual({ hostedAddress, fleetSiteHost: null })
+      expect(f.logs.find((l) => l.type === 'fleet.hosted_site_displaced')?.message).toContain('www.acme.com')
+      await agent.poll()
+      expect(f.commits).toHaveLength(commits)
+      // hostedAddress null later: the owner's host is never removed.
+      f.setAnswer(desired({ hostedAddress: null }))
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBe('www.acme.com')
+      expect(f.commits).toHaveLength(commits)
+    })
+
+    it('null removes siteHost when the fleet added it and it is still the public host', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ hostedAddress }))
+      await agent.poll()
+      f.setAnswer(desired({ hostedAddress: null }))
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBeNull()
+      expect(f.state().routes.some((r) => r.host === hostedAddress.siteHost)).toBe(false)
+      expect(f.hosted()).toEqual({ hostedAddress: null, fleetSiteHost: null })
+      expect(f.logs.map((l) => l.type)).toContain('fleet.hosted_site_removed')
+      const commits = f.commits.length
+      await agent.poll()
+      expect(f.commits).toHaveLength(commits)
+    })
+
+    it('null never removes the same host when the owner added it (no fleet provenance)', async () => {
+      const f = fakeHost({ managed: true })
+      f.setState((s) => addDomain(s, { host: hostedAddress.siteHost, workload: 'os', role: 'public' }))
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ hostedAddress }))
+      await agent.poll()
+      expect(f.hosted().fleetSiteHost).toBeNull()
+      f.setAnswer(desired({ hostedAddress: null }))
+      await agent.poll()
+      expect(f.state().settings.publicHost).toBe(hostedAddress.siteHost)
+      expect(f.commits).toEqual([])
+    })
+
+    it('absent leaves everything as is (a control plane that does not send it)', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ hostedAddress }))
+      await agent.poll()
+      f.setAnswer(desired())
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBe(hostedAddress.siteHost)
+      expect(f.hosted()).toEqual({ hostedAddress, fleetSiteHost: hostedAddress.siteHost })
+    })
+
+    it('a new siteHost (slug renamed) replaces the fleet one it added', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ hostedAddress }))
+      await agent.poll()
+      const next = { mailDomain: 'acme2.eigenenterprise.app', siteHost: 'www.acme2.eigenenterprise.app' }
+      f.setAnswer(desired({ hostedAddress: next }))
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBe(next.siteHost)
+      expect(f.state().routes.some((r) => r.host === hostedAddress.siteHost)).toBe(false)
+      expect(f.hosted()).toEqual({ hostedAddress: next, fleetSiteHost: next.siteHost })
+    })
+
+    it('the provenance is stored before the commit: a failed commit is a poll error and the next poll completes it', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      f.host.change.mockRejectedValueOnce(new Error('repo locked'))
+      f.setAnswer(desired({ hostedAddress }))
+      const r = await agent.poll()
+      expect(r).toMatchObject({ ok: false, error: expect.stringContaining('hostedAddress: repo locked') })
+      expect(f.hosted().fleetSiteHost).toBe(hostedAddress.siteHost)
+      expect(f.state().settings.publicHost).toBeNull()
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.state().settings.publicHost).toBe(hostedAddress.siteHost)
+      expect(f.logs.map((l) => l.type)).not.toContain('fleet.hosted_site_displaced')
+    })
+
+    it('fails loud when siteHost is already routed to another workload (never re-routed silently)', async () => {
+      const f = fakeHost({ managed: true })
+      f.setState((s) => ({ ...s, routes: [...s.routes, { host: hostedAddress.siteHost, workload: 'livekit' } as never] }))
+      const agent = new FleetAgent(f.host)
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      f.setAnswer(desired({ hostedAddress }))
+      const r = await agent.poll()
+      expect(r).toMatchObject({ ok: false, error: expect.stringContaining(`hostedAddress: ${hostedAddress.siteHost} is already routed to livekit`) })
+      expect(f.state().settings.publicHost).toBeNull()
+    })
+
+    it('a reconcile error after adding it is a poll error', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      f.host.change.mockImplementationOnce(async (_m: string, mutate: (s: Omit<DesiredState, 'rev'>) => Omit<DesiredState, 'rev'>) => {
+        f.setState(mutate)
+        return { reconcileError: 'caddy refused' }
+      })
+      f.setAnswer(desired({ hostedAddress }))
+      expect(await agent.poll()).toMatchObject({ ok: false, error: expect.stringContaining('hostedAddress: caddy refused') })
+    })
   })
 
   it('backup: configures the fleet target, reconfigures only on change, null removes only its own', async () => {
