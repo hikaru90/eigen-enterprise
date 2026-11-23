@@ -2,6 +2,21 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers: a limit on co-worker → co-worker task chains (owner: "Yes, add it"; `d0a10268`, on main, not pushed, not on the box)
+
+- **Why:** co-workers can assign tasks to each other (C6), and before this change only their daily caps bounded such a chain.
+- **Built:**
+  - Every run records `delegation_chain`: the co-workers that handed its work down, in order, with the person who started it left out (migration **0174_coworker_delegation**).
+  - When a co-worker assigns to a co-worker, `nextDelegationChain` (`src/lib/server/coworkers/delegation.ts`, pure) takes the longest chain among the assigner's running runs, the safe side. It adds the assigner and refuses when the chain would pass **3 co-workers** (`MAX_DELEGATION_HOPS`) or hand work back to a co-worker already in it.
+  - The check runs in `assignTask` **before the task is written** (new dep `coworkerDelegation`, live `liveCoworkerDelegation`). A refusal is `AssignedTaskError('forbidden')`, which the assigning co-worker gets as its tool error, with a sentence telling it to do the work itself or ask its accountable human. Nothing stops silently.
+  - A person's assignment or follow-up comment starts no chain, and message turns start none either (the thread budget bounds message ping-pong).
+- **Verified:**
+  - pure spec (6);
+  - tasks service spec: a refused hand-off writes no task and queues no turn;
+  - `work.spec` through the real `tasks.*` tools: Bea → Marketing → GTM records `[]` and `[cw-mkt]`, and GTM handing back to Marketing is refused as a loop with no third task.
+
+  221 co-worker, tasks, memory, overview, export and eval specs pass, including the Postgres integrations (test DB migrated to 0174). tsc and eslint: 0 errors.
+
 ## 2026-11-23 — AI Co-workers C6: co-workers act on their own (rhythms, assignments, run log, Needs you) (merge `1e0d97f3`, not pushed, not on the box)
 
 - **Built** (`42b83cf6` backend, `e2aa68ec` UI):

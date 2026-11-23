@@ -79,6 +79,7 @@ Three things make them different, on purpose:
   - a task has a spend ceiling;
   - each co-worker has its daily cap.
   When a budget runs out, the co-worker posts where things stand and asks its accountable human. No silent stop.
+- **Task chains:** a co-worker may hand work to another with `tasks.assign`. A hand-off is refused before the task exists once the chain would pass 3 co-workers since the person's request, or loop back to a co-worker already in it (`delegation.ts`, migration 0174).
 - **Result back:** the co-worker that was asked closes with a reply to the asker (in-thread), and, for assigned tasks, completes the task with the result.
 
 ## 7. Memory
