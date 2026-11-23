@@ -1,10 +1,11 @@
+import type { CompanyRepo, DesiredState } from './company-repo.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { renderCaddyConfig, type CaddyInput, type Upstream } from './caddy.ts'
-import type { CompanyRepo, DesiredState } from './company-repo.ts'
-import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
+import { assertCapabilitiesInstalled } from './capabilities.ts'
 import { DeployRun, secretValues } from './deploys.ts'
-import { CONTROL_GROUP, PATHS } from './paths.ts'
+import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
 import { LIVEKIT_INTERNAL_PORT, LIVEKIT_WORKLOAD, linkedEnv, type LinkState } from './livekit.ts'
+import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import {
   OS_INTERNAL_PORT,
@@ -72,6 +73,7 @@ async function readContract(sys: System, dir: string, w: Pick<Workload, 'name' |
   const parsed = appContractSchema.safeParse(JSON.parse(raw))
   if (!parsed.success) throw new Error(`${w.name}: ee.json is invalid: ${parsed.error.message}`)
   assertInCatalog(parsed.data, w.tier)
+  await assertCapabilitiesInstalled((p) => sys.exists(p), w.name, parsed.data.capabilities)
   return parsed.data
 }
 

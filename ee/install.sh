@@ -8,7 +8,8 @@
 # <base> holds: SHA256SUMS + SHA256SUMS.sig (Ed25519-signed by the release key, checked
 # before anything is installed), LATEST (the release name), ee.mjs, and per CPU
 # eigenenterprise-<version>-<sha>-linux-<x64|arm64>.tar.gz (+ .sha256) and
-# livekit-server-<LIVEKIT_VERSION>-linux-<x64|arm64>.tar.gz (+ .sha256).
+# livekit-server-<LIVEKIT_VERSION>-linux-<x64|arm64>.tar.gz (+ .sha256) and
+# chromium-headless-shell-<CHROMIUM_REVISION>-linux-<x64|arm64>.tar.gz (+ .sha256).
 # Published: <base> = https://github.com/hikaru90/eigen-enterprise/releases/latest/download
 # Re-running it on an installed server upgrades in place and keeps everything (`ee upgrade` does that).
 # Installs a pinned, checksum-verified Node runtime and ee, then hands over to `ee bootstrap`.
@@ -28,6 +29,8 @@ set -eu
 NODE_VERSION="22.23.3"
 # Must match scripts/release.sh (ee/src/livekit-release.spec.ts checks it).
 LIVEKIT_VERSION="1.13.11"
+# The chromium capability (brand site capture): must match scripts/release.sh (ee/src/chromium-release.spec.ts checks it).
+CHROMIUM_REVISION="1217"
 FROM=""
 PASS=""
 while [ $# -gt 0 ]; do
@@ -140,6 +143,29 @@ step "fetching livekit-server $LIVEKIT_VERSION (calls)"
 LIVEKIT="livekit-server-$LIVEKIT_VERSION-linux-$ARCH.tar.gz"
 fetch "$LIVEKIT" "$WORK/$LIVEKIT"
 signed "$WORK/$LIVEKIT" "$LIVEKIT"
+
+step "installing headless Chromium r$CHROMIUM_REVISION (the chromium capability)"
+CHROMIUM="chromium-headless-shell-$CHROMIUM_REVISION-linux-$ARCH.tar.gz"
+fetch "$CHROMIUM" "$WORK/$CHROMIUM"
+signed "$WORK/$CHROMIUM" "$CHROMIUM"
+# One directory, replaced whole when the revision changes (ee/src/capabilities.ts points workloads at
+# $CAPABILITY/chrome-headless-shell). Its system libraries come from the packed playwright-core's
+# install-deps (Playwright's own per-distro package list, apt); every library must then resolve.
+CAPABILITY="/opt/ee/capabilities/chromium"
+if [ ! -x "$CAPABILITY/chrome-headless-shell" ] || [ "$(cat "$CAPABILITY/REVISION" 2>/dev/null)" != "$CHROMIUM_REVISION" ]; then
+  rm -rf "$WORK/chromium" && mkdir -p "$WORK/chromium"
+  tar -xzf "$WORK/$CHROMIUM" -C "$WORK/chromium" --no-same-owner
+  "$RUNTIME/bin/node" "$WORK/chromium/playwright-core/cli.js" install-deps chromium-headless-shell >/dev/null \
+    || { echo "✗ installing the headless browser's system libraries failed (apt)" >&2; exit 1; }
+  missing=$(ldd "$WORK/chromium/browser/chrome-headless-shell" | awk '/not found/ { print $1 }')
+  [ -z "$missing" ] || { echo "✗ headless Chromium needs libraries this server lacks: $missing" >&2; exit 1; }
+  mkdir -p /opt/ee/capabilities
+  rm -rf "$CAPABILITY.partial" && mkdir -p "$CAPABILITY.partial"
+  cp -a "$WORK/chromium/browser/." "$CAPABILITY.partial/"
+  cp "$WORK/chromium/REVISION" "$CAPABILITY.partial/REVISION"
+  chmod 0755 "$CAPABILITY.partial"
+  rm -rf "$CAPABILITY" && mv "$CAPABILITY.partial" "$CAPABILITY"
+fi
 
 # Where updates come from (Settings → Updates): this --from, a directory made absolute.
 case "$FROM" in

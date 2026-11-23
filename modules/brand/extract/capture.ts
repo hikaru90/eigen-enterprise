@@ -1,7 +1,6 @@
 import { constants } from 'node:fs'
 import { access } from 'node:fs/promises'
 import { chromium } from 'playwright'
-import { registry } from 'playwright-core/lib/server/registry/index'
 import { BrowserUnavailableError } from './capture-errors'
 import { normalizeColor, type ElementFacts, type SiteFacts } from './facts-digest'
 import { assertPublicUrl } from './ssrf-guard'
@@ -13,18 +12,19 @@ import { assertPublicUrl } from './ssrf-guard'
  * before anything else happens.
  */
 
-/** Playwright's registry name for the browser a headless chromium launch runs. */
-const HEADLESS_BROWSER = 'chromium-headless-shell'
-
 /** Where the headless browser lives and whether it can run (injectable for tests). */
 export type BrowserProbe = {
-  /** Playwright's install path for this platform; null when it has no build for it. */
+  /**
+   * The chrome-headless-shell the server installed: ee sets EE_CAP_CHROMIUM for a
+   * workload whose ee.json declares the chromium capability (ee/src/capabilities.ts).
+   * Null on an install without it. A local run sets it in .env to use its own browser.
+   */
   executablePath(): string | null
   isExecutable(path: string): Promise<boolean>
 }
 
 export const defaultBrowserProbe: BrowserProbe = {
-  executablePath: () => registry.findExecutable(HEADLESS_BROWSER)?.executablePath() ?? null,
+  executablePath: () => process.env.EE_CAP_CHROMIUM || null,
   isExecutable: (path) =>
     access(path, constants.X_OK).then(
       () => true,

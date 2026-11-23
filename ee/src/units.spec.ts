@@ -20,6 +20,12 @@ const contract = appContractSchema.parse({
 describe('renderUnit', () => {
   const unit = renderUnit({ workload, contract, slot: 'a', port: 4100, releaseDir: '/var/lib/ee/workloads/os/releases/r1' })
 
+  it('points a workload at each capability it declares, and only those', () => {
+    expect(unit).not.toContain('EE_CAP_')
+    const withChromium = renderUnit({ workload, contract: { ...contract, capabilities: ['chromium'] }, slot: 'a', port: 4100, releaseDir: '/r' })
+    expect(withChromium).toContain('Environment="EE_CAP_CHROMIUM=/opt/ee/capabilities/chromium/chrome-headless-shell"')
+  })
+
   it('always carries the full hardening block', () => {
     for (const line of HARDENING) expect(unit).toContain(line)
   })

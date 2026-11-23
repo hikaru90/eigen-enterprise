@@ -40,10 +40,16 @@ describe('requireBrowserExecutable', () => {
 })
 
 describe('defaultBrowserProbe', () => {
-  it('names the headless browser Playwright installs for this platform', () => {
-    const path = defaultBrowserProbe.executablePath()
-    expect(typeof path).toBe('string')
-    expect(path!.length).toBeGreaterThan(0)
+  it('names the browser the server installed (EE_CAP_CHROMIUM, set by ee from the os contract)', () => {
+    vi.stubEnv('EE_CAP_CHROMIUM', '/opt/ee/capabilities/chromium/chrome-headless-shell')
+    expect(defaultBrowserProbe.executablePath()).toBe('/opt/ee/capabilities/chromium/chrome-headless-shell')
+    vi.unstubAllEnvs()
+  })
+
+  it('names none on an install without the chromium capability', () => {
+    vi.stubEnv('EE_CAP_CHROMIUM', '')
+    expect(defaultBrowserProbe.executablePath()).toBeNull()
+    vi.unstubAllEnvs()
   })
 
   it('checks the file on disk: a missing path is not executable, the node binary is', async () => {

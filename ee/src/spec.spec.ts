@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   appContractSchema,
@@ -99,15 +100,28 @@ describe('catalog (D16: a gap is an eigen change)', () => {
       node: '18',
       start: ['node', 'x.js'],
       services: ['redis'],
-      capabilities: ['chromium'],
+      capabilities: ['ffmpeg'],
     })
     try {
       assertInCatalog(c, 'app')
       expect.unreachable()
     } catch (err) {
       expect(err).toBeInstanceOf(CatalogGapError)
-      expect((err as CatalogGapError).missing).toEqual(['runtime node@18', 'service redis', 'capability chromium'])
+      expect((err as CatalogGapError).missing).toEqual(['runtime node@18', 'service redis', 'capability ffmpeg'])
     }
+  })
+})
+
+describe('the chromium capability', () => {
+  it('is in the catalog for every tier', () => {
+    const c = appContractSchema.parse({ runtime: 'node', node: '22', start: ['node', 'x.js'], capabilities: ['chromium'] })
+    expect(() => assertInCatalog(c, 'app')).not.toThrow()
+    expect(() => assertInCatalog(c, 'system')).not.toThrow()
+  })
+
+  it('is declared by the os release (brand site capture launches it)', () => {
+    const os = appContractSchema.parse(JSON.parse(readFileSync(new URL('../../ee.json', import.meta.url), 'utf8')))
+    expect(os.capabilities).toEqual(['chromium'])
   })
 })
 

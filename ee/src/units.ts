@@ -1,5 +1,6 @@
-import { EE_API_URL, type AppContract, type Workload } from './spec.ts'
+import { capabilityEnv } from './capabilities.ts'
 import { PATHS } from './paths.ts'
+import { EE_API_URL, type AppContract, type Workload } from './spec.ts'
 
 /**
  * Generated systemd units (§3.5, D2, D5). Every unit comes from this template;
@@ -140,6 +141,7 @@ export function renderUnit(input: UnitInput): string {
     EE_API_URL,
     // DynamicUser has no home: apps that keep data under ~ get their persistent state dir.
     HOME: `/var/lib/ee-state/${w.name}`,
+    ...capabilityEnv(c.capabilities),
     ...start.runtimeEnv,
   }
   const needsPostgres = c.services.includes('postgres')

@@ -243,11 +243,21 @@ describe('reconcile', () => {
   it('fails with catalog_gap when the app needs something eigen lacks', async () => {
     const sys = box(A)
     sys.tarballs.set(`/rel/${A}.tgz`, {
+      'ee.json': JSON.stringify({ runtime: 'node', node: '22', start: ['node', 'x.js'], capabilities: ['ffmpeg'] }),
+    })
+    await expect(
+      reconcile({ sys, repo: { read: async () => desired(A) }, journal: emptyJournal(), secrets: memSecrets() }),
+    ).rejects.toThrow(/catalog_gap: eigen doesn't provide capability ffmpeg/)
+  })
+
+  it('fails loudly when a declared capability is not installed on this server', async () => {
+    const sys = box(A)
+    sys.tarballs.set(`/rel/${A}.tgz`, {
       'ee.json': JSON.stringify({ runtime: 'node', node: '22', start: ['node', 'x.js'], capabilities: ['chromium'] }),
     })
     await expect(
       reconcile({ sys, repo: { read: async () => desired(A) }, journal: emptyJournal(), secrets: memSecrets() }),
-    ).rejects.toThrow(/catalog_gap: eigen doesn't provide capability chromium/)
+    ).rejects.toThrow(/capability chromium is not installed on this server \(\/opt\/ee\/capabilities\/chromium\/chrome-headless-shell\); re-run install\.sh/)
   })
 
   it('fails loudly on a declared secret that was never set', async () => {

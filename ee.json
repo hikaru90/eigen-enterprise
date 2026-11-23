@@ -11,5 +11,6 @@
     ["node", "scripts/bootstrap-production-ops.mjs"]
   ],
   "health": "/api/health",
-  "services": ["postgres"]
+  "services": ["postgres"],
+  "capabilities": ["chromium"]
 }

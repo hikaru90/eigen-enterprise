@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CAPABILITY_NAMES } from './capabilities.ts'
 
 /**
  * The contract (plan/phase-substrate.md §3.2–3.3, D6, D14, D16).
@@ -276,7 +277,8 @@ export const CATALOG = {
   /** Runtimes only system workloads (seeded by ee itself) may use. */
   systemRuntimes: ['binary'] as string[],
   services: ['postgres', 'kernel', 'files'],
-  capabilities: [] as string[],
+  /** Installed on every server by install.sh (capabilities.ts). */
+  capabilities: CAPABILITY_NAMES as string[],
 } as const
 
 export type Tier = Workload['tier']

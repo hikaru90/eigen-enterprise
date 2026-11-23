@@ -4,6 +4,7 @@
 # a GitHub Release with: LATEST, DOWNGRADE_FLOOR, install.sh, ee.mjs (+ .sha256) and
 # eigenenterprise-<version>-<sha>-linux-{x64,arm64}.tar.gz (+ .sha256) and
 # livekit-server-<version>-linux-{x64,arm64}.tar.gz (+ .sha256), which install.sh fetches for calls,
+# chromium-headless-shell-<revision>-linux-{x64,arm64}.tar.gz (+ .sha256), the chromium capability (brand site capture),
 # plus SHA256SUMS over all of them and SHA256SUMS.sig (Ed25519, secret EE_RELEASE_SIGNING_KEY).
 #
 # Install:  curl -fsSL https://github.com/hikaru90/eigen-enterprise/releases/latest/download/install.sh \
@@ -57,6 +58,8 @@ jobs:
             dist/release/eigenenterprise-*.tar.gz.sha256
             dist/release/livekit-server-*.tar.gz
             dist/release/livekit-server-*.tar.gz.sha256
+            dist/release/chromium-headless-shell-*.tar.gz
+            dist/release/chromium-headless-shell-*.tar.gz.sha256
           if-no-files-found: error
           retention-days: 3
 
@@ -76,6 +79,7 @@ jobs:
           cp built/release-amd64/{LATEST,NOTES.md,DOWNGRADE_FLOOR,install.sh,ee.mjs,ee.mjs.sha256} out/
           cp built/release-*/eigenenterprise-*.tar.gz* out/
           cp built/release-*/livekit-server-*.tar.gz* out/
+          cp built/release-*/chromium-headless-shell-*.tar.gz* out/
           (cd out && sha256sum -c --quiet *.sha256)
       - name: Sign the release (SHA256SUMS + Ed25519 SHA256SUMS.sig, verified by install.sh and ee upgrade)
         env:
