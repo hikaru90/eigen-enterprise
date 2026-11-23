@@ -48,4 +48,24 @@ describe('the model pool', () => {
     expect(chat[0]!.recommended).toBe(true)
     expect(chat.every((m) => m.slot === 'chat')).toBe(true)
   })
+
+  it('offers co-workers chat models from distinct families (AI Co-workers C2, vetted 2026-11-23)', () => {
+    const widened = [
+      'anthropic/claude-sonnet-5.5',
+      'google/gemini-3.8-flash',
+      'qwen/qwen3.8-flash',
+      'mistralai/mistral-large-4-0',
+    ]
+    for (const id of widened) {
+      const entry = MODEL_POOL.find((m) => m.id === id)
+      expect(entry, id).toMatchObject({ slot: 'chat', vettedOn: '2026-11-23' })
+      expect(entry?.recommended, id).toBeUndefined()
+    }
+    const families = new Set(poolFor('chat').map((m) => m.id.replace(/^~/, '').split('/')[0]))
+    expect([...families].sort()).toEqual(['anthropic', 'deepseek', 'google', 'mistralai', 'openai', 'qwen'])
+  })
+
+  it('keeps the chat recommendation where it was: the widened pool adds choices, not a new default', () => {
+    expect(recommendedModel('chat')).toBe('~deepseek/deepseek-flash-latest')
+  })
 })

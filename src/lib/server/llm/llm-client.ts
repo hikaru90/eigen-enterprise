@@ -10,6 +10,7 @@ import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/g
 import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
 import { assertGatewayCallWithinMemberDailyCap } from '$lib/server/llm/member-daily-cap'
+import { assertPoolModel } from '$lib/server/llm/model-pool'
 import { companySlotSource, resolveSlot, type SlotTarget } from '$lib/server/llm/slots'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
@@ -541,6 +542,17 @@ export async function resolveRoutingRuleById(
 }
 
 /**
+ * THE check on a per-call chat model (plan/phase-ai-coworkers.md §5): an override names a chat
+ * model of the vetted pool (model-pool.ts), whoever passes it (a co-worker's own model, the
+ * brand extraction model). Anything else, a blank string included, fails loud
+ * (ModelNotInPoolError) before any request: a slot never holds a model we haven't vetted, and
+ * neither does a single call.
+ */
+function chatModelOverride(requested: string): string {
+  return assertPoolModel('chat', requested.trim())
+}
+
+/**
  * The model a chat call sends. On eigenInference and an OpenRouter key: the company's chat slot
  * (a pool model), unless the caller is a dedicated tool identity with an explicit model. A
  * bring-your-own-key provider outside the pool's namespace routes as it always did.
@@ -548,14 +560,15 @@ export async function resolveRoutingRuleById(
 async function chatRoutingConfig(
   target: SlotTarget,
   ruleOverride?: string,
-  modelOverride?: string,
+  requestedOverride?: string,
 ): Promise<RoutingConfig> {
-  if (target.model) return { model: modelOverride?.trim() || target.model }
+  const modelOverride = requestedOverride === undefined ? undefined : chatModelOverride(requestedOverride)
+  if (target.model) return { model: modelOverride || target.model }
   const config = target.config
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
   if (config.provider !== 'eurouter') {
-    const model = modelOverride?.trim() || config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
+    const model = modelOverride || config.modelChat?.trim() || env.LLM_MODEL_CHAT?.trim()
     if (!model) {
       throw new LlmNotConfiguredError(
         `No chat model configured for this ${config.provider} credential — set one under Settings → LLM.`,
@@ -565,7 +578,7 @@ async function chatRoutingConfig(
   }
   // EUrouter: resolve via routing rule or env model override
   const ruleId = ruleOverride?.trim() || config.ruleChat
-  const model = modelOverride?.trim() || env.LLM_MODEL_CHAT?.trim()
+  const model = modelOverride || env.LLM_MODEL_CHAT?.trim()
   if (model) return { ...(ruleId ? { ruleId } : {}), model }
   if (ruleId) return resolveRoutingRuleById(ruleId, config.apiKey, config.baseUrl)
   throw new LlmNotConfiguredError(
@@ -672,8 +685,9 @@ export async function llmChatCompletion(input: {
   /** Override chat routing rule (e.g. LLM_RULE_ROUTER for the agent router judge). */
   routingRuleId?: string
   /**
-   * Explicit model override for a dedicated tool identity (e.g. BRAND_EXTRACT_MODEL,
-   * phase-2c D2 precedent) — wins over per-credential/env chat routing, never silently defaulted.
+   * Explicit chat model for this call (a co-worker's own model, BRAND_EXTRACT_MODEL) — wins
+   * over per-credential/env chat routing, never silently defaulted. Must be a chat model of the
+   * vetted pool (model-pool.ts), else ModelNotInPoolError before any request.
    */
   modelOverride?: string
   /** OpenAI-compatible JSON object mode — gateway must support response_format. */
