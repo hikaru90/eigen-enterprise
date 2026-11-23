@@ -142,6 +142,7 @@ describe('Settings → Plugins (owner and admins)', () => {
       )
       expect(data.core.map((c) => c.id).sort()).toEqual([
         'contribute',
+        'coworkers',
         'domains',
         'kernel',
         'members',
