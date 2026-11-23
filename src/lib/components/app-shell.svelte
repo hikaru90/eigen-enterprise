@@ -105,6 +105,7 @@
         speak,
         cancelSpeak,
         storage: () => localStorage,
+        sessionStorage: () => sessionStorage,
         viewportWidth: () => window.innerWidth,
       })
     : null
@@ -112,6 +113,10 @@
 
   onMount(() => {
     sidebarCollapsed = readSidebarCollapsed(() => localStorage)
+    // Client-side navigation keeps this shell, so the panel and the voice reading a reply stay.
+    // A full page load (reload, the first navigation after an update) starts it afresh: the panel
+    // comes back as this tab left it, the conversation from the server — only the voice cannot resume.
+    assistant?.restoreSession()
     // The welcome wizard's hand-off (handoff.ts): the agent's greeting streams into the panel.
     assistant?.startPendingHandoff()
   })

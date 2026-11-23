@@ -9,6 +9,7 @@ import { buildShellNav } from '$lib/shell/nav'
 import { FakeMediaRecorder, installVoiceDoubles } from '$lib/test/voice-doubles'
 import { DICTATION_MISSING_MESSAGE } from '$lib/voice/dictation-readiness'
 import { HANDOFF_PENDING_KEY } from './handoff'
+import { PANEL_SESSION_KEY } from './panel-session'
 import { PANEL_DEFAULT_WIDTH, PANEL_MIN_WIDTH, PANEL_WIDTH_KEY, panelMaxWidth } from './panel-width'
 
 /**
@@ -135,6 +136,7 @@ beforeEach(() => {
   }
   localStorage.removeItem(PANEL_WIDTH_KEY)
   sessionStorage.removeItem(HANDOFF_PENDING_KEY)
+  sessionStorage.removeItem(PANEL_SESSION_KEY)
   stubFetch()
 })
 

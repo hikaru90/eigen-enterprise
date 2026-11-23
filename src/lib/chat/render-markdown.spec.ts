@@ -83,4 +83,38 @@ describe('renderMarkdownToHtml', () => {
     expect(html).not.toContain('[id=bb1313d8')
     expect(html).not.toContain('[id=d428954a')
   })
+  describe('links (board de821eda: following one keeps the chat open and its voice going)', () => {
+    it('opens an in-app path in the same tab, so the app navigates client-side', () => {
+      const html = renderMarkdownToHtml('See [the file](/drive/file/42).')
+      expect(html).toContain('<a href="/drive/file/42">the file</a>')
+      expect(html).not.toContain('target=')
+    })
+
+    it('opens a link to this app by its full address in the same tab, as an in-app path', () => {
+      const html = renderMarkdownToHtml('See [your Drive](https://co.example.test/drive?q=a#top).', {
+        origin: 'https://co.example.test',
+      })
+      expect(html).toContain('<a href="/drive?q=a#top">your Drive</a>')
+      expect(html).not.toContain('target=')
+    })
+
+    it('opens another site in a new tab', () => {
+      const html = renderMarkdownToHtml('Read [the docs](https://elsewhere.test/a).', {
+        origin: 'https://co.example.test',
+      })
+      expect(html).toContain('href="https://elsewhere.test/a"')
+      expect(html).toContain('target="_blank"')
+      expect(html).toContain('rel="noopener noreferrer"')
+    })
+
+    it('treats a protocol-relative address as another site', () => {
+      const html = renderMarkdownToHtml('[another site](//elsewhere.test/a)', { origin: 'https://co.example.test' })
+      expect(html).toContain('target="_blank"')
+    })
+
+    it('without a known origin, a full address is another site', () => {
+      const html = renderMarkdownToHtml('[the drive page](https://co.example.test/drive)')
+      expect(html).toContain('target="_blank"')
+    })
+  })
 })

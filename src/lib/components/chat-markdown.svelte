@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state'
   import { renderMarkdownToHtml } from '$lib/chat/render-markdown'
 
   type Tone = 'default' | 'user' | 'muted'
@@ -11,7 +12,8 @@
 
   let { content, tone = 'default', class: className = '' }: Props = $props()
 
-  const html = $derived(renderMarkdownToHtml(content))
+  // Links into the app stay in this tab (client-side navigation keeps the shell); others open a new one.
+  const html = $derived(renderMarkdownToHtml(content, { origin: page.url.origin }))
 </script>
 
 {#if html}

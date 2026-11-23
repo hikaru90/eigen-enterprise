@@ -7,6 +7,7 @@ import { SelfPresence } from '$lib/messages/self-presence.svelte'
 import { buildShellNav } from '$lib/shell/nav'
 import { SIDEBAR_COLLAPSED_KEY } from '$lib/shell/sidebar-pref'
 import AppShell from './app-shell.svelte'
+import { PANEL_SESSION_KEY } from './assistant/panel-session'
 
 const capabilities = Object.fromEntries(CAPABILITIES.map((c) => [c, true])) as Capabilities
 
@@ -46,7 +47,10 @@ function renderShell(
 }
 
 describe('app-shell.svelte', () => {
-  beforeEach(() => localStorage.removeItem(SIDEBAR_COLLAPSED_KEY))
+  beforeEach(() => {
+    localStorage.removeItem(SIDEBAR_COLLAPSED_KEY)
+    sessionStorage.removeItem(PANEL_SESSION_KEY)
+  })
 
   it('shows the company, the nav from the registry, the user and the page', async () => {
     renderShell()
@@ -355,5 +359,87 @@ describe('app-shell.svelte', () => {
       await page.getByTestId('shell-menu-toggle').click({ force: true })
       await expect.element(page.getByTestId('shell-drawer').getByTestId('shell-nav-website')).toBeInTheDocument()
     })
+  })
+})
+
+describe('navigating keeps the assistant (board de821eda)', () => {
+  const conversation = {
+    sessionId: 's-1',
+    turns: [{ role: 'assistant', content: 'Welcome back — your website next?' }],
+    providerReady: true,
+    isAdmin: false,
+    approvalMode: null,
+  }
+  const panel = () => page.getByTestId('assistant-panel')
+
+  beforeEach(() => {
+    localStorage.removeItem(SIDEBAR_COLLAPSED_KEY)
+    sessionStorage.removeItem(PANEL_SESSION_KEY)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/api/assistant/conversation') return Response.json(conversation)
+        if (url === '/api/agent/runs') return Response.json({ runs: [] })
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    sessionStorage.removeItem(PANEL_SESSION_KEY)
+  })
+
+  it('moving to another page keeps the same open panel and its conversation (client-side navigation)', async () => {
+    const shell = renderShell('/m/website')
+    await page.getByTestId('assistant-toggle').click()
+    await expect.element(panel().getByText('Welcome back — your website next?')).toBeInTheDocument()
+    const before = (await panel().elements())[0]
+    await shell.rerender({ pathname: '/m/email' })
+    await expect.element(page.getByTestId('shell-nav-email').first()).toHaveAttribute('aria-current', 'page')
+    expect((await panel().elements())[0]).toBe(before)
+    await expect.element(panel().getByText('Welcome back — your website next?')).toBeInTheDocument()
+  })
+
+  it('a full page load brings the panel back open on its tab, with the conversation', async () => {
+    const first = renderShell('/m/website')
+    await page.getByTestId('assistant-toggle').click()
+    await page.getByTestId('assistant-tab-history').click()
+    await expect.element(page.getByTestId('assistant-tab-history')).toHaveAttribute('aria-selected', 'true')
+    first.unmount()
+    await expect.element(panel()).not.toBeInTheDocument()
+
+    renderShell('/m/email')
+    await expect.element(panel()).toBeInTheDocument()
+    await expect.element(page.getByTestId('assistant-tab-history')).toHaveAttribute('aria-selected', 'true')
+    await page.getByTestId('assistant-tab-chat').click()
+    await expect.element(panel().getByText('Welcome back — your website next?')).toBeInTheDocument()
+  })
+
+  it('a panel closed before the load stays closed', async () => {
+    const first = renderShell('/m/website')
+    await page.getByTestId('assistant-toggle').click()
+    await expect.element(panel()).toBeInTheDocument()
+    await page.getByTestId('assistant-close').click()
+    await expect.element(panel()).not.toBeInTheDocument()
+    first.unmount()
+
+    renderShell('/m/email')
+    await expect.element(page.getByText('Page body')).toBeInTheDocument()
+    await expect.element(panel()).not.toBeInTheDocument()
+  })
+
+  it('a link in a reply to a page of the app opens in the same tab; another site in a new one', async () => {
+    conversation.turns = [
+      { role: 'assistant', content: 'Open [the website module](/m/website) or [the docs](https://elsewhere.test/docs).' },
+    ]
+    renderShell('/m/email')
+    await page.getByTestId('assistant-toggle').click()
+    const inApp = panel().getByRole('link', { name: 'the website module' })
+    await expect.element(inApp).toHaveAttribute('href', '/m/website')
+    await expect.element(inApp).not.toHaveAttribute('target')
+    await expect
+      .element(panel().getByRole('link', { name: 'the docs' }))
+      .toHaveAttribute('target', '_blank')
   })
 })
