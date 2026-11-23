@@ -13,6 +13,7 @@
   import { Input } from '$lib/components/ui/input'
   import PushDevices from '$lib/pwa/push-devices.svelte'
   import { docTitle } from '$lib/shell/title'
+  import ThemeSwitch from '$lib/theme/theme-switch.svelte'
 
   /**
    * Settings → Account: this person's profile (names + picture — the same
@@ -72,6 +73,19 @@
       onsaved={() => invalidateAll()}
       onpicture={() => invalidateAll()}
     />
+  </section>
+
+  <section
+    class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"
+    data-testid="settings-appearance"
+  >
+    <div>
+      <h3 class="text-sm font-medium">Appearance</h3>
+      <p class="text-xs text-muted-foreground">
+        Light, dark, or the same as this device's system setting. Saved on this device.
+      </p>
+    </div>
+    <ThemeSwitch testid="settings-theme-switch" />
   </section>
 
   <PushDevices devices={data.pushDevices} onchanged={() => invalidateAll()} />

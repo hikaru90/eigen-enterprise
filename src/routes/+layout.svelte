@@ -28,6 +28,7 @@
   import { registerServiceWorker } from '$lib/pwa/register'
   import { initCurrentUserViewStore } from '$lib/stores/current-user-view.svelte'
   import { startThoughtSync } from '$lib/stores/thought-sync'
+  import { startThemeSync } from '$lib/theme/theme'
 
   let { children } = $props()
 
@@ -49,7 +50,6 @@
   // No chrome here: signed-in pages live in the (nucleus) shell, which carries
   // the navigation and the settings menu; signed-out and public pages stay bare.
 
-  let themePreference = 'system'
   let lastIdentifiedUserId: string | null | undefined = undefined
 
   function syncPostHogIdentity() {
@@ -95,7 +95,9 @@
       // Re-validate this device's push subscription with the server on every start (src/lib/push/sync.ts).
       void registerServiceWorker()
         .then(() => syncPushSubscriptionOnStart())
-        .catch((err) => console.error('[push] re-validating this device’s subscription failed', err))
+        .catch((err) =>
+          console.error('[push] re-validating this device’s subscription failed', err),
+        )
       startCaptureQueueRunner()
       startThoughtSync()
     }
@@ -105,44 +107,10 @@
       setLocale(preferredUiLocale as 'en' | 'de')
     }
 
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const syncThemeColorMeta = () => {
-      const meta = document.getElementById('theme-color-meta')
-      if (!meta) return
-      const themeColor = getComputedStyle(document.documentElement)
-        .getPropertyValue('--theme-color')
-        .trim()
-      if (themeColor) meta.setAttribute('content', themeColor)
-    }
-
-    const applyTheme = (isDark: boolean) => {
-      document.documentElement.classList.toggle('dark', isDark)
-      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
-      syncThemeColorMeta()
-    }
-    const applyThemePreference = (preference: string) => {
-      themePreference = preference
-      const useDark = preference === 'dark' || (preference === 'system' && media.matches)
-      applyTheme(useDark)
-    }
-    const savedPreference = localStorage.getItem('theme-preference') ?? 'system'
-    applyThemePreference(savedPreference)
-
-    const handleChange = (event: MediaQueryListEvent) => {
-      if (themePreference === 'system') {
-        applyTheme(event.matches)
-      }
-    }
-    const handlePreferenceChange = (event: Event) => {
-      const customEvent = event as CustomEvent<{ preference?: string }>
-      applyThemePreference(customEvent.detail?.preference ?? 'system')
-    }
-    media.addEventListener('change', handleChange)
-    window.addEventListener('theme-preference-change', handlePreferenceChange)
+    const stopThemeSync = startThemeSync()
     return () => {
       stopPushNavigation()
-      media.removeEventListener('change', handleChange)
-      window.removeEventListener('theme-preference-change', handlePreferenceChange)
+      stopThemeSync()
     }
   })
 </script>
@@ -151,7 +119,12 @@
   <title>eigenEnterprise</title>
   <!-- The company's identity (src/lib/pwa/identity.ts): its monogram once it has a name, else the product's. -->
   {#if app?.iconVersion}
-    <link rel="icon" type="image/png" sizes="32x32" href="/app-icon/favicon-32.png?v={app.iconVersion}" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/app-icon/favicon-32.png?v={app.iconVersion}"
+    />
     <link rel="apple-touch-icon" href="/app-icon/apple-180.png?v={app.iconVersion}" />
   {:else}
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

@@ -19,13 +19,15 @@
   import InstallAppDialog from '$lib/pwa/install-app-dialog.svelte'
   import { isSoundEnabled, setSoundEnabled } from '$lib/sound/boot-sound'
   import { isVoiceEnabled, setVoiceEnabled } from '$lib/speech/tts'
+  import ThemeSwitch from '$lib/theme/theme-switch.svelte'
 
   /**
    * The homepage's settings entry point: a cog in the header, always reachable
    * (chat, welcome wizard, and provider gate alike). Company settings, the
    * extension roadmap, API keys and provider live on their pages; restarting
    * onboarding clears the welcome stamp and reloads page data so the boot
-   * sequence takes over the homepage again. Sound (boot sequence, default on)
+   * sequence takes over the homepage again. Theme (Light · Dark · System, this
+   * device) applies the moment it is picked. Sound (boot sequence, default on)
    * and assistant voice toggle here; "Audio devices" opens the microphone + speaker choice
    * (shared with calls) used by dictation, voice messages and the assistant's voice; sign out
    * ends the session. "Install app"
@@ -139,6 +141,9 @@
       </button>
     {/if}
     <div class="bg-border my-1 h-px"></div>
+    <div class="px-2 py-1">
+      <ThemeSwitch testid="menu-theme-switch" class="w-full" />
+    </div>
     <button
       type="button"
       class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
