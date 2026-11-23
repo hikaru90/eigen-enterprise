@@ -1,7 +1,7 @@
 import type { DecisionKindView, DecisionLogEntry, DecisionQuestionView, DecisionsPort } from '$lib/kernel/decision-tools'
 import { KernelError } from '$lib/kernel/errors'
 import type { DecisionKindCatalog } from './kind'
-import type { DecisionRecord, DecisionStore, KindCounts } from './store'
+import { LABELLABLE_OUTCOMES, type DecisionRecord, type DecisionStore, type KindCounts } from './store'
 
 /**
  * The decisions.* tools over the decision log and the declared kinds (CB2): kinds with their
@@ -112,11 +112,42 @@ export async function answerQuestion(
   return { decisionId: row.id, kind: row.kind, choice: input.choice }
 }
 
+/**
+ * A person labels a decision that asked no one (a shadow observation, or one Jev or the current
+ * judge decided) with a choice from its kind's closed set: the human answer agreement is
+ * measured against (decisions.kinds). It never changes what was acted on.
+ */
+export async function labelDecision(
+  store: DecisionStore,
+  catalog: DecisionKindCatalog,
+  input: { userId: string; decisionId: string; choice: string; now: Date },
+): Promise<{ decisionId: string; kind: string; choice: string }> {
+  const row = await store.get(input.decisionId)
+  if (!row) throw new KernelError('invalid_input', `There is no decision ${input.decisionId}.`)
+  if (!(LABELLABLE_OUTCOMES as readonly string[]).includes(row.outcome)) {
+    throw new KernelError(
+      'invalid_input',
+      row.outcome === 'pending' ? 'This decision is a question for a person: answer it with decisions.answer.' : 'A failed decision has no answer to label.',
+    )
+  }
+  const kind = catalog.get(row.kind)
+  if (!kind) throw new KernelError('invalid_input', `This decision’s kind (${row.kind}) is no longer declared, so it can’t be labelled.`)
+  if (!(kind.choices as readonly string[]).includes(input.choice)) {
+    throw new KernelError('invalid_input', `“${input.choice}” is not an answer for ${row.kind}; it is one of ${kind.choices.join(', ')}.`)
+  }
+  if (!(await store.labelDecision(row.id, input.choice, input.userId, input.now))) {
+    throw new KernelError('invalid_input', `There is no decision ${input.decisionId} to label.`)
+  }
+  return { decisionId: row.id, kind: row.kind, choice: input.choice }
+}
+
 export function decisionsPort(store: DecisionStore, catalog: DecisionKindCatalog, now: () => Date = () => new Date()): DecisionsPort {
   return {
     kinds: async () => kindViews(catalog, await store.kindCounts()),
-    log: async ({ kind, limit, readerId }) => (await store.recent({ ...(kind ? { kind } : {}), readerId, limit })).map(logEntry),
+    log: async ({ kind, subjectUserId, limit, readerId }) =>
+      (await store.recent({ ...(kind ? { kind } : {}), ...(subjectUserId ? { subjectUserId } : {}), readerId, limit })).map(logEntry),
     questions: (userId) => openQuestions(store, catalog, userId),
     answer: (userId, decisionId, choice) => answerQuestion(store, catalog, { userId, decisionId, choice, now: now() }),
+    label: (userId, decisionId, choice) => labelDecision(store, catalog, { userId, decisionId, choice, now: now() }),
   }
 }

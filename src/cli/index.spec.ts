@@ -230,6 +230,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'decisions.log',
           'decisions.questions',
           'decisions.answer',
+          'decisions.label',
         ],
         active: true,
         core: true,

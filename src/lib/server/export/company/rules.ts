@@ -85,6 +85,10 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   // "Needs you" notices of its proactive runs: company-level, shown in the app, all in full.
   coworker_rhythm: full,
   coworker_run_notice: full,
+  // C7 (0176): the event kinds an admin switched on for a co-worker, and the outcome of each
+  // event it heard (where it happened and the decision's id — never the event's content).
+  coworker_event_subscription: full,
+  coworker_event_observation: full,
   access_grant: full,
   user_api_key: fullWith('key_hash'),
   push_subscription: excluded('device push endpoints; each device subscribes again on the new system'),

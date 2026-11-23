@@ -1,4 +1,4 @@
-import type { MessagesDeps } from '../../../../modules/messages/service'
+import { canUse, type MessagesDeps } from '../../../../modules/messages/service'
 import type { CoworkerRunStore } from './run-store'
 import type { CoworkerView } from './service'
 import { randomUUID } from 'node:crypto'
@@ -6,6 +6,7 @@ import type { AgentRuntime } from '$lib/kernel/agent-runtime'
 import { coworkerPrincipal } from '$lib/kernel/principals'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { coworkerAgentSource, CoworkerTriggerListener, type MessageFrames } from './agents'
+import { ChannelMessageSource, CoworkerEventObserver, type CoworkerEventObserverDeps } from './events'
 import { onCoworkersChanged } from './changes'
 import { coworkerAgentId } from './service'
 import { CoworkerTurns, STALE_AFTER_MS, TurnPrompts, type CompanyContext, type CoworkerDirectory, type CoworkerTurnsDeps } from './turns'
@@ -15,13 +16,17 @@ import { CoworkerTurns, STALE_AFTER_MS, TurnPrompts, type CompanyContext, type C
  * runtime's co-worker agents (loaded from the database), the trigger listener
  * on the messages hub, the turn queue, and the reply posted through the kernel
  * as the co-worker (messages.post as its own principal: permission, audit and
- * push like any member's post). `startCoworkerTurns` is the production wiring
+ * push like any member's post). C7: the same frames feed the channel-message
+ * event source (events.ts), which asks Jev in shadow whether a message the
+ * co-worker was not @mentioned in is its to act on. `startCoworkerTurns` is the production wiring
  * boot.ts starts; `composeCoworkerTurns` is the same with every port injected.
  */
 
 export type CoworkerTurnsHandle = {
   turns: CoworkerTurns
   listener: CoworkerTriggerListener
+  /** The channel-message event source (C7); absent when no events are wired. */
+  events: ChannelMessageSource | null
   /** Reloads the agents into the runtime and follows the current co-workers. */
   reload(): Promise<void>
   /** Stops hearing messages and claiming turns (a running turn finishes). */
@@ -41,6 +46,11 @@ export type ComposeCoworkerTurnsInput = {
   rhythms: CoworkerTurnsDeps['rhythms']
   /** Reads a task as the co-worker (null when it is gone or not its); its comment is posted through the kernel (tasks.comment). */
   readTask: CoworkerTurnsDeps['tasks']['get']
+  /**
+   * Event reactions (C7): the observer's ports but the run queue, which is the turns' own
+   * (an enforced "yes" queues an 'event' run on `runs` and starts it here).
+   */
+  events?: Omit<CoworkerEventObserverDeps, 'queueRun'>
 } & Pick<CoworkerTurnsDeps, 'now' | 'threadTurnBudget' | 'heartbeatMs' | 'staleAfterMs'>
 
 const asCoworker = (coworkerId: string) => ({ principal: coworkerPrincipal(coworkerId, coworkerAgentId(coworkerId)), requestId: randomUUID() })
@@ -85,10 +95,28 @@ export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): Coworker
     ...(input.heartbeatMs === undefined ? {} : { heartbeatMs: input.heartbeatMs }),
     ...(input.staleAfterMs === undefined ? {} : { staleAfterMs: input.staleAfterMs }),
   })
-  const listener = new CoworkerTriggerListener({ hub: input.hub, listEnabled: () => input.coworkers.listEnabled(), turns })
+  const events = input.events
+    ? new ChannelMessageSource(
+        {
+          getConversation: (id) => input.messages.store.getConversation(id),
+          listPeople: () => input.messages.directory.listPeople(),
+          access: async (userId, c) => ({ read: await canUse(input.messages, userId, c, 'view'), member: await canUse(input.messages, userId, c, 'edit') }),
+        },
+        new CoworkerEventObserver({
+          ...input.events,
+          queueRun: async (run) => {
+            const row = await input.runs.enqueue(run)
+            if (row) turns.work(row.id).catch((err: unknown) => console.error('[coworkers] an event run failed', { runId: row.id, err }))
+            return row
+          },
+        }),
+      )
+    : null
+  const listener = new CoworkerTriggerListener({ hub: input.hub, listEnabled: () => input.coworkers.listEnabled(), turns, ...(events ? { events } : {}) })
   return {
     turns,
     listener,
+    events,
     reload: async () => {
       await input.runtime.loadAgents(source)
       await listener.refresh()
@@ -113,6 +141,30 @@ export async function liveTurnCost(coworkerId: string, runId: string): Promise<n
 }
 
 /**
+ * The live event-reaction ports (C7): the declared kind coworkers.event_mine, the 0176 stores,
+ * the cost ledger, and decide() inside the co-worker's own database session (its cost row is
+ * RLS-scoped to it; there is no request outside a turn).
+ */
+export async function liveEventDeps(): Promise<Omit<CoworkerEventObserverDeps, 'queueRun'>> {
+  const [{ coworkerEventMine }, { liveCoworkerEventStores }, coworkers, { ledgerSpentUsdToday }, { decide }, { withDbUser }] = await Promise.all([
+    import('../../../../modules/coworkers/decision-kinds'),
+    import('./db-event-store'),
+    import('./index'),
+    import('$lib/server/agent/ledger-spend'),
+    import('$lib/server/decisions/decide'),
+    import('$lib/server/db'),
+  ])
+  return {
+    kind: coworkerEventMine,
+    subscriptions: liveCoworkerEventStores,
+    observations: liveCoworkerEventStores,
+    coworkers: { get: coworkers.getCoworker },
+    spentToday: ledgerSpentUsdToday,
+    decide: (kind, input, opts) => withDbUser(opts.requestedBy, () => decide(kind, input, opts)),
+  }
+}
+
+/**
  * Production: the database co-workers, the process's messages hub, the
  * coworker_run queue. Reloads after every co-worker change in this process,
  * resumes unfinished turns at start and sweeps for lost ones.
@@ -121,7 +173,7 @@ export async function startCoworkerTurns(input: {
   registry: Pick<KernelRegistry, 'execute'>
   runtime: Pick<AgentRuntime, 'loadAgents' | 'dispatchAsAgent'>
 }): Promise<CoworkerTurnsHandle> {
-  const [{ messagesDeps, messagesHub }, coworkers, { liveCoworkerRunStore }, { liveCompanyContext }, { runWithTrace }, { liveRhythmStore }, { liveReadTask }] =
+  const [{ messagesDeps, messagesHub }, coworkers, { liveCoworkerRunStore }, { liveCompanyContext }, { runWithTrace }, { liveRhythmStore }, { liveReadTask }, events] =
     await Promise.all([
       import('../../../../modules/messages/live'),
       import('./index'),
@@ -130,6 +182,7 @@ export async function startCoworkerTurns(input: {
       import('$lib/server/activity/trace-context'),
       import('./db-rhythm-store'),
       import('./task-work'),
+      liveEventDeps(),
     ])
   const handle = composeCoworkerTurns({
     registry: input.registry,
@@ -143,6 +196,7 @@ export async function startCoworkerTurns(input: {
     inTrace: runWithTrace,
     rhythms: liveRhythmStore,
     readTask: liveReadTask,
+    events,
   })
   await handle.reload()
   const unsubscribe = onCoworkersChanged(() => handle.reload())

@@ -139,6 +139,9 @@ function trigger(t: CoworkerPromptInput['trigger']): string {
       ? `# Why you are acting now\n${who(t.from)} commented on the task:\n${body}`
       : `# Why you are acting now\n${who(t.from)} assigned you the task above.`
   }
+  if (t.kind === 'event') {
+    return `# Why you are acting now\n${who(t.from)} wrote this in the conversation. Nobody @mentioned you; you noticed it because it looks like yours to act on:\n${body}`
+  }
   const how = t.kind === 'dm' ? 'wrote to you in a direct message' : t.kind === 'mention' ? 'mentioned you' : `asked you (${t.kind})`
   return `# Why you are answering now\n${who(t.from)} ${how}:\n${body}`
 }
@@ -166,8 +169,18 @@ ${SHARED_RULES}
 - ${t.assigner.name} (${at(t.assigner)}) reads your comment; ${input.self.accountableHuman.name} (${at(input.self.accountableHuman)}) is the person you answer to.`
 }
 
+function eventRules(input: CoworkerPromptInput): string {
+  return `# How you work here
+${SHARED_RULES}
+- Nobody asked you: act only on the part that is yours. Do not repeat what others already said or answer what was asked of someone else.
+- Your answer is posted for you as a reply in this thread, as you. Do not post it yourself with messages.post.
+- Be concise: a few short paragraphs or a list, no filler, no greeting.
+- ${input.self.accountableHuman.name} (${at(input.self.accountableHuman)}) is the person you answer to.`
+}
+
 function rules(input: CoworkerPromptInput): string {
   if (input.trigger.kind === 'rhythm') return rhythmRules(input)
+  if (input.trigger.kind === 'event') return eventRules(input)
   if (input.trigger.kind === 'assignment') return assignmentRules(input)
   const human = input.self.accountableHuman
   return `# How you work here

@@ -15,9 +15,14 @@ import { KernelError } from './errors'
  * made for them, or asked of them. A row holds the kind's own log view of the input and
  * choices from a closed set: an observation of what the model answered, never a judgment
  * written about a person.
+ *
+ * decisions.label (C7): owner and admins label a decision that asked no one — a shadow
+ * observation such as an AI co-worker's "is this event mine?" — with a choice from its closed
+ * set. The label is the human answer agreement is measured against before a kind is promoted;
+ * it never changes what was acted on.
  */
 
-export const KERNEL_DECISION_TOOL_NAMES = ['decisions.kinds', 'decisions.log', 'decisions.questions', 'decisions.answer'] as const
+export const KERNEL_DECISION_TOOL_NAMES = ['decisions.kinds', 'decisions.log', 'decisions.questions', 'decisions.answer', 'decisions.label'] as const
 
 export const KERNEL_DECISIONS_MODULE_ID = 'kernel'
 
@@ -89,16 +94,20 @@ export type DecisionQuestionView = z.infer<typeof decisionQuestionSchema>
 export type DecisionsPort = {
   kinds(): Promise<DecisionKindView[]>
   /** readerId null = every row (owner, admins). */
-  log(input: { kind?: string; limit: number; readerId: string | null }): Promise<DecisionLogEntry[]>
+  log(input: { kind?: string; subjectUserId?: string; limit: number; readerId: string | null }): Promise<DecisionLogEntry[]>
   questions(userId: string): Promise<DecisionQuestionView[]>
   /** Throws KernelError invalid_input when the question is not the person's open one, or the choice is not in its set. */
   answer(userId: string, decisionId: string, choice: string): Promise<{ decisionId: string; kind: string; choice: string }>
+  /** Throws KernelError invalid_input when the decision can't be labelled (none, a question, failed) or the choice is not in its set. */
+  label(userId: string, decisionId: string, choice: string): Promise<{ decisionId: string; kind: string; choice: string }>
 }
 
 const logInput = z
   .object({
     /** Only this kind's decisions (a kind id from decisions.kinds). */
     kind: z.string().min(1).optional(),
+    /** Only the decisions about this person or AI co-worker (a user id). */
+    subject_user_id: z.string().min(1).max(200).optional(),
     limit: z.number().int().min(1).max(200).default(50),
   })
   .strict()
@@ -112,7 +121,10 @@ const answerInput = z
   })
   .strict()
 
+const labelInput = answerInput
+
 const READ_ROLES = ['member']
+const ADMIN_ROLES = ['admin']
 
 const readsEveryRow = (ctx: ToolContext) => ctx.principal.roles.includes('admin') || ctx.principal.roles.includes('owner')
 
@@ -141,15 +153,20 @@ export function createDecisionTools(deps: { port: DecisionsPort }): ToolDescript
       name: 'decisions.log',
       module: KERNEL_DECISIONS_MODULE_ID,
       summary:
-        'Recent decisions from the decision log, newest first ({kind?: a kind id, limit?: 1–200, default 50}): what Jev chose with its confidence, the current judge’s answer, what was used, and a person’s answer to a question. Owner and admins read every row; anyone else the rows about them, made for them or asked of them.',
+        'Recent decisions from the decision log, newest first ({kind?: a kind id, subject_user_id?: only those about this person or AI co-worker, limit?: 1–200, default 50}): what Jev chose with its confidence, the current judge’s answer, what was used, and a person’s answer to a question. Owner and admins read every row; anyone else the rows about them, made for them or asked of them.',
       auditClass: 'read',
       inputSchema: logInput,
       outputSchema: z.object({ decisions: z.array(decisionLogEntrySchema) }),
       permission: { roles: READ_ROLES },
       handler: async (ctx, input) => {
-        const { kind, limit } = logInput.parse(input ?? {})
+        const { kind, subject_user_id, limit } = logInput.parse(input ?? {})
         return {
-          decisions: await deps.port.log({ ...(kind ? { kind } : {}), limit, readerId: readsEveryRow(ctx) ? null : ctx.principal.id }),
+          decisions: await deps.port.log({
+            ...(kind ? { kind } : {}),
+            ...(subject_user_id ? { subjectUserId: subject_user_id } : {}),
+            limit,
+            readerId: readsEveryRow(ctx) ? null : ctx.principal.id,
+          }),
         }
       },
     },
@@ -178,6 +195,25 @@ export function createDecisionTools(deps: { port: DecisionsPort }): ToolDescript
       handler: async (ctx, input) => {
         const { decision_id, choice } = answerInput.parse(input)
         return deps.port.answer(personOf(ctx), decision_id, choice)
+      },
+    },
+    {
+      name: 'decisions.label',
+      module: KERNEL_DECISIONS_MODULE_ID,
+      summary:
+        'Label a decision that asked no one — e.g. a shadow decision of whether an event was an AI co-worker’s (kind coworkers.event_mine) — with the right choice from its closed set: {decision_id: from decisions.log, choice}. Your label is what Jev’s agreement is measured against before a kind is enforced; it never changes what was done. A later label replaces yours. Owner and admins, as themselves.',
+      auditClass: 'mutate',
+      activity: (_input: unknown, output?: { kind: string; choice: string }) =>
+        output ? `Labelled a decision (${output.kind}: ${output.choice})` : 'Labelled a decision',
+      inputSchema: labelInput,
+      outputSchema: z.object({ decisionId: z.string(), kind: z.string(), choice: z.string() }),
+      permission: { roles: ADMIN_ROLES },
+      handler: async (ctx, input) => {
+        const { decision_id, choice } = labelInput.parse(input)
+        if (ctx.principal.kind !== 'human') {
+          throw new KernelError('no_person', 'A decision is labelled by a person (owner or admin); this call names no person.')
+        }
+        return deps.port.label(ctx.principal.id, decision_id, choice)
       },
     },
   ]

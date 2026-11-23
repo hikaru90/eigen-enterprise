@@ -44,6 +44,10 @@ import { coworkerRunSessionId, coworkerSessionId, coworkerTaskSessionId, coworke
  * with a comment on the task and completes it itself (tasks.complete) when the
  * work is done. Every finished or stopped work run lands in the "Needs you" of
  * the co-worker's accountable human, and for an assignment of the assigner.
+ *
+ * Event runs (C7) exist only once the kind coworkers.event_mine is enforced (events.ts): a
+ * channel message Jev judged the co-worker's queues one, and it answers in that message's
+ * thread (it must still be a member; a deleted message stops it). In shadow none is queued.
  */
 
 export const THREAD_TURN_BUDGET = 8
@@ -548,7 +552,12 @@ export class CoworkerTurns {
         await this.finish(run, { status: 'stopped', stopReason: 'unavailable', error: 'the co-worker was switched off or removed before this turn ran' })
         return await this.afterWork(run, view, null)
       }
-      const prepared = run.triggerKind === 'rhythm' ? await this.prepareRhythm(run, view) : await this.prepareAssignment(run, view)
+      const prepared =
+        run.triggerKind === 'rhythm'
+          ? await this.prepareRhythm(run, view)
+          : run.triggerKind === 'event'
+            ? await this.prepareEvent(run, view)
+            : await this.prepareAssignment(run, view)
       if ('stop' in prepared) {
         await this.finish(run, { status: 'stopped', stopReason: prepared.stop, error: prepared.error })
         return await this.afterWork(run, view, null)
@@ -582,6 +591,9 @@ export class CoworkerTurns {
         if (run.triggerKind === 'rhythm') {
           // A top-level post: its own thread, so replies to it (and @mentions there) are a thread like any other.
           posted = await this.deps.post(run.coworkerUserId, { conversationId: run.conversationId!, body: reply, parentId: null })
+        } else if (run.triggerKind === 'event') {
+          // An answer in the event's thread, as the co-worker.
+          await this.deps.post(run.coworkerUserId, { conversationId: run.conversationId!, body: reply, parentId: run.threadRootId })
         } else {
           await this.deps.tasks.comment(run.coworkerUserId, run.taskId!, reply)
         }
@@ -614,6 +626,22 @@ export class CoworkerTurns {
     return {
       sessionId: coworkerRunSessionId(view.id, run.id),
       prompt: await this.promptInput(run, view, c, thread, null, { triggerBody: rhythm.instruction }),
+    }
+  }
+
+  private async prepareEvent(run: CoworkerRunRow, view: CoworkerView): Promise<Prepared> {
+    const d = this.deps.messages
+    const c = run.conversationId ? await d.store.getConversation(run.conversationId) : null
+    if (!c || !(await canUse(d, view.id, c, 'edit'))) {
+      return { stop: 'not_member', error: `${view.name} is not a member of the event's conversation (any more), so it could not answer there` }
+    }
+    const message = run.triggerMessageId ? await d.store.getMessage(run.triggerMessageId) : null
+    if (!message || message.deletedAt) return { stop: 'unavailable', error: 'the message was deleted before this run' }
+    const thread = await this.readThread(view.id, c, run.threadRootId)
+    return {
+      // Its own durable conversation (a mention turn may run in the same thread at the same time); the thread is its context.
+      sessionId: coworkerRunSessionId(view.id, run.id),
+      prompt: await this.promptInput(run, view, c, thread, null, { triggerBody: message.body }),
     }
   }
 

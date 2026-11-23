@@ -1212,6 +1212,13 @@
       "when": 1795200000175,
       "tag": "0175_decision_log",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1795200000176,
+      "tag": "0176_coworker_event_reactions",
+      "breakpoints": true
     }
   ]
 }

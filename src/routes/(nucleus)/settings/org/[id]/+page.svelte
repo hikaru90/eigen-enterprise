@@ -7,15 +7,17 @@
   import MessageButton from '$lib/coworkers/message-button.svelte'
   import { modelFamily, modelName } from '$lib/coworkers/model-family'
   import RunLog from '$lib/coworkers/run-log.svelte'
+  import WouldPickUp from '$lib/coworkers/would-pick-up.svelte'
   import { m } from '$lib/paraglide/messages.js'
   import { docTitle } from '$lib/shell/title'
 
   /**
    * A seat's profile (plan/phase-ai-coworkers.md C5): the role card, and for an
    * AI co-worker its lens, model and the person it answers to. "Message" opens
-   * the DM. For a co-worker, its run log (coworkers.runs, C6).
+   * the DM. For a co-worker, its run log (coworkers.runs, C6), and for owner
+   * and admins "Would pick up" (C7: its shadow event decisions).
    */
-  let { data }: PageProps = $props()
+  let { data, form }: PageProps = $props()
 
   const p = $derived(data.person)
   const c = $derived(data.coworker)
@@ -110,6 +112,10 @@
 
   {#if p.kind === 'coworker'}
     <RunLog runs={data.runs} />
+  {/if}
+
+  {#if p.kind === 'coworker' && data.wouldPickUp}
+    <WouldPickUp coworkerId={p.id} {...data.wouldPickUp} {form} />
   {/if}
 
   {#if p.kind === 'coworker' && data.me.canManage}

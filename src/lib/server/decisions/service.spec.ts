@@ -131,4 +131,33 @@ describe('decisions port over the log', () => {
     expect((await port.log({ limit: 50, readerId: 'u3' })).map((r) => r.input)).toEqual([{ id: 2 }])
     expect(await port.log({ limit: 50, readerId: 'u9' })).toEqual([])
   })
+
+  it('the log narrows to one subject', async () => {
+    const store = inMemoryDecisionStore()
+    const port = decisionsPort(store, catalog)
+    await decide(shadowKind, { id: 1 }, { requestedBy: 'cw-a', subjectUserId: 'cw-a', judge: { none: true } }, { ask: jev('yes', 1), store })
+    await decide(shadowKind, { id: 2 }, { requestedBy: 'cw-b', subjectUserId: 'cw-b', judge: { none: true } }, { ask: jev('no', 1), store })
+    expect((await port.log({ kind: 'demo.shadowed', subjectUserId: 'cw-b', limit: 50, readerId: null })).map((r) => r.input)).toEqual([{ id: 2 }])
+  })
+
+  it('a person labels a shadow observation from its closed set; the label counts toward agreement and changes nothing used', async () => {
+    const store = inMemoryDecisionStore()
+    const port = decisionsPort(store, catalog, () => new Date('2026-11-23T10:00:00Z'))
+    const a = await decide(shadowKind, { id: 1 }, { requestedBy: 'cw-a', subjectUserId: 'cw-a', judge: { none: true } }, { ask: jev('yes', 0.8), store })
+    const b = await decide(shadowKind, { id: 2 }, { requestedBy: 'cw-a', subjectUserId: 'cw-a', judge: { none: true } }, { ask: jev('yes', 0.8), store })
+    await expect(port.label('u-owner', a.decisionId, 'maybe')).rejects.toThrow(/not an answer/)
+    await expect(port.label('u-owner', '00000000-0000-4000-8000-000000000000', 'yes')).rejects.toThrow(/no decision/)
+    await expect(port.label('u-owner', a.decisionId, 'yes')).resolves.toEqual({ decisionId: a.decisionId, kind: 'demo.shadowed', choice: 'yes' })
+    await port.label('u-owner', b.decisionId, 'yes')
+    await port.label('u-admin', b.decisionId, 'no') // a later label replaces the earlier one
+    expect(store.rows().find((r) => r.id === b.decisionId)).toMatchObject({ humanChoice: 'no', labelledBy: 'u-admin', usedChoice: null, usedSource: null, outcome: 'observed' })
+    expect((await port.kinds()).find((k) => k.id === 'demo.shadowed')).toMatchObject({ humanCompared: 2, humanAgreed: 1, agreement: 0.5 })
+  })
+
+  it('a question is answered, not labelled', async () => {
+    const store = inMemoryDecisionStore()
+    const port = decisionsPort(store, catalog)
+    const q = await decide(enforcedKind, { id: 9 }, { requestedBy: 'u1', judge: { none: true } }, { ask: jev('yes', 0.4), store })
+    await expect(port.label('u-owner', q.decisionId, 'yes')).rejects.toThrow(/decisions\.answer/)
+  })
 })

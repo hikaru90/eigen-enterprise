@@ -9,7 +9,7 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **358** — tool 247, human-only 47, transport 48, no effect 16, **debt 0**.
+Mutating entry points: **360** — tool 249, human-only 47, transport 48, no effect 16, **debt 0**.
 
 | Module | Debt |
 |---|---|

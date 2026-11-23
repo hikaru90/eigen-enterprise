@@ -5,7 +5,9 @@ import type { NoticeDeps } from '$lib/server/coworkers/notices'
 import type { RhythmDeps, RhythmView } from '$lib/server/coworkers/rhythms'
 import type { CoworkerRunRow, CoworkerRunStore } from '$lib/server/coworkers/run-store'
 import type { CoworkerActor, CoworkerDeps, CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
+import type { EventSubscriptionDeps } from '$lib/server/coworkers/event-subscriptions'
 import { COWORKER_TEMPLATE_IDS, COWORKER_TEMPLATES } from '$lib/server/coworkers/templates'
+import { COWORKER_EVENT_KINDS, COWORKER_EVENT_OUTCOMES } from '$lib/server/db/coworker-events.schema'
 import { COWORKER_RUN_STATUSES, COWORKER_STOP_REASONS, COWORKER_TRIGGER_KINDS } from '$lib/server/db/coworkers.schema'
 import { COWORKERS_CREATE_TOOL, COWORKERS_MODULE_ID, COWORKERS_REMOVE_TOOL } from './manifest'
 
@@ -31,6 +33,12 @@ import { COWORKERS_CREATE_TOOL, COWORKERS_MODULE_ID, COWORKERS_REMOVE_TOOL } fro
  * (list for members; create, update, delete and run now for admins), and
  * coworkers.needs_you / coworkers.notice_seen are the reader's own "Needs you"
  * rows for finished rhythm and assignment runs.
+ *
+ * C7, event reactions: coworkers.event_subscriptions_get/set — which company events (a closed
+ * set of kinds) a co-worker notices without being @mentioned, and what became of the events
+ * it heard (counted by outcome, skipped ones included). Members read; owner and admins set.
+ * Whether an event is the co-worker's is a Jev decision (decisions.log, kind
+ * coworkers.event_mine), in shadow: logged, not acted on.
  */
 
 /** The conversations, of `conversationIds`, the reader may see. */
@@ -43,6 +51,7 @@ export type CoworkersToolDeps = {
   runLocations?: RunLocationAccess
   rhythms?: () => Promise<RhythmDeps>
   notices?: () => Promise<NoticeDeps>
+  events?: () => Promise<EventSubscriptionDeps>
 }
 
 const READ_ROLES = ['admin', 'member', 'agent']
@@ -234,6 +243,27 @@ async function liveNotices(): Promise<NoticeDeps> {
   return (await import('$lib/server/coworkers/rhythm-live')).liveNoticeDeps()
 }
 
+async function liveEvents(): Promise<EventSubscriptionDeps> {
+  const [{ liveCoworkerEventStores }, coworkers] = await Promise.all([import('$lib/server/coworkers/db-event-store'), import('$lib/server/coworkers')])
+  return { subscriptions: liveCoworkerEventStores, observations: liveCoworkerEventStores, coworkers: { get: coworkers.getCoworker } }
+}
+
+const eventSubscriptionsGetInput = z.object({ user_id: userId }).strict()
+const eventSubscriptionsSetInput = z
+  .object({
+    user_id: userId,
+    event_kinds: z.array(z.enum(COWORKER_EVENT_KINDS)).max(COWORKER_EVENT_KINDS.length).describe('The event kinds it notices (all others off); [] switches every kind off.'),
+  })
+  .strict()
+const outcomeCounts = z.object(Object.fromEntries(COWORKER_EVENT_OUTCOMES.map((o) => [o, z.number().int()])) as Record<(typeof COWORKER_EVENT_OUTCOMES)[number], z.ZodNumber>)
+export const eventSubscriptionsSchema = z.object({
+  userId: z.string(),
+  kinds: z.array(z.object({ kind: z.enum(COWORKER_EVENT_KINDS), on: z.boolean() })),
+  hourlyLimit: z.number().int(),
+  lastHour: outcomeCounts,
+  lastDay: outcomeCounts,
+})
+
 const rhythmLine = (r: Pick<RhythmView, 'weekdays' | 'time' | 'timeZone'>) => `${r.weekdays.join(' ')} ${r.time} ${r.timeZone}`
 
 async function liveRuns(): Promise<CoworkerRunStore> {
@@ -257,6 +287,8 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
   const runLocations = opts.runLocations ?? liveRunLocations
   const rhythms = opts.rhythms ?? liveRhythms
   const notices = opts.notices ?? liveNotices
+  const events = opts.events ?? liveEvents
+  const eventService = () => import('$lib/server/coworkers/event-subscriptions')
   const service = () => import('$lib/server/coworkers/service')
   const rhythmService = () => import('$lib/server/coworkers/rhythms')
   const noticeService = () => import('$lib/server/coworkers/notices')
@@ -544,6 +576,34 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       outputSchema: z.object({ runId: z.string(), seen: z.literal(true) }),
       permission: { roles: READ_ROLES },
       handler: async (ctx, input) => (await noticeService()).markNoticeSeen(await notices(), ctx.principal.id, noticeSeenInput.parse(input).run_id),
+    },
+    {
+      name: 'coworkers.event_subscriptions_get',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        "Which company events an AI co-worker notices without being @mentioned (kinds: channel_message = a person's new message in a channel it is a member of, not mentioning it), each on or off; and what became of the events it heard in the last hour and day, by outcome (observed = Jev decided in shadow, see decisions.log kind coworkers.event_mine; queued = it took an event run; skipped_rate_limit past hourlyLimit decisions an hour; skipped_daily_cap when its daily AI budget was spent; failed).",
+      auditClass: 'read',
+      inputSchema: eventSubscriptionsGetInput,
+      outputSchema: eventSubscriptionsSchema,
+      permission: { roles: READ_ROLES },
+      handler: async (_ctx, input) => (await eventService()).getEventSubscriptions(await events(), eventSubscriptionsGetInput.parse(input).user_id),
+    },
+    {
+      name: 'coworkers.event_subscriptions_set',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        'Choose which company events an AI co-worker notices without being @mentioned: event_kinds is the full new list (channel_message; [] = none). For each such event Jev decides whether it is the co-worker’s to act on; today that runs in shadow — logged in decisions.log, nothing is acted on. The cost is the co-worker’s. Owner and admins.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof eventSubscriptionsSetInput>) =>
+        input.event_kinds.length > 0 ? `Set the events an AI co-worker notices: ${input.event_kinds.join(', ')}` : 'Switched off the events an AI co-worker notices',
+      inputSchema: eventSubscriptionsSetInput,
+      outputSchema: eventSubscriptionsSchema,
+      permission: { roles: ADMIN_ROLES },
+      handler: async (ctx, input) => {
+        const i = eventSubscriptionsSetInput.parse(input)
+        return (await eventService()).setEventSubscriptions(await events(), await actor(ctx), { userId: i.user_id, kinds: i.event_kinds })
+      },
     },
     {
       name: 'org.chart',

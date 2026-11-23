@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
 import {
   decisionLog,
@@ -69,10 +69,19 @@ export type DecisionStore = {
   get(id: string): Promise<DecisionRecord | null>
   /** A person's answer to an open question; false when it is not open (answered already, or none). */
   label(id: string, choice: string, by: string, at: Date): Promise<boolean>
+  /**
+   * A person's label on a decision that asked no one (observed, or decided by Jev or the current
+   * judge): the human answer agreement is measured against. It never changes what was used.
+   * A later label replaces an earlier one. False when there is no such row.
+   */
+  labelDecision(id: string, choice: string, by: string, at: Date): Promise<boolean>
   /** The open questions asked of this person, oldest first. */
   openQuestions(userId: string): Promise<DecisionRecord[]>
-  /** Recent decisions, newest first; `readerId` null = every row, else the rows about, by or asked of that reader. */
-  recent(opts: { kind?: string; readerId: string | null; limit: number }): Promise<DecisionRecord[]>
+  /**
+   * Recent decisions, newest first; `readerId` null = every row, else the rows about, by or asked
+   * of that reader; `subjectUserId` narrows to the rows about that person or co-worker.
+   */
+  recent(opts: { kind?: string; subjectUserId?: string; readerId: string | null; limit: number }): Promise<DecisionRecord[]>
   kindCounts(): Promise<KindCounts[]>
 }
 
@@ -94,6 +103,9 @@ export function countRows(kind: string, rows: readonly DecisionRecord[]): KindCo
     costUsd: rows.reduce((sum, r) => sum + (r.costUsd ?? 0), 0),
   }
 }
+
+/** Decisions a person may label afterwards (a question is answered instead). */
+export const LABELLABLE_OUTCOMES = ['observed', 'decided'] as const
 
 const readable = (r: DecisionRecord, readerId: string) =>
   r.subjectUserId === readerId || r.requestedBy === readerId || r.askUserId === readerId
@@ -118,10 +130,21 @@ export function inMemoryDecisionStore(): DecisionStore & { rows(): DecisionRecor
       Object.assign(r, { humanChoice: choice, labelledBy: by, labelledAt: at, usedChoice: choice, usedSource: 'human' })
       return true
     },
+    labelDecision: async (id, choice, by, at) => {
+      const r = rows.find((x) => x.id === id && (LABELLABLE_OUTCOMES as readonly string[]).includes(x.outcome))
+      if (!r) return false
+      Object.assign(r, { humanChoice: choice, labelledBy: by, labelledAt: at })
+      return true
+    },
     openQuestions: async (userId) => rows.filter((r) => r.askUserId === userId && r.outcome === 'pending' && r.humanChoice === null),
-    recent: async ({ kind, readerId, limit }) =>
+    recent: async ({ kind, subjectUserId, readerId, limit }) =>
       rows
-        .filter((r) => (kind === undefined || r.kind === kind) && (readerId === null || readable(r, readerId)))
+        .filter(
+          (r) =>
+            (kind === undefined || r.kind === kind) &&
+            (subjectUserId === undefined || r.subjectUserId === subjectUserId) &&
+            (readerId === null || readable(r, readerId)),
+        )
         .reverse()
         .slice(0, limit),
     kindCounts: async () => [...new Set(rows.map((r) => r.kind))].sort().map((k) => countRows(k, rows.filter((r) => r.kind === k))),
@@ -164,6 +187,14 @@ export const liveDecisionStore: DecisionStore = {
       .returning({ id: decisionLog.id })
     return updated.length === 1
   },
+  labelDecision: async (id, choice, by, at) => {
+    const updated = await getDb()
+      .update(decisionLog)
+      .set({ humanChoice: choice, labelledBy: by, labelledAt: at })
+      .where(and(eq(decisionLog.id, id), inArray(decisionLog.outcome, [...LABELLABLE_OUTCOMES])))
+      .returning({ id: decisionLog.id })
+    return updated.length === 1
+  },
   openQuestions: async (userId) =>
     (
       await getDb()
@@ -172,7 +203,7 @@ export const liveDecisionStore: DecisionStore = {
         .where(and(eq(decisionLog.askUserId, userId), eq(decisionLog.outcome, 'pending'), isNull(decisionLog.humanChoice)))
         .orderBy(decisionLog.createdAt)
     ).map(toRecord),
-  recent: async ({ kind, readerId, limit }) =>
+  recent: async ({ kind, subjectUserId, readerId, limit }) =>
     (
       await getDb()
         .select()
@@ -180,6 +211,7 @@ export const liveDecisionStore: DecisionStore = {
         .where(
           and(
             kind === undefined ? undefined : eq(decisionLog.kind, kind),
+            subjectUserId === undefined ? undefined : eq(decisionLog.subjectUserId, subjectUserId),
             readerId === null
               ? undefined
               : or(eq(decisionLog.subjectUserId, readerId), eq(decisionLog.requestedBy, readerId), eq(decisionLog.askUserId, readerId)),

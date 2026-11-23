@@ -25,6 +25,8 @@ export const COWORKERS_TOOL_NAMES = [
   'coworkers.rhythm_run_now',
   'coworkers.needs_you',
   'coworkers.notice_seen',
+  'coworkers.event_subscriptions_get',
+  'coworkers.event_subscriptions_set',
   'org.chart',
   'org.set_position',
 ] as const

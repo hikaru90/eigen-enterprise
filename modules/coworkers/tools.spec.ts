@@ -5,6 +5,7 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { onCoworkersChanged } from '$lib/server/coworkers/changes'
 import { memoryCoworkerStore } from '$lib/server/coworkers/memory-store'
+import { MemoryEventStores } from '$lib/server/coworkers/events'
 import { MemoryRhythmStore } from '$lib/server/coworkers/rhythms'
 import { MemoryCoworkerRunStore } from '$lib/server/coworkers/run-store'
 import { getCoworker, type CoworkerActor, type OrgMember } from '$lib/server/coworkers/service'
@@ -32,7 +33,9 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
   const sees: Record<string, string[]> = { olga: ['conv-launch', 'conv-dm'], mo: ['conv-launch'] }
   const rhythmStore = new MemoryRhythmStore(runs)
   const started: string[] = []
+  const eventStores = new MemoryEventStores()
   const tools = createCoworkersTools({
+    events: async () => ({ subscriptions: eventStores, observations: eventStores, coworkers: { get: (id) => getCoworker(store, id) }, now: () => at }),
     runs: async () => runs,
     rhythms: async () => ({
       store: rhythmStore,
@@ -82,7 +85,7 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
     await approvals.decide(pending!.id, 'approved', 'olga')
     return registry.execute(name, input, ctx)
   }
-  return { store, registry, tool, ownerCtx, memberCtx, approved, approvals, runs, started }
+  return { store, registry, tool, ownerCtx, memberCtx, approved, approvals, runs, started, eventStores }
 }
 
 describe('coworkers module', () => {
@@ -326,5 +329,32 @@ describe('rhythms and Needs you (C6)', () => {
     await expect(registry.execute('coworkers.notice_seen', { run_id: run!.id }, memberCtx)).rejects.toMatchObject({ code: 'not_found' })
     expect(await registry.execute('coworkers.notice_seen', { run_id: run!.id }, ownerCtx)).toEqual({ runId: run!.id, seen: true })
     expect(((await registry.execute('coworkers.needs_you', {}, ownerCtx)) as { notices: unknown[] }).notices).toEqual([])
+  })
+})
+
+describe('event subscriptions (C7)', () => {
+  it('members read which events a co-worker notices and what became of them; only admins switch kinds on and off', async () => {
+    const { registry, ownerCtx, memberCtx, approved, tool, eventStores } = setup('allow_all')
+    expect(tool('coworkers.event_subscriptions_get')).toMatchObject({ auditClass: 'read', permission: { roles: ['admin', 'member', 'agent'] } })
+    expect(tool('coworkers.event_subscriptions_set')).toMatchObject({ auditClass: 'mutate', permission: { roles: ['admin', 'agent'] } })
+    const cw = (await approved('coworkers.create', { template_id: 'marketing-manager', name: 'Mara' }, ownerCtx)) as { id: string }
+
+    const off = (await registry.execute('coworkers.event_subscriptions_get', { user_id: cw.id }, memberCtx)) as { kinds: unknown[]; hourlyLimit: number }
+    expect(off).toMatchObject({ userId: cw.id, kinds: [{ kind: 'channel_message', on: false }], hourlyLimit: 20 })
+
+    await expect(registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: ['channel_message'] }, memberCtx)).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: ['mail'] }, ownerCtx)).rejects.toMatchObject({ code: 'invalid_input' })
+    const on = await registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: ['channel_message'] }, ownerCtx)
+    expect(on).toMatchObject({ kinds: [{ kind: 'channel_message', on: true }] })
+    expect(await eventStores.list(cw.id)).toEqual(['channel_message'])
+
+    // What it heard is counted, skipped ones included (visible, never a silent drop).
+    await eventStores.claim({ coworkerUserId: cw.id, eventKind: 'channel_message', eventId: 'm1', conversationId: null, now: at, hourlyLimit: 0 })
+    const counted = (await registry.execute('coworkers.event_subscriptions_get', { user_id: cw.id }, memberCtx)) as { lastHour: Record<string, number>; lastDay: Record<string, number> }
+    expect(counted.lastHour).toMatchObject({ skipped_rate_limit: 1, observed: 0 })
+    expect(counted.lastDay).toMatchObject({ skipped_rate_limit: 1 })
+
+    expect(await registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: [] }, ownerCtx)).toMatchObject({ kinds: [{ kind: 'channel_message', on: false }] })
+    await expect(registry.execute('coworkers.event_subscriptions_get', { user_id: 'nobody' }, memberCtx)).rejects.toMatchObject({ code: 'not_found' })
   })
 })

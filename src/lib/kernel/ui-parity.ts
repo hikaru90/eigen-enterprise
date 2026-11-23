@@ -390,6 +390,9 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/coworkers ?/rhythmRunNow': tool('coworkers.rhythm_run_now'),
   '/(nucleus)/settings/coworkers ?/rhythmUpdate': tool('coworkers.rhythm_update'),
   '/(nucleus)/settings/org/[id] ?/noticeSeen': tool('coworkers.notice_seen'),
+  // C7: "Would pick up" on a co-worker's profile — which events it notices, and a person's mark on a shadow decision.
+  '/(nucleus)/settings/org/[id] ?/eventSubscriptions': tool('coworkers.event_subscriptions_set'),
+  '/(nucleus)/settings/org/[id] ?/labelDecision': tool('decisions.label'),
   '/(nucleus)/settings/coworkers ?/update': tool('coworkers.update'),
   '/(nucleus)/settings/org ?/setPosition': tool('org.set_position'),
   // CB2: a decision question's answer buttons in the dashboard's Needs you.
