@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Fleet: a box upgraded ahead of the control plane no longer gets locked out
+
+- **What broke:** ee-one upgraded to v0.5.35 at 08:29, and from then on every fleet poll was refused with `400 bad report`. The box announced the new feature `claims`, and the live control plane predated it (`features` was a strict enum). A probe of `/api/fleet/v1/enroll` confirmed it: the request without `claims` got 401 (token), the same request with `claims` got 400 (shape). While polls fail, the box gets no claims, release targets or settings; the edge kept serving.
+- **Fix (decision, architecture impact):** features a side doesn't know are dropped, not refused (`announcedFeatures` in `ee/src/fleet/protocol.ts`, `5837b6a0`). That is the same rule desired state already follows the other way (`ignoredFields`): the box gets every unknown field at its neutral value. Names are still bounded (1–64 chars, ≤ 64). The old assertion "an unknown feature throws" was replaced on purpose, not weakened. Cloud re-vendored + flow test (`bbc2639`), 269 tests; ee 491.
+- **Still needed:** cloud must actually run `bbc2639` (Coolify redeploy). The deploy done after the v0.5.35 release was still pre-`469565b`. Then D6.
+
 ## 2026-11-23 — v0.5.35 released (domains D1–D5)
 
 - `main` pushed through the local CI gate (lint, naming, svelte-check, unit, 821 component). The first run failed on lint: an unused import in `ee/src/certificates.spec.ts` from D1. Fixed in `ab1b8bfc`.
