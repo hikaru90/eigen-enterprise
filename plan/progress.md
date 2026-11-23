@@ -2,6 +2,31 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers: plan approved, wave 1 started (owner: "prepare a feature for agents having different roles … plan for this and then start subagents to build this feature")
+
+- **Plan:** `plan/phase-ai-coworkers.md` (new). AI colleagues in the org chart, each with its own role, accountabilities, lens, model and memory. They collaborate in Messages and act on their own.
+- **Owner decisions:**
+  - A co-worker sees what's company-visible or shared with it, never private items.
+  - The company brain stays; co-workers are added alongside it.
+  - Models come from the vetted pool, widened with more families.
+  - Co-workers act proactively too.
+- **Decisions reversed, announced:**
+  - `phase-3-one-agent.md` non-goal "No multi-agent proliferation";
+  - `phase-company-brain.md` §7 "no persona" (the brain itself keeps it; co-workers are separate identities);
+  - `phase-wedge.md` "org charts out of scope" (one org chart for humans and co-workers).
+- **Architecture decisions:**
+  - a co-worker is a `user` row with `kind = 'coworker'`, always company role `member`, unable to sign in;
+  - new principal kind `coworker`, RLS-scoped like a person;
+  - existing human-only guards refuse it until a module opts in through `actsAsMember`;
+  - cost goes to the co-worker's own user id, with a daily cap per co-worker;
+  - its thoughts are company-visible, read-only to colleagues;
+  - event reactions are Jev decisions, so they wait for CB2; rhythms and assignments don't.
+- **Workstreams:**
+  - wave 1: C1 identity + org chart + `coworkers` module, C2 engine seams;
+  - wave 2: C3 co-worker turn in Messages, C4 memory, C5 UI;
+  - wave 3: C6 proactive rhythms and assignments, C7 event reactions (after CB2), C8 eval.
+- **Open (owner):** do co-workers count as seats?
+
 ## 2026-11-23 — Drive previews: image thumbnails in the list, text glances in the grid (owner: "include previews of the images in the drive? png, jpg, webp" · "even in list always include a small preview … text previews should also be visible in the small panes"; committed, not pushed, not on the box)
 
 - List view: raster images (png, jpg, jpeg, gif, webp, avif, bmp) show the image itself in the row's kind tile (`drive-list-thumb`); the grid already did. `hasThumbnail` (src/lib/drive/display.ts) is the one rule for both views; SVG keeps its icon (the content endpoint serves SVG as text, never active content).
