@@ -2,6 +2,29 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers C8: the co-workers eval, and the Drive leak it found (fixed) (merge `351687d2`, fix `5b53beec`, not pushed, not on the box)
+
+- **Eval** (`dff6c640`): `npm run eval:brain` gains a co-workers suite (`--suite coworkers`).
+  - **Fixture:** Marketing (Claude Sonnet 5.5), GTM (Gemini 3.8 Flash) and Designer (gpt-5-mini) in a private #launch, each with thoughts of its own. A personal mailbox was added for Ony, and the crawl now reads mail.
+  - **Keeps** (no model): CK01–CK10 leak tests over thoughts, DMs, personal and shared mailboxes, private and shared-with-some Drive, a private channel, the call, private calendar events and private contacts, through direct tools and `ee`. Reach checks CR01–02. Every person sees co-worker thoughts as read-only (`owner.kind 'coworker'`, `editable:false`), and writes to them are refused.
+  - **Does** (scripted gateway in front of the mock gateway): CD01–CD07, all pass:
+    - the thread goes person → Marketing → GTM → Marketing → Designer → Marketing → person;
+    - each request carried its own model and role card;
+    - each co-worker's cost lands on that co-worker;
+    - a co-worker captured a thought;
+    - the ping-pong stops at 8 with the note.
+  - **Different** (real models only): pairwise cosine of the three answers' embeddings must stay at or below `DIFFERENT_MAX_PAIRWISE_COSINE = 0.9`. That threshold is a chosen value, to be set from the first real run. `different.jevJudge` is a TODO slot until CB2 lands. Mock runs print "skipped: needs real models".
+  - **Real pass:** `npm run eval:brain -- --mode chat --provider platform --suite coworkers`.
+  - Eval DB setup is serialized with an advisory lock: two parallel setups raced in `ensure-app-role.mjs`.
+- **FOUND and FIXED (`5b53beec`):** every co-worker read every Drive file, private ones included. `actorOf()` in drive (and the same pattern in calls, calendar, contacts, brand social and contribute) mapped every non-person principal to the company-wide agent actor.
+  - A co-worker now acts as its own seat (`actsAsMember` → `{kind:'user', userId}`). In contribute it is a member who doesn't manage the board.
+  - The ratchet's CK05/CK06 and the 9 Drive leak entries are struck. Eval and module specs pass, apart from `calls/brain-db-store.pg.spec.ts`, which flakes under full parallel load and passes alone with or without the change.
+  - Not in any release: co-workers could first take turns with C3, which isn't released.
+- **Existing product behaviour surfaced (not changed):** an admin reads a private channel she isn't in (`messages.read`). It's recorded in the baseline. It conflicts with "no admin override" in the concept and is a candidate for CB9.
+- **Gaps:**
+  - co-workers see no calendar events, not even company-wide ones (a reach gap, not a leak);
+  - pre-existing: `fixture/seed.ts` records `undefined` message ids.
+
 ## 2026-11-23 — Memory one door M2: Capture becomes "What the brain knows", Overview gone, Notes are Documents (plan/concept-memory-one-door.md, decision 1 approved; branch, not merged, not on the box)
 
 - **Tabs:** Tasks · Projects · Documents · Reminders · What the brain knows (`src/lib/memory/memory-surface-nav.ts`, labels and one-line explanations are Paraglide messages, en + de). `/m/memory` redirects (307) to `/m/memory/tasks`.
