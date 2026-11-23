@@ -1,7 +1,7 @@
 import { bigserial, boolean, index, primaryKey, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
- * Calls (migrations 0122, 0152, 0157). Company-level tables (no RLS): access is
+ * Calls (migrations 0122, 0152, 0157, 0159, 0169). Company-level tables (no RLS): access is
  * decided in the calls service (modules/calls/service.ts). The partial unique
  * index call_live_context_idx (one live call per DM/channel) and the schedule
  * checks live in the SQL. call_guest: people outside the company invited by
@@ -115,4 +115,25 @@ export const callBrainAnswers = pgTable(
     sharedAt: timestamp('shared_at', { withTimezone: true }),
   },
   (t) => [index('call_brain_answer_asker_idx').on(t.callId, t.askedBy, t.askedAt)],
+)
+
+/**
+ * Chat in a call (migration 0169, modules/calls/chat.ts): one line a person
+ * in the call wrote — a member (user id) or a guest (guest:<id>), with their
+ * name when they wrote it. seq is arrival order (a live reader's cursor).
+ */
+export const callChatMessages = pgTable(
+  'call_chat_message',
+  {
+    seq: bigserial('seq', { mode: 'number' }).primaryKey(),
+    callId: uuid('call_id')
+      .notNull()
+      .references(() => calls.id, { onDelete: 'cascade' }),
+    authorId: text('author_id').notNull(),
+    authorKind: text('author_kind', { enum: ['member', 'guest'] }).notNull(),
+    authorName: text('author_name').notNull(),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('call_chat_message_call_idx').on(t.callId, t.seq)],
 )

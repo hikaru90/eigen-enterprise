@@ -1,4 +1,4 @@
-import type { CallDto, CallsService } from './service'
+import type { CallChatMessageDto, CallDto, CallsService } from './service'
 
 /**
  * Real-time call frames for GET /api/calls/stream (its own stream, so a call
@@ -11,23 +11,29 @@ import type { CallDto, CallsService } from './service'
  *
  *   call.ringing — the call is ringing for THIS person (show the toast)
  *   call.state   — anything else about a call they are part of
+ *   call.chat    — a new line in the chat of a call they may read it in
+ *                  (pg_notify('ee_calls_chat', <seq>) → dispatchChat)
+ *
+ * Chat frames are not replayed: a client that (re)connects reads the chat on
+ * from its own cursor (GET /api/calls/[id]/chat?since=…).
  */
 
 export type CallFrame = { event: 'call.ringing' | 'call.state'; data: { call: CallDto } }
+export type ChatFrame = { event: 'call.chat'; data: { callId: string; message: CallChatMessageDto } }
 
-type Subscriber = { userId: string; send: (f: CallFrame) => void }
+type Subscriber = { userId: string; send: (f: CallFrame) => void; sendChat: (f: ChatFrame) => void }
 
 export class CallsHub {
   private readonly subscribers = new Set<Subscriber>()
 
-  constructor(private readonly service: Pick<CallsService, 'load' | 'viewFor' | 'liveViews'>) {}
+  constructor(private readonly service: Pick<CallsService, 'load' | 'viewFor' | 'liveViews' | 'chatMessage' | 'canReadChat'>) {}
 
   get size(): number {
     return this.subscribers.size
   }
 
-  subscribe(userId: string, send: (f: CallFrame) => void): () => void {
-    const sub = { userId, send }
+  subscribe(userId: string, send: (f: CallFrame) => void, sendChat: (f: ChatFrame) => void = () => {}): () => void {
+    const sub = { userId, send, sendChat }
     this.subscribers.add(sub)
     return () => this.subscribers.delete(sub)
   }
@@ -42,6 +48,22 @@ export class CallsHub {
         if (view) sub.send({ event: view.ringing ? 'call.ringing' : 'call.state', data: { call: view.call } })
       } catch (err) {
         console.error('[calls] building a stream frame failed', { callId, userId: sub.userId, err })
+      }
+    }
+  }
+
+  /** A new chat line (by its seq): to each connected person who may read that call's chat — re-checked per person now. */
+  async dispatchChat(seq: number): Promise<void> {
+    if (this.subscribers.size === 0) return
+    const line = await this.service.chatMessage(seq)
+    if (!line) throw new Error(`call chat line ${seq} not found`)
+    const rec = await this.service.load(line.callId)
+    if (!rec) throw new Error(`call ${line.callId} not found`)
+    for (const sub of [...this.subscribers]) {
+      try {
+        if (await this.service.canReadChat(sub.userId, rec)) sub.sendChat({ event: 'call.chat', data: line })
+      } catch (err) {
+        console.error('[calls] building a chat frame failed', { callId: line.callId, seq, userId: sub.userId, err })
       }
     }
   }
@@ -68,7 +90,7 @@ export class CallsHub {
 
 const HEARTBEAT_MS = 25_000
 
-export function encodeCallFrame(f: CallFrame): string {
+export function encodeCallFrame(f: CallFrame | ChatFrame): string {
   return `event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`
 }
 
@@ -94,8 +116,9 @@ export function callsStreamResponse(hub: CallsHub, userId: string, signal: Abort
       const write = (text: string) => {
         if (!closed) controller.enqueue(encoder.encode(text))
       }
-      let buffer: CallFrame[] | null = []
-      unsubscribe = hub.subscribe(userId, (f) => (buffer ? buffer.push(f) : write(encodeCallFrame(f))))
+      let buffer: (CallFrame | ChatFrame)[] | null = []
+      const send = (f: CallFrame | ChatFrame) => (buffer ? buffer.push(f) : write(encodeCallFrame(f)))
+      unsubscribe = hub.subscribe(userId, send, send)
       if (signal.aborted) return close()
       signal.addEventListener('abort', close, { once: true })
       write(': connected\n\n')
@@ -105,7 +128,7 @@ export function callsStreamResponse(hub: CallsHub, userId: string, signal: Abort
         console.error('[calls] stream snapshot failed', { userId, err })
         write(`event: error\ndata: ${JSON.stringify({ error: 'could not load your calls; reload' })}\n\n`)
       }
-      const pending: CallFrame[] = buffer
+      const pending = buffer
       buffer = null
       for (const f of pending) write(encodeCallFrame(f))
       heartbeat = setInterval(() => write(': keepalive\n\n'), HEARTBEAT_MS)

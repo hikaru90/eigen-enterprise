@@ -1,6 +1,8 @@
 import type {
   BrainAnswerDto,
   CallBrainDto,
+  CallChatMessageDto,
+  CallChatPage,
   CallDto,
   CallTokenDto,
   GuestJoinDto,
@@ -21,6 +23,8 @@ import { problemFromResponse, type CallProblem } from './call-state'
 export type {
   BrainAnswerDto,
   CallBrainDto,
+  CallChatMessageDto,
+  CallChatPage,
   CallDto,
   CallTokenDto,
   GuestJoinDto,
@@ -98,6 +102,43 @@ export function brainClient(): BrainClient {
       call(`${at(id)}/brain/answers/${encodeURIComponent(answerId)}/share`, { method: 'POST' }),
     brainRecap: async (id) =>
       (await request<{ recap: string }>(`${at(id)}/brain/recap`, { method: 'POST' })).recap,
+  }
+}
+
+/** The call's chat, a member's or a guest's side (the same two calls). */
+export type ChatClient = {
+  /** The chat in order after `since` (a seq; 0 = from the start). */
+  readChat(id: string, since: number): Promise<CallChatPage>
+  /** Write a line; the stored line comes back. */
+  postChat(id: string, body: string): Promise<CallChatMessageDto>
+}
+
+/** A member's chat: /api/calls/[id]/chat (the calls.chat_read / calls.chat_post tools' route). */
+export function chatClient(): ChatClient {
+  return {
+    readChat: (id, since) => request<CallChatPage>(`${at(id)}/chat?since=${since}`),
+    postChat: async (id, body) =>
+      (
+        await request<{ message: CallChatMessageDto }>(`${at(id)}/chat`, {
+          method: 'POST',
+          body: JSON.stringify({ body }),
+        })
+      ).message,
+  }
+}
+
+/** A guest's chat: their link is the proof (the call id is the link's call). */
+export function guestChatClient(linkToken: string): ChatClient {
+  const base = `/api/calls/guest/${encodeURIComponent(linkToken)}/chat`
+  return {
+    readChat: (_id, since) => request<CallChatPage>(`${base}?since=${since}`),
+    postChat: async (_id, body) =>
+      (
+        await request<{ message: CallChatMessageDto }>(base, {
+          method: 'POST',
+          body: JSON.stringify({ body }),
+        })
+      ).message,
   }
 }
 

@@ -207,4 +207,49 @@ describe('calls.* tools', () => {
       f.tool('calls.brain_recap').handler(f.human('ben'), { call_id: call.id }),
     ).rejects.toMatchObject({ code: 'forbidden' })
   })
+
+  it('the chat in a call: a person writes and reads it (from a cursor); the agent on its own does neither', async () => {
+    const { tool, human, agent, service, user } = setup()
+    expect(tool('calls.chat_post')).toMatchObject({ auditClass: 'mutate' })
+    expect(tool('calls.chat_post').approvalRisk).toBeUndefined() // like messages.post: a person's own line
+    expect(tool('calls.chat_read').auditClass).toBe('read')
+    const call = await service.start(user('ann'), { contextKind: 'dm', contextId: 'dm-ann-ben' })
+    await service.accept('ben', call.id)
+    const { message } = (await tool('calls.chat_post').handler(human('ben'), {
+      call_id: call.id,
+      body: 'Agenda kommt',
+    })) as {
+      message: { seq: number; body: string; authorName: string }
+    }
+    expect(message).toMatchObject({ body: 'Agenda kommt', authorName: 'Ben Example' })
+    expect(tool('calls.chat_post').activity!({ call_id: call.id, body: 'x' }, { message })).toBe(
+      `Wrote in the chat of call ${call.id}`,
+    )
+    await tool('calls.chat_post').handler(human('ann'), { call_id: call.id, body: 'Danke' })
+    const all = (await tool('calls.chat_read').handler(human('ann'), { call_id: call.id })) as {
+      messages: { body: string }[]
+      hasMore: boolean
+    }
+    expect(all).toMatchObject({
+      messages: [{ body: 'Agenda kommt' }, { body: 'Danke' }],
+      hasMore: false,
+    })
+    const after = (await tool('calls.chat_read').handler(human('ann'), {
+      call_id: call.id,
+      since: message.seq,
+    })) as { messages: { body: string }[] }
+    expect(after.messages.map((m) => m.body)).toEqual(['Danke'])
+    await expect(
+      tool('calls.chat_post').handler(agent, { call_id: call.id, body: 'hi' }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(
+      tool('calls.chat_read').handler(agent, { call_id: call.id }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(
+      tool('calls.chat_read').handler(human('cat'), { call_id: call.id }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+    await expect(
+      tool('calls.chat_post').handler(human('ann'), { call_id: call.id, body: 'x', extra: 1 }),
+    ).rejects.toThrow()
+  })
 })

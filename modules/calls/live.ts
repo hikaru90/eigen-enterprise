@@ -3,6 +3,7 @@ import type { CallContextPort, CallLogPort } from './context-port'
 import type { CallsDirectory } from './store'
 import { dbBrainAnswerStore } from './brain-db-store'
 import { liveBrain } from './brain-live'
+import { CALLS_CHAT_NOTIFY_CHANNEL, chatSeqOf, dbChatStore } from './chat-db-store'
 import { CALLS_NOTIFY_CHANNEL, dbCallsStore } from './db-store'
 import { CallsError } from './errors'
 import { CallsHub } from './hub'
@@ -15,7 +16,8 @@ import { dbTranscriptStore } from './transcript-db-store'
  * Live wiring: the Postgres store over the app pool (company-level tables, no
  * RLS), the members table as directory, LiveKit from the env (read at use
  * time), the conversation port handed in by the composition root, one hub per
- * process fed by LISTEN ee_calls, and a sweep that stores elapsed ring windows
+ * process fed by LISTEN ee_calls (call changes) and LISTEN ee_calls_chat (chat
+ * lines), and a sweep that stores elapsed ring windows
  * (every read also derives them, so a slow sweep is never visible).
  */
 
@@ -99,6 +101,7 @@ export function callsService(ports: CallsPorts): Promise<CallsService> {
       speech: liveSpeech,
       brain: liveCallBrain,
       brainAnswers: dbBrainAnswerStore(db),
+      chat: dbChatStore(db),
       contexts: ports.contexts,
       log: ports.log,
       directory: await liveDirectory(),
@@ -140,6 +143,13 @@ export function callsHub(ports: CallsPorts): Promise<CallsHub> {
         hub.resync().catch((err) => console.error('[calls] resync after LISTEN reconnect failed', err))
       },
     )
+    // Chat lines missed while LISTEN was down are not replayed here: the resync's call frames
+    // make every open call view read its chat on from its own cursor.
+    await appSql.listen(CALLS_CHAT_NOTIFY_CHANNEL, (payload) => {
+      Promise.resolve()
+        .then(() => hub.dispatchChat(chatSeqOf(payload)))
+        .catch((err) => console.error('[calls] chat dispatch failed', { payload, err }))
+    })
     return hub
   })().catch((err) => {
     hubPromise = null

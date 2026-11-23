@@ -22,6 +22,8 @@ export const CALLS_TOOL_NAMES = [
   'calls.brain_set',
   'calls.brain_share_answer',
   'calls.brain_recap',
+  'calls.chat_post',
+  'calls.chat_read',
 ] as const
 
 /**
@@ -29,8 +31,8 @@ export const CALLS_TOOL_NAMES = [
  * (plan/video-calls.md). A system module (self-seeded active); every call,
  * 1:1 and group, goes through the company's LiveKit server. People join the
  * media; the agent lists, starts (rings — approval-gated), books meetings with
- * guests, and as a person their Brain switch, shares and recap — and never
- * gets a media token.
+ * guests, and as a person their Brain switch, shares and recap, and the
+ * call's chat (write, read) — and never gets a media token.
  */
 export const callsManifest: ModuleManifest = {
   id: CALLS_MODULE_ID,

@@ -6,11 +6,12 @@
   import { resolve } from '$app/paths'
   import { browserActiveCall } from '$lib/calls/active-call.svelte'
   import { CallBrain } from '$lib/calls/call-brain.svelte'
+  import { CallChat } from '$lib/calls/call-chat.svelte'
   import { getCallPresence } from '$lib/calls/call-presence.svelte'
   import { callTabName, leaveDecision, openCallTab } from '$lib/calls/call-tab'
   import { browserCallTranscription } from '$lib/calls/call-transcription.svelte'
   import CallView from '$lib/calls/call-view.svelte'
-  import { brainClient, callsClient, shownProblemOf } from '$lib/calls/client'
+  import { brainClient, callsClient, chatClient, shownProblemOf } from '$lib/calls/client'
   import { getLiveCalls } from '$lib/calls/live-calls.svelte'
   import { recapImportHref } from '$lib/calls/recap-import'
   import ErrorNotice from '$lib/components/error-notice.svelte'
@@ -34,6 +35,11 @@
    * The call feed (the nucleus layout's) keeps the call's view current — its
    * answer time (the clock) and who is transcribed. This page also owns the
    * transcription of my microphone (CallTranscription), connected on mount.
+   *
+   * The call's chat (CallChat): new lines come on the call feed (`call.chat`);
+   * on every feed change for this call while I am in it — the feed's
+   * (re)connect snapshot included — it reads on from its cursor, so a line
+   * the stream missed still arrives.
    */
   let { data }: { data: PageData } = $props()
 
@@ -47,6 +53,8 @@
   const brainApi = brainClient()
   // svelte-ignore state_referenced_locally
   const brain = new CallBrain({ active, me: data.me, client: brainApi })
+  // svelte-ignore state_referenced_locally
+  const chat = new CallChat({ callId: data.call.id, me: data.me, client: chatClient() })
 
   /** The app opened this tab (window.open), so it may close it again. */
   let closable = $state(false)
@@ -55,11 +63,14 @@
   let openError = $state<ShownError | null>(null)
   let untrack = () => {}
   let unfeed = () => {}
+  let unchat = () => {}
 
   /** The feed's newest view of this call (it leaves the feed once over: the ended view needs nothing more). */
   function fromFeed() {
     const c = liveCalls.calls.find((x) => x.id === data.call.id)
-    if (c) active.update(c)
+    if (!c) return
+    active.update(c)
+    if (active.inCall) void chat.catchUp()
   }
 
   onMount(() => {
@@ -67,6 +78,7 @@
     untrack = presence.track(active)
     transcription.connect()
     unfeed = liveCalls.subscribe(fromFeed)
+    unchat = liveCalls.onChat((callId, message) => chat.receive(callId, message))
   })
 
   // Named after its call on every arrival, so Join / Accept elsewhere finds this tab.
@@ -77,6 +89,7 @@
   onDestroy(() => {
     untrack()
     unfeed()
+    unchat()
     active.close()
     transcription.close()
     if (typeof window !== 'undefined' && window.name.startsWith(callTabName(''))) window.name = ''
@@ -156,6 +169,7 @@
       onopen={openOther}
       {transcription}
       {brain}
+      {chat}
       brainRecap={brainApi}
       recapImportHref={data.shell?.assistant === true ? recapImportHref('/', data.call) : null}
       transcriptHref={resolve('/(nucleus)/calls/[id]/transcript', { id: data.call.id })}

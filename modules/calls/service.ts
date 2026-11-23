@@ -4,6 +4,7 @@ import {
   brainListening,
   brainOff,
   brainOn,
+  heardChat,
   brainTurnedOnBy,
   heardSegments,
   heardTranscriptText,
@@ -15,6 +16,7 @@ import {
   type BrainAnswerStore,
   type CallBrain,
 } from './brain'
+import { CHAT_PAGE, chatTurns, parseChatBody, type CallChatStore, type ChatMessage } from './chat'
 import { CallsError } from './errors'
 import {
   guestJoinUrl,
@@ -66,7 +68,7 @@ import {
   type CallsStore,
   type Guest,
 } from './store'
-import { MAX_CHUNK_BYTES, MAX_CHUNK_MS, MAX_SEGMENT_TEXT, type TranscriptSegment, type TranscriptStore } from './transcript'
+import { MAX_CHUNK_BYTES, MAX_CHUNK_MS, MAX_SEGMENT_TEXT, mergeTurns, type TranscriptSegment, type TranscriptStore } from './transcript'
 
 /**
  * Calls core (plan/video-calls.md §1). Starts calls for a DM, a channel or a
@@ -114,6 +116,8 @@ export type CallsDeps = {
   brain: CallBrain
   /** The Brain's answers, private to their askers until shared. */
   brainAnswers: BrainAnswerStore
+  /** The call's chat (./chat.ts): what the people in it write to each other. */
+  chat: CallChatStore
   now?: () => Date
   newId?: () => string
 }
@@ -138,8 +142,22 @@ export type TranscriptSegmentDto = {
   text: string
 }
 
-/** A call's transcript as someone who was in it reads it. */
-export type CallTranscriptDto = { call: CallDto; segments: TranscriptSegmentDto[] }
+/** One line of a call's chat, as the people in the call read it. */
+export type CallChatMessageDto = {
+  seq: number
+  /** A user id, or guest:<id>. */
+  authorId: string
+  authorKind: 'member' | 'guest'
+  authorName: string
+  body: string
+  createdAt: string
+}
+
+/** One read of a call's chat (arrival order); hasMore: read on from the last seq. */
+export type CallChatPage = { messages: CallChatMessageDto[]; hasMore: boolean }
+
+/** A call's transcript as someone who was in it reads it — with what was written in its chat. */
+export type CallTranscriptDto = { call: CallDto; segments: TranscriptSegmentDto[]; chat: CallChatMessageDto[] }
 
 /** What Calls needs from company mail (companyMail() from $lib/server/mail in the live wiring). */
 export type CallsMail = {
@@ -293,6 +311,22 @@ const segmentDto = (s: TranscriptSegment): TranscriptSegmentDto => ({
   endedAt: s.endedAt.toISOString(),
   text: s.text,
 })
+const chatDto = (m: ChatMessage): CallChatMessageDto => ({
+  seq: m.seq,
+  authorId: m.authorId,
+  authorKind: m.authorKind,
+  authorName: m.authorName,
+  body: m.body,
+  createdAt: m.createdAt.toISOString(),
+})
+
+/** A chat cursor: absent (from the start) or a seq. */
+function chatSince(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < 0) throw new CallsError('invalid', 'since is a message seq (a whole number, 0 or more)')
+  return raw
+}
+
 const displayName = (p: CallPerson | undefined) => (p ? p.name.trim() || p.email : null)
 
 export function createCallsService(d: CallsDeps) {
@@ -395,10 +429,48 @@ export function createCallsService(d: CallsDeps) {
     return view.participants.filter((p) => p.joinedAt !== null).map((p) => (p.guest ? `${p.name} (guest)` : p.name))
   }
 
-  /** What the Brain heard in this call (only while it listened), as it reads it. */
+  /** What the Brain heard in this call (only while it listened) — said and written in its chat — as it reads it. */
   async function heardText(rec: CallRecord, view: CallDto): Promise<string> {
-    const heard = heardSegments(rec, await d.transcripts.list(rec.call.id), now())
-    return heardTranscriptText(heardTurns(heard), new Date(view.answeredAt ?? view.startedAt))
+    const at = now()
+    const heard = heardSegments(rec, await d.transcripts.list(rec.call.id), at)
+    const written = heardChat(rec, await allChat(rec.call.id), at)
+    return heardTranscriptText(mergeTurns(heardTurns(heard), chatTurns(written)), new Date(view.answeredAt ?? view.startedAt))
+  }
+
+  /** Every line of a call's chat (paged through the store). */
+  async function allChat(callId: string): Promise<ChatMessage[]> {
+    const out: ChatMessage[] = []
+    for (;;) {
+      const page = await d.chat.list(callId, out.at(-1)?.seq, CHAT_PAGE)
+      out.push(...page)
+      if (page.length < CHAT_PAGE) return out
+    }
+  }
+
+  /** One read of a call's chat after `since`. */
+  async function chatPage(callId: string, since: number | undefined): Promise<CallChatPage> {
+    const rows = await d.chat.list(callId, since, CHAT_PAGE + 1)
+    return { messages: rows.slice(0, CHAT_PAGE).map(chatDto), hasMore: rows.length > CHAT_PAGE }
+  }
+
+  /** A member may read a call's chat: in it now (accepted, live), or was in it (joined at least once). */
+  function readsChat(rec: CallRecord, userId: string): boolean {
+    const p = rec.participants.find((x) => x.userId === userId)
+    if (!p) return false
+    return p.joinedAt !== null || (isLive(rec.call.state) && p.response === 'accepted')
+  }
+
+  /** A call on another provider has no chat of ours. */
+  function chatHere(rec: CallRecord): void {
+    if (rec.call.externalUrl) throw new CallsError('conflict', 'this call takes place on another service')
+  }
+
+  /** A guest's link, usable now, of a guest who joined with a name. */
+  async function chattingGuest(token: string): Promise<{ rec: CallRecord; guest: Guest & { displayName: string } }> {
+    const { rec, guest } = await usableGuest(token)
+    chatHere(rec)
+    if (!guest.displayName) throw new CallsError('conflict', 'join the call first')
+    return { rec, guest: { ...guest, displayName: guest.displayName } }
   }
 
   function parseQuestion(raw: unknown): string {
@@ -923,13 +995,68 @@ export function createCallsService(d: CallsDeps) {
       const p = rec.participants.find((x) => x.userId === userId)
       if (!p || p.joinedAt === null) throw new CallsError('forbidden', 'only people who were in the call can read its transcript')
       const segments = await d.transcripts.list(id)
-      return { call: dto(rec, await peopleById()), segments: segments.map(segmentDto) }
+      return { call: dto(rec, await peopleById()), segments: segments.map(segmentDto), chat: (await allChat(id)).map(chatDto) }
     },
 
-    /** Segments per call for my call list — only calls I was in (the ones whose transcript I may read). */
+    /**
+     * Transcript segments plus chat lines per call for my call list — only
+     * calls I was in (the ones whose transcript, with its chat, I may read).
+     */
     async transcriptCounts(userId: string, calls: CallDto[]): Promise<Record<string, number>> {
       const mine = calls.filter((c) => c.participants.some((p) => p.userId === userId && p.joinedAt !== null)).map((c) => c.id)
-      return Object.fromEntries(await d.transcripts.countByCall(mine))
+      const counts = await d.transcripts.countByCall(mine)
+      for (const [callId, n] of await d.chat.countByCall(mine)) counts.set(callId, (counts.get(callId) ?? 0) + n)
+      return Object.fromEntries(counts)
+    },
+
+    /** I write a line in the chat of the live call I am in (everyone in it reads it). */
+    async postChat(userId: string, id: string, rawBody: unknown): Promise<CallChatMessageDto> {
+      const body = parseChatBody(rawBody)
+      const rec = await visible(userId, id)
+      inTheCall(rec, userId)
+      chatHere(rec)
+      const name = displayName((await peopleById()).get(userId))
+      if (!name) throw new CallsError('not_found', 'call not found')
+      const line = await d.chat.add({ callId: id, authorId: userId, authorKind: 'member', authorName: name.slice(0, 200), body, createdAt: now() })
+      return chatDto(line)
+    },
+
+    /** The call's chat (arrival order, after `since`): for people in the call now or who were in it. */
+    async chat(userId: string, id: string, since?: unknown): Promise<CallChatPage> {
+      const after = chatSince(since)
+      const rec = await visible(userId, id)
+      if (!readsChat(rec, userId)) throw new CallsError('forbidden', 'only people in the call read its chat')
+      return chatPage(id, after)
+    },
+
+    /** A guest writes in the chat — as their guest name, only while they are in the room. */
+    async guestPostChat(token: string, rawBody: unknown): Promise<CallChatMessageDto> {
+      const body = parseChatBody(rawBody)
+      const { rec, guest } = await chattingGuest(token)
+      const identity = guestIdentity(guest.id)
+      const p = rec.participants.find((x) => x.userId === identity)
+      if (!p || !inRoom(p)) throw new CallsError('conflict', 'join the call before writing in its chat')
+      const line = await d.chat.add({ callId: rec.call.id, authorId: identity, authorKind: 'guest', authorName: guest.displayName, body, createdAt: now() })
+      return chatDto(line)
+    },
+
+    /** The chat as a guest reads it: while their link works, once they joined with a name. */
+    async guestChat(token: string, since?: unknown): Promise<CallChatPage> {
+      const after = chatSince(since)
+      const { rec } = await chattingGuest(token)
+      return chatPage(rec.call.id, after)
+    },
+
+    /** One chat line by its seq, no access check — for the live stream, which checks each reader (canReadChat). */
+    chatMessage: async (seq: number): Promise<{ callId: string; message: CallChatMessageDto } | null> => {
+      const m = await d.chat.get(seq)
+      return m ? { callId: m.callId, message: chatDto(m) } : null
+    },
+
+    /** May this person read this call's chat on the live stream? (Guests read through their link, never the stream.) */
+    async canReadChat(userId: string, rec: CallRecord): Promise<boolean> {
+      if (!readsChat(rec, userId)) return false
+      return eligible(userId, rec)
     },
 
     /**
