@@ -45,6 +45,7 @@
     "db:rls": "node scripts/apply-rls.mjs",
     "db:app-role": "node scripts/ensure-app-role.mjs",
     "company-data": "vite-node --config vitest.config.ts scripts/company-data.ts --",
+    "demo-company": "vite-node --config vitest.config.ts --options.transformMode.ssr='.*' scripts/demo-company.ts --",
     "db:cron": "vite-node --config vitest.config.ts scripts/tick-job-queue.ts",
     "eval": "vite-node --config evals/vite.config.ts evals/run.ts",
     "eval:smoke": "vite-node --config evals/vite.config.ts evals/run.ts",
