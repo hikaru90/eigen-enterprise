@@ -70,7 +70,24 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - co-workers see no calendar events, not even company-wide ones (a reach gap, not a leak);
   - pre-existing: `fixture/seed.ts` records `undefined` message ids.
 
-## 2026-11-23 — Memory one door M2: Capture becomes "What the brain knows", Overview gone, Notes are Documents (plan/concept-memory-one-door.md, decision 1 approved; branch, not merged, not on the box)
+## 2026-11-23 — E2E triage after the contribute round + Memory M2 (owner: "look if the work was done correctly")
+
+- **Method:** full e2e on main (53 passed, 26 failed), then the failing specs on the pre-round commit `0d7ee4b9` (17 failed there). The difference is what this round broke.
+- **Round-caused, fixed (spec updates, behaviour is intended):**
+  - `agent-runs-live`: the step card says "Done".
+  - `onboarding-provider`: Settings has an Appearance section again (the theme switch).
+  - `drive-html`: uploads must say `onConflict`.
+  - `onboarding-welcome`: the panel open before a reload comes back open.
+  - The other agent's hydration waits: brand-picker, brand-wide, capture, memory-page, website-apps. `networkidle` never comes while the shell's calls SSE is open.
+  - All pass when run on their own. `calls` ×4 and `ws-fixes` failed only in the full run and pass alone (load).
+- **Pre-existing, unchanged by the round (fail on `0d7ee4b9` too):**
+  - brand-system, email-platform, memory-page (mark done), page-frame (/m/website), profile (crop), projects-assign-task, qa-project-assignment ×5, shell-walk, tenant-isolation, website-apps ×3;
+  - release, which needs release env.
+  - Not fixed here.
+- **Unit `memory-sharing` failure was test-DB drift:** the test DB held an older `thought_entity_isolation` policy without 0164's ownership check. Code and migration are right. `npm run db:rls` fixed it; all 10 tests pass.
+- **Gates on main:** typecheck 0 errors; components 897/897; unit green after the RLS reapply.
+
+## 2026-11-23 — Memory one door M2: Capture becomes "What the brain knows", Overview gone, Notes are Documents (plan/concept-memory-one-door.md, decision 1 approved; merged `0e2a7000` + `83f04f76`, not pushed, not on the box)
 
 - **Tabs:** Tasks · Projects · Documents · Reminders · What the brain knows (`src/lib/memory/memory-surface-nav.ts`, labels and one-line explanations are Paraglide messages, en + de). `/m/memory` redirects (307) to `/m/memory/tasks`.
 - **What the brain knows** (`/m/memory/capture`, URL kept): read-only list of the newest 30 thoughts. Each row shows its source (from `capture_source` + author: typed or spoken in the app · through the assistant · from <connected agent> · ee CLI or MCP · added by the app · evaluation · not recorded), category, date, and indexed / not indexed yet / indexing / failed + Retry. Rows have Delete and the detail on expand (unlinking a linked document still works there). The check-in (grounding) card and the first-run tour stay. At the top, "Tell the company brain in the Ask bar — it files it" with a button that focuses the Ask bar (`tell-the-brain.svelte`; with the Assistant off it says there is no Ask bar). The list polls every 5 s with the page's own limit (`poll-capture-recent-sync` now sends `limit`), so what the assistant files shows up while the page is open.
@@ -169,7 +186,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - `b1f7009b`: `phase-timing.spec.ts` asserted wall ≥ 8 ms after 5 + 3 ms timeouts, which flaked under the full gate (a `setTimeout` may fire about 1 ms early by `Date.now`). It now asserts that the wall time covers the phases.
 - **Next:** install v0.5.38 where the owner wants it (Settings → Updates or `ee upgrade`), then update ee-one's board.
 
-## 2026-11-23 — Contribute round: 8 workstreams merged into main (owner: "get contributions from all boxes and start integrating them"; merged, not pushed, not released)
+## 2026-11-23 — Contribute round: 8 workstreams merged into main (owner: "get contributions from all boxes and start integrating them"; merged, released in v0.5.38, not installed on any box)
 
 - **Round:** `plan/contribute-round-2026-11-23.md`. Sources: ee-one, os.cerberusblue.com and the central board.
 - **Merged:**
@@ -191,7 +208,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Board:** ee-one 54c4b1d2 is `shipped` (v0.5.37), and this round's items are `in_progress` with notes. They become `shipped` once released to ee-one.
 - **Owner's call:** `plan/concept-memory-one-door.md` (draft) — one door in, Memory shows what the brain holds, Status pages out.
 - **E2E on main (after `[e2e]` watcher fix):** 54 passed, 27 failed, 6 skipped. Failing specs: agent-runs-live.e2e.ts brand-picker.e2e.ts brand-system.e2e.ts brand-wide.e2e.ts capture.e2e.ts drive-html.e2e.ts email-platform.e2e.ts github-repos.e2e.ts memory-page.e2e.ts onboarding-provider.e2e.ts onboarding-welcome.e2e.ts page-frame.e2e.ts profile.e2e.ts projects-assign-task.e2e.ts release.e2e.ts shell-walk.e2e.ts tenant-isolation.e2e.ts website-apps.e2e.ts qa-project-assignment.e2e.ts. Seen so far: `agent-runs-live` expects the old tool line text ("done"), so the e2e specs need updating to the assistant stream's step cards. **Not triaged yet; not pushed or released.**
-- **Memory M2** (owner approved decision 1 of `plan/concept-memory-one-door.md`): built on branch `worktree-agent-a6a073628d4696eca` (`92ae9c93`), **not merged**. Merge it after the e2e failures are triaged. Open follow-up: the "Your Brain knows N decisions" link should point at What the brain knows.
+- **Memory M2:** merged (`0e2a7000`); the "Your Brain knows" link points at What the brain knows (`83f04f76`).
 
 ## 2026-11-23 — Chat in a call (member proposal bb05b451: "we still need a chat function in the call"; committed on branch `calls-chat`, not pushed, not merged, not on the box)
 

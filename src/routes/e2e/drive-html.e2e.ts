@@ -46,7 +46,7 @@ test('Drive: an HTML file opens as a rendered, sandboxed page with its folder’
     return (await r.json()).id as string
   }
   const upload = async (folderId: string, name: string, mimeType: string, body: string) => {
-    const r = await page.request.post('/api/drive/upload', { multipart: { folderId, file: { name, mimeType, buffer: Buffer.from(body) } } })
+    const r = await page.request.post('/api/drive/upload', { multipart: { folderId, onConflict: 'fail', file: { name, mimeType, buffer: Buffer.from(body) } } })
     expect(r.status()).toBe(200)
     const out = await r.json()
     expect(out.errors).toEqual([])

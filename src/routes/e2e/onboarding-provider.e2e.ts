@@ -182,7 +182,8 @@ test.describe('nucleus first-run onboarding', () => {
     await page.goto('/settings')
     await expect(page.getByTestId('settings-account')).toBeVisible()
     await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
-    await expect(page.getByText('Appearance')).not.toBeVisible()
+    // Appearance is back as one section: the Light · Dark · System switch (contribute 41ad3156).
+    await expect(page.getByTestId('settings-appearance')).toBeVisible()
     await expect(page.getByText('Danger zone')).not.toBeVisible()
 
     // Back home: still the chat. (The ONE designed way back to the wizard is

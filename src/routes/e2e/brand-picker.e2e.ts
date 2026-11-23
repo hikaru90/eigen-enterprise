@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser } from './test-helpers'
+import { registerUser, waitForHydration } from './test-helpers'
 
 /**
  * The brand picker (plan/phase-brand-picker.md §3.3), driven in a real browser
@@ -120,7 +120,9 @@ test('owner drills genre → style → variant, chooses it, and the app wears th
   // Choosing again retires the previous set.
   await page.goto('/brand?style=editorial-modern-amber')
   // A full load (not a client navigation): wait for hydration before clicking.
-  await page.waitForLoadState('networkidle')
+  // Not 'networkidle': the shell keeps a call feed open (an SSE stream on
+  // /api/calls/stream, every signed-in page), so the network never goes idle.
+  await waitForHydration(page)
   await page.getByRole('button', { name: 'Choose this style' }).click()
   await expect(page.getByTestId('chosen-notice')).toBeVisible()
   const statuses = await sql()`select picker_node_id, status from brand_visual_sets where picker_node_id is not null order by created_at`

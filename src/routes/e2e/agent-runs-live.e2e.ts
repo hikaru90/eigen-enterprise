@@ -117,7 +117,7 @@ test.describe('agent runs live view', () => {
       await expect(feed.getByText('Run finished').last()).toBeVisible()
       // The native tool call shows up as a tool line that finished.
       await expect(p.getByTestId('run-feed-tool').last()).toContainText('website.list_pages')
-      await expect(p.getByTestId('run-feed-tool').last()).toContainText('done')
+      await expect(p.getByTestId('run-feed-tool').last()).toContainText('Done')
       await expect(p.getByTestId('run-feed-status')).toHaveText('Idle')
     }
     await page.screenshot({ path: 'test-results/agent-runs-live-a.png', fullPage: true })

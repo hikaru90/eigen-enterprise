@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser } from './test-helpers'
+import { registerUser, waitForHydration } from './test-helpers'
 
 /**
  * Phase-cohesion C3 (Memory): one Memory module page in the shell. Open it
@@ -99,7 +99,9 @@ test('Memory is one module page: nav → Tasks → sub-pages → what the brain 
       await page.getByTestId(`memory-tab-${tab}`).click()
       await expect(page).toHaveURL(new RegExp(`${path}$`))
       await expectMemoryTab(page, tab, title)
-      await page.waitForLoadState('networkidle')
+      // Settled means hydrated; 'networkidle' never comes while the shell's
+      // call feed (SSE, /api/calls/stream) is open.
+      await waitForHydration(page)
       await page.screenshot({ path: `${SHOTS}/${tab}.png`, fullPage: true })
     })
   }

@@ -282,10 +282,9 @@ test.describe('welcome boot sequence', () => {
     // stays in the conversation, and it is not sent again.
     await page.goto('/')
     await expectHomeVisible(page)
-    await expect(page.getByTestId('assistant-panel')).toHaveCount(0)
-    // A click before hydration opens nothing.
+    // The panel was open before the reload, so it comes back open on its tab once
+    // hydrated (panel state survives a full load, contribute de821eda).
     await page.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
-    await page.getByTestId('assistant-toggle').click()
     await expect(
       page.getByTestId('assistant-panel').getByText(/Hello from mock gateway/i),
     ).toHaveCount(1)

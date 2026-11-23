@@ -116,7 +116,8 @@ async function tour(page: Page, tag: string): Promise<{ look: ShellLook; heading
 
 async function choose(page: Page, nodeId: string): Promise<void> {
   await page.goto(`/brand?style=${nodeId}`)
-  await page.waitForLoadState('networkidle')
+  // Hydration is the readiness signal; 'networkidle' never comes while the
+  // shell's call feed (SSE, /api/calls/stream) is open.
   await expect(page.locator('body')).toHaveAttribute('data-eigen-hydrated', 'true')
   await page.getByRole('button', { name: 'Choose this style' }).click()
   await expect(page.getByTestId('chosen-notice')).toBeVisible()

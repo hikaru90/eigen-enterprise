@@ -1,6 +1,6 @@
 import { expect, test, type Page, type BrowserContext } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser } from './test-helpers'
+import { registerUser, waitForHydration } from './test-helpers'
 
 /**
  * The Website module's Apps cut, driven in a real browser against the real
@@ -160,7 +160,7 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     await expect(page.getByTestId('step-repository')).toBeVisible()
     // Wait for hydration: the form must submit through enhance, not natively
     // (a native POST would reload and swallow the plain sentence).
-    await page.waitForLoadState('networkidle')
+    await waitForHydration(page)
 
     await page.getByLabel('Repository link').fill('https://example.com/owner/repo')
     await page.getByTestId('check-link').click()
