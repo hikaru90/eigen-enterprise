@@ -1,3 +1,4 @@
+import { actsAsMember } from '$lib/kernel/principals'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { CALENDAR_MODULE_ID } from './manifest'
@@ -202,7 +203,8 @@ export function createCalendarTools(opts: CalendarToolDeps = {}): ToolDescriptor
 
   async function actorOf(ctx: ToolContext): Promise<Actor> {
     // A person — themselves, or the brain acting as them (CB3: the principal IS the person).
-    if (ctx.principal.kind === 'human') return { kind: 'user', userId: ctx.principal.id }
+    // An AI co-worker is its own seat (plan/phase-ai-coworkers.md §3), never company-wide.
+    if (actsAsMember(ctx.principal)) return { kind: 'user', userId: ctx.principal.id }
     const person = await agentPerson(ctx)
     return person ? { kind: 'user', userId: person } : { kind: 'agent', id: ctx.principal.id }
   }

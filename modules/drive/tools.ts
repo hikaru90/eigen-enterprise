@@ -1,3 +1,4 @@
+import { actsAsMember } from '$lib/kernel/principals'
 import type { Actor, DriveService } from './service'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
@@ -88,7 +89,8 @@ async function liveRole(userId: string): Promise<MemberRole | null> {
 }
 
 export function actorOf(ctx: ToolContext): Actor {
-  return ctx.principal.kind === 'human' ? { kind: 'user', userId: ctx.principal.id } : { kind: 'agent', id: ctx.principal.id }
+  // A person or an AI co-worker acts as itself (its own grants); only agents/services act company-wide.
+  return actsAsMember(ctx.principal) ? { kind: 'user', userId: ctx.principal.id } : { kind: 'agent', id: ctx.principal.id }
 }
 
 /** Every member's own Drive access; the brain reaches it as the member. */

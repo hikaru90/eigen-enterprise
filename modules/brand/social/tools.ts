@@ -1,3 +1,4 @@
+import { actsAsMember } from '$lib/kernel/principals'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { defaultBrandStore } from '../store'
@@ -46,7 +47,7 @@ async function liveMedia(): Promise<SocialMediaService> {
 export const SOCIAL_TAB_HREF = '/brand/social'
 
 function actorOf(ctx: ToolContext): SocialActor {
-  return ctx.principal.kind === 'human' ? { kind: 'user', userId: ctx.principal.id } : { kind: 'agent', id: ctx.principal.id }
+  return actsAsMember(ctx.principal) ? { kind: 'user', userId: ctx.principal.id } : { kind: 'agent', id: ctx.principal.id }
 }
 
 /** What the tools return: the post plus where the person finds it. */

@@ -1,3 +1,4 @@
+import { actsAsMember } from '$lib/kernel/principals'
 import type { Actor, CallDto, CallsService, ScheduleResult } from './service'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
@@ -90,7 +91,7 @@ const chatReadInput = z
   .strict()
 
 export function actorOf(ctx: ToolContext): Actor {
-  return ctx.principal.kind === 'human'
+  return actsAsMember(ctx.principal)
     ? { kind: 'user', userId: ctx.principal.id }
     : { kind: 'agent', id: ctx.principal.id }
 }

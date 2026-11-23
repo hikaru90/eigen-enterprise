@@ -77,6 +77,8 @@ async function liveDeps(): Promise<ContributeDeps> {
 }
 
 async function liveActor(ctx: ToolContext): Promise<ContributeActor> {
+  // An AI co-worker proposes and votes like a member and never manages the board.
+  if (ctx.principal.kind === 'coworker') return { id: ctx.principal.id, kind: 'human', canManage: false }
   if (ctx.principal.kind !== 'human') return { id: ctx.principal.id, kind: 'agent', canManage: true }
   const { isUserAdmin } = await import('$lib/server/auth/user-role')
   return { id: ctx.principal.id, kind: 'human', canManage: await isUserAdmin(ctx.principal.id) }

@@ -24,20 +24,6 @@ export const KNOWN_TOOL_LEAKS: readonly string[] = [
   // C8 (2026-11-23), seen once the fixture had a private channel without Ony (#launch): an admin
   // reads a private channel she is not in (messages.read; no admin override in the concept).
   'ony ← msg-launch-brief',
-  // C8 FINDING (2026-11-23): an AI co-worker reads EVERY Drive file — private ones and ones shared with
-  // others only — directly and through `ee`. modules/drive/tools.ts actorOf() maps every non-human
-  // principal to the Drive actor { kind: 'agent' }, which Drive treats as company-level; a co-worker
-  // must be { kind: 'user', userId: <its id> } like a member (plan/phase-ai-coworkers.md §2). Product
-  // change, not the eval's: strike these when Drive opts co-workers in as members.
-  'marketing ← drive-acme-proposal',
-  'marketing ← drive-ony-salary',
-  'marketing ← drive-priya-onboarding',
-  'gtm ← drive-acme-proposal',
-  'gtm ← drive-ony-salary',
-  'gtm ← drive-priya-onboarding',
-  'designer ← drive-acme-proposal',
-  'designer ← drive-ony-salary',
-  'designer ← drive-priya-onboarding',
 ]
 
 /**
@@ -54,12 +40,12 @@ export const KNOWN_REACHABLE_KNOWS: readonly string[] = [
 // ── AI co-workers (C8, plan/phase-ai-coworkers.md) ──────────────────────────
 
 /**
- * Co-workers / Keeps leak tests that FAIL today, measured 2026-11-23 (ratchet, like
- * KNOWN_TOOL_LEAKS): CK05 drive-private and CK06 drive-shared-with-some — every co-worker
- * reads every Drive file (the Drive actor finding above). All other leak tests, the reach
- * tests and the read-only checks pass.
+ * Co-workers / Keeps leak tests that FAIL today (ratchet, like KNOWN_TOOL_LEAKS). C8 found
+ * CK05/CK06 (every co-worker read every Drive file: drive actorOf() mapped non-person
+ * principals company-wide); fixed 2026-11-23 — drive, calls, calendar, contacts, brand
+ * social and contribute map a co-worker to its own seat (actsAsMember). None fail now.
  */
-export const COWORKER_KEEPS_FAILING: readonly string[] = ['CK05', 'CK06']
+export const COWORKER_KEEPS_FAILING: readonly string[] = []
 
 /** Co-workers / Does checks against the scripted model, measured 2026-11-23: all seven pass. */
 export const COWORKER_DOES_PASSING: readonly string[] = ['CD01', 'CD02', 'CD03', 'CD04', 'CD05', 'CD06', 'CD07']
