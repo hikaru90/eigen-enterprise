@@ -7,6 +7,7 @@
   import LogOut from '@lucide/svelte/icons/log-out'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
   import Settings from '@lucide/svelte/icons/settings'
+  import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal'
   import Speech from '@lucide/svelte/icons/speech'
   import Volume2 from '@lucide/svelte/icons/volume-2'
   import VolumeX from '@lucide/svelte/icons/volume-x'
@@ -19,6 +20,7 @@
   import InstallAppDialog from '$lib/pwa/install-app-dialog.svelte'
   import { isSoundEnabled, setSoundEnabled } from '$lib/sound/boot-sound'
   import { isVoiceEnabled, setVoiceEnabled } from '$lib/speech/tts'
+  import VoicePlaybackControls from '$lib/speech/voice-playback-controls.svelte'
 
   /**
    * The homepage's settings entry point: a cog in the header, always reachable
@@ -27,7 +29,8 @@
    * onboarding clears the welcome stamp and reloads page data so the boot
    * sequence takes over the homepage again. Sound (boot sequence, default on)
    * and assistant voice toggle here; "Audio devices" opens the microphone + speaker choice
-   * (shared with calls) used by dictation, voice messages and the assistant's voice; sign out
+   * (shared with calls) used by dictation, voice messages and the assistant's voice; "Voice speed
+   * and volume" opens the reading voice's speed and volume for this browser; sign out
    * ends the session. "Install app"
    * (hidden inside the installed app) installs eigenEnterprise on this device.
    */
@@ -40,6 +43,7 @@
   let soundOn = $state(true)
   let voiceOn = $state(true)
   let devicesOpen = $state(false)
+  let playbackOpen = $state(false)
   let error = $state<string | null>(null)
   let runningAsApp = $state(false)
   let installDialog = $state<ReturnType<typeof InstallAppDialog> | null>(null)
@@ -63,6 +67,7 @@
     soundOn = isSoundEnabled()
     voiceOn = isVoiceEnabled()
     devicesOpen = false
+    playbackOpen = false
     runningAsApp = isStandalone()
   }
 
@@ -178,6 +183,23 @@
     </button>
     {#if devicesOpen}
       <AudioDevicesSettings />
+    {/if}
+    <button
+      type="button"
+      class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
+      aria-expanded={playbackOpen}
+      onclick={() => (playbackOpen = !playbackOpen)}
+      data-testid="voice-playback-toggle"
+    >
+      <SlidersHorizontal class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
+      <span class="flex-1">Voice speed and volume</span>
+      <ChevronDown
+        class="size-3.5 shrink-0 opacity-60 transition-transform {playbackOpen ? 'rotate-180' : ''}"
+        strokeWidth={1.75}
+      />
+    </button>
+    {#if playbackOpen}
+      <VoicePlaybackControls />
     {/if}
     <div class="bg-border my-1 h-px"></div>
     <button

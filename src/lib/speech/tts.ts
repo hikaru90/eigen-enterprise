@@ -15,6 +15,12 @@
  * that cannot be chosen (setSinkId rejects) means silence, console-warned —
  * never the voice on a different device. A browser without setSinkId plays on
  * its current output; the settings row says it cannot choose.
+ *
+ * Speed and volume (owner proposal 74cbc486) are this browser's choice too, like the switch and
+ * the speaker: `ee-voice-speed` (0.75–2×, default 1.15× — a little faster than the voice as
+ * the gateway delivers it) and `ee-voice-volume` (0–1). Both are PLAYBACK settings on the audio
+ * element (playbackRate with preservesPitch, volume), so they cost no extra synthesis and a
+ * change applies to the reply being read right now.
  */
 import { readRemembered } from '$lib/calls/devices'
 
@@ -66,6 +72,92 @@ export function speakableText(markdown: string): string {
   return withoutCode.replace(/\s+/g, ' ').trim()
 }
 
+export const VOICE_SPEED = { min: 0.75, max: 2, step: 0.05, default: 1.15 } as const
+const SPEED_KEY = 'ee-voice-speed'
+const VOLUME_KEY = 'ee-voice-volume'
+
+export type VoicePlayback = { speed: number; volume: number }
+
+function inSpeedRange(n: number): boolean {
+  return Number.isFinite(n) && n >= VOICE_SPEED.min && n <= VOICE_SPEED.max
+}
+function inVolumeRange(n: number): boolean {
+  return Number.isFinite(n) && n >= 0 && n <= 1
+}
+
+function readStored(key: string, valid: (n: number) => boolean, fallback: number): number {
+  const raw = window.localStorage.getItem(key)
+  if (raw === null) return fallback
+  const n = Number(raw)
+  if (raw.trim() === '' || !valid(n)) {
+    console.error(
+      `[tts] the remembered voice setting ${key} (${JSON.stringify(raw)}) is unreadable; using the default until it is chosen again`,
+    )
+    return fallback
+  }
+  return n
+}
+
+/** This browser's voice speed and volume (defaults when nothing was chosen). */
+export function getVoicePlayback(): VoicePlayback {
+  if (typeof window === 'undefined' || !window.localStorage)
+    return { speed: VOICE_SPEED.default, volume: 1 }
+  return {
+    speed: readStored(SPEED_KEY, inSpeedRange, VOICE_SPEED.default),
+    volume: readStored(VOLUME_KEY, inVolumeRange, 1),
+  }
+}
+
+/**
+ * Whether this browser lets a page set media volume. iOS Safari keeps it read-only (always 1;
+ * the hardware buttons own it), so a volume slider there would do nothing.
+ */
+export function canSetMediaVolume(): boolean {
+  if (typeof Audio === 'undefined') return false
+  const probe = new Audio()
+  probe.volume = 0.5
+  return probe.volume === 0.5
+}
+
+const playbackListeners = new Set<(playback: VoicePlayback) => void>()
+
+/** The chat's popover and the settings menu both hear each change. Returns the unsubscribe. */
+export function onVoicePlaybackChange(listener: (playback: VoicePlayback) => void): () => void {
+  playbackListeners.add(listener)
+  return () => playbackListeners.delete(listener)
+}
+
+function applyPlayback(audio: HTMLAudioElement, playback: VoicePlayback): void {
+  audio.preservesPitch = true
+  audio.playbackRate = playback.speed
+  audio.volume = playback.volume
+}
+
+function playbackChanged(): void {
+  const playback = getVoicePlayback()
+  if (currentAudio) applyPlayback(currentAudio, playback)
+  for (const listener of playbackListeners) listener(playback)
+}
+
+/** Speed as a multiple of the delivered voice (0.75–2). Applies to the current reading at once. */
+export function setVoiceSpeed(speed: number): void {
+  if (!inSpeedRange(speed)) {
+    throw new Error(
+      `Voice speed must be between ${VOICE_SPEED.min}× and ${VOICE_SPEED.max}× (got ${speed}).`,
+    )
+  }
+  window.localStorage.setItem(SPEED_KEY, String(speed))
+  playbackChanged()
+}
+
+/** Volume from 0 (silent) to 1 (full). Applies to the current reading at once. */
+export function setVoiceVolume(volume: number): void {
+  if (!inVolumeRange(volume))
+    throw new Error(`Voice volume must be between 0 and 1 (got ${volume}).`)
+  window.localStorage.setItem(VOLUME_KEY, String(volume))
+  playbackChanged()
+}
+
 let currentAudio: HTMLAudioElement | null = null
 let currentFetch: AbortController | null = null
 
@@ -112,6 +204,7 @@ async function speakGatewayText(text: string): Promise<void> {
     if (currentFetch !== fetchController) return
     const audio = new Audio(URL.createObjectURL(blob))
     currentAudio = audio
+    applyPlayback(audio, getVoicePlayback())
     const speaker = readRemembered(window.localStorage).audiooutput
     if (speaker && typeof audio.setSinkId === 'function') {
       try {
