@@ -132,7 +132,7 @@ function assertAdmin(actor: CoworkerActor): void {
 
 /** The agent id a co-worker's turns run as (coworkerPrincipal's agentId). */
 export function coworkerAgentId(userId: string): string {
-  return `coworker:${userId}`
+  return `coworker-${userId}`
 }
 
 /** A co-worker's never-mailed address: `<slug>.<first 8 of id>@coworker.invalid` (reserved TLD). */

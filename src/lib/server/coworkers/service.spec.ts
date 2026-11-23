@@ -80,7 +80,7 @@ describe('createCoworker', () => {
       templateId: 'marketing-manager',
       reportsToUserId: null,
       accountableHuman: { id: 'olga', name: 'Olga', reason: 'owner' },
-      agentId: `coworker:${cw.id}`,
+      agentId: `coworker-${cw.id}`,
       createdBy: 'olga',
       removedAt: null,
     })

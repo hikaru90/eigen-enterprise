@@ -109,7 +109,7 @@ describe('coworkers module', () => {
     const { registry, ownerCtx, memberCtx, approved } = setup()
     await expect(registry.execute('coworkers.create', { template_id: 'designer' }, memberCtx)).rejects.toMatchObject({ code: 'permission_denied' })
     const cw = (await approved('coworkers.create', { template_id: 'designer' }, ownerCtx)) as { id: string }
-    const self = { principal: coworkerPrincipal(cw.id, `coworker:${cw.id}`), requestId: 'r-cw' }
+    const self = { principal: coworkerPrincipal(cw.id, `coworker-${cw.id}`), requestId: 'r-cw' }
     const chart = (await registry.execute('org.chart', {}, self)) as { people: Array<{ id: string; kind: string }> }
     expect(chart.people.map((p) => `${p.id}:${p.kind}`)).toEqual(['olga:human', 'ari:human', 'mo:human', `${cw.id}:coworker`])
     await expect(registry.execute('coworkers.disable', { user_id: cw.id }, self)).rejects.toMatchObject({ code: 'permission_denied' })
