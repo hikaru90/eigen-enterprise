@@ -52,7 +52,7 @@ export type UiParity =
   | { transport: string }
 
 /** The number of `debt` entries. Lower it when you clear debt; the spec fails if it is not exact. */
-export const DEBT_CEILING = 129
+export const DEBT_CEILING = 112
 
 const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
@@ -122,27 +122,27 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/m/email/domains/[id] ?/recheck': tool('email.domain_recheck'),
   '/(nucleus)/m/email/domains/[id] ?/tracking': debt('email', 'Open/click tracking for a domain.'),
   '/(nucleus)/m/email/inbox ?/acceptProposal': debt('calendar', 'Accept the appointment found in this mail.'),
-  '/(nucleus)/m/email/inbox ?/createLabel': debt('email', 'Create a mailbox label.'),
-  '/(nucleus)/m/email/inbox ?/createMine': debt('email', 'Create my own mailbox.'),
-  '/(nucleus)/m/email/inbox ?/deleteLabel': debt('email', 'Delete a mailbox label.'),
+  '/(nucleus)/m/email/inbox ?/createLabel': tool('email.label_create'),
+  '/(nucleus)/m/email/inbox ?/createMine': tool('email.mailbox_create_mine'),
+  '/(nucleus)/m/email/inbox ?/deleteLabel': tool('email.label_delete'),
   '/(nucleus)/m/email/inbox ?/dismissProposal': debt('calendar', 'Dismiss the appointment found in this mail.'),
-  '/(nucleus)/m/email/inbox ?/label': debt('email', 'Put a label on a mail or take it off.'),
-  '/(nucleus)/m/email/inbox ?/move': debt('email', 'Move a mail (archive, trash, a folder).'),
-  '/(nucleus)/m/email/inbox ?/read': debt('email', 'Mark a mail read.'),
-  '/(nucleus)/m/email/inbox ?/send': debt('email', 'Write or reply from a mailbox, with attachments (email.send_mail is the transactional sender, not a mailbox).'),
-  '/(nucleus)/m/email/inbox ?/star': debt('email', 'Star a mail.'),
-  '/(nucleus)/m/email/inbox ?/unread': debt('email', 'Mark a mail unread.'),
-  '/(nucleus)/m/email/inbox ?/unstar': debt('email', 'Unstar a mail.'),
+  '/(nucleus)/m/email/inbox ?/label': tool('email.mail_label'),
+  '/(nucleus)/m/email/inbox ?/move': tool('email.mail_move'),
+  '/(nucleus)/m/email/inbox ?/read': tool('email.mail_mark_read'),
+  '/(nucleus)/m/email/inbox ?/send': tool('email.mail_send'),
+  '/(nucleus)/m/email/inbox ?/star': tool('email.mail_star'),
+  '/(nucleus)/m/email/inbox ?/unread': tool('email.mail_mark_read'),
+  '/(nucleus)/m/email/inbox ?/unstar': tool('email.mail_star'),
   '/(nucleus)/m/email/layouts ?/create': debt('email', 'Create a mail layout.'),
   '/(nucleus)/m/email/layouts/[id] ?/delete': debt('email', 'Delete a mail layout.'),
   '/(nucleus)/m/email/layouts/[id] ?/save': debt('email', 'Edit a mail layout.'),
-  '/(nucleus)/m/email/logs/[id] ?/cancel': debt('email', 'Cancel a queued mail.'),
-  '/(nucleus)/m/email/mailboxes ?/alias': debt('email', 'Add an alias address to a mailbox.'),
-  '/(nucleus)/m/email/mailboxes ?/assign': debt('email', 'Give a member a personal mailbox.'),
-  '/(nucleus)/m/email/mailboxes ?/disable': debt('email', 'Disable a mailbox.'),
-  '/(nucleus)/m/email/mailboxes ?/enable': debt('email', 'Enable a mailbox.'),
-  '/(nucleus)/m/email/mailboxes ?/removeAlias': debt('email', 'Remove an alias address.'),
-  '/(nucleus)/m/email/mailboxes ?/shared': debt('email', 'Create a shared mailbox.'),
+  '/(nucleus)/m/email/logs/[id] ?/cancel': tool('email.log_cancel'),
+  '/(nucleus)/m/email/mailboxes ?/alias': tool('email.mailbox_alias_add'),
+  '/(nucleus)/m/email/mailboxes ?/assign': tool('email.mailbox_assign'),
+  '/(nucleus)/m/email/mailboxes ?/disable': tool('email.mailbox_set_disabled'),
+  '/(nucleus)/m/email/mailboxes ?/enable': tool('email.mailbox_set_disabled'),
+  '/(nucleus)/m/email/mailboxes ?/removeAlias': tool('email.mailbox_alias_remove'),
+  '/(nucleus)/m/email/mailboxes ?/shared': tool('email.mailbox_create_shared'),
   '/(nucleus)/m/email/marketing/flows ?/create': debt('email', 'Create an email flow (email.flow_list only reads).'),
   '/(nucleus)/m/email/marketing/flows/[id] ?/delete': debt('email', 'Delete an email flow.'),
   '/(nucleus)/m/email/marketing/flows/[id] ?/save': debt('email', 'Edit an email flow.'),

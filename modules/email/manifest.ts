@@ -1,4 +1,5 @@
 import type { ModuleManifest } from '$lib/kernel/modules'
+import { EMAIL_INBOX_READ_TOOLS, EMAIL_INBOX_WRITE_TOOLS } from './inbox/tool-names'
 import { OWLERY_TOOL_NAMES } from './owlery/manifest'
 import { EMAIL_PLATFORM_READ_TOOLS, EMAIL_PLATFORM_WRITE_TOOLS } from './platform/tool-names'
 
@@ -20,6 +21,6 @@ export const emailManifest: ModuleManifest = {
   version: '0.4.0',
   description: "Your company's email: Amazon SES, sender domains and addresses, every mail sent, and sending from your apps.",
   toolNamespaces: [EMAIL_MODULE_ID, 'owlery'],
-  tools: [...EMAIL_TOOL_NAMES, ...OWLERY_TOOL_NAMES, ...EMAIL_PLATFORM_READ_TOOLS, ...EMAIL_PLATFORM_WRITE_TOOLS],
+  tools: [...EMAIL_TOOL_NAMES, ...OWLERY_TOOL_NAMES, ...EMAIL_PLATFORM_READ_TOOLS, ...EMAIL_PLATFORM_WRITE_TOOLS, ...EMAIL_INBOX_READ_TOOLS, ...EMAIL_INBOX_WRITE_TOOLS],
   permissions: { roles: ['admin', 'agent'] },
 }
