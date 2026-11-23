@@ -1,6 +1,6 @@
 # Memory: one door in, one page out — concept for discussion
 
-**Status:** DRAFT, not approved. Owner: "Yes, draft concept" (2026-11-23).
+**Status:** DRAFT. Decision 1 approved (owner, 2026-11-23: "Yes, go ahead"): the Ask bar is the one door; Capture's input and Overview are removed. M2 started. Decisions 2–4 open.
 **Sources:** contribute fba4abf3 ("Capture soll weg"), 11f05e24 (one input bar, token cost?), 3668d181 (Notes vs Capture, Tasks vs Projects), b92e6ba5 (handover page). All are from ee-one.
 **Builds on:** `plan/phase-company-brain.md` §2 (the four layers), §4 (visibility), §5 (decision shape picks the engine), CB2 (Jev in the gateway), CB14 (Memory onto the dial), CB15 (background runs).
 
@@ -90,7 +90,7 @@ The one door is cheaper than the four doors today, because the decisions move of
 
 ## 4. Decisions for the owner
 
-1. **Is the Ask bar the one door, with Capture's input and Overview removed?**
+1. ~~Is the Ask bar the one door, with Capture's input and Overview removed?~~ **Yes** (2026-11-23). Names taken by the orchestrator until the owner says otherwise: "What the brain knows" / "Was die Brain weiß", "Documents" / "Dokumente".
 2. **Status pages:** per person and per project (proposed), or per person only? Is "visible to the company, any entry can be made private" the right default?
 3. **Names:** "Status" / "Stand", "What the brain knows" / "Was die Brain weiß", "Documents" / "Dokumente".
 4. **Ship M2's renames and explanations now,** ahead of CB2?
