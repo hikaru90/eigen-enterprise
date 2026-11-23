@@ -37,6 +37,8 @@ export type ThoughtToolService = {
   dismissCheckIn(userId: string): Promise<void>
   isGroundingFacetKey(key: string): boolean
   assignProject(userId: string, thoughtId: string, target: { projectEntityId: string } | { projectLabel: string }): Promise<unknown>
+  getThought(userId: string, thoughtId: string): Promise<unknown | null>
+  listArchivedThoughtIds(userId: string, limit: number): Promise<string[]>
   listThoughtNotes(userId: string, thoughtId: string): Promise<unknown[]>
   linkNote(userId: string, thoughtId: string, textFileId: string): Promise<{ linked: boolean; reason?: 'thought_not_found' | 'text_file_not_found' }>
   unlinkNote(userId: string, thoughtId: string, textFileId: string): Promise<boolean>
@@ -56,7 +58,7 @@ export type ThoughtToolService = {
 }
 
 export async function liveThoughtToolService(): Promise<ThoughtToolService> {
-  const [capture, queue, lifecycle, del, relevance, profile, due, throttle, consts, assign, notes, entities, repair, graph, agents, agentAssign, trace] =
+  const [capture, queue, lifecycle, del, relevance, profile, due, throttle, consts, assign, notes, entities, repair, graph, agents, agentAssign, trace, detail] =
     await Promise.all([
       import('$lib/server/capture/service'),
       import('$lib/server/capture/queue-capture'),
@@ -75,6 +77,7 @@ export async function liveThoughtToolService(): Promise<ThoughtToolService> {
       import('$lib/server/agents/service'),
       import('$lib/server/agents/assign-thought'),
       import('$lib/server/activity/trace-context'),
+      import('$lib/server/memory/thought-detail'),
     ])
   const traced = <T>(fn: () => Promise<T>) => trace.runWithTrace(crypto.randomUUID(), fn)
   return {
@@ -95,6 +98,8 @@ export async function liveThoughtToolService(): Promise<ThoughtToolService> {
     },
     isGroundingFacetKey: (k) => consts.GROUNDING_FACET_KEY_SET.has(k),
     assignProject: (u, t, target) => assign.assignThoughtToProject(u, t, target),
+    getThought: (u, t) => detail.getThoughtForUser(u, t),
+    listArchivedThoughtIds: (u, limit) => del.listArchivedThoughtIds(u, limit),
     listThoughtNotes: (u, t) => notes.listTextFilesForThought(u, t),
     linkNote: (u, t, n) => notes.linkTextFileToThought(u, t, n),
     unlinkNote: (u, t, n) => notes.unlinkTextFileFromThought(u, t, n),
@@ -142,6 +147,7 @@ const projectEntityId = z.string().min(1).describe('The project id (memory.list_
 
 const empty = z.object({}).strict()
 const thoughtInput = z.object({ thought_id: thoughtId }).strict()
+const archivedInput = z.object({ limit: z.number().int().min(1).max(200).optional().describe('At most this many (default 50).') }).strict()
 const editInput = z
   .object({ thought_id: thoughtId, change: z.string().trim().min(1).max(4000).describe('What to change, in plain words; Memory rewrites and re-reads the thought.') })
   .strict()
@@ -251,6 +257,18 @@ export function createThoughtTools(opts: ThoughtToolDeps = {}): ToolDescriptor[]
       async (s, w, i) =>
         s.assignProject(w.userId, i.thought_id, i.project_entity_id ? { projectEntityId: i.project_entity_id } : { projectLabel: i.project_label! }),
       { activity: 'Assigned a thought to a project' }),
+    def('memory.get_thought', 'Read one of the person’s own thoughts in full (text, category, author, metadata, linked notes).', thoughtInput,
+      async (s, w, i) => {
+        const found = await s.getThought(w.userId, i.thought_id)
+        if (!found) throw new Error(NOT_YOURS)
+        return { thought: found }
+      }),
+    def('memory.list_archived_thoughts', 'List the person’s archived thoughts (hidden from Memory’s lists, still stored), most recently changed first; limit default 50.', archivedInput,
+      async (s, w, i) => {
+        const ids = await s.listArchivedThoughtIds(w.userId, i.limit ?? 50)
+        const rows = await Promise.all(ids.map((id) => s.getThought(w.userId, id)))
+        return { thoughts: rows.filter((r) => r !== null) }
+      }),
     def('memory.list_thought_notes', 'List the notes linked to one of the person’s thoughts.', thoughtInput,
       async (s, w, i) => ({ notes: await s.listThoughtNotes(w.userId, i.thought_id) })),
     def('memory.link_text_file', 'Link a note to one of the person’s thoughts.', noteLinkInput,

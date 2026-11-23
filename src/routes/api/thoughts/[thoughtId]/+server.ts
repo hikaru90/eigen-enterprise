@@ -1,14 +1,10 @@
 import type { RequestHandler } from './$types'
 import { error, json } from '@sveltejs/kit'
-import { and, eq } from 'drizzle-orm'
 import { runWithTrace } from '$lib/server/activity/trace-context'
-import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
-import { getDb } from '$lib/server/db'
 import type { LifecycleStatus } from '$lib/server/db/brain.schema'
-import { thought } from '$lib/server/db/schema'
 import { deleteThoughtForUser } from '$lib/server/memory/delete-thought'
 import { setThoughtLifecycleStatus } from '$lib/server/memory/lifecycle'
-import { listTextFilesForThought } from '$lib/server/text-files/service'
+import { getThoughtForUser } from '$lib/server/memory/thought-detail'
 
 export const GET: RequestHandler = async (event) => {
   const user = event.locals.user
@@ -17,63 +13,9 @@ export const GET: RequestHandler = async (event) => {
   const thoughtId = event.params.thoughtId?.trim() ?? ''
   if (!thoughtId) error(400, 'thoughtId is required')
 
-  const [row] = await getDb()
-    .select({
-      id: thought.id,
-      rawText: thought.rawText,
-      rawTextEncrypted: thought.rawTextEncrypted,
-      normalizedText: thought.normalizedText,
-      normalizedTextEncrypted: thought.normalizedTextEncrypted,
-      category: thought.category,
-      author: thought.author,
-      authorLabel: thought.authorLabel,
-      metadata: thought.metadata,
-      metadataEncrypted: thought.metadataEncrypted,
-      updatedAt: thought.updatedAt,
-    })
-    .from(thought)
-    .where(and(eq(thought.id, thoughtId), eq(thought.userId, user.id)))
-    .limit(1)
-
-  if (!row) error(404, 'Thought not found')
-  const [rawText, normalizedText, metadataJson] = await Promise.all([
-    row.rawTextEncrypted
-      ? decryptTenantValue({
-          userId: user.id,
-          table: 'thought',
-          column: 'raw_text',
-          ciphertext: row.rawTextEncrypted,
-        })
-      : Promise.resolve(row.rawText),
-    row.normalizedTextEncrypted
-      ? decryptTenantValue({
-          userId: user.id,
-          table: 'thought',
-          column: 'normalized_text',
-          ciphertext: row.normalizedTextEncrypted,
-        })
-      : Promise.resolve(row.normalizedText),
-    row.metadataEncrypted
-      ? decryptTenantValue({
-          userId: user.id,
-          table: 'thought',
-          column: 'metadata',
-          ciphertext: row.metadataEncrypted,
-        })
-      : Promise.resolve(JSON.stringify(row.metadata ?? {})),
-  ])
-
-  return json({
-    id: row.id,
-    rawText,
-    normalizedText,
-    category: row.category,
-    author: row.author,
-    authorLabel: row.authorLabel,
-    metadata: JSON.parse(metadataJson) as Record<string, unknown>,
-    updatedAt: row.updatedAt,
-    attachedFiles: await listTextFilesForThought(user.id, thoughtId),
-  })
+  const detail = await getThoughtForUser(user.id, thoughtId)
+  if (!detail) error(404, 'Thought not found')
+  return json(detail)
 }
 
 export const PATCH: RequestHandler = async (event) => {

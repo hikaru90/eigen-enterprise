@@ -35,6 +35,8 @@ function fakeService(): ThoughtToolService {
       created: 'projectLabel' in target,
       isGtdProject: true,
     })),
+    getThought: vi.fn(async (_u, id) => (id === 't1' ? { id, rawText: 'Call Bea' } : null)),
+    listArchivedThoughtIds: vi.fn(async () => ['t1']),
     listThoughtNotes: vi.fn(async () => [{ id: 'n1', title: 'Note' }]),
     linkNote: vi.fn(async (_u, t, n) =>
       t !== 't1' ? { linked: false, reason: 'thought_not_found' as const } : n === 'n1' ? { linked: true } : { linked: false, reason: 'text_file_not_found' as const },
@@ -94,7 +96,7 @@ describe('memory thought / graph / note tools', () => {
     for (const n of ['memory.delete_thought', 'memory.delete_archived_thoughts', 'memory.delete_entity', 'memory.delete_text_file']) {
       expect(by(n).approvalRisk).toBe('destructive')
     }
-    for (const n of ['memory.list_thought_notes', 'memory.get_entity', 'memory.list_connected_agents', 'memory.list_agent_projects']) {
+    for (const n of ['memory.get_thought', 'memory.list_archived_thoughts', 'memory.list_thought_notes', 'memory.get_entity', 'memory.list_connected_agents', 'memory.list_agent_projects']) {
       expect(by(n).auditClass).toBe('read')
     }
   })
@@ -193,5 +195,14 @@ describe('memory thought / graph / note tools', () => {
     expect(svc.bindAgentProject).toHaveBeenCalledWith({ userId: 'alex', agentId: 'a1', projectEntityId: 'p1' })
     await expect(run('memory.unbind_agent_project', { agent_id: 'a1', project_entity_id: 'p1' })).resolves.toEqual({ unbound: true })
     await expect(run('memory.list_agent_projects', { agent_id: 'a1' })).resolves.toEqual({ bindings: [{ projectEntityId: 'p1' }] })
+  })
+
+  it('reads one of the person’s own thoughts and lists their archived ones', async () => {
+    const { run, svc } = setup({ kind: 'assistant', userId: 'bea' })
+    await expect(run('memory.get_thought', { thought_id: 't1' })).resolves.toEqual({ thought: { id: 't1', rawText: 'Call Bea' } })
+    expect(svc.getThought).toHaveBeenCalledWith('bea', 't1')
+    await expect(run('memory.get_thought', { thought_id: 'x' })).rejects.toThrow(/not in your Memory/)
+    await expect(run('memory.list_archived_thoughts', { limit: 10 })).resolves.toEqual({ thoughts: [{ id: 't1', rawText: 'Call Bea' }] })
+    expect(svc.listArchivedThoughtIds).toHaveBeenCalledWith('bea', 10)
   })
 })

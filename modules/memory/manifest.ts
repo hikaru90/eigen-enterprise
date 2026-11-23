@@ -28,6 +28,8 @@ export const THOUGHT_TOOL_NAMES = [
   'memory.relink_thought',
   'memory.answer_check_in',
   'memory.assign_thought_project',
+  'memory.get_thought',
+  'memory.list_archived_thoughts',
   'memory.list_thought_notes',
   'memory.link_text_file',
   'memory.unlink_text_file',

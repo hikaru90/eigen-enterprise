@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { isUuidV4 } from '$lib/random-uuid'
 import { WEBHOOK_DELIVERY_JOB } from '$lib/server/agents/constants'
 import { getDb } from '$lib/server/db'
@@ -215,6 +215,17 @@ export async function countArchivedThoughts(userId: string): Promise<number> {
     .from(thought)
     .where(archivedThoughts(userId))
   return row?.n ?? 0
+}
+
+/** The person's archived thoughts, newest change first (the ones Settings counts and Delete archived removes). */
+export async function listArchivedThoughtIds(userId: string, limit = 50): Promise<string[]> {
+  const rows = await getDb()
+    .select({ id: thought.id })
+    .from(thought)
+    .where(archivedThoughts(userId))
+    .orderBy(desc(thought.updatedAt))
+    .limit(Math.min(Math.max(limit, 1), 200))
+  return rows.map((r) => r.id)
 }
 
 /**
