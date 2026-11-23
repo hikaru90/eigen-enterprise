@@ -123,12 +123,12 @@ describe('email manage tools: the same service calls the Email pages make', () =
   it('flows: create, save steps, start/pause, delete', async () => {
     const { calls, run } = setup()
     await run('email.flow_create', { name: 'Onboarding', listId: ID })
-    await run('email.flow_update', { id: ID, name: 'Onboarding', steps: [{ kind: 'wait' }] })
+    await run('email.flow_update', { id: ID, name: 'Onboarding', steps: [{ id: 's1', type: 'wait', amount: 2, unit: 'days' }] })
     await run('email.flow_set_status', { id: ID, status: 'active' })
     await run('email.flow_delete', { id: ID })
     expect(calls).toEqual([
       ['createFlow', { name: 'Onboarding', triggerListId: ID }, 'user-1'],
-      ['updateFlow', ID, { name: 'Onboarding', triggerListId: null, steps: [{ kind: 'wait' }] }],
+      ['updateFlow', ID, { name: 'Onboarding', triggerListId: null, steps: [{ id: 's1', type: 'wait', amount: 2, unit: 'days' }] }],
       ['setFlowStatus', ID, 'active'],
       ['deleteFlow', ID],
     ])

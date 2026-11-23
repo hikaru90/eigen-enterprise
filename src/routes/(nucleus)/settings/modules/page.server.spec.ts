@@ -176,12 +176,12 @@ describe('Settings → Plugins (owner and admins)', () => {
     ])
   })
 
-  it('lists the Assistant as an official plugin with its owner-facing line and no tools; it switches off and on', async () => {
+  it('lists the Assistant as an official plugin with its owner-facing line and its one tool; it switches off and on', async () => {
     expect(plugin(await loaded(), 'assistant')).toMatchObject({
       name: 'Assistant',
       origin: 'official',
       active: true,
-      tools: [],
+      tools: ['assistant.conversation_rename'],
       requires: [],
       requiredBy: [],
     })

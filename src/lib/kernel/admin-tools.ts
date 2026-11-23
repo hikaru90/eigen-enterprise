@@ -43,7 +43,7 @@ export const kernelManifest: ModuleManifest = {
   internal: true,
   version: '0.2.0',
   description:
-    'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person) a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner).',
+    'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person), a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner).',
   // `settings`: the company settings tools (settings-tools.ts) belong to the kernel core;
   // `notifications`: a person's own notification devices (notification-tools.ts).
   toolNamespaces: [KERNEL_MODULE_ID, 'settings', 'notifications'],

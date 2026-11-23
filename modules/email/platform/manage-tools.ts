@@ -1,4 +1,5 @@
 import type { EmailPlatform } from './service'
+import { flowSteps } from './flows/engine'
 import { z } from 'zod'
 import type { BoughtDomain } from '$lib/domains/contract'
 import type { ToolDescriptor } from '$lib/kernel/types'
@@ -31,8 +32,9 @@ export const LIST_IMPORT_MAX_CHARS = 110 * 1024 * 1024
 
 async function envOrigin(): Promise<string> {
   const { env } = await import('$env/dynamic/private')
-  const { siteOrigin } = await import('../../website/site-info')
-  return siteOrigin(env.ORIGIN)
+  const origin = env.ORIGIN?.trim()
+  if (!origin) throw new Error('ORIGIN is not set: Amazon SES needs the public address of this server to reach it')
+  return new URL(origin).origin
 }
 
 async function dbMemberEmail(userId: string): Promise<string | null> {
@@ -78,7 +80,7 @@ export function createEmailManageTools(deps: EmailManageToolDeps = {}): ToolDesc
     })
     .strict()
   const flowCreate = z.object({ name: z.string().min(1).max(200), listId: z.uuid().optional() }).strict()
-  const flowSave = z.object({ id: z.uuid(), name: z.string().min(1).max(200), listId: z.uuid().optional(), steps: z.array(z.unknown()) }).strict()
+  const flowSave = z.object({ id: z.uuid(), name: z.string().min(1).max(200), listId: z.uuid().optional(), steps: flowSteps }).strict()
   const flowStatus = z.object({ id: z.uuid(), status: z.enum(['active', 'paused']) }).strict()
   const listCreate = z.object({ name: z.string().min(1).max(200), doubleOptIn: z.boolean().default(false) }).strict()
   const listSave = z
