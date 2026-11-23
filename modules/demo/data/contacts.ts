@@ -1,4 +1,4 @@
-import type { Contact } from './types'
+import type { Contact } from '../types'
 
 /** ~25 people at the client companies, with their place in the pipeline and what happened. */
 export const contacts: Contact[] = [

@@ -1,4 +1,4 @@
-import type { Channel, Message } from './types'
+import type { Channel, Message } from '../types'
 
 /** Public channels: open to everyone in the company, so every teammate can post. */
 export const channels: Channel[] = [

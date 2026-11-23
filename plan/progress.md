@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Demo company seed ships in the app: module `demo`, tool `demo.seed_company` (branch, not merged, not on the box)
+
+- **Why:** the seed ran only from a repo checkout (vite-node over `scripts/`); a release ships `build/` + prod node_modules, so no installed box could seed. The demo company is a hosted company, so the seed runs inside the server.
+- **Module `demo`** (`modules/demo/`, internal, **off by default**: not in `SYSTEM_MODULE_IDS`, like contribute-hub). Tools: `demo.seed_company` (mutate, approval risk `public`, in `APPROVAL_REQUIRED_TOOLS`, audited "Seeded the demo company Northwind Studio"; roles admin/agent + the handler refuses anyone whose company role is not `owner`, so the owner's session, API key or brain may call it, an admin may not) and `demo.status` (read: seeded, teammates' addresses, members, open invites, `can_seed`). The handler runs the same runner in process against the kernel's own registry, as the owner and as each teammate (direct human principals with their kernel roles).
+- **Moved:** `scripts/demo-company/{runner,validate,types}.ts` + specs → `modules/demo/`; dataset files → `modules/demo/data/`. `npm run demo-company -- seed` stays as a thin checkout entry over the tool (boots like the app, switches `demo` on, calls the tool as the claimed owner, the operator approves a held call).
+- **Guard order fixed:** the runner now reads the roster first and refuses ("already seeded" / "not empty") before switching any module on, so a refusal writes nothing (before, it could switch modules on first).
+- **`server-request.ts` removed (no hack left):** inside the server, a teammate sign-in would have handed the teammate's session cookie to the running request (the owner's own). New `createInvitedAccount` (`src/lib/server/members/accept.ts`): same invite refusals and invite scope as `joinWithInvite`, but the account is made with Better Auth's public `auth.$context` → `internalAdapter.createUser` (same user-create hooks: invited role, invite consumed), no session, no cookie. Verified: 0 sessions after a seed.
+- Settings → Plugins core line hides `demo` while it is off (as contribute-hub). No UI entry; ui-parity unchanged.
+- **Real run** on a throwaway DB on :5433 (created, migrated, dropped): seed in 4.4 s in the tool (5 teammates, 25 contacts, 30 tasks, 40 messages, 13 events, 6 docs, 3 pages, 31 notes); the second run refused "already seeded".
+- **Gaps:** the nightly reset (D4) can no longer call `npm run demo-company` on the box: it must call `demo.seed_company` over MCP with the owner's API key (approval mode `allow_all` on the demo box, or a decision); switch `demo` on before taking the empty snapshot. Once switched on, `demo` is core (internal modules cannot be switched off), like contribute-hub. An admin cannot seed.
+
 ## 2026-11-23 — Demo company: seed, open join, per-person AI cap (owner: "we need a mockup demo company with dummy data for linking on the website"; merged on main, not pushed, not on the box)
 
 - Plan: `plan/phase-demo-company.md`. Owner picked access: **email code, own seat**. Visitors join the demo box as members with the normal sign-in code.

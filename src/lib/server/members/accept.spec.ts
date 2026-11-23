@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { inviteScope } from '$lib/server/auth/owner-policy'
-import { joinWithInvite } from './accept'
+import { createInvitedAccount, joinWithInvite } from './accept'
 import { hashInviteToken } from './service'
 import { memoryStore } from './memory-store'
 
@@ -59,5 +59,35 @@ describe('joining with an invite link (no email needed)', () => {
     const { deps } = setup()
     await expect(joinWithInvite('tok', { name: '  ' }, deps)).rejects.toThrow(/Enter your name/)
     expect(deps.createCode).not.toHaveBeenCalled()
+  })
+})
+
+describe('creating the invited account without a sign-in (server-side, no browser: the demo seed)', () => {
+  it('creates the account for the invited address inside the invite scope; no code is minted, nobody is signed in', async () => {
+    const { store, deps } = setup()
+    const seen: unknown[] = []
+    const createAccount = vi.fn(async () => {
+      seen.push(inviteScope.getStore())
+    })
+    expect(await createInvitedAccount('tok', { name: ' Bea ' }, { store, now: deps.now, createAccount })).toEqual({
+      email: 'new@k.co',
+    })
+    expect(createAccount).toHaveBeenCalledWith('new@k.co', 'Bea')
+    expect(seen).toEqual([{ inviteId: 'inv1', email: 'new@k.co', role: 'admin' }])
+  })
+
+  it('refuses the same links joining refuses, before any account is made', async () => {
+    const { store, deps } = setup({ acceptedAt: now })
+    const createAccount = vi.fn(async () => {})
+    await expect(createInvitedAccount('tok', { name: 'B' }, { store, now: deps.now, createAccount })).rejects.toThrow(
+      /already used/,
+    )
+    await expect(createInvitedAccount('other', { name: 'B' }, { store, now: deps.now, createAccount })).rejects.toThrow(
+      /not valid/,
+    )
+    await expect(createInvitedAccount('tok', { name: ' ' }, { store, now: deps.now, createAccount })).rejects.toThrow(
+      /Enter your name/,
+    )
+    expect(createAccount).not.toHaveBeenCalled()
   })
 })

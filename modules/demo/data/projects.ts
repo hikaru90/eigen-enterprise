@@ -1,4 +1,4 @@
-import type { Project } from './types'
+import type { Project } from '../types'
 
 /**
  * Four client projects. The lead owns the project; tasks for the lead go into

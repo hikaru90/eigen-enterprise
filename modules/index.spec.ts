@@ -122,6 +122,7 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'contribute.propose': 'internal',
       'contribute.vote': 'internal',
       'contribute_hub.revoke_install': 'destructive',
+      'demo.seed_company': 'public',
       'drive.archive': 'internal',
       'drive.create_document': 'internal',
       'drive.create_folder': 'internal',
@@ -241,6 +242,7 @@ describe('moduleManifests', () => {
       'contribute-hub',
       'assistant',
       'domains',
+      'demo',
     ])
   })
 })
@@ -266,6 +268,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'contribute-hub',
       'assistant',
       'domains',
+      'demo',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -371,6 +374,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'contribute.propose',
       'contribute.vote',
       'contribute_hub.revoke_install',
+      'demo.seed_company',
       'drive.archive',
       'drive.create_document',
       'drive.create_folder',

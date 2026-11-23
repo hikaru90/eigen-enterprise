@@ -1,4 +1,4 @@
-import type { DemoDataset } from './types'
+import type { DemoDataset } from '../types'
 import { events } from './calendar'
 import { contacts } from './contacts'
 import { brand, docs, driveFolder, pages } from './documents'

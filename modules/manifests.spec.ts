@@ -77,14 +77,40 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator, members, contribute, contribute-hub and domains modules are internal (no owner-facing card); the others are not', () => {
+  it('the orchestrator, members, contribute, contribute-hub, domains and demo modules are internal (no owner-facing card); the others are not', () => {
     expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
       'orchestrator',
       'members',
       'contribute',
       'contribute-hub',
       'domains',
+      'demo',
     ])
+  })
+
+  it('the demo module is never self-seeded: off on every company (its tools fail closed) until the owner switches it on', async () => {
+    const { kernel: k, activations } = kernel()
+    await ensureSystemModulesActive(k)
+    expect(SYSTEM_MODULE_IDS as readonly string[]).not.toContain('demo')
+    expect(await activations.get('demo')).toBe(false)
+    const owner: ToolContext = { principal: { id: 'u-owner', kind: 'human', roles: ['admin', 'member'] }, requestId: 'r-demo' }
+    for (const name of ['demo.status', 'demo.seed_company']) {
+      expect(await k.modules.isToolActive(name)).toBe(false)
+      await expect(k.registry.execute(name, {}, owner)).rejects.toMatchObject({ code: 'module_inactive' })
+    }
+  })
+
+  it('demo.seed_company waits on the approval mode once the demo module is on; a member may not call it at all', async () => {
+    const { kernel: k, activations } = kernel()
+    await activations.set('demo', true)
+    expect(APPROVAL_REQUIRED_TOOLS.has('demo.seed_company')).toBe(true)
+    expect(APPROVAL_REQUIRED_TOOLS.has('demo.status')).toBe(false)
+    const owner: ToolContext = { principal: { id: 'u-owner', kind: 'human', roles: ['admin', 'member'] }, requestId: 'r-demo' }
+    await expect(k.registry.execute('demo.seed_company', {}, owner)).rejects.toMatchObject({ code: 'approval_required' })
+    const member: ToolContext = { principal: { id: 'u-m', kind: 'human', roles: ['member'] }, requestId: 'r-demo' }
+    for (const name of ['demo.status', 'demo.seed_company']) {
+      await expect(k.registry.execute(name, {}, member)).rejects.toMatchObject({ code: 'permission_denied' })
+    }
   })
 
   it('the contribute hub is never self-seeded: it stays off (its tools fail closed) until the owner switches it on', async () => {

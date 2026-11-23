@@ -1,4 +1,4 @@
-import type { ClientCompany, Group, Teammate } from './types'
+import type { ClientCompany, Group, Teammate } from '../types'
 
 export const EMAIL_DOMAIN = 'northwind-studio.example'
 

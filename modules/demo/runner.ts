@@ -92,12 +92,36 @@ function field(result: unknown, path: string[], tool: string): string {
   return cur
 }
 
-type MembersList = {
+export type MembersList = {
   members: { id: string; email: string; role: string }[]
   invites: { email: string }[]
 }
 
-function asMembersList(result: unknown): MembersList {
+/** Where a company stands for the seed (members.list as read by the owner). */
+export type SeedState = {
+  /** Someone at @<emailDomain> is a member or invited: the dataset is (being) seeded. */
+  seeded: boolean
+  /** Those addresses. */
+  seededMembers: string[]
+  members: number
+  openInvites: number
+  /** Freshly claimed: the owner is the only member and nobody is invited — the only company the seed fills. */
+  fresh: boolean
+}
+
+export function seedState(d: Pick<DemoDataset, 'emailDomain'>, roster: MembersList): SeedState {
+  const emails = [...roster.members.map((m) => m.email), ...roster.invites.map((i) => i.email)]
+  const seededMembers = emails.filter((e) => e.toLowerCase().endsWith(`@${d.emailDomain}`))
+  return {
+    seeded: seededMembers.length > 0,
+    seededMembers,
+    members: roster.members.length,
+    openInvites: roster.invites.length,
+    fresh: roster.members.length === 1 && roster.invites.length === 0,
+  }
+}
+
+export function asMembersList(result: unknown): MembersList {
   const r = result as Partial<MembersList> | null
   if (!r || !Array.isArray(r.members) || !Array.isArray(r.invites)) {
     throw new Error(`members.list returned an unexpected shape: ${JSON.stringify(result)}`)
@@ -192,27 +216,25 @@ export async function seedDemoCompany(d: DemoDataset, deps: SeedDeps): Promise<S
     }
   }
 
-  // 1. The modules the seed uses are on (on a seeded company they already are: nothing changes).
+  // 1. Empty and not seeded yet — checked before anything is written (Members is core, always on).
+  const state = seedState(d, asMembersList(await run(OWNER, 'members.list', {})))
+  if (state.seeded) {
+    throw new AlreadySeededError(
+      `${d.companyName} is already seeded on this company (${state.seededMembers.join(', ')}); refusing to seed twice.`,
+    )
+  }
+  if (!state.fresh) {
+    throw new SeedRefusedError(
+      `the company is not empty (${state.members} members, ${state.openInvites} open invites): the demo seed fills a freshly claimed company only.`,
+    )
+  }
+
+  // 2. The modules the seed uses are on.
   const modules = (await run(OWNER, 'kernel.module_list', {})) as { id: string; active: boolean }[]
   for (const id of SEED_MODULES) {
     const m = modules.find((x) => x.id === id)
     if (!m) throw new Error(`module ${id} is not registered on this server`)
     if (!m.active) await run(OWNER, 'kernel.module_activate', { module_id: id })
-  }
-
-  // 2. Empty and not seeded yet — before any data is written.
-  const roster = asMembersList(await run(OWNER, 'members.list', {}))
-  const emails = [...roster.members.map((m) => m.email), ...roster.invites.map((i) => i.email)]
-  const ours = emails.filter((e) => e.toLowerCase().endsWith(`@${d.emailDomain}`))
-  if (ours.length > 0) {
-    throw new AlreadySeededError(
-      `${d.companyName} is already seeded on this company (${ours.join(', ')}); refusing to seed twice.`,
-    )
-  }
-  if (roster.members.length !== 1 || roster.invites.length > 0) {
-    throw new SeedRefusedError(
-      `the company is not empty (${roster.members.length} members, ${roster.invites.length} open invites): the demo seed fills a freshly claimed company only.`,
-    )
   }
 
   const today = dayIn(d.timeZone, deps.now)
