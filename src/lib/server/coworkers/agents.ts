@@ -1,6 +1,6 @@
 import type { StreamFrame } from '../../../../modules/messages/hub'
 import type { CoworkerView } from './service'
-import type { CoworkerTurns, TurnPrompts } from './turns'
+import type { CoworkerTurns, HeardMessage, TurnPrompts } from './turns'
 import type { AgentConfig, CoworkerSource } from '$lib/kernel/agent'
 import { coworkerPrincipal } from '$lib/kernel/principals'
 
@@ -47,6 +47,9 @@ export type MessageFrames = {
  * process, fed by LISTEN ee_messages) sends a co-worker exactly the frames of
  * conversations it may see, and every created message goes to the turns, which
  * decide whether it asks for a turn. `refresh` follows the current co-workers.
+ *
+ * C7: the same frames go to the event sources (`events`, e.g. ChannelMessageSource): a message
+ * that does not ask for a turn may still be an event the co-worker notices.
  */
 export class CoworkerTriggerListener {
   private readonly subs = new Map<string, () => void>()
@@ -57,6 +60,7 @@ export class CoworkerTriggerListener {
       hub: MessageFrames
       listEnabled: () => Promise<CoworkerView[]>
       turns: Pick<CoworkerTurns, 'onMessage'>
+      events?: { onMessage(coworkerId: string, message: HeardMessage): Promise<unknown> }
     },
   ) {}
 
@@ -82,6 +86,9 @@ export class CoworkerTriggerListener {
           if (frame.event !== 'message' || frame.data.action !== 'created') return
           this.deps.turns.onMessage(id, frame.data.message).catch((err: unknown) =>
             console.error('[coworkers] a co-worker trigger failed', { coworkerId: id, messageId: frame.data.message.id, err }),
+          )
+          this.deps.events?.onMessage(id, frame.data.message).catch((err: unknown) =>
+            console.error('[coworkers] a co-worker event source failed', { coworkerId: id, messageId: frame.data.message.id, err }),
           )
         }),
       )

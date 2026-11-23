@@ -39,6 +39,17 @@ const coworker = {
   accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },
 }
 
+const counts = { claimed: 0, observed: 0, queued: 0, skipped_rate_limit: 0, skipped_daily_cap: 0, failed: 0 }
+const pickupRow = {
+  id: 'd1',
+  kind: 'coworkers.event_mine',
+  input: { conversationId: 'c-launch', threadRootId: 'm1', channel: 'launch', privateChannel: false, excerpt: 'Draft the post.', at: '2026-11-23T09:00:00.000Z' },
+  jevChoice: 'yes',
+  jevConfidence: 0.81,
+  humanChoice: null,
+  createdAt: '2026-11-23T09:00:01.000Z',
+}
+
 const run = (async (user: { id: string }, tool: string, input: unknown) => {
   calls.push({ user: user.id, tool, input })
   if (tool === 'org.chart') return { people }
@@ -46,6 +57,12 @@ const run = (async (user: { id: string }, tool: string, input: unknown) => {
   if (tool === 'coworkers.get') return coworker
   if (tool === 'coworkers.runs') return { runs: [{ id: 'run-1', triggerKind: 'rhythm', status: 'done' }] }
   if (tool === 'coworkers.notice_seen') return { runId: 'run-1', seen: true }
+  if (tool === 'coworkers.event_subscriptions_get') {
+    return { userId: 'cw1', kinds: [{ kind: 'channel_message', on: true }], hourlyLimit: 20, lastHour: counts, lastDay: { ...counts, observed: 3, skipped_rate_limit: 1 } }
+  }
+  if (tool === 'decisions.log') return { decisions: [pickupRow] }
+  if (tool === 'decisions.kinds') return { kinds: [{ id: 'coworkers.event_mine', humanCompared: 4, humanAgreed: 3 }] }
+  if (tool === 'coworkers.event_subscriptions_set' || tool === 'decisions.label') return {}
   return people[1]
 }) as typeof _orgDeps.run
 
@@ -153,6 +170,60 @@ describe('profile load', () => {
     } as never)
     expect(calls).toEqual([expect.objectContaining({ tool: 'coworkers.notice_seen', input: { run_id: 'run-1' } })])
     expect(out).toEqual({ action: 'noticeSeen', ok: true })
+  })
+
+  it('owner and admins see "Would pick up" (C7): subscriptions, the shadow decisions about it, agreement', async () => {
+    role = 'admin'
+    const data = (await profileLoad({ locals, params: { id: 'cw1' } } as never)) as Record<string, unknown>
+    expect(calls.map((c) => c.tool)).toEqual([
+      'org.chart',
+      'coworkers.list',
+      'coworkers.get',
+      'coworkers.runs',
+      'coworkers.event_subscriptions_get',
+      'decisions.log',
+      'decisions.kinds',
+    ])
+    expect(calls[5]!.input).toEqual({ kind: 'coworkers.event_mine', subject_user_id: 'cw1', limit: 20 })
+    expect(data.wouldPickUp).toEqual({
+      noticing: true,
+      hourlyLimit: 20,
+      lastDay: { ...counts, observed: 3, skipped_rate_limit: 1 },
+      agreement: { agreed: 3, compared: 4 },
+      items: [
+        {
+          id: 'd1',
+          at: '2026-11-23T09:00:00.000Z',
+          channel: 'launch',
+          privateChannel: false,
+          excerpt: 'Draft the post.',
+          threadUrl: '/messages?c=c-launch&t=m1',
+          jevChoice: 'yes',
+          jevConfidence: 0.81,
+          humanChoice: null,
+        },
+      ],
+    })
+  })
+
+  it('a member sees no "Would pick up"', async () => {
+    const data = (await profileLoad({ locals, params: { id: 'cw1' } } as never)) as Record<string, unknown>
+    expect(data.wouldPickUp).toBeNull()
+    expect(calls.map((c) => c.tool)).not.toContain('decisions.log')
+  })
+
+  it('?/eventSubscriptions → coworkers.event_subscriptions_set with the checked kinds; ?/labelDecision → decisions.label', async () => {
+    const on = await profileActions.eventSubscriptions(ev({ user_id: 'cw1', event_kinds: 'channel_message' }))
+    const off = await profileActions.eventSubscriptions(ev({ user_id: 'cw1' }))
+    const label = await profileActions.labelDecision(ev({ user_id: 'cw1', decision_id: 'd1', choice: 'no' }))
+    expect(calls).toEqual([
+      expect.objectContaining({ user: 'me', tool: 'coworkers.event_subscriptions_set', input: { user_id: 'cw1', event_kinds: ['channel_message'] } }),
+      expect.objectContaining({ tool: 'coworkers.event_subscriptions_set', input: { user_id: 'cw1', event_kinds: [] } }),
+      expect.objectContaining({ tool: 'decisions.label', input: { decision_id: 'd1', choice: 'no' } }),
+    ])
+    expect(on).toEqual({ action: 'eventSubscriptions', ok: true, userId: 'cw1' })
+    expect(off).toEqual({ action: 'eventSubscriptions', ok: true, userId: 'cw1' })
+    expect(label).toEqual({ action: 'labelDecision', ok: true, userId: 'cw1' })
   })
 
   it('answers 404 for someone not in the chart', async () => {

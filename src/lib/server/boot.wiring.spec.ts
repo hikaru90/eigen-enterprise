@@ -230,6 +230,8 @@ const NO_BRAIN_REACH = ['agent.disable', 'agent.enable', 'brand.picker_choose', 
 
 /** What a member (no admin role) reaches through the brain — as themselves, under their own access checks. */
 const MEMBER_KEEPS_VIA_BRAIN = [
+  // C7: which events a co-worker notices, and what became of them (counts only).
+  'coworkers.event_subscriptions_get',
   'coworkers.get',
   'coworkers.list',
   'coworkers.needs_you',
@@ -443,6 +445,9 @@ const MEMBER_LOSES_VIA_BRAIN = [
   'coworkers.create',
   'coworkers.disable',
   'coworkers.enable',
+  // C7: an admin switches a co-worker's event kinds on and off, and labels its shadow decisions.
+  'coworkers.event_subscriptions_set',
+  'decisions.label',
   'coworkers.remove',
   'coworkers.rhythm_create',
   'coworkers.rhythm_delete',

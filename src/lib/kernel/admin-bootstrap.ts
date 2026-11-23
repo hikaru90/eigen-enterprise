@@ -175,6 +175,7 @@ function liveDecisionsPort(): DecisionsPort {
     log: async (input) => (await live()).log(input),
     questions: async (userId) => (await live()).questions(userId),
     answer: async (userId, decisionId, choice) => (await live()).answer(userId, decisionId, choice),
+    label: async (userId, decisionId, choice) => (await live()).label(userId, decisionId, choice),
   }
 }
 

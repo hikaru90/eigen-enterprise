@@ -20,6 +20,7 @@ function setup() {
     log: vi.fn(async () => []),
     questions: vi.fn(async () => []),
     answer: vi.fn(async (_userId: string, decisionId: string, choice: string) => ({ decisionId, kind: 'demo.k', choice })),
+    label: vi.fn(async (_userId: string, decisionId: string, choice: string) => ({ decisionId, kind: 'demo.k', choice })),
   }
   const registry = new KernelRegistry({
     eventSink: new InMemoryEventSink(),
@@ -31,10 +32,10 @@ function setup() {
 }
 
 describe('decisions.* tools', () => {
-  it('are the kinds, the log, your questions and your answer', () => {
+  it('are the kinds, the log, your questions, your answer and an admin’s label', () => {
     const { port } = setup()
     expect(createDecisionTools({ port }).map((t) => t.name)).toEqual([...KERNEL_DECISION_TOOL_NAMES])
-    expect(KERNEL_DECISION_TOOL_NAMES).toEqual(['decisions.kinds', 'decisions.log', 'decisions.questions', 'decisions.answer'])
+    expect(KERNEL_DECISION_TOOL_NAMES).toEqual(['decisions.kinds', 'decisions.log', 'decisions.questions', 'decisions.answer', 'decisions.label'])
   })
 
   it('every member reads the kinds (aggregates only)', async () => {
@@ -52,6 +53,23 @@ describe('decisions.* tools', () => {
     expect(port.log).toHaveBeenLastCalledWith({ limit: 5, readerId: 'u-mia' })
     await registry.execute('decisions.log', {}, coworker)
     expect(port.log).toHaveBeenLastCalledWith({ limit: 50, readerId: 'cw-1' })
+  })
+
+  it('the log narrows to the decisions about one person or co-worker (C7: a co-worker’s "Would pick up")', async () => {
+    const { registry, port } = setup()
+    await registry.execute('decisions.log', { kind: 'coworkers.event_mine', subject_user_id: 'cw-1', limit: 20 }, admin)
+    expect(port.log).toHaveBeenLastCalledWith({ kind: 'coworkers.event_mine', subjectUserId: 'cw-1', limit: 20, readerId: null })
+  })
+
+  it('owner and admins label a decision as themselves; members and co-workers cannot', async () => {
+    const { registry, port } = setup()
+    await expect(registry.execute('decisions.label', { decision_id: QUESTION, choice: 'no' }, admin)).resolves.toEqual({ decisionId: QUESTION, kind: 'demo.k', choice: 'no' })
+    expect(port.label).toHaveBeenLastCalledWith('u-admin', QUESTION, 'no')
+    await expect(registry.execute('decisions.label', { decision_id: QUESTION, choice: 'no' }, member)).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(registry.execute('decisions.label', { decision_id: QUESTION, choice: 'no' }, coworker)).rejects.toMatchObject({ code: 'permission_denied' })
+    const agent: ToolContext = { principal: { id: 'agent-1', kind: 'agent', roles: ['admin'] }, requestId: 'r5' }
+    await expect(registry.execute('decisions.label', { decision_id: QUESTION, choice: 'no' }, agent)).rejects.toMatchObject({ code: 'no_person' })
+    expect(port.label).toHaveBeenCalledTimes(1)
   })
 
   it('questions are the caller’s own', async () => {

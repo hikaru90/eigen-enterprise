@@ -117,6 +117,8 @@ Each workstream is a worktree under `.claude/worktrees/`, test-first, and touche
 **Wave 3:**
 - **C6 · Proactive.** Rhythms (`coworker_rhythm`, e.g. "weekday 9:00, post the marketing standup in #marketing"), the assignment trigger (`tasks.assign` to a co-worker queues its turn), results in the accountable human's "Needs you". Tools: `coworkers.rhythm_*`.
 - **C7 · Event reactions (needs CB2 Jev).** Co-workers subscribe to event kinds from a closed set (mail in a shared mailbox, call recap, project quiet). Jev decides "is this mine to act on?" in **shadow first**, logged; enforced after review.
+  - Built (migration 0176): source `channel_message` (a person's new message in a channel the co-worker is a member of, not @mentioning it), admin-set subscriptions (`coworkers.event_subscriptions_get/set`), one decision of kind `coworkers.event_mine` per co-worker and event across processes, the co-worker's daily cap and 20 decisions/hour with every skip counted, "Would pick up" on the profile with `decisions.label`.
+  - **Promotion path:** after reviewing agreement (decisions.kinds, "Would pick up"), one commit changes `status: 'shadow'` to `status: 'enforced'` in `modules/coworkers/decision-kinds.ts`. A "yes" then queues one `event` run (trigger key `event:<kind>:<event id>`) that answers in the event's thread; that branch is built and specced already (`events.spec.ts`, `events.turns.spec.ts`).
 - **C8 · Eval.** `evals/brain` gains a co-workers suite:
   - **Does:** a three-co-worker task, graded on the resulting state.
   - **Keeps:** no co-worker reads private items.
