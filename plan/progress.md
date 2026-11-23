@@ -2,6 +2,36 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers C6: co-workers act on their own (rhythms, assignments, run log, Needs you) (merge `1e0d97f3`, not pushed, not on the box)
+
+- **Built** (`42b83cf6` backend, `e2aa68ec` UI):
+  - **Migration 0173_coworker_proactive:**
+    - new `coworker_rhythm`;
+    - `coworker_run` gains `rhythm_id`, `task_id` and `trigger_key` (unique per co-worker);
+    - new stop reasons `not_member`, `task_unavailable`;
+    - new `coworker_run_notice`;
+    - export rules classified.
+  - **Rhythms:** reuse the reminders' DST-safe schedule math. They run on the existing job-queue tick, with one process per slot (compare-and-set on `last_slot_at`). Missed slots aren't replayed, and a rhythm always posts.
+  - **Tools:** `coworkers.rhythm_list/create/update/delete/run_now`, `coworkers.needs_you`, `coworkers.notice_seen`.
+  - **Assignments:** `tasks.assign` to a co-worker queues a run. The co-worker answers as a task comment and completes the task itself. A person's follow-up comment queues exactly one more turn.
+  - **Needs you:** every finished or stopped rhythm or assignment run notifies the accountable human, and for an assignment also the assigner.
+  - **UI:**
+    - Settings → Co-workers: Rhythms section;
+    - profile: run log;
+    - dashboard: Needs you rows.
+
+    Five form actions mapped in ui-parity (debt 0).
+- **Decisions:**
+  - rhythm and assignment runs don't count against the thread budget;
+  - a stopped rhythm posts no note in its channel; the run log and Needs you carry the reason;
+  - the person setting up a rhythm must see the target conversation.
+- **Verified on merged main:** tsc clean. 776 co-worker/messages/kernel/job-queue/overview/export/eval specs pass, including the C3 and C6 Postgres integrations. Component specs (83) and svelte-check 0 errors were run in C6's worktree. Lint on all changed files: 0 errors.
+- **Gaps/risks:**
+  - **No loop limit on co-worker → co-worker task chains**, only daily caps. A follow-up: a delegation depth or budget per originating human request.
+  - Booting the app against the shared test DB claims other specs' queued runs.
+  - The UI is checked by component specs only, not in a browser.
+- **Phase status:** C1–C6 and C8 are done. C7 (event reactions) waits for CB2 (Jev).
+
 ## 2026-11-23 — AI Co-workers C8: the co-workers eval, and the Drive leak it found (fixed) (merge `351687d2`, fix `5b53beec`, not pushed, not on the box)
 
 - **Eval** (`dff6c640`): `npm run eval:brain` gains a co-workers suite (`--suite coworkers`).
