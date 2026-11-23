@@ -8,6 +8,12 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Decision (owner, binding):** the `ee` CLI must reach everything the app can do, and so the agent too. UI-only actions and missing read tools are bugs, not backlog; new features ship their tool in the same change; clearing debt beats new features. AGENTS.md guardrail strengthened.
 - **Now:** all debt being cleared in parallel module worktrees (subagents, low effort); results below when merged.
 
+## 2026-11-23 — Domains D6 on ee-one: the apex is green end to end
+
+- Cloud redeployed on `bbc2639`; ee-one's polls succeed again from 10:26, and `/var/lib/ee/fleet-claims.json` holds `eigenenterprise.app` verified.
+- `domains.list` on ee-one: `eigenenterprise.app` shows the app `eigen-enterprise-website`, claim verified, certificate issued (until 2027-02-20), all 9 records ok (A, `_ee-verify` TXT, 3 DKIM CNAME, MAIL FROM MX + SPF, DMARC, inbound MX); `one.` (console) and `rtc.one.` (calls) A ok, certificates issued; no source errors.
+- Open for D6: `www.eigenenterprise.app` (A already points at the box; it needs its `_ee-verify.www` TXT in Cloudflare and "Add a hostname" → shows the website in Settings › Domains, which is human-only).
+
 ## 2026-11-23 — Fleet: a box upgraded ahead of the control plane no longer gets locked out
 
 - **What broke:** ee-one upgraded to v0.5.35 at 08:29, and from then on every fleet poll was refused with `400 bad report`. The box announced the new feature `claims`, and the live control plane predated it (`features` was a strict enum). A probe of `/api/fleet/v1/enroll` confirmed it: the request without `claims` got 401 (token), the same request with `claims` got 400 (shape). While polls fail, the box gets no claims, release targets or settings; the edge kept serving.
