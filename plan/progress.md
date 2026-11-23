@@ -2,6 +2,10 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Decision: shadow Jev calls are billed (owner: "Yes, bill them")
+
+- Shadow decisions are billed like every other gateway call: on the requesting person or co-worker, at provider cost + 20% on eigenInference. This closes the open question from the CB2 entry (EigenMesh O3). It matches what's built, so there is no code change.
+
 ## 2026-11-23 — CB2: Jev in the gateway (owner: "Yes, build CB2"; `688ae867`, merge `d075756d`, migration 0175, not pushed, not on the box)
 
 - **Jev's contract (one live call, about $0.000017):**
@@ -30,7 +34,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - every agent page write now adds one Jev call and one log row, and a failed log insert fails the guard;
   - no kind is enforced yet;
   - no e2e run.
-- **Open for the owner:** shadow decisions cost the requesting user (at provider cost + 20% on eigenInference) instead of being absorbed by us. EigenMesh open question O3.
+- **Decided (owner, same day):** shadow decisions are billed to the requesting user (provider cost + 20% on eigenInference).
 - **Note:** the worktree had no OpenRouter key, so the one live contract check used EigenMesh's local key.
 - **Next:** C7 (co-worker event reactions, kind `coworkers.event_mine`, shadow with no judge: log, don't act). Memory one-door M1 (Jev routing in the Ask bar) is unblocked too.
 
@@ -44,6 +48,12 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - A failing module only fails itself.
   - Features climb a ladder: local → community catalog → curated → core. Only maintainers touch `main`. Boxes push into the core as PRs and as `extension_point` requests.
   - Upstream locks the contract in the gate, sees a usage map before each deprecation, and runs every catalog module's tests on each release candidate.
+- **Owner's answer on §9.1:** "i am the only one that merges main. but one.eigenenterprise.app is supposed to also. so admin credential users or boxes should be able to". Built into the plan (§4.1, new milestone U8):
+  - merging `main` is a credential held by the owner and by maintainer boxes, ee-one first;
+  - on a box, a merge is the registry action `upstream.merge`, approved by an admin of that box (never by the agent alone), with the gate run on the box and trailers on the commit;
+  - the credential is a separate "eigenEnterprise maintainer" GitHub App with `contents: write` on the core repo only, which answers factory §8 (option 1);
+  - branch protection allows only the owner and the App to push `main`;
+  - decision, owner may veto: release tags and promotion stay with the owner.
 - **Finding:** today modules are compiled in and X0–X4 are not built, so **the only way a box can add a module is to edit the core**. Every vibe-coding box is a fork today. Hence U1 (`core-api` 1.0) and U2 (module runtime) come first, and U5 gives forks a way back.
 - **Found while mapping (fix in U0):**
   - `kernel.release_install` documents `release` as "the version", but ee's POST requires the full release name, so a bare version gets a 400.
