@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { completeProfileStepInUi, completeProfileViaApi, pngBytes, registerUser } from './test-helpers'
+import { completeProfileStepInUi, completeProfileViaApi, gotoHydrated, pngBytes, registerUser } from './test-helpers'
 
 /**
  * P-5 proof (plan/phase-polish-1.md): a person who signs in without a
@@ -58,7 +58,8 @@ test('sign in → the profile step first → picture + names → Messages shows 
   expect(pretend.status()).toBe(400)
 
   // A picks a picture, crops it, names themselves, continues → back where they were going.
-  await a.goto('/welcome/profile?next=%2Fmessages')
+  // The file input has no handler before hydration: a picture set earlier is lost.
+  await gotoHydrated(a, '/welcome/profile?next=%2Fmessages')
   await a.getByTestId('profile-picture-input').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: pngBytes(320, 200) })
   await expect(a.getByTestId('profile-crop')).toBeVisible()
   await a.screenshot({ path: `${SHOTS}/02-crop.png`, fullPage: true })
