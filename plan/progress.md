@@ -188,6 +188,22 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - co-workers see no calendar events, not even company-wide ones (a reach gap, not a leak);
   - pre-existing: `fixture/seed.ts` records `undefined` message ids.
 
+## 2026-11-23 — E2E green on main: 75 passed, 0 failed (owner: "Fix old failures first")
+
+- **The 17 old failures** (they also failed on pre-round `0d7ee4b9`) were all spec drift, not product regressions. Merged as `a49ee2a4`, 11 `[e2e]` commits.
+- **Most common cause: hydration races.** The specs clicked or typed on server-rendered markup before the app hydrated. They now use `waitForHydration` / `gotoHydrated`. This covered email-platform, memory-page, profile and website-apps; agent-runs-live and memory-page got the same fix after the full run (`[e2e]` follow-up).
+- **The rest followed deliberate product changes:**
+  - brand-system: the AA contrast emitter, and buttons are pills;
+  - page-frame: area headers carry the module icon;
+  - shell-walk: Email opens the inbox, Memory lands on Tasks;
+  - website-apps: the #f2f2f2 stage, and Domains moved to Settings › Domains;
+  - projects-assign-task: rewritten on today's 3-step tour and the Assign flow.
+- **tenant-isolation:** the probe wasn't valid MCP any more (406). It is now a real JSON-RPC call, and stricter: B's own note must come back and A's must not. `captureThought` in `test-helpers.ts` never threw, because it tested `res.ok` instead of `res.ok()`; fixed.
+- **Removed (announced):** `tests/qa-project-assignment.e2e.ts`, an untouched eigen-seed spec built on the removed `/api/billing/wallet` and `/timeline`. Its flow (No project → Assign) is proven by the rewritten `projects-assign-task`.
+- **Release smoke (`@release`) leaves the default run.** It needs a real AI provider plus PayPal env. It runs only via `npm run test:e2e:release:headed` (`PW_RELEASE=1`), and its preflight now names that script.
+  - **Open:** its PayPal steps are dead, because billing was removed in `ebf92959`, and it still expects the old onboarding dialog on `/`. It needs a rework before it can pass with real env.
+- **Run:** `npx playwright test` on main: 75 passed, 5 skipped (env-gated), 0 failed, 9.2 min, no harness errors.
+
 ## 2026-11-23 — E2E triage after the contribute round + Memory M2 (owner: "look if the work was done correctly")
 
 - **Method:** full e2e on main (53 passed, 26 failed), then the failing specs on the pre-round commit `0d7ee4b9` (17 failed there). The difference is what this round broke.
