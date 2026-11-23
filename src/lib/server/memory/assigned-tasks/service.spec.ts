@@ -107,6 +107,15 @@ describe('assigned tasks', () => {
     expect((await listTasks(deps, 'alex')).assignedByMe[0]).toMatchObject({ status: 'done', update: null })
   })
 
+  it('a task assigned and completed in the same millisecond still shows the assigner the news', async () => {
+    const { deps } = setup()
+    const frozen = new Date('2026-11-23T10:00:00Z')
+    const same: AssignedTaskDeps = { ...deps, now: () => frozen }
+    const task = await assignTask(same, alex, { assigneeId: 'ony', title: 'Send the Q4 deck' })
+    await completeTask(same, ony, task.id)
+    expect((await needsYouTasks(same, 'alex')).updates).toMatchObject([{ update: { kind: 'completed' } }])
+  })
+
   it('only the assignee completes; twice is refused; strangers get not found', async () => {
     const { deps } = setup()
     const task = await assignTask(deps, alex, { assigneeId: 'ony', title: 'X' })

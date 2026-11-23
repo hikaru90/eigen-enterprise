@@ -118,7 +118,8 @@ async function send(d: AssignedTaskDeps, userId: string, n: TaskNotification): P
 }
 
 function unseen(updateAt: Date | null, seenAt: Date | null): boolean {
-  return updateAt !== null && (seenAt === null || seenAt.getTime() < updateAt.getTime())
+  // A tie counts as unseen: an update in the same millisecond as the last look (e.g. assigned and done at once) must not vanish.
+  return updateAt !== null && (seenAt === null || seenAt.getTime() <= updateAt.getTime())
 }
 
 async function views(d: AssignedTaskDeps, viewerId: string, tasks: AssignedTask[]): Promise<AssignedTaskView[]> {
