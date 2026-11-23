@@ -9,13 +9,12 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **340** — tool 101, human-only 46, transport 48, no effect 16, **debt 129**.
+Mutating entry points: **340** — tool 110, human-only 46, transport 48, no effect 16, **debt 120**.
 
 | Module | Debt |
 |---|---|
 | email | 41 |
 | memory | 31 |
-| drive | 9 |
 | kernel | 9 |
 | messages | 9 |
 | calendar | 7 |
@@ -105,18 +104,6 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 - `/api/timeline/projects/[entityId]/review/apply POST` — Apply a project review (task statuses, new tasks).
 - `/api/timeline/projects/[entityId]/update PUT` — Rename a project.
 - `/api/timeline/projects/assign POST` — Assign a thought to a project.
-
-## drive (9)
-
-- `/api/drive/documents POST` — New empty Document (.md) or Table (.csv); drive.create_document makes .md with text only.
-- `/api/drive/files/[id]/content PUT` — Save an office file’s bytes (PDF, Word, PowerPoint) as a new revision.
-- `/api/drive/files/[id]/revisions POST` — Restore a file revision.
-- `/api/drive/folders POST` — Create a folder.
-- `/api/drive/items/[type]/[id] DELETE` — Move a file or folder to the trash, or delete it forever.
-- `/api/drive/items/[type]/[id] PATCH` — Rename or move a file or folder.
-- `/api/drive/items/[type]/[id]/grants PUT` — Share: set who may open or edit.
-- `/api/drive/items/[type]/[id]/restore POST` — Restore from the trash.
-- `/api/drive/upload POST` — Upload files.
 
 ## kernel (9)
 
