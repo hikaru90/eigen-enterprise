@@ -2,6 +2,7 @@ import type { EmailPlatform } from './service'
 import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { EMAIL_MODULE_ID } from '../manifest'
+import { createEmailManageTools } from './manage-tools'
 import { MESSAGE_STATUSES } from './status'
 
 /**
@@ -331,5 +332,6 @@ export function createEmailPlatformTools(deps: EmailPlatformToolDeps = {}): Tool
         return { email, removed: true }
       },
     },
+    ...createEmailManageTools(deps.platform ? { platform: deps.platform } : {}),
   ]
 }

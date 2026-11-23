@@ -9,12 +9,11 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **340** — tool 136, human-only 46, transport 48, no effect 16, **debt 94**.
+Mutating entry points: **340** — tool 160, human-only 46, transport 48, no effect 16, **debt 70**.
 
 | Module | Debt |
 |---|---|
 | memory | 31 |
-| email | 24 |
 | kernel | 9 |
 | calendar | 7 |
 | calls | 6 |
@@ -59,33 +58,6 @@ Mutating entry points: **340** — tool 136, human-only 46, transport 48, no eff
 - `/api/timeline/projects/[entityId]/review/apply POST` — Apply a project review (task statuses, new tasks).
 - `/api/timeline/projects/[entityId]/update PUT` — Rename a project.
 - `/api/timeline/projects/assign POST` — Assign a thought to a project.
-
-## email (24)
-
-- `/(nucleus)/m/email/domains/[id] ?/delete` — Remove a sender domain.
-- `/(nucleus)/m/email/domains/[id] ?/receiving` — Switch receiving (MX) on or off for a domain.
-- `/(nucleus)/m/email/domains/[id] ?/tracking` — Open/click tracking for a domain.
-- `/(nucleus)/m/email/layouts ?/create` — Create a mail layout.
-- `/(nucleus)/m/email/layouts/[id] ?/delete` — Delete a mail layout.
-- `/(nucleus)/m/email/layouts/[id] ?/save` — Edit a mail layout.
-- `/(nucleus)/m/email/marketing/flows ?/create` — Create an email flow (email.flow_list only reads).
-- `/(nucleus)/m/email/marketing/flows/[id] ?/delete` — Delete an email flow.
-- `/(nucleus)/m/email/marketing/flows/[id] ?/save` — Edit an email flow.
-- `/(nucleus)/m/email/marketing/flows/[id] ?/status` — Start, pause or stop an email flow.
-- `/(nucleus)/m/email/marketing/lists ?/create` — Create a contact list.
-- `/(nucleus)/m/email/marketing/lists/[id] ?/delete` — Delete a contact list.
-- `/(nucleus)/m/email/marketing/lists/[id] ?/import` — Import people into a list (CSV).
-- `/(nucleus)/m/email/marketing/lists/[id] ?/remove` — Remove a person from a list.
-- `/(nucleus)/m/email/marketing/lists/[id] ?/settings` — List settings (double opt-in, public sign-up).
-- `/(nucleus)/m/email/senders ?/makeDefault` — Make a sender the default.
-- `/(nucleus)/m/email/senders ?/remove` — Remove a sender.
-- `/(nucleus)/m/email/setup ?/events` — Wire SES delivery events (SNS topic, configuration sets) at Amazon.
-- `/(nucleus)/m/email/setup ?/receiving` — Set up receiving at Amazon (bucket, topic, rule set).
-- `/(nucleus)/m/email/templates ?/create` — Create a mail template.
-- `/(nucleus)/m/email/templates/[id] ?/delete` — Delete a mail template.
-- `/(nucleus)/m/email/templates/[id] ?/save` — Edit a mail template.
-- `/(nucleus)/m/email/templates/[id] ?/test` — Save the draft template and send myself a test.
-- `/api/onboarding/sender POST` — Make an address on a company domain the default sender (managed box).
 
 ## kernel (9)
 
