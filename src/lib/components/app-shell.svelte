@@ -384,7 +384,7 @@
           </div>
         {/if}
       </div>
-      <!-- Top right: anyone proposes an improvement to the app (the Contribute board). -->
+      <!-- Top right: anyone proposes an improvement to the app (the Make a wish board). -->
       <ContributeButton />
     </header>
 

@@ -25,12 +25,12 @@ describe('share-settings-card.svelte', () => {
   // share-fields.spec.ts (node) pins SHARED_FIELDS to the contract's keys.
   it('lists exactly the fields that are sent, says what never is, and where sending stands', async () => {
     render(ShareSettingsCard, { status: status(), result: null })
-    await expect.element(page.getByText('Share proposals with the eigenEnterprise makers')).toBeInTheDocument()
+    await expect.element(page.getByText('Share wishes with the eigenEnterprise makers')).toBeInTheDocument()
     await expect.element(page.getByTestId('share-enabled')).toHaveTextContent('On')
     const fields = page.getByTestId('share-fields').element().querySelectorAll('li')
     expect([...fields].map((li) => li.textContent?.trim())).toEqual(Object.values(SHARED_FIELDS))
     await expect.element(page.getByText('Who proposed or voted, names, emails')).toBeInTheDocument()
-    await expect.element(page.getByTestId('share-counts')).toHaveTextContent('2 proposals waiting · 5 shared')
+    await expect.element(page.getByTestId('share-counts')).toHaveTextContent('2 wishes waiting · 5 shared')
     expect(page.getByTestId('share-not-configured').elements()).toHaveLength(0)
     await expect.element(page.getByTestId('share-toggle')).toHaveTextContent('Turn sharing off')
   })

@@ -6,27 +6,25 @@
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { CONTRIBUTE_DEPENDENCY } from '$lib/contribute/board'
   import { contributeClient } from '$lib/contribute/client'
+  import { m } from '$lib/paraglide/messages.js'
   import { docTitle } from '$lib/shell/title'
 
-  /** /contribute: what people asked for, voted on, and picked up by an agent. */
+  /** /contribute ("Make a wish"): what people wished for, voted on, and picked up by an agent. */
   let { data }: PageProps = $props()
   const client = contributeClient()
 </script>
 
 <svelte:head>
-  <title>{docTitle('Contribute')}</title>
+  <title>{docTitle(m.wish_name())}</title>
 </svelte:head>
 
 <PageFrame testid="contribute">
   <PageHeader
-    title="Contribute"
+    title={m.wish_name()}
     part="contribute"
   >
     {#snippet info()}
-      <p>
-        Ideas, bugs and polish requests from everyone at {data.companyName ?? 'your company'}. Propose one with
-        Contribute at the top right and vote for the ones you want most; an agent picks them up from here.
-      </p>
+      <p>{m.wish_page_info({ company: data.companyName ?? m.wish_page_your_company() })}</p>
     {/snippet}
   </PageHeader>
   <div class="mt-6">

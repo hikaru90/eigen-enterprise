@@ -1,7 +1,8 @@
 import type { ContributionCheck, ContributionDto } from '../../../../modules/contribute/types'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page, userEvent } from 'vitest/browser'
+import { setLocale } from '$lib/paraglide/runtime'
 import ContributeButton from './contribute-button.svelte'
 import ContributeComposer from './contribute-composer.svelte'
 
@@ -52,7 +53,7 @@ describe('contribute-composer.svelte', () => {
     expect(client.check).toHaveBeenCalledWith('Threads lose my replies')
     expect(client.share).toHaveBeenCalledWith({ title: 'Threads lose my replies', kind: 'bug', area: 'messages' })
     expect(onchanged).toHaveBeenCalledTimes(1)
-    await page.getByRole('button', { name: 'Propose another' }).click()
+    await page.getByRole('button', { name: 'Make another wish' }).click()
     await expect.element(page.getByTestId('contribute-input')).toHaveValue('')
   })
 
@@ -96,6 +97,28 @@ describe('contribute-composer.svelte', () => {
 })
 
 describe('contribute-button.svelte', () => {
+  afterEach(() => setLocale('en', { reload: false }))
+
+  it('is "Make a wish" with a magic wand (board bcd930e2, 3786cf54)', async () => {
+    render(ContributeButton)
+    const trigger = page.getByTestId('contribute-trigger')
+    await expect.element(trigger).toHaveAccessibleName('Make a wish: propose an improvement')
+    await expect.element(trigger).toHaveTextContent('Make a wish')
+    expect(trigger.element().querySelector('svg.lucide-wand-sparkles')).not.toBeNull()
+    expect(trigger.element().querySelector('svg.lucide-lightbulb')).toBeNull()
+  })
+
+  it('says "Wünsch dir was" in German, in the button and the composer', async () => {
+    setLocale('de', { reload: false })
+    render(ContributeButton)
+    const trigger = page.getByTestId('contribute-trigger')
+    await expect.element(trigger).toHaveAccessibleName('Wünsch dir was: schlag eine Verbesserung vor')
+    await expect.element(trigger).toHaveTextContent('Wünsch dir was')
+    await trigger.click()
+    await expect.element(page.getByLabelText('Dein Wunsch')).toBeInTheDocument()
+    await expect.element(page.getByRole('link', { name: 'Zum Board' })).toBeInTheDocument()
+  })
+
   it('a click outside closes the popover but keeps the draft (board bug: text gone after one stray click)', async () => {
     render(ContributeButton)
     await page.getByTestId('contribute-trigger').click()

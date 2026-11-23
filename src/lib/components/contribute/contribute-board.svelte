@@ -8,12 +8,13 @@
   import type { ContributeClient } from '$lib/contribute/client'
   import { AREA_LABEL, KIND_LABEL, STATUS_LABEL } from '$lib/contribute/labels'
   import { SHARE_STATE_LABEL } from '$lib/contribute/share-fields'
+  import { m } from '$lib/paraglide/messages.js'
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
   import { CONTRIBUTION_STATUSES } from '../../../../modules/contribute/types'
 
   /**
-   * The Contribute board (Eigen's board tabs): Requested · In progress ·
+   * The Make a wish board (module `contribute`; Eigen's board tabs): Requested · In progress ·
    * Shipped, most wanted first. Everyone votes (a second click takes the vote
    * back; shipped is closed). The owner and admins move a proposal along and
    * leave the note people read — the agent does the same through the tools.
@@ -52,15 +53,15 @@
   const counts = $derived(tabCounts(shown))
   const rows = $derived(inTab(shown, tab))
 
-  const TAB_LABEL: Record<BoardTab, string> = {
-    requested: 'Requested',
-    in_progress: 'In progress',
-    shipped: 'Shipped',
+  const TAB_LABEL: Record<BoardTab, () => string> = {
+    requested: m.wish_status_requested,
+    in_progress: m.wish_status_in_progress,
+    shipped: m.wish_status_shipped,
   }
-  const EMPTY: Record<BoardTab, string> = {
-    requested: 'Nothing requested yet. Use Contribute at the top right to propose an improvement.',
-    in_progress: 'Nothing in progress right now.',
-    shipped: 'Nothing shipped from the board yet.',
+  const EMPTY: Record<BoardTab, () => string> = {
+    requested: m.wish_board_empty_requested,
+    in_progress: m.wish_board_empty_in_progress,
+    shipped: m.wish_board_empty_shipped,
   }
   const dateFmt = new Intl.DateTimeFormat(undefined, {
     day: 'numeric',
@@ -131,7 +132,7 @@
 </script>
 
 <div class="flex flex-col gap-4" data-testid="contribute-board">
-  <div class="flex gap-1 border-b border-border" role="tablist" aria-label="Board">
+  <div class="flex gap-1 border-b border-border" role="tablist" aria-label={m.wish_board_label()}>
     {#each BOARD_TABS as t (t)}
       <button
         type="button"
@@ -143,7 +144,7 @@
         onclick={() => (tab = t)}
         data-testid="contribute-tab-{t}"
       >
-        {TAB_LABEL[t]} <span class="text-muted-foreground">{counts[t]}</span>
+        {TAB_LABEL[t]()} <span class="text-muted-foreground">{counts[t]}</span>
       </button>
     {/each}
   </div>
@@ -151,12 +152,12 @@
   {#if error}
     <ErrorNotice
       {error}
-      attempted="Voting on, updating, or withdrawing a contribution on the Contribute board"
+      attempted={m.wish_board_attempted()}
     />
   {/if}
 
   {#if rows.length === 0}
-    <p class="py-10 text-center text-sm text-foreground/60">{EMPTY[tab]}</p>
+    <p class="py-10 text-center text-sm text-foreground/60">{EMPTY[tab]()}</p>
   {:else}
     <ul class="divide-y divide-border rounded-md border border-border">
       {#each rows as p (p.id)}
@@ -198,7 +199,7 @@
           <div class="min-w-0 flex-1">
             <p class="text-sm whitespace-pre-line [overflow-wrap:anywhere]">{p.title}</p>
             <p class="mt-1 text-xs text-muted-foreground">
-              {KIND_LABEL[p.kind]} · {AREA_LABEL[p.area]} · {p.own ? 'you' : p.authorName} · {dateFmt.format(
+              {KIND_LABEL[p.kind]()} · {AREA_LABEL[p.area]()} · {p.own ? m.wish_board_you() : p.authorName} · {dateFmt.format(
                 new Date(p.createdAt),
               )}
               {#if p.shippedAt}· shipped {dateFmt.format(new Date(p.shippedAt))}{/if}
@@ -327,14 +328,14 @@
                 onchange={(e) =>
                   setStatus(p, (e.currentTarget as HTMLSelectElement).value as ContributionStatus)}
               >
-                {#each CONTRIBUTION_STATUSES as s (s)}<option value={s}>{STATUS_LABEL[s]}</option
+                {#each CONTRIBUTION_STATUSES as s (s)}<option value={s}>{STATUS_LABEL[s]()}</option
                   >{/each}
               </select>
             </div>
           {:else}
             <span
               class="shrink-0 self-start rounded-full bg-primary/[0.06] px-2 py-0.5 text-xs text-foreground/70"
-              >{STATUS_LABEL[p.status]}</span
+              >{STATUS_LABEL[p.status]()}</span
             >
           {/if}
         </li>
