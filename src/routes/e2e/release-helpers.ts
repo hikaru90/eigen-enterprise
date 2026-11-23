@@ -214,7 +214,7 @@ export function assertReleasePreflight(): void {
   const missing = getReleasePreflightMissing()
   if (missing.length > 0) {
     throw new Error(
-      `Release e2e preflight failed. Set these in .env before running npm run test:e2e:release:\n${missing.map((k) => `  - ${k}`).join('\n')}`,
+      `Release e2e preflight failed. Set these in .env before running npm run test:e2e:release:headed:\n${missing.map((k) => `  - ${k}`).join('\n')}`,
     )
   }
 }

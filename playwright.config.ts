@@ -175,6 +175,10 @@ export default defineConfig({
     },
   ],
   testMatch: '**/*.e2e.{ts,js}',
+  // The release smoke (@release) runs against a real AI provider and its own .env
+  // (release-helpers.ts preflight); it has its own script, npm run test:e2e:release:headed.
+  // The default run (mock gateway) leaves it out instead of failing its preflight every time.
+  grepInvert: process.env.PW_RELEASE === '1' ? undefined : /@release/,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   // Serial workers, on purpose: the suites share singletons — the test DB's
