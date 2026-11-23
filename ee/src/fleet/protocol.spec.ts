@@ -63,7 +63,26 @@ describe('fleet messages', () => {
     const ok = { protocol: 1, enrollToken: 'x'.repeat(40), publicKey: 'AAAA', eeVersion: '0.5.12', features: ['release'] }
     expect(enrollRequestV1.parse(ok)).toEqual(ok)
     expect(() => enrollRequestV1.parse({ ...ok, extra: 1 })).toThrow()
-    expect(() => enrollRequestV1.parse({ ...ok, features: ['shell'] })).toThrow()
+    expect(() => enrollRequestV1.parse({ ...ok, features: [''] })).toThrow()
+  })
+
+  it('a newer box never breaks an older control plane: features it does not know are dropped, not refused', () => {
+    // 2026-11-23: ee-one on v0.5.35 announced `claims` to a control plane that predated it; every poll was refused.
+    const enroll = { protocol: 1, enrollToken: 'x'.repeat(40), publicKey: 'AAAA', eeVersion: '0.9.0', features: ['release', 'teleport'] }
+    expect(enrollRequestV1.parse(enroll).features).toEqual(['release'])
+    const report = {
+      protocol: 1,
+      eeVersion: '0.9.0',
+      features: ['release', 'teleport', 'claims'],
+      release: null,
+      health: { os: 'healthy', reconcileError: null },
+      seats: null,
+      hosts: [],
+      disk: null,
+      backup: null,
+    }
+    expect(reportV1.parse(report).features).toEqual(['release', 'claims'])
+    expect(() => reportV1.parse({ ...report, features: ['x'.repeat(65)] })).toThrow()
   })
 
   it('a report carries what the control plane needs and nothing else', () => {

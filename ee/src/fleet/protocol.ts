@@ -51,6 +51,16 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
 export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
+/**
+ * The features a peer announces. A name this side doesn't know comes from a newer box and is
+ * dropped (that box gets every unknown field at its neutral value), never a reason to refuse the
+ * request: refusing it locks a box out the moment it upgrades ahead of the control plane.
+ */
+const announcedFeatures = z
+  .array(z.string().min(1).max(64))
+  .max(64)
+  .transform((names) => names.filter((n): n is FleetFeature => (FLEET_FEATURES as readonly string[]).includes(n)))
+
 const base64 = z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/)
 const isoTime = z.iso.datetime({ offset: true })
 const httpsOrigin = z.url().refine((u) => new URL(u).protocol === 'https:', { message: 'must be https' })
@@ -65,7 +75,7 @@ export const enrollRequestV1 = z
     /** The box's new Ed25519 public key, SPKI DER, base64. */
     publicKey: base64,
     eeVersion: z.string().min(1).max(64),
-    features: z.array(z.enum(FLEET_FEATURES)),
+    features: announcedFeatures,
   })
   .strict()
 export type EnrollRequestV1 = z.infer<typeof enrollRequestV1>
@@ -84,7 +94,7 @@ export const reportV1 = z
   .object({
     protocol: z.literal(FLEET_PROTOCOL),
     eeVersion: z.string().min(1).max(64),
-    features: z.array(z.enum(FLEET_FEATURES)),
+    features: announcedFeatures,
     /** Basename of the os release tarball running now; null before the first deploy. */
     release: z.string().max(200).nullable(),
     health: z
