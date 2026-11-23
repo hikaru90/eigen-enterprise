@@ -219,7 +219,7 @@ export async function seedCompany(f: CompanyFixture, opts: SeedOptions): Promise
     const actor = { kind: 'user' as const, userId: member[file.owner] }
     const bytes = file.kind === 'md' ? new TextEncoder().encode(file.content) : buildPptx(file.slides)
     const mime = file.kind === 'md' ? 'text/markdown' : OFFICE_MIME.pptx
-    const view = await drive.upload(actor, null, { name: file.name, bytes, mime })
+    const view = await drive.upload(actor, null, { name: file.name, bytes, mime }, 'fail')
     if (file.grant === 'everyone') await drive.setGrants(actor, 'file', view.id, [{ subject: { kind: 'company' }, level: 'view' }])
     else if (file.grant !== 'private') {
       await drive.setGrants(actor, 'file', view.id, file.grant.members.map((k) => ({ subject: { kind: 'user' as const, userId: member[k] }, level: 'view' as const })))

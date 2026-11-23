@@ -47,8 +47,8 @@ async function setup() {
     now: () => new Date((clock.t += 1000)),
   })
   const old = await drive.createFolder(alice, null, 'Old projects')
-  const draft = await drive.upload(alice, old.id, { name: 'pitch-draft-v1.md', bytes: text('v1'), mime: null })
-  const keep = await drive.upload(alice, null, { name: 'company-handbook.md', bytes: text('h'), mime: null })
+  const draft = await drive.upload(alice, old.id, { name: 'pitch-draft-v1.md', bytes: text('v1'), mime: null }, 'fail')
+  const keep = await drive.upload(alice, null, { name: 'company-handbook.md', bytes: text('h'), mime: null }, 'fail')
   clock.t = Date.parse('2026-11-12T10:00:00Z')
   const today = new Date(clock.t)
   return { drive, draft, keep, today }

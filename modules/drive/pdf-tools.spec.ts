@@ -52,7 +52,7 @@ async function setup() {
         opts,
       ),
       mime: 'application/pdf',
-    })
+    }, 'fail')
   const heads = async (id: string) => {
     const text = await extractText((await drive.readFile(alice, id)).bytes)
     return [...text.matchAll(/^(\S+\.pdf page \d+)$/gm)].map((m) => m[1])
@@ -266,7 +266,7 @@ describe('drive.pdf_* tools (Organise as registry actions)', () => {
       name: 'locked.pdf',
       bytes: encryptedPdf('pw', 'Hidden'),
       mime: 'application/pdf',
-    })
+    }, 'fail')
     await expect(
       tool('drive.pdf_rotate').handler(as('alice'), {
         file_id: locked.id,

@@ -713,7 +713,7 @@ export function createDriveService(deps: DriveDeps) {
       actor: Actor,
       folderId: string | null,
       file: { name: string; bytes: Uint8Array; mime: string | null },
-      onConflict: OnConflict = 'fail',
+      onConflict: OnConflict,
     ): Promise<ItemView & { outcome: UploadOutcome }> {
       const name = cleanName(file.name)
       await requireTarget(actor, folderId)

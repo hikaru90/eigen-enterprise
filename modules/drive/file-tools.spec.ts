@@ -90,7 +90,7 @@ describe('drive file-management tools (UI parity)', () => {
   it('saves bytes as a revision, lists revisions and restores one', async () => {
     const { drive, tool, human } = await setup()
     const me = human('alice')
-    const f = await drive.upload(alice, null, { name: 'deck.pdf', bytes: new TextEncoder().encode('%PDF-1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'deck.pdf', bytes: new TextEncoder().encode('%PDF-1'), mime: 'application/pdf' }, 'fail')
     await tool('drive.save_file_bytes').handler(me, { file_id: f.id, content_base64: b64('%PDF-2') })
     const { revisions } = (await tool('drive.list_revisions').handler(me, { file_id: f.id })) as { revisions: Array<{ id: string }> }
     expect(revisions).toHaveLength(2)

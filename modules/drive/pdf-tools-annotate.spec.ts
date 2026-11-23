@@ -45,7 +45,7 @@ async function setup() {
   })
   const folder = await drive.createFolder(alice, null, 'Reports')
   const upload = async (bytes: Uint8Array, name = 'report.pdf') =>
-    drive.upload(alice, folder.id, { name, bytes, mime: 'application/pdf' })
+    drive.upload(alice, folder.id, { name, bytes, mime: 'application/pdf' }, 'fail')
   const contents = async (id: string) =>
     readPdfContents({ bytes: (await drive.readFile(alice, id)).bytes })
   return { drive, tool, as, folder, upload, contents }

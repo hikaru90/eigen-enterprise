@@ -44,7 +44,7 @@ async function expectCode(p: Promise<unknown>, code: DriveError['code']) {
 describe('drive: office files (PDF, Word, PowerPoint) keep binary revisions', () => {
   it('an upload starts the history; each save is a new revision of the bytes', async () => {
     const { drive, blobs } = await setup()
-    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' }, 'fail')
     expect(await drive.listRevisions(alice, f.id)).toHaveLength(1)
     const out = await drive.writeBytes(alice, f.id, pdf('v2'))
     expect(out.file.size).toBe(pdf('v2').byteLength)
@@ -70,7 +70,7 @@ describe('drive: office files (PDF, Word, PowerPoint) keep binary revisions', ()
 
   it('saves under one edit session fold into one revision, like text', async () => {
     const { drive } = await setup()
-    const f = await drive.upload(alice, null, { name: 'letter.docx', bytes: zip('a'), mime: null })
+    const f = await drive.upload(alice, null, { name: 'letter.docx', bytes: zip('a'), mime: null }, 'fail')
     expect(await drive.acquireLock(alice, f.id, 'session-a1')).toMatchObject({ state: 'held' })
     await drive.writeBytes(alice, f.id, zip('b'), 'session-a1')
     await drive.writeBytes(alice, f.id, zip('c'), 'session-a1')
@@ -79,9 +79,9 @@ describe('drive: office files (PDF, Word, PowerPoint) keep binary revisions', ()
 
   it('refuses bytes of another format, text files, view-only people and someone else’s live lock', async () => {
     const { drive } = await setup()
-    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' }, 'fail')
     await expect(drive.writeBytes(alice, f.id, zip('not a pdf'))).rejects.toThrow(/not a PDF/)
-    const d = await drive.upload(alice, null, { name: 'letter.docx', bytes: zip('a'), mime: null })
+    const d = await drive.upload(alice, null, { name: 'letter.docx', bytes: zip('a'), mime: null }, 'fail')
     await expect(drive.writeBytes(alice, d.id, pdf('not a docx'))).rejects.toThrow(/not a Word/)
     const md = await drive.createDocument(alice, null, 'md', 'notes')
     await expectCode(drive.writeBytes(alice, md.id, text('# hi')), 'invalid')
@@ -97,7 +97,7 @@ describe('drive: office files (PDF, Word, PowerPoint) keep binary revisions', ()
 
   it('refuses a save over the size limit', async () => {
     const { drive } = await setup(64)
-    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' }, 'fail')
     await expectCode(drive.writeBytes(alice, f.id, pdf('x'.repeat(100))), 'too_large')
   })
 })
@@ -106,7 +106,7 @@ describe('drive: reading an office file as text', () => {
   it('hands the bytes to its format’s text extraction', async () => {
     const { drive } = await setup()
     extract.fn.mockResolvedValue('# Plan\n\nPage one')
-    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' }, 'fail')
     expect((await drive.readText(alice, f.id)).content).toBe('# Plan\n\nPage one')
     expect(extract.fn).toHaveBeenCalledWith('pdf', pdf('v1'))
   })
@@ -114,14 +114,14 @@ describe('drive: reading an office file as text', () => {
   it('a format without text extraction yet says so plainly', async () => {
     const { drive } = await setup()
     extract.fn.mockRejectedValue(new OfficeNotSupportedError('pptx', 'reading text'))
-    const f = await drive.upload(alice, null, { name: 'deck.pptx', bytes: zip('a'), mime: null })
+    const f = await drive.upload(alice, null, { name: 'deck.pptx', bytes: zip('a'), mime: null }, 'fail')
     await expect(drive.readText(alice, f.id)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/PowerPoint.*not supported yet/) })
   })
 
   it('a broken file fails loud, not as empty text', async () => {
     const { drive } = await setup()
     extract.fn.mockRejectedValue(new Error('bad xref table'))
-    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' }, 'fail')
     await expect(drive.readText(alice, f.id)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/could not be read: bad xref table/) })
   })
 })
@@ -129,7 +129,7 @@ describe('drive: reading an office file as text', () => {
 describe('drive: earlier versions of an office file', () => {
   it('reads the bytes of one revision, and restoring one saves it again as the newest', async () => {
     const { drive } = await setup()
-    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' }, 'fail')
     await drive.writeBytes(alice, f.id, pdf('v2'))
     const [, first] = await drive.listRevisions(alice, f.id)
     const old = await drive.readRevisionBytes(alice, f.id, first!.id)
@@ -142,8 +142,8 @@ describe('drive: earlier versions of an office file', () => {
 
   it('a revision of another file, or of a file you cannot see, is not found', async () => {
     const { drive } = await setup()
-    const a = await drive.upload(alice, null, { name: 'a.pdf', bytes: pdf('a'), mime: 'application/pdf' })
-    const b = await drive.upload(alice, null, { name: 'b.pdf', bytes: pdf('b'), mime: 'application/pdf' })
+    const a = await drive.upload(alice, null, { name: 'a.pdf', bytes: pdf('a'), mime: 'application/pdf' }, 'fail')
+    const b = await drive.upload(alice, null, { name: 'b.pdf', bytes: pdf('b'), mime: 'application/pdf' }, 'fail')
     const [revA] = await drive.listRevisions(alice, a.id)
     await expectCode(drive.readRevisionBytes(alice, b.id, revA!.id), 'not_found')
     await expectCode(drive.readRevisionBytes(bob, a.id, revA!.id), 'not_found')

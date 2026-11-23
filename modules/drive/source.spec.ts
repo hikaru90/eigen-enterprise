@@ -93,7 +93,7 @@ describe('source folders: read-only in Drive', () => {
       await refused(drive.archive(actor, 'file', overviewId))
       await refused(drive.writeText(actor, overviewId, 'changed'))
       await refused(drive.acquireLock(actor, overviewId, 'session-1'))
-      await refused(drive.upload(actor, repo, { name: 'x.png', bytes: bytes('p'), mime: 'image/png' }))
+      await refused(drive.upload(actor, repo, { name: 'x.png', bytes: bytes('p'), mime: 'image/png' }, 'fail'))
       await refused(drive.createDocument(actor, root.folderId, 'md'))
       await refused(drive.createFolder(actor, repo, 'New'))
     }

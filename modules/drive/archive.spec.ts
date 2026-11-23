@@ -63,8 +63,8 @@ describe('drive archive: a state, not a folder', () => {
     const { drive, store } = await setup()
     const projects = await drive.createFolder(alice, null, 'Projects')
     const old = await drive.createFolder(alice, null, 'Old')
-    const plan = await drive.upload(alice, projects.id, { name: 'plan.pdf', bytes: text('%PDF'), mime: 'application/pdf' })
-    await drive.upload(alice, projects.id, { name: 'live.md', bytes: text('# hi'), mime: null })
+    const plan = await drive.upload(alice, projects.id, { name: 'plan.pdf', bytes: text('%PDF'), mime: 'application/pdf' }, 'fail')
+    await drive.upload(alice, projects.id, { name: 'live.md', bytes: text('# hi'), mime: null }, 'fail')
 
     const archived = await drive.archive(alice, 'file', plan.id)
     expect(archived).toMatchObject({ id: plan.id, archivedBy: 'alice' })
@@ -79,7 +79,7 @@ describe('drive archive: a state, not a folder', () => {
 
   it('an archived file still opens, reads and downloads; its page knows it is archived', async () => {
     const { drive } = await setup()
-    const doc = await drive.upload(alice, null, { name: 'notes.md', bytes: text('kept'), mime: null })
+    const doc = await drive.upload(alice, null, { name: 'notes.md', bytes: text('kept'), mime: null }, 'fail')
     await drive.archive(alice, 'file', doc.id)
     const info = await drive.fileInfo(alice, doc.id)
     expect(info.file.archivedAt).toBeInstanceOf(Date)
@@ -92,7 +92,7 @@ describe('drive archive: a state, not a folder', () => {
     const { drive } = await setup()
     const y2024 = await drive.createFolder(alice, null, '2024')
     const q1 = await drive.createFolder(alice, y2024.id, 'Q1')
-    const doc = await drive.upload(alice, q1.id, { name: 'report.md', bytes: text('r'), mime: null })
+    const doc = await drive.upload(alice, q1.id, { name: 'report.md', bytes: text('r'), mime: null }, 'fail')
     await drive.archive(alice, 'folder', y2024.id)
     const info = await drive.fileInfo(alice, doc.id)
     expect(info.file.archivedAt).toBeNull()
@@ -107,9 +107,9 @@ describe('drive archive: a state, not a folder', () => {
   it('search still finds archived items (and what is inside archived folders), marked', async () => {
     const { drive } = await setup()
     const y2024 = await drive.createFolder(alice, null, '2024 budget')
-    await drive.upload(alice, y2024.id, { name: 'budget-q1.csv', bytes: text('a'), mime: null })
-    const old = await drive.upload(alice, null, { name: 'budget-old.csv', bytes: text('a'), mime: null })
-    await drive.upload(alice, null, { name: 'budget-now.csv', bytes: text('a'), mime: null })
+    await drive.upload(alice, y2024.id, { name: 'budget-q1.csv', bytes: text('a'), mime: null }, 'fail')
+    const old = await drive.upload(alice, null, { name: 'budget-old.csv', bytes: text('a'), mime: null }, 'fail')
+    await drive.upload(alice, null, { name: 'budget-now.csv', bytes: text('a'), mime: null }, 'fail')
     await drive.archive(alice, 'folder', y2024.id)
     await drive.archive(alice, 'file', old.id)
     const found = await drive.search(alice, 'budget')
@@ -123,7 +123,7 @@ describe('drive archive: a state, not a folder', () => {
 
   it('whoever can edit archives and unarchives; a viewer may not; a stranger does not learn it exists', async () => {
     const { drive, share } = await setup()
-    const doc = await drive.upload(alice, null, { name: 'shared.md', bytes: text('s'), mime: null })
+    const doc = await drive.upload(alice, null, { name: 'shared.md', bytes: text('s'), mime: null }, 'fail')
     await share('file', doc.id, 'bob', 'view')
     await expect(drive.archive(bob, 'file', doc.id)).rejects.toMatchObject({ code: 'forbidden' })
     await expect(drive.archive(stranger, 'file', doc.id)).rejects.toMatchObject({ code: 'not_found' })
@@ -136,17 +136,17 @@ describe('drive archive: a state, not a folder', () => {
 
   it('the agent archives with admin rights; it is recorded as the one who did', async () => {
     const { drive } = await setup()
-    const doc = await drive.upload(alice, null, { name: 'a.md', bytes: text('a'), mime: null })
+    const doc = await drive.upload(alice, null, { name: 'a.md', bytes: text('a'), mime: null }, 'fail')
     expect(await drive.archive(agent, 'file', doc.id)).toMatchObject({ archivedBy: 'agent:1' })
   })
 
   it('archiving twice, unarchiving what is not archived and archiving from the trash are refused plainly', async () => {
     const { drive } = await setup()
-    const doc = await drive.upload(alice, null, { name: 'a.md', bytes: text('a'), mime: null })
+    const doc = await drive.upload(alice, null, { name: 'a.md', bytes: text('a'), mime: null }, 'fail')
     await expect(drive.unarchive(alice, 'file', doc.id)).rejects.toMatchObject({ code: 'invalid', message: '“a.md” is not archived.' })
     await drive.archive(alice, 'file', doc.id)
     await expect(drive.archive(alice, 'file', doc.id)).rejects.toMatchObject({ code: 'invalid', message: '“a.md” is already archived.' })
-    const trashed = await drive.upload(alice, null, { name: 't.md', bytes: text('t'), mime: null })
+    const trashed = await drive.upload(alice, null, { name: 't.md', bytes: text('t'), mime: null }, 'fail')
     await drive.moveToTrash(alice, 'file', trashed.id)
     await expect(drive.archive(alice, 'file', trashed.id)).rejects.toMatchObject({ code: 'not_found' })
   })
@@ -154,7 +154,7 @@ describe('drive archive: a state, not a folder', () => {
   it('unarchive puts it back in the normal view; inside a still-archived folder it says so', async () => {
     const { drive } = await setup()
     const y2024 = await drive.createFolder(alice, null, '2024')
-    const doc = await drive.upload(alice, y2024.id, { name: 'r.md', bytes: text('r'), mime: null })
+    const doc = await drive.upload(alice, y2024.id, { name: 'r.md', bytes: text('r'), mime: null }, 'fail')
     await drive.archive(alice, 'file', doc.id)
     await drive.archive(alice, 'folder', y2024.id)
     const back = await drive.unarchive(alice, 'file', doc.id)
@@ -167,7 +167,7 @@ describe('drive archive: a state, not a folder', () => {
 
   it('a trashed archived item goes to the trash as usual and comes back archived', async () => {
     const { drive } = await setup()
-    const doc = await drive.upload(alice, null, { name: 'a.md', bytes: text('a'), mime: null })
+    const doc = await drive.upload(alice, null, { name: 'a.md', bytes: text('a'), mime: null }, 'fail')
     await drive.archive(alice, 'file', doc.id)
     await drive.moveToTrash(alice, 'file', doc.id)
     expect(await drive.archived(alice)).toEqual([])
@@ -179,8 +179,8 @@ describe('drive archive: a state, not a folder', () => {
   it('Shared with me leaves out what was archived', async () => {
     const { drive, share } = await setup()
     const folder = await drive.createFolder(alice, null, 'Team')
-    await drive.upload(alice, folder.id, { name: 'inside.md', bytes: text('i'), mime: null })
-    const loose = await drive.upload(alice, null, { name: 'loose.md', bytes: text('l'), mime: null })
+    await drive.upload(alice, folder.id, { name: 'inside.md', bytes: text('i'), mime: null }, 'fail')
+    const loose = await drive.upload(alice, null, { name: 'loose.md', bytes: text('l'), mime: null }, 'fail')
     await share('folder', folder.id, 'bob', 'view')
     await share('file', loose.id, 'bob', 'view')
     expect(names(await drive.sharedWithMe(bob))).toEqual(['Team', 'loose.md'])
@@ -195,10 +195,10 @@ describe('drive archive: the Archived view', () => {
     const { drive, share } = await setup()
     const projects = await drive.createFolder(alice, null, 'Projects')
     const y2023 = await drive.createFolder(alice, projects.id, '2023')
-    const a = await drive.upload(alice, y2023.id, { name: 'a.md', bytes: text('a'), mime: null })
-    const b = await drive.upload(alice, y2023.id, { name: 'b.md', bytes: text('b'), mime: null })
-    const top = await drive.upload(alice, null, { name: 'top.md', bytes: text('t'), mime: null })
-    const bobs = await drive.upload(bob, null, { name: 'bobs.md', bytes: text('x'), mime: null })
+    const a = await drive.upload(alice, y2023.id, { name: 'a.md', bytes: text('a'), mime: null }, 'fail')
+    const b = await drive.upload(alice, y2023.id, { name: 'b.md', bytes: text('b'), mime: null }, 'fail')
+    const top = await drive.upload(alice, null, { name: 'top.md', bytes: text('t'), mime: null }, 'fail')
+    const bobs = await drive.upload(bob, null, { name: 'bobs.md', bytes: text('x'), mime: null }, 'fail')
     await drive.archive(alice, 'file', a.id)
     await drive.archive(alice, 'file', top.id)
     await drive.archive(alice, 'file', b.id)
@@ -229,19 +229,19 @@ describe('drive archive: candidates for "suggest what to archive"', () => {
     const { drive, clock, share } = await setup()
     const start = clock.t
     const old = await drive.createFolder(alice, null, 'Old')
-    const draft = await drive.upload(alice, old.id, { name: 'draft-v1.md', bytes: text('1'), mime: null })
-    const notes = await drive.upload(alice, null, { name: 'notes.md', bytes: text('n'), mime: null })
-    const gone = await drive.upload(alice, null, { name: 'gone.md', bytes: text('g'), mime: null })
-    const done = await drive.upload(alice, null, { name: 'done.md', bytes: text('d'), mime: null })
-    await drive.upload(bob, null, { name: 'bob-only.md', bytes: text('b'), mime: null })
-    const viewOnly = await drive.upload(alice, null, { name: 'view-only.md', bytes: text('v'), mime: null })
+    const draft = await drive.upload(alice, old.id, { name: 'draft-v1.md', bytes: text('1'), mime: null }, 'fail')
+    const notes = await drive.upload(alice, null, { name: 'notes.md', bytes: text('n'), mime: null }, 'fail')
+    const gone = await drive.upload(alice, null, { name: 'gone.md', bytes: text('g'), mime: null }, 'fail')
+    const done = await drive.upload(alice, null, { name: 'done.md', bytes: text('d'), mime: null }, 'fail')
+    await drive.upload(bob, null, { name: 'bob-only.md', bytes: text('b'), mime: null }, 'fail')
+    const viewOnly = await drive.upload(alice, null, { name: 'view-only.md', bytes: text('v'), mime: null }, 'fail')
     const inbox = await drive.createFolder(messages, null, 'Messages')
     const convo = await drive.createFolder(messages, inbox.id, 'general')
-    await drive.upload(messages, convo.id, { name: 'attachment.png', bytes: text('p'), mime: 'image/png' })
+    await drive.upload(messages, convo.id, { name: 'attachment.png', bytes: text('p'), mime: 'image/png' }, 'fail')
     await drive.moveToTrash(alice, 'file', gone.id)
     await drive.archive(alice, 'file', done.id)
     clock.t = start + 200 * DAY
-    await drive.upload(alice, old.id, { name: 'fresh.md', bytes: text('f'), mime: null })
+    await drive.upload(alice, old.id, { name: 'fresh.md', bytes: text('f'), mime: null }, 'fail')
 
     const cutoff = new Date(start + 100 * DAY)
     const forAlice = await drive.archiveCandidates(alice, { changedBefore: cutoff, limit: 10 })
@@ -273,7 +273,7 @@ describe('drive archive: candidates for "suggest what to archive"', () => {
     const { drive, clock } = await setup()
     const start = clock.t
     const folder = await drive.createFolder(alice, null, 'Done')
-    await drive.upload(alice, folder.id, { name: 'x.md', bytes: text('x'), mime: null })
+    await drive.upload(alice, folder.id, { name: 'x.md', bytes: text('x'), mime: null }, 'fail')
     await drive.archive(alice, 'folder', folder.id)
     clock.t = start + 400 * DAY
     expect((await drive.archiveCandidates(alice, { changedBefore: new Date(start + 300 * DAY), limit: 10 })).candidates).toEqual([])

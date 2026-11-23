@@ -87,12 +87,12 @@ async function setup(opts: { ee?: EeClient; env?: Record<string, string | undefi
   const human = (id: string) => ({ principal: { id, kind: 'human' as const, roles: ['admin'] }, requestId: 'r' })
   const agent = { principal: { id: 'agent:1', kind: 'agent' as const, roles: ['admin', 'agent'] }, requestId: 'r' }
   const shop = await drive.createFolder(owner, null, 'shop')
-  await drive.upload(owner, shop.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null })
-  await drive.upload(owner, shop.id, { name: 'package-lock.json', bytes: text('{}'), mime: null })
+  await drive.upload(owner, shop.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null }, 'fail')
+  await drive.upload(owner, shop.id, { name: 'package-lock.json', bytes: text('{}'), mime: null }, 'fail')
   const src = await drive.createFolder(owner, shop.id, 'src')
-  await drive.upload(owner, src.id, { name: 'main.ts', bytes: text('export {}\n'), mime: null })
+  await drive.upload(owner, src.id, { name: 'main.ts', bytes: text('export {}\n'), mime: null }, 'fail')
   const nm = await drive.createFolder(owner, shop.id, 'node_modules')
-  await drive.upload(owner, nm.id, { name: 'vite.js', bytes: text('x'), mime: null })
+  await drive.upload(owner, nm.id, { name: 'vite.js', bytes: text('x'), mime: null }, 'fail')
   return { dir, state, drive, ee, tool, human, agent, shop }
 }
 
@@ -165,7 +165,7 @@ describe('drive.app_* tools (plan/phase-drive-app-preview.md)', () => {
     const { drive, tool, human, state, shop } = await setup()
     await tool('drive.app_run').handler(human('owner'), { folder_id: shop.id })
     const blog = await drive.createFolder(owner, null, 'blog')
-    await drive.upload(owner, blog.id, { name: 'package.json', bytes: text('{"scripts":{"start":"node ."}}'), mime: null })
+    await drive.upload(owner, blog.id, { name: 'package.json', bytes: text('{"scripts":{"start":"node ."}}'), mime: null }, 'fail')
     const err = await tool('drive.app_run').handler(human('owner'), { folder_id: blog.id }).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(AppBusyError)
     expect(err).toMatchObject({ code: 'busy', message: 'Another app is running: shop', running: { id: previewIdFor(shop.id), folderName: 'shop' } })
