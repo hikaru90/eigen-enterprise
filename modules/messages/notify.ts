@@ -1,4 +1,5 @@
 import type { Conversation, Person } from './store'
+import { coworkerSlugFromEmail } from '$lib/server/coworkers/handle'
 import { canUse, listConversations, type MessageDto, type MessagesDeps } from './service'
 
 /**
@@ -6,14 +7,26 @@ import { canUse, listConversations, type MessageDto, type MessagesDeps } from '.
  * and quoted replies to the quoted author. A mention is the composer's syntax
  * `@handle`, where a person's handles are their email's local part and their
  * name without spaces (case-insensitive) — a lookup against the member list,
- * not a guess at meaning. Recipients are never the author, never someone who
- * may not see the conversation, and never someone viewing it right now.
+ * not a guess at meaning. An AI co-worker has exactly one handle, its slug
+ * (plan/phase-ai-coworkers.md C3): `@marketing`. Recipients are never the
+ * author, never someone who may not see the conversation, never someone
+ * viewing it right now, and never a co-worker (it has no device; it hears a
+ * mention through its trigger, $lib/server/coworkers/turns.ts).
  * "Their push settings" = whether they turned push on (have a subscription).
  */
 
 export const VIEWING_WINDOW_MS = 60_000
 
+/** The one handle people write to reach someone: a co-worker's slug, a person's email local part. */
+export function primaryHandle(p: Person): string {
+  if (p.kind === 'coworker') return coworkerSlugFromEmail(p.email, p.id)
+  const local = p.email.split('@')[0]?.toLowerCase()
+  if (!local) throw new Error(`member ${p.id} has no email local part to mention them by`)
+  return local
+}
+
 export function handlesOf(p: Person): string[] {
+  if (p.kind === 'coworker') return [coworkerSlugFromEmail(p.email, p.id)]
   const out = new Set<string>()
   const local = p.email.split('@')[0]?.toLowerCase()
   if (local) out.add(local)
@@ -58,9 +71,10 @@ export async function notifyNewMessage(
   ]
   const now = d.now ? d.now() : new Date()
   const viewing = new Set(await d.store.viewersSince(c.id, new Date(now.getTime() - VIEWING_WINDOW_MS)))
+  const coworkers = new Set(people.filter((p) => p.kind === 'coworker').map((p) => p.id))
   const recipients: string[] = []
   for (const userId of new Set(candidates)) {
-    if (userId === m.authorId || viewing.has(userId)) continue
+    if (userId === m.authorId || viewing.has(userId) || coworkers.has(userId)) continue
     if (!(await canUse(d, userId, c))) continue
     if (!(await push.hasSubscription(userId))) continue
     recipients.push(userId)

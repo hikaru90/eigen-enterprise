@@ -17,6 +17,7 @@ export const COWORKERS_TOOL_NAMES = [
   'coworkers.enable',
   'coworkers.disable',
   COWORKERS_REMOVE_TOOL,
+  'coworkers.runs',
   'org.chart',
   'org.set_position',
 ] as const

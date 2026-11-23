@@ -27,7 +27,26 @@ export type PromptShutdownDeps = {
   log?: (message: string) => void
 }
 
-const host = globalThis as { __eePromptShutdown?: boolean }
+const host = globalThis as { __eePromptShutdown?: boolean; __eeShutdownSteps?: Map<string, () => void> }
+
+/** Steps that stop background work the moment the signal arrives (process-wide, by name). */
+function shutdownSteps(): Map<string, () => void> {
+  host.__eeShutdownSteps ??= new Map()
+  return host.__eeShutdownSteps
+}
+
+/**
+ * Registers a step that runs as soon as SIGTERM/SIGINT arrives, before the
+ * grace period: background work stops taking new work (e.g. the AI
+ * co-workers stop hearing messages and claiming turns). Synchronous; one per
+ * name (a re-registration replaces it, so an HMR re-boot keeps one).
+ */
+export function onShutdownSignal(name: string, step: () => void): () => void {
+  shutdownSteps().set(name, step)
+  return () => {
+    if (shutdownSteps().get(name) === step) shutdownSteps().delete(name)
+  }
+}
 
 export function installPromptShutdown(deps: PromptShutdownDeps = {}): void {
   const proc = deps.process ?? (process as unknown as ProcessLike)
@@ -53,6 +72,13 @@ export function installPromptShutdown(deps: PromptShutdownDeps = {}): void {
 
   const onSignal = (signal: 'SIGTERM' | 'SIGINT') => () => {
     log(`[shutdown] ${signal}: closing; exit after open requests or ${graceMs}ms`)
+    for (const [name, step] of shutdownSteps()) {
+      try {
+        step()
+      } catch (err) {
+        console.error(`[shutdown] stopping ${name} failed`, err)
+      }
+    }
     // adapter-node emits this once every request has closed.
     proc.once('sveltekit:shutdown', () => exit('all requests closed'))
     const timer = setTimeout(() => exit(`grace of ${graceMs}ms over; in-flight agent turns resume on reopen`), graceMs)
