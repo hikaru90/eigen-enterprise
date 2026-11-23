@@ -188,7 +188,7 @@ Every milestone is test-first and ends committed, pushed and on the box. A modul
 - **Done when:** a self-hosted box flips the switch and runs on its own key with a spend limit.
 - **Depends on:** CB1.
 
-**CB2 · Jev in the gateway.**
+**CB2 · Jev in the gateway.** *(done 2026-11-23, merge `d075756d`; first kind `website.page_audience` in shadow)*
 - **Build:**
   - A gateway call type, `llmDecide`, with cost tracking.
   - A `decision_log` table.

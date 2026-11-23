@@ -2,6 +2,66 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — CB2: Jev in the gateway (owner: "Yes, build CB2"; `688ae867`, merge `d075756d`, migration 0175, not pushed, not on the box)
+
+- **Jev's contract (one live call, about $0.000017):**
+  - Request: `POST <openrouter>/api/alpha/decisions` with `{model, state, questions:{[id]:{type:'choice', instructions, criteria:{[choice]:criterion}}}}`. Several questions per call work.
+  - Response: `{answers:{[id]:{choice, probabilities, confidence}}, usage:{cost…}}`.
+  - Not on `/chat/completions` ("is a decisions model"). `typesafe/jev-1.13` is unlisted on OpenRouter but live.
+- **Built:**
+  - **`llmDecide`** (`src/lib/server/llm/llm-decide.ts`):
+    - the company decision slot, the daily cap, one `activity_call_log` row per attempt on the acting user;
+    - fails loud on an answer outside the set, a malformed response, a missing slot or key, or a model outside the pool;
+    - retries only 5xx and network errors;
+    - the mock gateway serves `/alpha/decisions` (`scripts/mock-gateway-decisions.mjs`).
+  - **Decision kinds** (`src/lib/server/decisions/kind.ts`): `defineDecisionKind`, declared per module in `modules/<id>/decision-kinds.ts`, catalog in `modules/decision-kinds.ts` with unique ids. Status `shadow | enforced` changes only by commit.
+  - **`decide()`:**
+    - shadow with a current judge: Jev and the judge run in parallel and the judge's answer is returned;
+    - shadow with an explicit `judge:{none:true}`: `observed`, `act:false`;
+    - enforced: Jev only;
+    - low confidence (enforced): a Needs-you question; the caller re-asks with the same input and gets the person's answer.
+  - **`decision_log`** (migration 0175, export `full`): each kind keeps only its own `logInput` view, then secret redaction.
+  - **Tools** `decisions.kinds/log/questions/answer` (kernel, namespace `decisions`). Needs-you question rows map in ui-parity to `decisions.answer`; debt 0.
+  - **Who reads the log:** owner and admins read all rows. Others read the rows about them, made for them or asked of them. Everyone reads per-kind agreement. Only a person answers (co-workers and agents are refused).
+- **First real kind in shadow:** `website.page_audience`. "Is an agent's page public website content or an internal document?" was a chat-model judgement. Jev now runs next to it and gets logged, and the guard still acts on the chat judge. The page body is never logged.
+- **Verified on merged main:** tsc clean, 1277 llm/decisions/kernel/overview/export/website/coworkers/boot/cli specs pass, including the Postgres integration (cost row, log, agreement, answering, read rights). Lint and svelte-check 0 errors in the worktree.
+- **Gaps/risks:**
+  - `decide()` asks one question per call (batching exists only in `llmDecide`);
+  - every agent page write now adds one Jev call and one log row, and a failed log insert fails the guard;
+  - no kind is enforced yet;
+  - no e2e run.
+- **Open for the owner:** shadow decisions cost the requesting user (at provider cost + 20% on eigenInference) instead of being absorbed by us. EigenMesh open question O3.
+- **Note:** the worktree had no OpenRouter key, so the one live contract check used EigenMesh's local key.
+- **Next:** C7 (co-worker event reactions, kind `coworkers.event_mine`, shadow with no judge: log, don't act). Memory one-door M1 (Jev routing in the Ask bar) is unblocked too.
+
+## 2026-11-23 — Upgrades and contribution: plan drafted, v2 built around vibe-coded modules (owner: "who is allowed to push features and updates to the main repo … how do we avoid update incompabilities? and breaking changes? make a plan" · "every open source ee box can vibe code modules and extend funtionality. THIS IS WHAT WE HAVE TO HANDLE!"; `plan/phase-upgrades.md`, DRAFT v2, not committed)
+
+- **v1 → v2:** v1 had company code as one late milestone. v2 starts from the fact that no two boxes run the same software.
+- **Model (v2):** a narrow waist.
+  - The core is signed, identical and read-only on every box.
+  - Modules (vibe-coded on the box or installed) reach it only through `core-api`: tools, events, UI slots, data API, SDK. Each runs in its own process with its own principal, and its `uses:` is enforced at runtime, so the impact of an upgrade on a box is a diff.
+  - The contract only grows, except through deprecations carrying `howToMigrate` written for agents. The box's agent repairs its modules within the window.
+  - A failing module only fails itself.
+  - Features climb a ladder: local → community catalog → curated → core. Only maintainers touch `main`. Boxes push into the core as PRs and as `extension_point` requests.
+  - Upstream locks the contract in the gate, sees a usage map before each deprecation, and runs every catalog module's tests on each release candidate.
+- **Finding:** today modules are compiled in and X0–X4 are not built, so **the only way a box can add a module is to edit the core**. Every vibe-coding box is a fork today. Hence U1 (`core-api` 1.0) and U2 (module runtime) come first, and U5 gives forks a way back.
+- **Found while mapping (fix in U0):**
+  - `kernel.release_install` documents `release` as "the version", but ee's POST requires the full release name, so a bare version gets a 400.
+  - The U2 decision line and the Updates page comment still say "no agent tool".
+  - `0165_website_services_drop_host.sql` dropped a column in an ordinary release, which breaks expand/contract.
+  - The box doesn't check `DOWNGRADE_FLOOR`; only /ops does.
+  - v0.5.38 was tagged with 27 e2e specs failing.
+- **Decisions (owner may veto):**
+  - two channels, with a 24 h / 2 h soak;
+  - a signed, monotonic channel manifest;
+  - a deprecation window of 2 minor releases and 30 days, whichever is longer;
+  - expand/contract enforced by the gate;
+  - automatic rollback to blue, with restore kept as the manual last resort;
+  - a `notify` box is never auto-updated, with a sticky banner after 14 days behind a security release;
+  - 1.0 = contract lock + upgrade transaction shipped.
+- **Owner's calls (§7):** who else may merge `main`; DCO or CLA; the default update policy for customers; whether self-hosted upgrade-outcome reports are on by default.
+- **Next:** the owner reads and decides §7, then U0.
+
 ## 2026-11-23 — Decision: AI co-workers don't count as seats (owner: "ai co workers dont count as seats")
 
 - This closes the open seat question in `plan/phase-ai-coworkers.md` §9. It matches what's built: `countSeats` already leaves co-workers out (C1). No code change.
