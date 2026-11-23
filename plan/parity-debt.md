@@ -9,7 +9,7 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **340** — tool 101, human-only 46, transport 48, no effect 16, **debt 129**.
+Mutating entry points: **340** — tool 112, human-only 46, transport 48, no effect 16, **debt 118**.
 
 | Module | Debt |
 |---|---|
@@ -20,12 +20,8 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 | messages | 9 |
 | calendar | 7 |
 | calls | 6 |
-| contacts | 6 |
 | members | 4 |
-| brand | 2 |
-| contribute | 2 |
 | assistant | 1 |
-| repos | 1 |
 | website | 1 |
 
 ## email (41)
@@ -161,15 +157,6 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 - `/api/calls/[id]/guests/[guestId] DELETE` — Remove a guest from a call.
 - `/api/calls/meetings POST` — Book a meeting (now or later) with guests by email and a duration.
 
-## contacts (6)
-
-- `/(nucleus)/m/email/people/[id] ?/delete` — Delete a contact.
-- `/(nucleus)/m/email/people/[id] ?/share` — Change who sees a contact.
-- `/(nucleus)/m/email/people/import ?/import` — Import contacts.
-- `/(nucleus)/m/email/people/settings ?/company` — Company default visibility of new contacts.
-- `/(nucleus)/m/email/people/settings ?/mine` — My default visibility of new contacts.
-- `/api/contacts/sharing POST` — Share many contacts at once, or make them private.
-
 ## members (4)
 
 - `/(nucleus)/settings/members ?/remove` — Remove a member.
@@ -177,23 +164,9 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 - `/api/profile PUT` — Set my first and last name.
 - `/api/profile/avatar POST` — Set my profile picture (image bytes, cropped).
 
-## brand (2)
-
-- `/api/brand/social/posts POST` — An uploaded social post (multipart files); the JSON graphic post is brand.social_post_create.
-- `/api/brand/social/posts/[id] DELETE` — Delete a social post and its files.
-
-## contribute (2)
-
-- `/api/contribute POST` — Propose an improvement.
-- `/api/contribute/[id]/vote POST` — Vote on a proposal.
-
 ## assistant (1)
 
 - `/api/agent/runs/[id] PATCH` — Rename a conversation.
-
-## repos (1)
-
-- `/(nucleus)/drive/github ?/setRepo` — Choose a repo to sync into Drive, or stop syncing it.
 
 ## website (1)
 

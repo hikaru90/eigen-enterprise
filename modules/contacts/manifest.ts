@@ -9,11 +9,27 @@ export const CONTACTS_TOOL_NAMES = [
   'contacts.pipeline',
   'contacts.create',
   'contacts.update',
+  'contacts.delete',
+  'contacts.set_shared',
+  'contacts.share_many',
+  'contacts.import',
+  'contacts.set_my_default_visibility',
+  'contacts.set_company_default_visibility',
   'contacts.log_contact',
 ] as const
 
 /** The agent's writes wait on the company's approval mode (APPROVAL_REQUIRED_TOOLS). */
-export const CONTACTS_WRITE_TOOLS = ['contacts.create', 'contacts.update', 'contacts.log_contact'] as const
+export const CONTACTS_WRITE_TOOLS = [
+  'contacts.create',
+  'contacts.update',
+  'contacts.log_contact',
+  'contacts.delete',
+  'contacts.set_shared',
+  'contacts.share_many',
+  'contacts.import',
+  'contacts.set_my_default_visibility',
+  'contacts.set_company_default_visibility',
+] as const
 
 /**
  * Contacts (plan/contribute-round-3.md W1): the people the company knows —

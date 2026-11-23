@@ -92,4 +92,16 @@ describe('contribute.* tools', () => {
     expect(update.activity!({ id: 'x', status: 'in_progress' }, out)).toBe('Marked “Dark mode” in progress')
     expect(update.activity!({ id: 'x', note: 'hi' }, undefined)).toBe('Updated the note on a proposal')
   })
+
+  it('a person proposes an improvement and votes on proposals, as on the board (UI parity); the agent on its own does neither', async () => {
+    const { a, tools } = await seeded()
+    expect(tools['contribute.propose']).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
+    expect(tools['contribute.vote']).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
+    const made = (await tools['contribute.propose'].handler(humanCtx('ben'), { title: 'Export to CSV', kind: 'idea', area: 'everywhere' })) as ContributionDto
+    expect(made).toMatchObject({ title: 'Export to CSV', status: 'requested', own: true, myVote: 1 })
+    const voted = (await tools['contribute.vote'].handler(humanCtx('ben'), { id: a.id, direction: -1 })) as ContributionDto
+    expect(voted.myVote).toBe(-1)
+    await expect(tools['contribute.propose'].handler(agentCtx, { title: 'X', kind: 'idea', area: 'everywhere' })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(tools['contribute.vote'].handler(agentCtx, { id: a.id, direction: 1 })).rejects.toMatchObject({ code: 'forbidden' })
+  })
 })

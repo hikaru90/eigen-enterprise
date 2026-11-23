@@ -2,14 +2,29 @@ import type { HubProposalDto } from './hub/types'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { CONTRIBUTE_MODULE_ID } from './manifest'
-import { getProposal, listProposals, updateProposal, type ContributeActor, type ContributeDeps } from './service'
-import { CONTRIBUTION_NOTE_MAX_LENGTH, CONTRIBUTION_STATUSES, OPEN_STATUSES, type ContributionDto, type ContributionStatus } from './types'
+import { ContributeError } from './errors'
+import {
+  getProposal,
+  listProposals,
+  shareProposal,
+  updateProposal,
+  voteProposal,
+  type ContributeActor,
+  type ContributeDeps,
+} from './service'
+import {
+  CONTRIBUTION_AREAS,
+  CONTRIBUTION_KINDS,
+  CONTRIBUTION_NOTE_MAX_LENGTH,
+  CONTRIBUTION_STATUSES, OPEN_STATUSES, type ContributionDto, type ContributionStatus } from './types'
 
 /**
  * contribute.* kernel tools: how an agent picks up what people proposed
  * (in-app assistant, `ee contribute.list`). Read the board, then move a
  * proposal to in_progress with a note when work starts and to shipped when
- * it is live — people see both on the board.
+ * it is live — people see both on the board. Proposing and voting are a
+ * person's (their name and their vote): a person in the CLI, or the brain
+ * acting as them; the agent on its own is refused.
  */
 
 const listInput = z
@@ -28,6 +43,26 @@ const updateInput = z
     note: z.string().max(CONTRIBUTION_NOTE_MAX_LENGTH).nullable().optional().describe('shown on the proposal; null clears it'),
   })
   .strict()
+
+const proposeInput = z
+  .object({
+    title: z.string().min(1).describe('the improvement, in a line'),
+    kind: z.enum(CONTRIBUTION_KINDS),
+    area: z.enum(CONTRIBUTION_AREAS).describe('where in the app'),
+  })
+  .strict()
+const voteInput = z
+  .object({
+    id: z.string().min(1),
+    direction: z.union([z.literal(-1), z.literal(0), z.literal(1)]).describe('+1, -1, or 0 to take your vote back'),
+  })
+  .strict()
+
+/** The person a proposal or vote belongs to: a human principal (the brain acting as one included). */
+function personOf(ctx: ToolContext, what: string): string {
+  if (ctx.principal.kind !== 'human') throw new ContributeError('forbidden', `A person ${what}, not the agent on its own.`)
+  return ctx.principal.id
+}
 
 const STATUS_WORDS: Record<ContributionStatus, string> = {
   requested: 'back to requested',
@@ -97,6 +132,34 @@ export function createContributeTools(
       inputSchema: getInput,
       permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) => getProposal(await deps(), viewer(ctx), getInput.parse(input).id),
+    },
+    {
+      name: 'contribute.propose',
+      module: CONTRIBUTE_MODULE_ID,
+      summary: `Propose an improvement on the Contribute board, as yourself (with your +1): title, kind (${CONTRIBUTION_KINDS.join('|')}) and area (${CONTRIBUTION_AREAS.join('|')}). Check contribute.list for an existing one first and vote on it instead.`,
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: { title?: string }) => `Proposed “${input.title ?? 'an improvement'}”`,
+      inputSchema: proposeInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = proposeInput.parse(input)
+        return shareProposal(await deps(), personOf(ctx, 'proposes an improvement'), i)
+      },
+    },
+    {
+      name: 'contribute.vote',
+      module: CONTRIBUTE_MODULE_ID,
+      summary: 'Vote on a proposal on the Contribute board, as yourself: +1, -1, or 0 to take your vote back. Shipped proposals are closed.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (_input: unknown, output: ContributionDto | undefined) => `Voted on ${output ? `“${output.title}”` : 'a proposal'}`,
+      inputSchema: voteInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = voteInput.parse(input)
+        return voteProposal(await deps(), personOf(ctx, 'votes'), i.id, i.direction)
+      },
     },
     {
       name: 'contribute.update',

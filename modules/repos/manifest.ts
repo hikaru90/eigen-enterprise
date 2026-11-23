@@ -3,7 +3,7 @@ import type { ModuleManifest } from '$lib/kernel/modules'
 export const REPOS_MODULE_ID = 'repos'
 
 /** The `github.*` namespace is the Website module's deploy tools; this plugin is `repos.*`. */
-export const REPOS_TOOL_NAMES = ['repos.list', 'repos.sync_now', 'repos.set_copy_mode'] as const
+export const REPOS_TOOL_NAMES = ['repos.list', 'repos.sync_now', 'repos.set_copy_mode', 'repos.available', 'repos.set_repo'] as const
 
 /** Drive source id for this plugin's read-only folders (drive_folder.source). */
 export const REPOS_DRIVE_SOURCE = REPOS_MODULE_ID

@@ -32,7 +32,7 @@ import type { AppDatabase } from '$lib/server/db/context'
 import { createGitHubTokenClient } from '$lib/server/github/token'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { ASSISTANT_MODULE_ID, assistantManifest } from './assistant/manifest'
-import { BRAND_MODULE_ID, brandManifest } from './brand/manifest'
+import { BRAND_MODULE_ID, BRAND_WRITE_TOOLS, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
 import { CALENDAR_MODULE_ID, calendarManifest } from './calendar/manifest'
 import { createCalendarTools } from './calendar/tools'
@@ -45,7 +45,7 @@ import { CONTACTS_MODULE_ID, CONTACTS_WRITE_TOOLS, contactsManifest } from './co
 import { createContactsTools } from './contacts/tools'
 import { contributeHubManifest } from './contribute/hub/manifest'
 import { createContributeHubTools } from './contribute/hub/tools'
-import { CONTRIBUTE_MODULE_ID, contributeManifest } from './contribute/manifest'
+import { CONTRIBUTE_MODULE_ID, CONTRIBUTE_WRITE_TOOLS, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
 import { DOMAINS_MODULE_ID, domainsManifest } from './domains/manifest'
 import { createDomainsTools } from './domains/tools'
@@ -168,6 +168,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // once approved, the set's tokens apply globally to every user-facing
   // surface (root :root override, public hero, shader tints).
   'brand.visual_set_activate',
+  // Brand › Social: an agent's delete of a post and its files waits on the approval mode.
+  ...BRAND_WRITE_TOOLS,
   // Website founding journey: publishing is a public, owner-owned act — the
   // journey's website.publish_page artifacts gate here (approval_required),
   // surfacing as the chatbox approval card until the owner decides.
@@ -206,6 +208,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'calls.start',
   // Contacts: an agent's adds, edits and logged contacts wait on the approval mode (internal).
   ...CONTACTS_WRITE_TOOLS,
+  // Contribute: a proposal or vote made through the agent waits on the approval mode (internal).
+  ...CONTRIBUTE_WRITE_TOOLS,
   // Central board: revoking an install refuses it from now on (destructive for that install).
   'contribute_hub.revoke_install',
 ])

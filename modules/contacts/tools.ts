@@ -3,7 +3,15 @@ import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { CONTACTS_MODULE_ID } from './manifest'
 import {
   createContact,
+  deleteContact,
   followUps,
+  importContacts,
+  makeContactsPrivate,
+  setCompanyDefaultVisibility,
+  setMyDefaultVisibility,
+  setShared,
+  shareContacts,
+  SHARING_MAX,
   getContact,
   listContacts,
   logContact,
@@ -16,6 +24,8 @@ import {
 import {
   CHANNEL_TYPES,
   CONTACT_LIMITS,
+  CONTACT_VISIBILITIES,
+  IMPORT_MAX,
   DEFAULT_TAGS,
   FOLLOW_UP_WINDOW_DAYS,
   PIPELINE_STAGES,
@@ -32,8 +42,10 @@ import {
  *   to them: it sees what they see, and what it adds is their private contact;
  * - an agent principal that is no person acts with admin rights, like Drive's agent.
  * Every member reaches these tools (role 'member').
- * Writes are mutate-class and wait on the company's approval mode. Sharing
- * and deleting are not tools: who can see a contact is a person's decision.
+ * Writes are mutate-class and wait on the company's approval mode. Who sees
+ * a contact, importing and the defaults stay a person's decision: the service
+ * refuses the agent on its own (no person) there; a person — in the CLI, or
+ * the brain acting for them — does what the page lets them do, no more.
  */
 
 export type ContactsToolDeps = {
@@ -116,6 +128,47 @@ const logInput = z
     latest_status: latestStatus.nullable().optional(),
   })
   .strict()
+
+const ids = z.array(z.string().min(1)).min(1).max(SHARING_MAX).describe('the contact ids')
+const visibility = z
+  .enum([...CONTACT_VISIBILITIES, 'company'])
+  .describe('private, team (the whole team), or company = follow the company default')
+const setSharedInput = z
+  .object({ id, shared: z.boolean().describe('true = the whole team sees it; false = private again (also ends its shares with people and groups)') })
+  .strict()
+const shareManyInput = z
+  .object({
+    action: z.enum(['share', 'private']).describe('share = add whom to share with (existing shares stay); private = no shares left'),
+    ids,
+    targets: z
+      .object({
+        team: z.boolean().optional().describe('the whole team'),
+        user_ids: z.array(z.string().min(1)).optional().describe('members’ user ids (contacts.pipeline lists the people)'),
+        group_ids: z.array(z.string().min(1)).optional().describe('Members › Groups ids'),
+      })
+      .strict()
+      .optional()
+      .describe('with action share: whom to share with (at least one)'),
+  })
+  .strict()
+const candidate = z
+  .object({
+    name: z.string().min(1).max(CONTACT_LIMITS.name),
+    organisation: fields.organisation,
+    title: fields.title,
+    channels: fields.channels,
+    met_how: fields.met_how,
+    why_relevant: fields.why_relevant,
+    tags: fields.tags,
+  })
+  .strict()
+const importInput = z
+  .object({
+    contacts: z.array(candidate).min(1).max(IMPORT_MAX).describe('the people to add; one already known by email is skipped, never changed'),
+    shared: z.boolean().optional().describe('true = the whole team sees them, false = private; left out: your default for new contacts'),
+  })
+  .strict()
+const defaultInput = z.object({ visibility }).strict()
 
 type Fields = Partial<{ [K in keyof typeof fields]: z.infer<(typeof fields)[K]> }> & { name?: string }
 
@@ -239,6 +292,99 @@ export function createContactsTools(opts: ContactsToolDeps = {}): ToolDescriptor
         const { id: contactId, ...rest } = updateInput.parse(input)
         return updateContact(await deps(), await actorOf(ctx), contactId, contactInput(rest), { today: today() })
       },
+    },
+    {
+      name: 'contacts.delete',
+      module: CONTACTS_MODULE_ID,
+      summary: 'Delete a contact for good: the person who added it, the owner and admins.',
+      auditClass: 'mutate',
+      approvalRisk: 'destructive',
+      activity: () => 'Deleted a contact',
+      inputSchema: getInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const contactId = getInput.parse(input).id
+        await deleteContact(await deps(), await actorOf(ctx), contactId)
+        return { deleted: contactId }
+      },
+    },
+    {
+      name: 'contacts.set_shared',
+      module: CONTACTS_MODULE_ID,
+      summary:
+        'Change who sees one contact: shared = true for the whole team, false to make it private again. Its creator, the owner and admins; a person’s act — the agent on its own is refused.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input) => ((input as { shared?: boolean }).shared ? 'Shared a contact with the team' : 'Made a contact private'),
+      inputSchema: setSharedInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = setSharedInput.parse(input)
+        return setShared(await deps(), await actorOf(ctx), i.id, i.shared)
+      },
+    },
+    {
+      name: 'contacts.share_many',
+      module: CONTACTS_MODULE_ID,
+      summary: `Share many contacts at once (the whole team and/or people and groups) or make them private, up to ${SHARING_MAX}. Contacts that are not yours (or that you do not see) are skipped and reported. A person’s act — the agent on its own is refused.`,
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input) => ((input as { action?: string }).action === 'private' ? 'Made contacts private' : 'Shared contacts'),
+      inputSchema: shareManyInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = shareManyInput.parse(input)
+        const actor = await actorOf(ctx)
+        if (i.action === 'private') return makeContactsPrivate(await deps(), actor, i.ids)
+        const t = i.targets
+        return shareContacts(await deps(), actor, i.ids, t && { team: t.team, userIds: t.user_ids, groupIds: t.group_ids })
+      },
+    },
+    {
+      name: 'contacts.import',
+      module: CONTACTS_MODULE_ID,
+      summary: `Import contacts (as from a vCard or CSV file, read into rows): up to ${IMPORT_MAX} at once. A row that is not importable stops the import (nothing added); one already known by email is skipped. A person’s act — the agent on its own is refused.`,
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => 'Imported contacts',
+      inputSchema: importInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = importInput.parse(input)
+        const rows = i.contacts.map((c) => ({
+          name: c.name,
+          ...(c.organisation !== undefined && { organisation: c.organisation }),
+          ...(c.title !== undefined && { title: c.title }),
+          ...(c.channels !== undefined && { channels: c.channels }),
+          ...(c.met_how !== undefined && { metHow: c.met_how }),
+          ...(c.why_relevant !== undefined && { whyRelevant: c.why_relevant }),
+          ...(c.tags !== undefined && { tags: c.tags }),
+        }))
+        const out = await importContacts(await deps(), await actorOf(ctx), rows, i.shared === undefined ? {} : { shared: i.shared })
+        return { imported: out.created.map((c) => ({ id: c.id, name: c.name })), skipped: out.skipped.length }
+      },
+    },
+    {
+      name: 'contacts.set_my_default_visibility',
+      module: CONTACTS_MODULE_ID,
+      summary: 'Your own default for who sees a contact you add: private, team, or company (follow the company default). A person’s setting.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => 'Set my default visibility for new contacts',
+      inputSchema: defaultInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => setMyDefaultVisibility(await deps(), await actorOf(ctx), defaultInput.parse(input).visibility),
+    },
+    {
+      name: 'contacts.set_company_default_visibility',
+      module: CONTACTS_MODULE_ID,
+      summary: 'The company-wide default for who sees new contacts: private or team (company = unset, i.e. private). The owner and admins only.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => 'Set the company default visibility for new contacts',
+      inputSchema: defaultInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => setCompanyDefaultVisibility(await deps(), await actorOf(ctx), defaultInput.parse(input).visibility),
     },
     {
       name: 'contacts.log_contact',

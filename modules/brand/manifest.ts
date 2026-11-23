@@ -35,8 +35,13 @@ export const BRAND_TOOL_NAMES = [
   'brand.social_post_get',
   'brand.social_post_create',
   'brand.social_post_update',
+  'brand.social_post_upload',
+  'brand.social_post_delete',
   'brand.social_caption_suggest',
 ] as const
+
+/** Brand writes the approval policy gates (APPROVAL_REQUIRED_TOOLS): deleting a social post and its files. */
+export const BRAND_WRITE_TOOLS = ['brand.social_post_delete'] as const
 
 /**
  * The company's brand as executable context (phase-2c + phase-2d). Guideline

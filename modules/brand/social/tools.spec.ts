@@ -8,6 +8,7 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { InMemoryBrandStore } from '../store'
 import { InMemorySocialPostStore } from './store'
+import { createSocialMediaService, type SocialBlobStore } from './media'
 import { createBrandSocialTools } from './tools'
 
 /** The company brain acting as Ana (CB3: the principal IS the person). */
@@ -45,10 +46,14 @@ describe('brand social tools', () => {
     expect(Object.keys(by).sort()).toEqual([
       'brand.social_caption_suggest',
       'brand.social_post_create',
+      'brand.social_post_delete',
       'brand.social_post_get',
       'brand.social_post_list',
       'brand.social_post_update',
+      'brand.social_post_upload',
     ])
+    expect(by['brand.social_post_upload']).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
+    expect(by['brand.social_post_delete']).toMatchObject({ auditClass: 'mutate', approvalRisk: 'destructive' })
     for (const name of ['brand.social_post_list', 'brand.social_post_get', 'brand.social_caption_suggest']) expect(by[name].auditClass).toBe('read')
     for (const name of ['brand.social_post_create', 'brand.social_post_update']) {
       expect(by[name]).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
@@ -88,5 +93,43 @@ describe('brand social tools', () => {
     const out = await registry.execute('brand.social_caption_suggest', { postId: created.id, networks: ['tiktok'] }, agentCtx)
     expect(out).toMatchObject({ captions: { tiktok: ['a', 'b', 'c'] }, voice: false })
     expect(seen).toEqual(['ana'])
+  })
+
+  it('uploads a post with base64 files and deletes it with its files, through the same media service as the route', async () => {
+    const posts = new InMemorySocialPostStore()
+    const stored = new Map<string, Uint8Array>()
+    const blobs: SocialBlobStore = {
+      put: async (bytes) => {
+        const sha = `sha-${stored.size}`
+        stored.set(sha, bytes)
+        return { sha256: sha, size: bytes.byteLength }
+      },
+      get: async (sha) => stored.get(sha)!,
+      remove: async (sha) => void stored.delete(sha),
+    }
+    const media = createSocialMediaService({ posts, blobs, maxUploadBytes: 8 })
+    const by = Object.fromEntries(
+      createBrandSocialTools({ posts, brand: new InMemoryBrandStore(), media: () => media }).map((t) => [t.name, t]),
+    )
+    const png = Buffer.from([1, 2, 3]).toString('base64')
+    const post = (await by['brand.social_post_upload'].handler(agentCtx, {
+      title: 'Team photo',
+      networks: ['instagram'],
+      captions: { instagram: 'Hi.' },
+      files: [{ filename: 'team.png', mime: 'image/png', dataB64: png }],
+    })) as { id: string; createdByKind: string; href: string }
+    expect(post).toMatchObject({ createdByKind: 'user', href: `/brand/social?post=${post.id}` })
+    expect(stored.size).toBe(1)
+    // The route's limits: the upload size and the media types.
+    const big = Buffer.alloc(9, 1).toString('base64')
+    await expect(
+      by['brand.social_post_upload'].handler(agentCtx, { title: 'x', networks: ['instagram'], files: [{ filename: 'a.png', mime: 'image/png', dataB64: big }] }),
+    ).rejects.toMatchObject({ code: 'invalid' })
+    await expect(
+      by['brand.social_post_upload'].handler(agentCtx, { title: 'x', networks: ['instagram'], files: [{ filename: 'a.png', mime: 'image/png', dataB64: 'no!' }] }),
+    ).rejects.toThrow()
+    await expect(by['brand.social_post_delete'].handler(agentCtx, { postId: post.id })).resolves.toEqual({ deleted: post.id })
+    await expect(posts.get(post.id)).resolves.toBeNull()
+    expect(stored.size).toBe(0)
   })
 })

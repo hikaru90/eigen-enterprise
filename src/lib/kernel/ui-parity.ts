@@ -52,7 +52,7 @@ export type UiParity =
   | { transport: string }
 
 /** The number of `debt` entries. Lower it when you clear debt; the spec fails if it is not exact. */
-export const DEBT_CEILING = 129
+export const DEBT_CEILING = 118
 
 const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
@@ -105,7 +105,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/drive/github ?/removeToken': human(GITHUB_TOKEN),
   '/(nucleus)/drive/github ?/replaceToken': human(GITHUB_TOKEN),
   '/(nucleus)/drive/github ?/setCopyMode': tool('repos.set_copy_mode'),
-  '/(nucleus)/drive/github ?/setRepo': debt('repos', 'Choose a repo to sync into Drive, or stop syncing it.'),
+  '/(nucleus)/drive/github ?/setRepo': tool('repos.set_repo'),
   '/(nucleus)/drive/github ?/syncNow': tool('repos.sync_now'),
 
   // ─── Calendar ─────────────────────────────────────────────────────────────
@@ -182,20 +182,20 @@ export const UI_PARITY: Record<string, UiParity> = {
 
   // ─── Contacts (Email › People) ────────────────────────────────────────────
   '/(nucleus)/m/email/people ?/log': tool('contacts.log_contact'),
-  '/(nucleus)/m/email/people/[id] ?/delete': debt('contacts', 'Delete a contact.'),
+  '/(nucleus)/m/email/people/[id] ?/delete': tool('contacts.delete'),
   '/(nucleus)/m/email/people/[id] ?/log': tool('contacts.log_contact'),
   '/(nucleus)/m/email/people/[id] ?/save': tool('contacts.update'),
-  '/(nucleus)/m/email/people/[id] ?/share': debt('contacts', 'Change who sees a contact.'),
-  '/(nucleus)/m/email/people/import ?/import': debt('contacts', 'Import contacts.'),
+  '/(nucleus)/m/email/people/[id] ?/share': tool('contacts.set_shared'),
+  '/(nucleus)/m/email/people/import ?/import': tool('contacts.import'),
   '/(nucleus)/m/email/people/import ?/preview': noEffect(PREVIEW),
   '/(nucleus)/m/email/people/new ?/default': tool('contacts.create'),
   '/(nucleus)/m/email/people/pipeline ?/log': tool('contacts.log_contact'),
   '/(nucleus)/m/email/people/pipeline ?/update': tool('contacts.update'),
-  '/(nucleus)/m/email/people/settings ?/company': debt('contacts', 'Company default visibility of new contacts.'),
-  '/(nucleus)/m/email/people/settings ?/mine': debt('contacts', 'My default visibility of new contacts.'),
+  '/(nucleus)/m/email/people/settings ?/company': tool('contacts.set_company_default_visibility'),
+  '/(nucleus)/m/email/people/settings ?/mine': tool('contacts.set_my_default_visibility'),
   '/api/contacts/extract POST': noEffect(AI_DRAFT),
   '/api/contacts/next-up POST': noEffect(AI_DRAFT),
-  '/api/contacts/sharing POST': debt('contacts', 'Share many contacts at once, or make them private.'),
+  '/api/contacts/sharing POST': tool('contacts.share_many'),
 
   // ─── Memory ───────────────────────────────────────────────────────────────
   '/(nucleus)/m/memory ?/deleteTask': tool('memory.delete_task'),
@@ -295,8 +295,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/brand/extract/start POST': tool('brand.extract_start'),
   '/api/brand/picker/choose POST': tool('brand.picker_choose'),
   '/api/brand/selection/matches POST': tool('brand.selection_matches'),
-  '/api/brand/social/posts POST': debt('brand', 'An uploaded social post (multipart files); the JSON graphic post is brand.social_post_create.'),
-  '/api/brand/social/posts/[id] DELETE': debt('brand', 'Delete a social post and its files.'),
+  '/api/brand/social/posts POST': tool('brand.social_post_upload'),
+  '/api/brand/social/posts/[id] DELETE': tool('brand.social_post_delete'),
   '/api/brand/social/posts/[id] PATCH': tool('brand.social_post_update'),
   '/api/brand/social/posts/[id]/captions POST': tool('brand.social_caption_suggest'),
   '/api/brand/visual-sets POST': tool('brand.visual_set_create'),
@@ -359,10 +359,10 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/calls/meetings POST': debt('calls', 'Book a meeting (now or later) with guests by email and a duration.'),
 
   // ─── Contribute ───────────────────────────────────────────────────────────
-  '/api/contribute POST': debt('contribute', 'Propose an improvement.'),
+  '/api/contribute POST': tool('contribute.propose'),
   '/api/contribute/[id] PATCH': tool('contribute.update'),
   '/api/contribute/[id]/share DELETE': human(CONSENT_HUB),
-  '/api/contribute/[id]/vote POST': debt('contribute', 'Vote on a proposal.'),
+  '/api/contribute/[id]/vote POST': tool('contribute.vote'),
   '/api/contribute/check POST': noEffect(AI_DRAFT),
   '/api/hub/contributions/[remoteId] DELETE': transport(HUB),
   '/api/hub/contributions/[remoteId] PUT': transport(HUB),

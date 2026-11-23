@@ -141,4 +141,50 @@ describe('contacts.* tools', () => {
     await expect(tools['contacts.create'].handler(agentCtx, { name: 'Lee', shared: true })).rejects.toThrow()
     await expect(tools['contacts.update'].handler(agentCtx, { id: anasPrivate.id, shared: true })).rejects.toThrow()
   })
+
+  it('people delete a contact, change who sees it, one or many at once — as the service lets them (UI parity)', async () => {
+    const { tools, anasPrivate, bensPrivate } = await setup()
+    for (const name of ['contacts.set_shared', 'contacts.share_many', 'contacts.import', 'contacts.set_my_default_visibility', 'contacts.set_company_default_visibility']) {
+      expect(tools[name]).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal' })
+    }
+    expect(tools['contacts.delete']).toMatchObject({ auditClass: 'mutate', approvalRisk: 'destructive' })
+    const ana = humanCtx('ana')
+    const shared = (await tools['contacts.set_shared'].handler(ana, { id: anasPrivate.id, shared: true })) as ContactDto
+    expect(shared.shared).toBe(true)
+    // Not hers: the service refuses, the tool does not widen it.
+    await expect(tools['contacts.set_shared'].handler(humanCtx('ben'), { id: anasPrivate.id, shared: false })).rejects.toMatchObject({ code: 'forbidden' })
+    const many = (await tools['contacts.share_many'].handler(ana, { action: 'private', ids: [anasPrivate.id, bensPrivate.id] })) as {
+      changed: string[]
+      skipped: { reason: string }[]
+    }
+    expect(many.changed).toEqual([anasPrivate.id])
+    expect(many.skipped.map((s) => s.reason)).toEqual(['not_found'])
+    const withBen = (await tools['contacts.share_many'].handler(ana, { action: 'share', ids: [anasPrivate.id], targets: { user_ids: ['ben'] } })) as {
+      changed: string[]
+    }
+    expect(withBen.changed).toEqual([anasPrivate.id])
+    // The agent on its own never changes who sees a contact (the service says so).
+    await expect(tools['contacts.share_many'].handler(agentCtx, { action: 'private', ids: [anasPrivate.id] })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(tools['contacts.delete'].handler(humanCtx('ben'), { id: bensPrivate.id })).resolves.toEqual({ deleted: bensPrivate.id })
+    await expect(tools['contacts.get'].handler(humanCtx('ben'), { id: bensPrivate.id })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('sets the defaults for new contacts and imports contacts, as the settings and import pages do', async () => {
+    const { tools } = await setup()
+    const mine = (await tools['contacts.set_my_default_visibility'].handler(humanCtx('ana'), { visibility: 'team' })) as { effective: string }
+    expect(mine.effective).toBe('team')
+    await expect(tools['contacts.set_company_default_visibility'].handler(humanCtx('ana'), { visibility: 'team' })).rejects.toMatchObject({ code: 'forbidden' })
+    const company = (await tools['contacts.set_company_default_visibility'].handler(humanCtx('olga'), { visibility: 'team' })) as { company: string }
+    expect(company.company).toBe('team')
+    await tools['contacts.set_my_default_visibility'].handler(humanCtx('ana'), { visibility: 'company' })
+    const out = (await tools['contacts.import'].handler(humanCtx('ana'), {
+      contacts: [
+        { name: 'Kim Lo', channels: [{ type: 'email', value: 'kim@example.com' }] },
+        { name: 'Kim again', channels: [{ type: 'email', value: 'KIM@example.com' }] },
+      ],
+      shared: false,
+    })) as { imported: { name: string }[]; skipped: number }
+    expect(out).toEqual({ imported: [expect.objectContaining({ name: 'Kim Lo' })], skipped: 1 })
+    await expect(tools['contacts.import'].handler(agentCtx, { contacts: [{ name: 'X' }] })).rejects.toMatchObject({ code: 'forbidden' })
+  })
 })
