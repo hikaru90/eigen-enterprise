@@ -98,8 +98,21 @@ rm -f "$OUT/SHA256SUMS.sig"
 # CI builds have no key here: the publish job signs the combined manifest.
 SIGNING_KEY="$HOME/.config/eigenenterprise/release-signing.pem"
 if [ -f "$SIGNING_KEY" ]; then
-  openssl pkeyutl -sign -rawin -inkey "$SIGNING_KEY" -in "$OUT/SHA256SUMS" | openssl base64 -A > "$OUT/SHA256SUMS.sig"
-  echo "✓ signed SHA256SUMS with $SIGNING_KEY"
+  # Ed25519 needs `pkeyutl -rawin`: OpenSSL 3+, not macOS's /usr/bin/openssl (LibreSSL), which
+  # prints its usage and writes nothing. Prefer Homebrew's OpenSSL; fail loud on an empty or bad signature.
+  OPENSSL=openssl
+  for candidate in /opt/homebrew/opt/openssl/bin/openssl /usr/local/opt/openssl/bin/openssl; do
+    [ -x "$candidate" ] && { OPENSSL="$candidate"; break; }
+  done
+  "$OPENSSL" pkeyutl -sign -rawin -inkey "$SIGNING_KEY" -in "$OUT/SHA256SUMS" > "$OUT/SHA256SUMS.sig.raw" \
+    || { echo "✗ signing SHA256SUMS failed with $("$OPENSSL" version) — Ed25519 needs OpenSSL 3+ (brew install openssl)" >&2; exit 1; }
+  [ -s "$OUT/SHA256SUMS.sig.raw" ] || { echo "✗ signing SHA256SUMS produced an empty signature ($("$OPENSSL" version))" >&2; exit 1; }
+  "$OPENSSL" pkeyutl -verify -rawin -pubin -inkey <("$OPENSSL" pkey -in "$SIGNING_KEY" -pubout) \
+    -in "$OUT/SHA256SUMS" -sigfile "$OUT/SHA256SUMS.sig.raw" >/dev/null \
+    || { echo "✗ the SHA256SUMS signature does not verify against $SIGNING_KEY" >&2; exit 1; }
+  "$OPENSSL" base64 -A < "$OUT/SHA256SUMS.sig.raw" > "$OUT/SHA256SUMS.sig"
+  rm -f "$OUT/SHA256SUMS.sig.raw"
+  echo "✓ signed SHA256SUMS with $SIGNING_KEY ($("$OPENSSL" version | cut -d' ' -f1-2))"
 else
   echo "! SHA256SUMS is unsigned (no $SIGNING_KEY): install.sh refuses this build until it is signed (scripts/release-key.sh)"
 fi

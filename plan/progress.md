@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — v0.5.36 released: the CLI and the agent reach everything (parity debt 129 → 0)
+
+- **Released:** `[release] v0.5.36` `712183c2` and tag `v0.5.36`, pushed through the local gate (components 821/821; unit 8,830 green, one flaky `modules/repos/service.spec.ts` run that passes 3/3 alone).
+- **Local box:** arm64 bundle, `box.sh install os.ee.localhost` ✓, `/api/health` ok.
+- **What broke:** the first box install refused the bundle — `scripts/release.sh` signed with macOS's `/usr/bin/openssl` (LibreSSL 3.3.6, no `pkeyutl -rawin`), wrote an empty `SHA256SUMS.sig` and still printed "✓ signed". Re-signed with Homebrew OpenSSL by hand; the script now prefers Homebrew's OpenSSL and fails loud on an empty or non-verifying signature.
+- **ee-one and os.cerberusblue.com:** not upgraded from here; the owner sets the /ops target to 0.5.36. No open Contribute proposal is closed by this release (boards unchanged).
+
 ## 2026-11-23 — TOP PRIORITY: the CLI (and so the agent) reaches everything (owner: "this is unacceptable")
 
 - **Finding:** the agent is offered every active registry tool, but 129 of the app's 340 mutating entry points are UI-only (`debt` in `src/lib/kernel/ui-parity.ts`; email 41, memory 31, drive 9, kernel 9, messages 9, calendar 7, calls 6, contacts 6, members 4, rest 7). Read gaps too: no tool reads the inbox, messages can't be posted, calendar events can't be created.
