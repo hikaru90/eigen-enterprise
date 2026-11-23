@@ -36,6 +36,7 @@ export const rowOfRun = (r: typeof coworkerRun.$inferSelect): CoworkerRunRow => 
   rhythmId: r.rhythmId,
   taskId: r.taskId,
   triggerKey: r.triggerKey,
+  delegationChain: r.delegationChain,
 })
 
 const INTERRUPTED = 'the turn stopped beating: its server process ended during the turn'
@@ -174,6 +175,13 @@ export function dbCoworkerRunStore(db: () => Promise<AppDatabase>): CoworkerRunS
     async listUnfinished() {
       const rows = await (await db()).select().from(coworkerRun).where(inArray(coworkerRun.status, ['queued', 'running']))
       return rows.map(rowOfRun)
+    },
+    async runningChains(coworkerUserId: string) {
+      const rows = await (await db())
+        .select({ chain: coworkerRun.delegationChain })
+        .from(coworkerRun)
+        .where(and(eq(coworkerRun.coworkerUserId, coworkerUserId), eq(coworkerRun.status, 'running')))
+      return rows.map((r) => r.chain)
     },
   }
 }

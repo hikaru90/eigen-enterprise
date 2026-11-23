@@ -2,6 +2,8 @@ import type { CoworkerTurnsHandle } from './live-turns'
 import type { CoworkerRunRow, CoworkerRunStore, NewCoworkerRun } from './run-store'
 import type { AssignedTaskView, CoworkerTaskEvent } from '$lib/server/memory/assigned-tasks/service'
 import { taskAssignedKey, taskCommentKey } from './triggers'
+import { CoworkerDelegationError, nextDelegationChain } from './delegation'
+import { AssignedTaskError } from '$lib/server/memory/assigned-tasks/service'
 
 /**
  * Assignments (plan/phase-ai-coworkers.md C6): a task given to an AI co-worker
@@ -25,6 +27,8 @@ export function taskEventRun(e: CoworkerTaskEvent): NewCoworkerRun {
     rhythmId: null,
     taskId: e.taskId,
     triggerKey: e.kind === 'assigned' ? taskAssignedKey(e.taskId) : taskCommentKey(e.commentId),
+    // A person's follow-up comment starts no chain; an assignment carries the one checked before the task existed.
+    delegationChain: e.kind === 'assigned' ? e.delegationChain : [],
   }
 }
 
@@ -58,6 +62,31 @@ export async function liveCoworkerTaskWork(e: CoworkerTaskEvent): Promise<void> 
   runningCoworkerTurns()
   const { liveCoworkerRunStore } = await import('./db-run-store')
   await queueTaskWork({ runs: liveCoworkerRunStore, start: startCoworkerWork }, e)
+}
+
+/**
+ * AssignedTaskDeps.coworkerDelegation over a run store: the assigner's running
+ * runs' chains through the pure rule; a refused hand-off is the tasks service's
+ * 'forbidden' (the assigning co-worker reads it as its tool error).
+ */
+export async function checkCoworkerDelegation(
+  runs: Pick<CoworkerRunStore, 'runningChains'>,
+  assigner: { id: string; kind: 'human' | 'coworker' },
+  assigneeId: string,
+): Promise<string[]> {
+  if (assigner.kind === 'human') return []
+  try {
+    return nextDelegationChain({ assigner, assigneeId, assignerRunChains: await runs.runningChains(assigner.id) })
+  } catch (err) {
+    if (err instanceof CoworkerDelegationError) throw new AssignedTaskError('forbidden', err.message)
+    throw err
+  }
+}
+
+/** Live AssignedTaskDeps.coworkerDelegation: the database run log. */
+export async function liveCoworkerDelegation(assigner: { id: string; kind: 'human' | 'coworker' }, assigneeId: string): Promise<string[]> {
+  const { liveCoworkerRunStore } = await import('./db-run-store')
+  return checkCoworkerDelegation(liveCoworkerRunStore, assigner, assigneeId)
 }
 
 /** A task as the co-worker reads it: the live tasks service; null when it is gone or not the co-worker's. */

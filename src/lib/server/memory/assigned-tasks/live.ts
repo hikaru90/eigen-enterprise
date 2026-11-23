@@ -46,6 +46,7 @@ export async function assignedTaskDeps(): Promise<AssignedTaskDeps> {
     notify: liveNotify,
     // A task given to an AI co-worker queues its turn (plan/phase-ai-coworkers.md C6).
     coworkerWork: async (e) => (await import('$lib/server/coworkers/task-work')).liveCoworkerTaskWork(e),
+    coworkerDelegation: async (assigner, assigneeId) => (await import('$lib/server/coworkers/task-work')).liveCoworkerDelegation(assigner, assigneeId),
   }
   return deps
 }

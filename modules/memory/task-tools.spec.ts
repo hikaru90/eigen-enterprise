@@ -19,6 +19,9 @@ function setup(writer: { kind: 'self' | 'assistant'; userId: string } | null = {
     coworkerWork: async () => {
       throw new Error('no AI co-workers in this spec')
     },
+    coworkerDelegation: async () => {
+      throw new Error('no AI co-workers in this spec')
+    },
   }
   const writerOf = vi.fn(async () => writer)
   const tools = createTaskTools({ deps: async () => deps, writerOf })

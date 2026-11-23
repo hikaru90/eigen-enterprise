@@ -37,6 +37,8 @@ export type CoworkerRunRow = {
   taskId: string | null
   /** What queued a proactive run, unique per co-worker (rhythm:<id>:<slot>, task:<id>, task-comment:<id>); null for a message trigger. */
   triggerKey: string | null
+  /** The co-workers that handed this run's work down, in order, origin person excluded (delegation.ts). */
+  delegationChain: string[]
 }
 
 export type NewCoworkerRun = {
@@ -51,6 +53,8 @@ export type NewCoworkerRun = {
   rhythmId: string | null
   taskId: string | null
   triggerKey: string | null
+  /** [] for work a person started; a co-worker's hand-off carries nextDelegationChain(). */
+  delegationChain: string[]
 }
 
 export type CoworkerRunPatch = Partial<
@@ -99,6 +103,8 @@ export type CoworkerRunStore = {
   listForCoworker(coworkerUserId: string, limit: number): Promise<CoworkerRunRow[]>
   /** Every queued or running turn (resumed after a restart, recovered once stale). */
   listUnfinished(): Promise<CoworkerRunRow[]>
+  /** The delegation chains of a co-worker's running runs (a hand-off is checked against them). */
+  runningChains(coworkerUserId: string): Promise<string[][]>
 }
 
 /** Turns that count against the thread budget: claimed ones (a stopped turn never ran). */
@@ -210,6 +216,10 @@ export class MemoryCoworkerRunStore implements CoworkerRunStore {
 
   async listUnfinished(): Promise<CoworkerRunRow[]> {
     return this.rows.filter((r) => r.status === 'queued' || r.status === 'running').map((r) => ({ ...r }))
+  }
+
+  async runningChains(coworkerUserId: string): Promise<string[][]> {
+    return this.rows.filter((r) => r.coworkerUserId === coworkerUserId && r.status === 'running').map((r) => [...r.delegationChain])
   }
 
   async get(id: string): Promise<CoworkerRunRow | null> {

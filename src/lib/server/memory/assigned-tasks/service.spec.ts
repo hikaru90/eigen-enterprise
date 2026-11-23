@@ -26,6 +26,7 @@ function setup() {
   let n = 0
   const notify = vi.fn(async () => {})
   const coworkerWork = vi.fn(async (_e: CoworkerTaskEvent) => {})
+  const coworkerDelegation = vi.fn(async (_a: { id: string; kind: 'human' | 'coworker' }, _assigneeId: string): Promise<string[]> => [])
   const deps: AssignedTaskDeps = {
     store,
     directory: {
@@ -34,10 +35,11 @@ function setup() {
     },
     notify,
     coworkerWork,
+    coworkerDelegation,
     now: () => new Date((clock += 60_000)),
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
   }
-  return { deps, store, notify, coworkerWork }
+  return { deps, store, notify, coworkerWork, coworkerDelegation }
 }
 
 const alex = { userId: 'alex', via: 'assistant' as const }
@@ -201,7 +203,15 @@ describe('a task given to an AI co-worker (plan/phase-ai-coworkers.md C6)', () =
     const task = await assignTask(deps, me, { assigneeId: 'cw-mkt', title: 'Draft the launch email' })
     expect(notify).not.toHaveBeenCalled()
     expect(coworkerWork).toHaveBeenCalledTimes(1)
-    expect(coworkerWork).toHaveBeenCalledWith({ kind: 'assigned', taskId: task.id, coworkerId: 'cw-mkt', byUserId: 'alex', at: expect.any(Date) })
+    expect(coworkerWork).toHaveBeenCalledWith({ kind: 'assigned', taskId: task.id, coworkerId: 'cw-mkt', byUserId: 'alex', at: expect.any(Date), delegationChain: [] })
+  })
+
+  it('a refused co-worker hand-off (chain limit or loop) writes no task and queues no turn', async () => {
+    const { deps, store, coworkerWork, coworkerDelegation } = coworkerSetup()
+    coworkerDelegation.mockRejectedValueOnce(new AssignedTaskError('forbidden', 'handing it back would loop'))
+    await expect(assignTask(deps, me, { assigneeId: 'cw-mkt', title: 'Draft the launch email' })).rejects.toMatchObject({ code: 'forbidden' })
+    expect(store.tasks.size).toBe(0)
+    expect(coworkerWork).not.toHaveBeenCalled()
   })
 
   it("a person's comment on the open task asks for one more turn; the co-worker's own comment notifies the person", async () => {

@@ -283,6 +283,7 @@ const slotRun = (r: RhythmRow, at: Date, key: string, requestedBy: string): NewC
   rhythmId: r.id,
   taskId: null,
   triggerKey: key,
+  delegationChain: [],
 })
 
 /** "Run now" (admins): queues one rhythm run outside the schedule and starts it; the schedule is untouched. */

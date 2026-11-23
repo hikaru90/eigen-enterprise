@@ -269,6 +269,8 @@ export class CoworkerTurns {
       rhythmId: null,
       taskId: null,
       triggerKey: null,
+      // A message turn starts no task chain; the thread budget bounds message ping-pong.
+      delegationChain: [],
     })
     // Every process that heard it drains: the claim decides who runs it (a redelivery finds it queued or running).
     await this.drain(coworkerId, key)

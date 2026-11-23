@@ -157,6 +157,8 @@ export const coworkerRun = pgTable(
     taskId: uuid('task_id').references(() => assignedTasks.id, { onDelete: 'set null' }),
     /** What queued a proactive run, unique per co-worker: rhythm:<id>:<slot>, task:<id>, task-comment:<id> (C6). */
     triggerKey: text('trigger_key'),
+    /** The co-workers that handed this run's work down, in order, origin person excluded (task chains, migration 0174). */
+    delegationChain: text('delegation_chain').array().notNull().default(sql`'{}'::text[]`),
   },
   (t) => [
     index('coworker_run_coworker_started_idx').on(t.coworkerUserId, t.startedAt.desc()),

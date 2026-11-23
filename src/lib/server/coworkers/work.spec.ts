@@ -325,3 +325,37 @@ describe('the rhythm schedule reuses the reminders’ weekly math (DST-safe)', (
     await fx.settle()
   })
 })
+
+describe('task chains: a co-worker hands work to another co-worker (delegation.ts)', () => {
+  it('records the chain on the hand-off and refuses handing it back (a loop) before any task exists', async () => {
+    const refusals: string[] = []
+    const script: Script = async (call) => {
+      if (call.agentId === 'coworker-cw-mkt') {
+        // Marketing, working Bea's task, hands a piece to GTM.
+        await fx.registry.execute('tasks.assign', { assignee_id: 'cw-gtm', title: 'Pick the launch channels' }, asCoworker('cw-mkt'))
+        return 'Asked GTM for the channels.'
+      }
+      // GTM tries to hand it straight back to Marketing: refused as its tool error, no task.
+      try {
+        await fx.registry.execute('tasks.assign', { assignee_id: 'cw-mkt', title: 'You pick them' }, asCoworker('cw-gtm'))
+      } catch (err) {
+        refusals.push((err as Error).message)
+      }
+      return 'Email and LinkedIn.'
+    }
+    const fx = turnsFixture({ script })
+    await fx.handle.reload()
+    await fx.registry.execute('tasks.assign', { assignee_id: 'cw-mkt', title: 'Plan the launch' }, human('bea'))
+    await fx.settle()
+
+    const chains = fx.runs.rows.map((r) => [r.coworkerUserId, r.delegationChain])
+    expect(chains).toEqual([
+      ['cw-mkt', []],
+      ['cw-gtm', ['cw-mkt']],
+    ])
+    expect(refusals).toHaveLength(1)
+    expect(refusals[0]).toMatch(/loop/)
+    // The refused hand-off wrote nothing: two tasks (Bea → Marketing, Marketing → GTM), no third.
+    expect(fx.taskDeps.store.tasks.size).toBe(2)
+  })
+})

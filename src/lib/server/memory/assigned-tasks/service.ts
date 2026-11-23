@@ -40,7 +40,7 @@ export type TaskNotification = {
  * done). Co-workers get no push: this replaces the assignee's notification.
  */
 export type CoworkerTaskEvent =
-  | { kind: 'assigned'; taskId: string; coworkerId: string; byUserId: string; at: Date }
+  | { kind: 'assigned'; taskId: string; coworkerId: string; byUserId: string; at: Date; delegationChain: string[] }
   | { kind: 'commented'; taskId: string; coworkerId: string; byUserId: string; commentId: string; at: Date }
 
 export type AssignedTaskDeps = {
@@ -49,6 +49,13 @@ export type AssignedTaskDeps = {
   notify: (userId: string, n: TaskNotification) => Promise<void>
   /** Queues the co-worker's turn on a task given to it (live: $lib/server/coworkers/task-work.ts). */
   coworkerWork: (e: CoworkerTaskEvent) => Promise<void>
+  /**
+   * The delegation chain a task for an AI co-worker carries, checked BEFORE the
+   * task exists: [] when a person assigns; refused (AssignedTaskError 'forbidden')
+   * when a co-worker's hand-off would pass the chain limit or loop
+   * (live: $lib/server/coworkers/task-work.ts, rule in coworkers/delegation.ts).
+   */
+  coworkerDelegation: (assigner: { id: string; kind: 'human' | 'coworker' }, assigneeId: string) => Promise<string[]>
   now?: () => Date
   newId?: () => string
 }
@@ -201,6 +208,8 @@ export async function assignTask(
     throw new AssignedTaskError('invalid', 'That is your own task: capture it in your Memory instead (memory.capture_thought). Assigning is for another member.')
   }
   const assignee = await requireMember(d, input.assigneeId, `"${input.assigneeId}"`)
+  // A co-worker → co-worker hand-off is checked before anything is written (no task when refused).
+  const delegationChain = assignee.kind === 'coworker' ? await d.coworkerDelegation({ id: assigner.id, kind: assigner.kind === 'coworker' ? 'coworker' : 'human' }, assignee.id) : []
   const at = nowOf(d)
   const task: AssignedTask = {
     id: newIdOf(d),
@@ -224,7 +233,7 @@ export async function assignTask(
   await d.store.insert(task)
   if (assignee.kind === 'coworker') {
     // An AI co-worker works it: its turn is queued (a failure to queue fails loud; the task stays assigned).
-    await d.coworkerWork({ kind: 'assigned', taskId: task.id, coworkerId: assignee.id, byUserId: assigner.id, at })
+    await d.coworkerWork({ kind: 'assigned', taskId: task.id, coworkerId: assignee.id, byUserId: assigner.id, at, delegationChain })
   } else {
     await send(d, assignee.id, {
       title: `${assigner.name} assigned you a task`,

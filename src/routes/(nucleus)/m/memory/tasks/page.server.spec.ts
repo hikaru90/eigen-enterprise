@@ -34,6 +34,9 @@ function setup() {
     coworkerWork: async () => {
       throw new Error('no AI co-workers in this spec')
     },
+    coworkerDelegation: async () => {
+      throw new Error('no AI co-workers in this spec')
+    },
   }
   depsHolder.deps = deps
   return deps

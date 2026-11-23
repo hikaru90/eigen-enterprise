@@ -12,7 +12,7 @@ import { composeCoworkerTurns, type ComposeCoworkerTurnsInput } from './live-tur
 import { MemoryRhythmStore } from './rhythms'
 import { MemoryCoworkerRunStore } from './run-store'
 import { coworkerAgentId, coworkerEmail } from './service'
-import { queueTaskWork } from './task-work'
+import { checkCoworkerDelegation, queueTaskWork } from './task-work'
 
 /**
  * The co-worker turns over in-memory Messages (owner Olga, members Bea and
@@ -110,6 +110,7 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
     coworkerWork: async (e) => {
       await queueTaskWork({ runs, start: (id) => startWork(id) }, e)
     },
+    coworkerDelegation: (assigner, assigneeId) => checkCoworkerDelegation(runs, assigner, assigneeId),
     now: f.deps.now,
   }
   const writerOf = async (ctx: { principal: { id: string; kind: string } }) => {

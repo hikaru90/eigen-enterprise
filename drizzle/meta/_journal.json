@@ -1198,6 +1198,13 @@
       "when": 1795200000173,
       "tag": "0173_coworker_proactive",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1795200000174,
+      "tag": "0174_coworker_delegation",
+      "breakpoints": true
     }
   ]
 }

@@ -81,6 +81,9 @@ function taskDeps(): AssignedTaskDeps {
     coworkerWork: async () => {
       throw new Error('no AI co-workers in this spec')
     },
+    coworkerDelegation: async () => {
+      throw new Error('no AI co-workers in this spec')
+    },
   }
   assignedTasks.deps = deps
   return deps
