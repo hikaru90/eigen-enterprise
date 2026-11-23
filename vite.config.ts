@@ -29,6 +29,9 @@ export default defineConfig({
   cacheDir: path.resolve('.svelte-kit/cache/vite', String(process.pid)),
   server: {
     fs: { allow: devFsAllow() },
+    // Agent worktrees live under .claude/worktrees (one full checkout each): edits there
+    // must not reload this checkout's e2e harness mid-run.
+    watch: { ignored: ['**/.claude/**'] },
   },
   optimizeDeps: {
     // The office viewers (src/lib/office/viewers.ts) load lazily from the file
