@@ -622,14 +622,14 @@ export async function topUpCreditsViaPayPalSandbox(
 
 function onboardingDialog(page: Page): Locator {
   return page.getByRole('dialog', {
-    name: /Your memory, not theirs\.|Just drop it in\.|Install Eigen Enterprise|Stay in the loop/,
+    name: /Your memory, not theirs\.|Just drop it in\.|Stay in the loop/,
   })
 }
 
 /**
- * Step through the welcome overlay (product → install → notifications), then
+ * Step through the welcome overlay (product → the one door → notifications), then
  * optionally top up via API (PayPal lives outside onboarding — Settings / capture gate).
- * E2E skips real PWA install / notification permission via the continue-without actions.
+ * E2E skips the real notification permission via "Continue without notifications".
  */
 export async function completeOnboardingOverlay(
   page: Page,
@@ -637,22 +637,18 @@ export async function completeOnboardingOverlay(
 ): Promise<void> {
   const dialog = onboardingDialog(page)
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByText('Step 1 of 4')).toBeVisible()
+  // Three steps: welcome → the one door (the Ask bar) → notifications. The
+  // install step went with the PWA strip (ebf92959).
+  await expect(dialog.getByText('Step 1 of 3')).toBeVisible()
   await expect(dialog.getByText('Your memory, not theirs.')).toBeVisible()
 
   await dialog.getByRole('button', { name: 'Next' }).click()
   await expect(dialog.getByText('Just drop it in.')).toBeVisible({ timeout: 10_000 })
-  await expect(dialog.getByText('Step 2 of 4')).toBeVisible()
+  await expect(dialog.getByText('Step 2 of 3')).toBeVisible()
 
   await dialog.getByRole('button', { name: 'Next' }).click()
-  await expect(dialog.getByText('Install Eigen Enterprise', { exact: true })).toBeVisible({
-    timeout: 10_000,
-  })
-  await expect(dialog.getByText('Step 3 of 4')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Continue without installing' }).click()
-
   await expect(dialog.getByText('Stay in the loop')).toBeVisible({ timeout: 10_000 })
-  await expect(dialog.getByText('Step 4 of 4')).toBeVisible()
+  await expect(dialog.getByText('Step 3 of 3')).toBeVisible()
   await dialog.getByRole('button', { name: 'Continue without notifications' }).click()
   await expect(dialog).toBeHidden({ timeout: 15_000 })
 

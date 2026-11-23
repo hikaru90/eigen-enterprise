@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser } from './test-helpers'
+import { gotoHydrated, registerUser, waitForHydration } from './test-helpers'
 
 /**
  * The email platform on the fake transport (playwright.config sets
@@ -63,7 +63,7 @@ test.describe('email platform', () => {
     const sender = `owner-${stamp}@kindred.test`
 
     // ── Overview: nothing connected, the first step is a form (never a dead "not set up").
-    await page.goto('/m/email/setup')
+    await gotoHydrated(page, '/m/email/setup')
     await expect(page.getByTestId('email-nav')).toBeVisible()
     await expect(page.getByTestId('email-step-connect')).toHaveAttribute('data-done', 'false')
     await page.locator('#ses-from').fill(sender)
@@ -126,6 +126,9 @@ test.describe('email platform', () => {
       applied: true,
     })
     await page.reload()
+    // A tab click before hydration is a plain document load, and the next
+    // click would land on server-rendered HTML with no handler yet.
+    await waitForHydration(page)
     await expect(page.getByTestId('log-event-delivered')).toBeVisible()
     await expect(page.getByTestId('log-subject').locator('..').getByTestId('message-status')).toHaveText('Delivered')
 
@@ -185,7 +188,7 @@ test.describe('email platform', () => {
     const stamp = Date.now().toString(36)
 
     // A layout starts from the Brand starter and previews around a stand-in block.
-    await page.goto('/m/email/layouts')
+    await gotoHydrated(page, '/m/email/layouts')
     await expect(page.getByTestId('brand-tokens')).toBeVisible()
     await page.locator('#layout-name').fill(`Brand ${stamp}`)
     await page.getByRole('button', { name: 'Create layout' }).click()
@@ -247,7 +250,7 @@ test.describe('email platform', () => {
     const reader = `sub-${stamp}@example.test`
 
     // A template for the flow (the standalone starter needs no variables).
-    await page.goto('/m/email/templates')
+    await gotoHydrated(page, '/m/email/templates')
     await page.locator('#template-name').fill(`Flow mail ${stamp}`)
     await page.locator('#template-layout').selectOption('')
     await page.getByRole('button', { name: 'Create template' }).click()
@@ -277,14 +280,14 @@ test.describe('email platform', () => {
     await expect(page.getByTestId('flow-status')).toHaveText('Running')
 
     // A new contact must confirm first.
-    await page.goto(listUrl)
+    await gotoHydrated(page, listUrl)
     await page.locator('#contact-email').fill(reader)
     await page.locator('#contact-first').fill('Ada')
     await page.getByRole('button', { name: 'Add', exact: true }).click()
     await expect(page.getByTestId('contact-added')).toContainText('confirmation mail')
     const [confirmMail] = await captured(page, reader)
     const confirmLink = confirmMail!.text.match(/https?:\/\/\S+\/mail\/confirm\/\S+/)![0]
-    await page.goto(confirmLink)
+    await gotoHydrated(page, confirmLink)
     await page.getByTestId('confirm-subscription').click()
     await expect(page.getByTestId('confirmed')).toContainText(reader)
 

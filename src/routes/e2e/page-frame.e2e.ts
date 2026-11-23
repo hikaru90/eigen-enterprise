@@ -41,7 +41,14 @@ async function newAdmin(context: BrowserContext, page: Page): Promise<void> {
 }
 
 const header = (page: Page) => page.getByTestId('page-header')
-const h1Left = async (page: Page) => (await header(page).locator('h1').boundingBox())!.x
+/** The title row's left edge: the part's mark when the header carries one
+ *  (6e5a39a7: area headers show their module's mark before the title; the
+ *  dashboard has none), else the h1. */
+const h1Left = async (page: Page) => {
+  const mark = header(page).getByTestId('page-mark')
+  const first = (await mark.count()) > 0 ? mark : header(page).locator('h1')
+  return (await first.boundingBox())!.x
+}
 
 test('every area page wears the one page header', async ({ page, context }) => {
   test.setTimeout(180_000)

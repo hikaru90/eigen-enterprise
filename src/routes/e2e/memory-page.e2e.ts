@@ -136,7 +136,10 @@ test('Memory is one module page: nav → Tasks → sub-pages → what the brain 
         'day', 'UTC', 0.9, ${summary}, ${summary})`
 
     await page.reload()
-    const known = page.getByTestId('brain-knows-row').filter({ hasText: `flyer order ${stamp}` })
+    // A tab click before hydration is a document load, and the Mark done click
+    // after it would land on server-rendered markup with no handler.
+    await waitForHydration(page)
+    const known =page.getByTestId('brain-knows-row').filter({ hasText: `flyer order ${stamp}` })
     await expect(known).toBeVisible({ timeout: 30_000 })
     await expect(known.getByTestId('brain-knows-source')).toHaveText('Typed or spoken in the app')
     await expect(known.getByTestId('brain-knows-category')).toHaveText('task')

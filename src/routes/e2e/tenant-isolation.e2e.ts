@@ -33,20 +33,35 @@ test.describe('Tenant isolation (AC-018)', () => {
     const contextB = await browser.newContext()
     const pageB = await contextB.newPage()
     await registerUser(contextB, pageB)
+    // Positive control: B's own note comes back, so an empty list cannot pass for isolation.
+    const own = await captureThought(pageB, 'User B own note')
 
+    // A JSON-RPC call over the streamable HTTP transport (the MCP SDK wants both
+    // Accept types); tool names are namespaced (`memory.retrieve_thoughts`).
     const res = await pageB.request.post('/api/mcp', {
+      headers: { accept: 'application/json, text/event-stream' },
       data: {
+        jsonrpc: '2.0',
+        id: 1,
         method: 'tools/call',
-        params: { name: 'retrieve_thoughts', arguments: { order: 'created_at', top_k: 50 } },
+        params: {
+          name: 'memory.retrieve_thoughts',
+          arguments: { order: 'created_at', top_k: 50 },
+        },
       },
     })
-    expect(res.ok()).toBeTruthy()
-    const body = (await res.json()) as { content?: Array<{ text: string }> }
-    const text = body.content?.[0]?.text ?? '{}'
-    const result = JSON.parse(text) as {
+    expect(res.ok(), await res.text()).toBeTruthy()
+    const body = (await res.json()) as {
+      result?: { isError?: boolean; content?: Array<{ text: string }> }
+      error?: unknown
+    }
+    expect(body.error).toBeUndefined()
+    expect(body.result?.isError ?? false, body.result?.content?.[0]?.text).toBe(false)
+    const result = JSON.parse(body.result?.content?.[0]?.text ?? '{}') as {
       results?: Array<{ id: string; snippet?: string; normalizedText?: string }>
     }
     const thoughts = result.results ?? []
+    expect(thoughts.map((t) => t.id)).toContain(own.id)
     for (const t of thoughts) {
       const bodyText = t.normalizedText ?? t.snippet ?? ''
       expect(bodyText).not.toContain('User A private note')

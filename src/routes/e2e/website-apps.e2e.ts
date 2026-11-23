@@ -116,6 +116,8 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     // Both client navigation and a fresh SSR hydration must use the same runtime.
     await page.reload()
     await expect(page.getByTestId('step-repository')).toBeVisible()
+    // The radios are script-driven: a click before hydration changes nothing.
+    await waitForHydration(page)
     await page.getByRole('radio', { name: 'Private repository', exact: true }).click()
     await expect(page.getByTestId('check-link')).toBeDisabled()
     await page.getByRole('radio', { name: 'Public repository', exact: true }).click()
@@ -186,11 +188,12 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     expect(await page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(
       true,
     )
-    // ...and the module wrapper still pins its subtree to the white palette.
+    // ...and the module wrapper still pins its subtree to the light palette: the
+    // light #f2f2f2 stage of the reference board (4f60dbbb), not the dark one.
     const shell = page.locator('.marketing-light-theme')
     await expect(shell).toBeVisible()
     expect(await shell.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
-      'rgb(255, 255, 255)',
+      'rgb(242, 242, 242)',
     )
 
     // No ee: the explicit not-managed alert instead of a broken-looking page.
@@ -228,12 +231,15 @@ test.describe('website apps (the module cut, no ee attached)', () => {
     await expect(page.getByRole('heading', { name: 'Settings', level: 2 })).toBeVisible()
     await expect(page.getByText(/HTTPS/).first()).toBeVisible()
     await expect(page.getByText('Deploys are off on this stack')).toHaveCount(0)
-    // Domain routing is a section of this page; the company domain is one link away
-    // (the old underlined in-page link row is replaced by the Website tabs).
-    await expect(page.getByText('Domains & routing', { exact: true }).first()).toBeVisible()
+    // Domains are one global setting (plan/domains-one-claim.md, D5 d207ff41): this
+    // page keeps a Domains section that sends you to Settings › Domains, the one
+    // place to change them; the old "Domains & routing" table is gone.
+    const domains = page.locator('#domains')
+    await expect(domains.getByText('Domains', { exact: true })).toBeVisible()
     await expect(
-      page.getByRole('link', { name: 'company site settings', exact: true }).first(),
-    ).toHaveAttribute('href', '/m/website/site')
+      domains.getByRole('link', { name: 'Settings › Domains', exact: true }),
+    ).toHaveAttribute('href', '/settings/domains')
+    await expect(page.getByText('Domains & routing', { exact: true })).toHaveCount(0)
     await page.screenshot({ path: 'test-results/website-settings.png', fullPage: true })
     await page.setViewportSize({ width: 390, height: 844 })
     expect(
