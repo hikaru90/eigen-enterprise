@@ -5,6 +5,7 @@ import { companyMail } from '$lib/server/mail'
 import { foundingCompanyName } from '$lib/server/overview/sources'
 import { dbMemberStore } from './db-store'
 import type { GroupDeps } from './groups'
+import type { OpenJoinDeps } from './open-join'
 import type { Actor, MemberDeps } from './service'
 
 export * from './service'
@@ -24,6 +25,14 @@ export async function humanActor(userId: string): Promise<Actor> {
 }
 
 export * from './groups'
+export * from './open-join'
+
+/** The live open-join wiring: company_join in Postgres, plus kernel audit events. */
+export async function openJoinDeps(): Promise<OpenJoinDeps> {
+  const { kernelAudit } = await import('$lib/server/access')
+  const { dbOpenJoinStore } = await import('./open-join-db')
+  return { store: dbOpenJoinStore, audit: kernelAudit }
+}
 
 /**
  * The live groups wiring: the company data repo (groups/<slug>.yaml, files

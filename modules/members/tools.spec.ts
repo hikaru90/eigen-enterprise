@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { memoryStore } from '$lib/server/members/memory-store'
 import { memoryGroupStore } from '$lib/server/members/groups'
+import { memoryOpenJoinStore } from '$lib/server/members/open-join'
 import { createMembersTools } from './tools'
 
 const at = new Date('2026-10-21T10:00:00Z')
@@ -91,6 +92,54 @@ describe('members group tools', () => {
     expect(mail.send).not.toHaveBeenCalled()
     expect(JSON.stringify(out)).not.toMatch(/token|https?:/)
     expect(out).toMatchObject({ emailed: false, note: expect.stringMatching(/Settings → Members/) })
+  })
+})
+
+describe('members open join tools', () => {
+  function withOpenJoin(role: 'owner' | 'admin' | 'member') {
+    const store = memoryOpenJoinStore()
+    const audit = vi.fn(async () => {})
+    const tools = createMembersTools({
+      openJoinDeps: async () => ({ store, audit }),
+      actor: async (ctx) => (ctx.principal.kind === 'human' ? { id: ctx.principal.id, role } : { id: ctx.principal.id, role: 'admin' }),
+    })
+    const tool = (name: string) => tools.find((t) => t.name === name)!
+    const human = { principal: { id: 'p', kind: 'human' as const, roles: [role === 'member' ? 'member' : 'admin'] }, requestId: 'r' }
+    const agent = { principal: { id: 'agent:1', kind: 'agent' as const, roles: ['agent'] }, requestId: 'r' }
+    return { store, audit, tool, human, agent }
+  }
+
+  it('declares a read and an approval-gated public switch for owner/admin and the agent only', () => {
+    const { tool } = withOpenJoin('owner')
+    expect(tool('members.get_open_join')).toMatchObject({ auditClass: 'read', permission: { roles: ['admin', 'agent'] } })
+    expect(tool('members.set_open_join')).toMatchObject({
+      auditClass: 'mutate',
+      approvalRisk: 'public',
+      permission: { roles: ['admin', 'agent'] },
+    })
+    expect(tool('members.set_open_join').activity!({ on: true }, undefined)).toBe('Opened the company to anyone who verifies their email (open join)')
+    expect(tool('members.set_open_join').activity!({ on: false }, undefined)).toBe('Closed open join: people join by invite only')
+  })
+
+  it('the owner reads it (off by default) and switches it, audited', async () => {
+    const { tool, human, audit, store } = withOpenJoin('owner')
+    expect(await tool('members.get_open_join').handler(human, {})).toEqual({ openJoin: false })
+    expect(await tool('members.set_open_join').handler(human, { on: true })).toEqual({ openJoin: true })
+    expect(await store.get()).toBe(true)
+    expect(audit).toHaveBeenCalledWith({ type: 'members.open_join_changed', principalId: 'p', payload: { openJoin: true, was: false } })
+  })
+
+  it('a member acts with their own role: they can neither read nor switch it', async () => {
+    const { tool, human, store } = withOpenJoin('member')
+    await expect(tool('members.get_open_join').handler(human, {})).rejects.toThrow(/owner or an admin/)
+    await expect(tool('members.set_open_join').handler(human, { on: true })).rejects.toThrow(/owner or an admin/)
+    expect(await store.get()).toBe(false)
+  })
+
+  it('takes exactly {on: boolean}', () => {
+    const { tool } = withOpenJoin('owner')
+    expect(tool('members.set_open_join').inputSchema.safeParse({ on: 'yes' }).success).toBe(false)
+    expect(tool('members.set_open_join').inputSchema.safeParse({ on: true, extra: 1 }).success).toBe(false)
   })
 })
 

@@ -5,6 +5,8 @@ import { takeDeliveryFailure } from '$lib/server/auth/deliver-code'
 import { signInRefusal } from '$lib/server/auth/unclaimed'
 import { getSafeErrorMessage } from '$lib/server/auth-form-errors'
 import { publicErrorReport } from '$lib/server/auth/public-error-report'
+import { openJoinScope } from '$lib/server/auth/owner-policy'
+import { joinNameSchema } from '$lib/server/members/accept'
 import {
   emailCodeRequestSchema,
   emailCodeVerifySchema,
@@ -30,7 +32,13 @@ function refused(sentence: string, attempted: string, err?: unknown, nextSteps?:
 const SEND_ATTEMPT = 'Sending a sign-in code by email (passwordless sign-in, step 1)'
 const VERIFY_ATTEMPT = 'Checking the emailed sign-in code (passwordless sign-in, step 2)'
 
-export async function requestCode(event: RequestEvent, opts: { requireTerms: boolean }) {
+/**
+ * `openJoin`: /signup on a claimed server whose company is open to join
+ * (members.open_join, checked by the page): a new address gets a code too.
+ * Same schema, same Better Auth call, same rate limits — only the members-only
+ * gate is not asked; the user-create hook re-checks the setting.
+ */
+export async function requestCode(event: RequestEvent, opts: { requireTerms: boolean; openJoin?: boolean }) {
   const form = await event.request.formData()
   const raw = {
     email: form.get('email')?.toString() ?? '',
@@ -50,7 +58,7 @@ export async function requestCode(event: RequestEvent, opts: { requireTerms: boo
     })
   }
   // On a claimed ee server only members get a code; everyone else gets a plain answer.
-  const refusal = await signInRefusal(parsed.data.email)
+  const refusal = opts.openJoin ? null : await signInRefusal(parsed.data.email)
   if (refusal) {
     return fail(403, {
       step: 'email' as const,
@@ -82,7 +90,12 @@ export async function requestCode(event: RequestEvent, opts: { requireTerms: boo
   }
 }
 
-export async function verifyCode(event: RequestEvent) {
+/**
+ * `openJoin`: the person also gives their name (like the invite page), and the
+ * code is verified inside openJoinScope so the user-create hook may make a
+ * member — after re-reading the setting.
+ */
+export async function verifyCode(event: RequestEvent, opts: { openJoin?: boolean } = {}) {
   const form = await event.request.formData()
   const raw = {
     email: form.get('email')?.toString() ?? '',
@@ -99,11 +112,28 @@ export async function verifyCode(event: RequestEvent) {
       ]),
     })
   }
+  let name: string | null = null
+  if (opts.openJoin) {
+    const n = joinNameSchema.safeParse(form.get('name')?.toString() ?? '')
+    if (!n.success) {
+      return fail(400, {
+        step: 'code' as const,
+        email: parsed.data.email,
+        ...refused(n.error.issues[0]!.message, VERIFY_ATTEMPT, undefined, [
+          'Open join (/signup) asks for the name before the code is checked (joinNameSchema, src/lib/server/members/accept.ts).',
+        ]),
+      })
+    }
+    name = n.data
+  }
   try {
-    await auth.api.signInEmailOTP({
-      body: { email: parsed.data.email, otp: parsed.data.code },
-      headers: signInHeaders(event),
-    })
+    const email = parsed.data.email
+    const signIn = () =>
+      auth.api.signInEmailOTP({
+        body: name === null ? { email, otp: parsed.data.code } : { email, otp: parsed.data.code, name },
+        headers: signInHeaders(event),
+      })
+    await (opts.openJoin ? openJoinScope.run({ email }, signIn) : signIn())
   } catch (error) {
     return fail(400, {
       step: 'code' as const,

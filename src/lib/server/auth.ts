@@ -12,13 +12,14 @@ import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/s
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
 import { deliverSignInCode, recordDeliveryFailure } from '$lib/server/auth/deliver-code'
 import { freshSessionHook } from '$lib/server/auth/fresh-session'
-import { claimScope, inviteScope, NotAMemberError, ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
+import { claimScope, inviteScope, NotAMemberError, openJoinScope, ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
 import { authDb } from '$lib/server/db/auth-db'
 import { user as userTable } from '$lib/server/db/auth.schema'
 import { recordSignInCode } from '$lib/server/e2e/verification-link-store'
 import { env } from '$lib/server/env/private-env'
 import { companyMail } from '$lib/server/mail'
 import { dbMemberStore } from '$lib/server/members/db-store'
+import { openJoinOn, recordOpenJoin } from '$lib/server/members/open-join-db'
 import { foundingCompanyName } from '$lib/server/overview/sources'
 
 const socialProviders = buildSocialProvidersConfig(env)
@@ -189,6 +190,10 @@ export const auth = betterAuth({
           const email = String(user.email ?? '').toLowerCase()
           const invite = inviteScope.getStore()
           if (invite && invite.email !== email) throw new Error('this invite belongs to a different email address')
+          // Open join (members.open_join): /signup verified this address's code; the
+          // setting is re-read now, at the moment the account is made.
+          const joining = openJoinScope.getStore()
+          if (joining && joining.email !== email) throw new Error('this sign-up belongs to a different email address')
           let role
           try {
             role = ownerPolicyForNewUser({
@@ -196,6 +201,7 @@ export const auth = betterAuth({
               managedByEe: Boolean(env.EE_WORKLOAD),
               viaClaim: claimScope.getStore() === true,
               invite: invite ? { role: invite.role } : null,
+              openJoin: joining ? await openJoinOn() : false,
             }).role
           } catch (err) {
             if (err instanceof NotAMemberError) throw new NotAMemberError(await foundingCompanyName())
@@ -215,6 +221,8 @@ export const auth = betterAuth({
           }
         },
         after: async (user) => {
+          // Joined through open join (not founding, not invited): like an accepted invite, no company onboarding.
+          if (openJoinScope.getStore() && !inviteScope.getStore() && user.role === 'member') await recordOpenJoin(user.id)
           await syncOwleryContactForVerifiedUser(user)
         },
       },

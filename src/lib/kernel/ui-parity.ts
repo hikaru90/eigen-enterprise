@@ -382,6 +382,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/members ?/deleteGroup': tool('members.group_delete'),
   '/(nucleus)/settings/members ?/invite': tool('members.invite'),
   '/(nucleus)/settings/members ?/remove': tool('members.remove'),
+  '/(nucleus)/settings/members ?/setOpenJoin': tool('members.set_open_join'),
   '/(nucleus)/settings/members ?/setRole': tool('members.set_role'),
   '/(nucleus)/settings/members ?/updateGroup': tool('members.group_update'),
   '/api/onboarding/name POST': tool('members.set_my_called'),

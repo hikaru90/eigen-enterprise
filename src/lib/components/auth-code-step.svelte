@@ -14,12 +14,15 @@
     message,
     error,
     agent = null,
+    askName = false,
   }: {
     email: string
     message?: string | undefined
     error?: string | undefined
     /** The server's signed-out agent half (no email, no code). */
     agent?: AgentReport | null
+    /** Open join on /signup: the person gives their name with the code, like the invite page. */
+    askName?: boolean
   } = $props()
 
   /** A literal `{6}` in markup would be read as a Svelte expression. */
@@ -36,6 +39,20 @@
   <input type="hidden" name="email" value={email} />
   {#if message}
     <p class="text-foreground text-xs">{message}</p>
+  {/if}
+  {#if askName}
+    <div class="space-y-1">
+      <Label for="name">Your name</Label>
+      <input
+        id="name"
+        name="name"
+        autocomplete="name"
+        maxlength="80"
+        required
+        data-testid="auth-code-name"
+        class="border-input bg-card text-foreground h-9 w-full border px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      />
+    </div>
   {/if}
   <div class="space-y-1">
     <Label for="code">Code</Label>

@@ -61,7 +61,7 @@ export type InviteMail = {
 
 export class MemberError extends Error {
   constructor(
-    readonly code: 'forbidden' | 'not_found' | 'owner_protected' | 'already_member' | 'invalid_email' | 'invalid_role' | 'invalid_group',
+    readonly code: 'forbidden' | 'not_found' | 'owner_protected' | 'already_member' | 'invalid_email' | 'invalid_role' | 'invalid_group' | 'invalid_input',
     message: string,
   ) {
     super(message)

@@ -1,16 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const { roleOf, store, mail, groups } = vi.hoisted(() => ({
+const { roleOf, store, mail, groups, openJoin } = vi.hoisted(() => ({
   roleOf: { value: 'owner' as 'owner' | 'admin' | 'member' },
   store: { current: null as unknown },
   mail: { send: vi.fn(async () => ({})), isConfigured: vi.fn(async () => true) },
   groups: { current: null as unknown },
+  openJoin: { current: null as unknown, audit: [] as unknown[] },
 }))
 
 vi.mock('$lib/server/members', async () => {
   const service = await import('$lib/server/members/service')
   const { memoryStore } = await import('$lib/server/members/memory-store')
   const groupsMod = await import('$lib/server/members/groups')
+  const openJoinMod = await import('$lib/server/members/open-join')
+  openJoin.current = openJoinMod.memoryOpenJoinStore()
   groups.current = groupsMod.memoryGroupStore(['o', 'm'])
   const at = new Date('2026-10-21T10:00:00Z')
   store.current = memoryStore([
@@ -20,6 +23,8 @@ vi.mock('$lib/server/members', async () => {
   return {
     ...service,
     ...groupsMod,
+    ...openJoinMod,
+    openJoinDeps: async () => ({ store: openJoin.current, audit: async (e: unknown) => void openJoin.audit.push(e) }),
     memberDeps: async () => ({
       store: store.current,
       mail,
@@ -149,5 +154,31 @@ describe('Settings → Members: groups', () => {
     roleOf.value = 'member'
     const out = (await actions.createGroup(postMany([['name', 'X']]))) as { status: number }
     expect(out.status).toBe(403)
+  })
+})
+
+describe('Settings → Members: open join', () => {
+  it('loads off by default; the owner switches it on and off (the members.set_open_join service, audited)', async () => {
+    roleOf.value = 'owner'
+    let data = (await load({ locals: { user: { id: 'o' } } } as never)) as { openJoin: boolean }
+    expect(data.openJoin).toBe(false)
+    expect(await actions.setOpenJoin(post({ on: 'true' }))).toEqual({ action: 'setOpenJoin', ok: true, openJoin: true })
+    data = (await load({ locals: { user: { id: 'o' } } } as never)) as typeof data
+    expect(data.openJoin).toBe(true)
+    expect(await actions.setOpenJoin(post({ on: 'false' }))).toEqual({ action: 'setOpenJoin', ok: true, openJoin: false })
+    expect(openJoin.audit).toEqual([
+      { type: 'members.open_join_changed', principalId: 'o', payload: { openJoin: true, was: false } },
+      { type: 'members.open_join_changed', principalId: 'o', payload: { openJoin: false, was: true } },
+    ])
+  })
+
+  it('refuses anything but true/false, and a member cannot switch it', async () => {
+    roleOf.value = 'admin'
+    const bad = (await actions.setOpenJoin(post({ on: 'maybe' }))) as { status: number }
+    expect(bad.status).toBe(400)
+    roleOf.value = 'member'
+    const out = (await actions.setOpenJoin(post({ on: 'true' }, 'm'))) as { status: number; data: { error: string } }
+    expect(out.status).toBe(403)
+    expect(out.data.error).toMatch(/owner or an admin/)
   })
 })

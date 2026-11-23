@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { notAMemberMessage, ownerPolicyForNewUser, signInGate } from './owner-policy'
 
-const base = { invite: null, viaClaim: false }
+const base = { invite: null, viaClaim: false, openJoin: false }
 
 describe('ownerPolicyForNewUser (single-tenant: the company has one owner)', () => {
   it('on an ee server, only the claim link creates the first account, and it becomes the owner', () => {
@@ -17,6 +17,12 @@ describe('ownerPolicyForNewUser (single-tenant: the company has one owner)', () 
   it('an accepted invite creates the account with the invited role', () => {
     expect(ownerPolicyForNewUser({ ...base, existingUsers: 2, managedByEe: true, invite: { role: 'admin' } })).toEqual({ role: 'admin' })
     expect(ownerPolicyForNewUser({ ...base, existingUsers: 2, managedByEe: false, invite: { role: 'member' } })).toEqual({ role: 'member' })
+  })
+
+  it('with open join on, a verified email joins a claimed ee server as a member — never as the first account', () => {
+    expect(ownerPolicyForNewUser({ ...base, existingUsers: 1, managedByEe: true, openJoin: true })).toEqual({ role: 'member' })
+    expect(() => ownerPolicyForNewUser({ ...base, existingUsers: 0, managedByEe: true, openJoin: true })).toThrow(/not been claimed/)
+    expect(ownerPolicyForNewUser({ ...base, existingUsers: 2, managedByEe: true, openJoin: true, invite: { role: 'admin' } })).toEqual({ role: 'admin' })
   })
 
   it('outside ee (dev, tests) the first signup is the owner, later ones are members', () => {

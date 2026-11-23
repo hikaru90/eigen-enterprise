@@ -150,6 +150,36 @@
     {/each}
   </section>
 
+  <section class="mt-10 space-y-3" data-testid="members-open-join">
+    <h3 class="text-sm font-semibold">Open join</h3>
+    <p class="text-muted-foreground text-xs">
+      {#if data.openJoin}
+        On: anyone who verifies their email with a sign-in code on the Join page becomes a member of
+        {data.companyName ?? 'your company'}.
+      {:else}
+        Off: people join by invite only. Turn it on to let anyone who verifies their email join as a
+        member.
+      {/if}
+    </p>
+    <form method="post" action="?/setOpenJoin" use:enhance class="flex items-center gap-2">
+      <input type="hidden" name="on" value={data.openJoin ? 'false' : 'true'} />
+      <button
+        type="submit"
+        role="switch"
+        aria-checked={data.openJoin}
+        data-testid="open-join-toggle"
+        class="border border-border px-3 py-1 text-xs hover:border-primary"
+        >{data.openJoin ? 'Turn off open join' : 'Turn on open join'}</button
+      >
+    </form>
+    {#if feedback('setOpenJoin')?.error}
+      {@const f = feedback('setOpenJoin')}
+      {#if f?.error}
+        <ErrorNotice class="text-xs" error={f.text} agent={f.agent} attempted="Switching open join" />
+      {/if}
+    {/if}
+  </section>
+
   <section class="mt-10 space-y-3" data-testid="members-invite">
     <h3 class="text-sm font-semibold">Invite someone</h3>
     <p class="text-muted-foreground text-xs">
