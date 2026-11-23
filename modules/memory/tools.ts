@@ -7,6 +7,7 @@ import {
   assistantCreateTextFile,
   assistantUpdateTextFile,
   liveMemoryWriterOf,
+  refuseForCoworker,
   requireWriter,
   type MemoryWriter,
 } from './assistant-writes'
@@ -30,7 +31,10 @@ import { createThoughtTools, type ThoughtToolDeps } from './thought-tools'
  * private items or thoughts — and writes land with them, marked as coming
  * through the brain (see assistant-writes.ts). Colleagues' items are
  * read-only: a write to one fails loud (permission_denied). Every member
- * reaches these tools (role 'member').
+ * reaches these tools (role 'member'). An AI co-worker (plan/phase-ai-coworkers.md
+ * §7) reaches them as itself, on its own Memory, except a person's own clicks
+ * (COWORKER_REFUSED_TOOLS); its thoughts are company-visible and read-only to
+ * everyone else, and memory.retrieve_thoughts reaches every co-worker's thoughts.
  */
 
 export type MemoryToolDeps = {
@@ -74,8 +78,9 @@ async function runMemoryTool(
   name: (typeof MEMORY_TOOL_NAMES)[number],
   ctx: { principal: { id: string } },
   input: unknown,
+  coworker?: { name: string },
 ): Promise<unknown> {
-  const mcpCtx = { userId: ctx.principal.id }
+  const mcpCtx = { userId: ctx.principal.id, ...(coworker ? { coworker } : {}) }
   const tools = await import('$lib/server/mcp/tools')
   switch (name) {
     case 'memory.capture_thought':
@@ -130,6 +135,12 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     input: unknown,
   ): Promise<unknown> {
     try {
+      // An AI co-worker reads and writes as itself, in its own Memory (assistant-writes.ts).
+      if (ctx.principal.kind === 'coworker') {
+        const writer = requireWriter(await writerOf(ctx))
+        if (writer.kind !== 'coworker') throw new Error(`a co-worker principal resolved to a ${writer.kind} writer`)
+        return await runMemoryTool(name, { principal: { id: writer.userId } }, input, { name: writer.name })
+      }
       if (!WRITE_TOOLS.has(name)) return await runMemoryTool(name, ctx, input)
       const writer = requireWriter(await writerOf(ctx))
       if (writer.kind === 'self') {
@@ -183,9 +194,13 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.retrieve_thoughts',
-      'Read stored thoughts: recent browse (order=created_at) or hybrid semantic/lexical/graph search.',
+      'Read stored thoughts: recent browse (order=created_at) or hybrid semantic/lexical/graph search. Reaches the caller’s own thoughts and the AI co-workers’ (they work in the open), never another person’s; each result names its owner (name, kind) and editable (only your own).',
       'read',
       z.object({
+        scope: z
+          .enum(['mine', 'team', 'all'])
+          .optional()
+          .describe('mine = your own thoughts, team = the AI co-workers’ (read-only), all (default) = both.'),
         query: z.string().optional(),
         order: z.enum(['created_at', 'relevance']).optional(),
         top_k: optionalPositiveInt,
@@ -292,5 +307,17 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
     ...createReminderTools({ writerOf: opts.writerOf, ...opts.reminders }),
     ...createProjectScheduleTools({ writerOf: opts.writerOf, ...opts.projectSchedule }),
-  ]
+  ].map(refusingCoworkerWhereHumanOnly)
+}
+
+/** An AI co-worker's call to a person's own tool, or asking for privacy or another name, fails before it runs (assistant-writes.ts). */
+function refusingCoworkerWhereHumanOnly(descriptor: ToolDescriptor): ToolDescriptor {
+  const handler = descriptor.handler
+  return {
+    ...descriptor,
+    handler: async (ctx, input) => {
+      if (ctx.principal.kind === 'coworker') refuseForCoworker(descriptor.name, input)
+      return handler(ctx, input)
+    },
+  }
 }

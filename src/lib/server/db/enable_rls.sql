@@ -627,3 +627,14 @@ CREATE POLICY text_file_shared_read ON text_file
     coalesce(current_setting('app.current_user_id', true), '') <> ''
     AND visibility = 'company'
   );
+
+-- ─── AI co-workers' thoughts (drizzle/0171_coworker_thoughts.sql; keep identical) ──
+-- A co-worker's thoughts are readable by every signed-in member (it works out loud);
+-- writes stay owner-only through thought_isolation. A person's thoughts are untouched.
+DROP POLICY IF EXISTS thought_coworker_read ON thought;
+CREATE POLICY thought_coworker_read ON thought
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND EXISTS (SELECT 1 FROM "user" u WHERE u.id = thought.user_id AND u.kind = 'coworker')
+  );

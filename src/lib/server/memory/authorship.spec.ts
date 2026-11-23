@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { thought } from '$lib/server/db/schema'
 import {
+  COWORKER_WRITES_AS_ITSELF,
   USER_AUTHORSHIP,
   authorLayerKeyFromThought,
   authorLayerKeySqlCondition,
   authorshipFromAuthenticatedApiKey,
+  coworkerAuthorship,
   resolveAuthorFromPrefix,
   resolveAuthorSqlCondition,
   resolveMcpCaptureAuthorship,
@@ -187,5 +189,32 @@ describe('authorLayerKeySqlCondition', () => {
       authorLayerKey: 'apikey:key-1',
     })
     expect(sql).toBeDefined()
+  })
+})
+
+describe('an AI co-worker’s authorship (plan/phase-ai-coworkers.md §7)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('is its own: author agent, its name as the label, no API key', () => {
+    expect(coworkerAuthorship('  Mara  ')).toEqual({ author: 'agent', authorLabel: 'Mara', authorKeyId: null })
+    expect(() => coworkerAuthorship('   ')).toThrow(/name is empty/)
+  })
+
+  it('wins over the MCP defaults and looks up no API key', async () => {
+    await expect(
+      resolveMcpCaptureAuthorship({ coworker: { name: 'Mara' }, asUser: false, authenticatedApiKey: null }),
+    ).resolves.toEqual({ author: 'agent', authorLabel: 'Mara', authorKeyId: null })
+    expect(getDbMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses another name: an author prefix or as_user', async () => {
+    await expect(resolveMcpCaptureAuthorship({ coworker: { name: 'Mara' }, authorPrefix: 'ee_abc' })).rejects.toThrow(
+      COWORKER_WRITES_AS_ITSELF,
+    )
+    await expect(resolveMcpCaptureAuthorship({ coworker: { name: 'Mara' }, asUser: true })).rejects.toThrow(
+      COWORKER_WRITES_AS_ITSELF,
+    )
   })
 })

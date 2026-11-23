@@ -1177,6 +1177,13 @@
       "when": 1795200000170,
       "tag": "0170_ai_coworkers",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1795200000171,
+      "tag": "0171_coworker_thoughts",
+      "breakpoints": true
     }
   ]
 }

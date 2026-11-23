@@ -109,6 +109,9 @@ const { listTeamProjectsMock } = vi.hoisted(() => ({ listTeamProjectsMock: vi.fn
 // Whose items they are (shared Memory): owners resolved by name; colleagues' shared projects.
 vi.mock('$lib/server/memory/memory-owners', () => ({
   ownerNameOf: vi.fn(async () => 'Me'),
+  thoughtOwnersOf: vi.fn(
+    async (ids: string[]) => new Map(ids.map((id) => [id, { id, name: id === 'u1' ? 'Me' : 'Mara', kind: id === 'u1' ? 'human' : 'coworker' }])),
+  ),
   withOwners: vi.fn(async (items: Array<{ ownerId?: string }>) =>
     items.map((item) => ({ ...item, owner: { id: item.ownerId ?? 'u1', name: 'Me' } })),
   ),
@@ -242,6 +245,7 @@ describe('MCP tools', () => {
     listThoughtsMock.mockResolvedValue([
       {
         id: 't1',
+        ownerId: 'u1',
         normalizedText: 'hello world',
         category: 'thought',
         createdAt: new Date('2024-01-01'),
@@ -258,6 +262,7 @@ describe('MCP tools', () => {
       fields: 'snippet',
       cursor: undefined,
       authorFilter: 'user',
+      reach: 'all',
     })
     expect(out.count).toBe(1)
     expect(out.results[0]).toMatchObject({
@@ -277,6 +282,7 @@ describe('MCP tools', () => {
       fields: 'snippet',
       cursor: undefined,
       authorFilter: 'user',
+      reach: 'all',
     })
     expect(searchThoughtsMock).not.toHaveBeenCalled()
   })
@@ -292,6 +298,7 @@ describe('MCP tools', () => {
       fields: 'snippet',
       cursor: undefined,
       authorFilter: 'user',
+      reach: 'all',
     })
     expect(searchThoughtsMock).not.toHaveBeenCalled()
   })
@@ -300,6 +307,7 @@ describe('MCP tools', () => {
     searchThoughtsMock.mockResolvedValue([
       {
         id: 'a',
+        ownerId: 'u1',
         normalizedText: 'long normalized text here',
         category: 'thought',
         score: 0.02,
@@ -317,6 +325,7 @@ describe('MCP tools', () => {
       query: 'hello',
       topK: 10,
       authorFilter: 'user',
+      reach: 'all',
     })
     expect(out.count).toBe(1)
     expect(out.results[0]).toMatchObject({
@@ -333,6 +342,7 @@ describe('MCP tools', () => {
     searchThoughtsMock.mockResolvedValue([
       {
         id: 'a',
+        ownerId: 'u1',
         normalizedText: 'ich würde heute nachmittag die app trennen',
         category: 'task',
         score: 0.02,
@@ -376,6 +386,7 @@ describe('MCP tools', () => {
       query: 'Who is Jonas?',
       topK: 10,
       authorFilter: 'user',
+      reach: 'all',
     })
   })
 
@@ -386,6 +397,7 @@ describe('MCP tools', () => {
       userId: 'u1',
       query: 'hello',
       topK: 10,
+      reach: 'all',
     })
     expect(searchTextFilesMock).toHaveBeenCalledWith('u1', {
       query: 'hello',
@@ -400,6 +412,7 @@ describe('MCP tools', () => {
       userId: 'u1',
       query: 'hello',
       topK: 10,
+      reach: 'all',
     })
   })
 
@@ -411,6 +424,7 @@ describe('MCP tools', () => {
       query: 'hello',
       topK: 10,
       authorFilter: 'agent',
+      reach: 'all',
     })
     expect(searchTextFilesMock).toHaveBeenCalledWith('u1', {
       query: 'hello',
@@ -423,6 +437,7 @@ describe('MCP tools', () => {
     searchThoughtsMock.mockResolvedValue([
       {
         id: 'a',
+        ownerId: 'u1',
         normalizedText: 'A',
         category: 'thought',
         score: 0.6,
@@ -432,6 +447,7 @@ describe('MCP tools', () => {
       },
       {
         id: 'b',
+        ownerId: 'u1',
         normalizedText: 'B',
         category: 'thought',
         score: 0.2,
@@ -452,8 +468,47 @@ describe('MCP tools', () => {
         scoreNormalized: expect.any(Number),
         createdAt: '2026-06-02T10:00:00.000Z',
         temporalStatus: 'none',
+        owner: { id: 'u1', name: 'Me', kind: 'human' },
+        editable: true,
       },
     ])
+  })
+
+  it('runRetrieveThoughtsTool reaches the co-workers’ thoughts, marks each with its owner and editable, and reads their dates where they live', async () => {
+    searchThoughtsMock.mockResolvedValue([
+      { id: 'mine', ownerId: 'u1', normalizedText: 'Mine', category: 'thought', score: 0.6, vectorScore: 0.6, graphScore: 0, createdAt: new Date('2026-06-02T10:00:00.000Z') },
+      { id: 'theirs', ownerId: 'cw1', normalizedText: 'Theirs', category: 'thought', author: 'agent', authorLabel: 'Mara', score: 0.5, vectorScore: 0.5, graphScore: 0, createdAt: new Date('2026-06-02T10:00:00.000Z') },
+    ])
+    loadTemporalContextByThoughtIdsMock.mockResolvedValue(new Map())
+    const out = (await runRetrieveThoughtsTool({ userId: 'u1' }, { query: 'hi' })) as {
+      results: Array<{ id: string; owner: unknown; editable: boolean; authorLabel?: string }>
+    }
+    expect(searchThoughtsMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1', reach: 'all', authorFilter: 'user' }))
+    expect(out.results.map(({ id, owner, editable }) => ({ id, owner, editable }))).toEqual([
+      { id: 'mine', owner: { id: 'u1', name: 'Me', kind: 'human' }, editable: true },
+      { id: 'theirs', owner: { id: 'cw1', name: 'Mara', kind: 'coworker' }, editable: false },
+    ])
+    expect(out.results[1]!.authorLabel).toBe('Mara')
+    expect(loadTemporalContextByThoughtIdsMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1', thoughtIds: ['mine'] }))
+    expect(loadTemporalContextByThoughtIdsMock).toHaveBeenCalledWith(expect.objectContaining({ userId: 'cw1', thoughtIds: ['theirs'] }))
+  })
+
+  it('runRetrieveThoughtsTool: scope mine | team | all picks the reach; anything else fails loud', async () => {
+    searchThoughtsMock.mockResolvedValue([])
+    for (const scope of ['mine', 'team', 'all'] as const) {
+      await runRetrieveThoughtsTool({ userId: 'u1' }, { query: 'hi', scope })
+      expect(searchThoughtsMock).toHaveBeenLastCalledWith(expect.objectContaining({ reach: scope }))
+    }
+    await expect(runRetrieveThoughtsTool({ userId: 'u1' }, { query: 'hi', scope: 'everyone' })).rejects.toThrow(/scope must be one of/)
+  })
+
+  it('runRetrieveThoughtsTool for an AI co-worker: its own thoughts are written by it, so no default author filter', async () => {
+    searchThoughtsMock.mockResolvedValue([])
+    await runRetrieveThoughtsTool({ userId: 'cw1', coworker: { name: 'Mara' } }, { query: 'hi' })
+    expect(searchThoughtsMock).toHaveBeenLastCalledWith({ userId: 'cw1', query: 'hi', topK: 10, reach: 'all' })
+    // An explicit author filter still applies.
+    await runRetrieveThoughtsTool({ userId: 'cw1', coworker: { name: 'Mara' } }, { query: 'hi', author: 'agent' })
+    expect(searchThoughtsMock).toHaveBeenLastCalledWith(expect.objectContaining({ authorFilter: 'agent' }))
   })
 
   it('runDeleteThoughtTool soft-archives by thought_id', async () => {

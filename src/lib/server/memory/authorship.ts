@@ -2,6 +2,9 @@ import type { AnyColumn } from 'drizzle-orm'
 import { and, eq, isNull, like, sql, type SQL } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
 import { userApiKey, thought, type MemoryAuthor } from '$lib/server/db/schema'
+import { coworkerAuthorship, COWORKER_WRITES_AS_ITSELF } from '$lib/server/memory/coworker-authorship'
+
+export { coworkerAuthorship, COWORKER_WRITES_AS_ITSELF }
 
 export type MemoryAuthorship = {
   author: MemoryAuthor
@@ -85,12 +88,17 @@ export function authorshipFromAuthenticatedApiKey(key: AuthenticatedApiKey): Mem
   }
 }
 
-/** MCP capture authorship: explicit prefix, else Bearer API key identity, else user. */
+/** MCP capture authorship: an AI co-worker as itself; else explicit prefix, else Bearer API key identity, else user. */
 export async function resolveMcpCaptureAuthorship(input: {
   authorPrefix?: string | null
   asUser?: boolean
   authenticatedApiKey?: AuthenticatedApiKey | null
+  coworker?: { name: string } | null
 }): Promise<MemoryAuthorship> {
+  if (input.coworker) {
+    if (input.asUser === true || (input.authorPrefix ?? '').trim()) throw new Error(COWORKER_WRITES_AS_ITSELF)
+    return coworkerAuthorship(input.coworker.name)
+  }
   if (input.asUser === true) {
     return USER_AUTHORSHIP
   }

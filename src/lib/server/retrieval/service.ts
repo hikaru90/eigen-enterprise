@@ -10,6 +10,8 @@ import { retrieveEvidence } from '$lib/server/retrieval/retrieve-evidence'
 
 export type RetrievalResult = {
   id: string
+  /** Whose thought it is: the reader's own, or an AI co-worker's (reach 'all' / 'team'). */
+  ownerId: string
   normalizedText: string
   category: string
   author: MemoryAuthor
@@ -35,6 +37,8 @@ export async function searchThoughts(params: {
   queryEmbedding?: number[]
   temporalIntent?: import('$lib/server/retrieval/temporal').TemporalQueryIntent | null
   authorFilter?: MemoryAuthor
+  /** Whose thoughts (retrieval/reach.ts); default 'mine'. */
+  reach?: import('$lib/server/retrieval/reach').ThoughtReach
   extrasOut?: import('$lib/server/retrieval/retrieve-evidence').RetrieveEvidenceExtras
 }): Promise<RetrievalResult[]> {
   return retrieveEvidence({
@@ -44,6 +48,7 @@ export async function searchThoughts(params: {
     queryEmbedding: params.queryEmbedding,
     temporalIntent: params.temporalIntent,
     authorFilter: params.authorFilter,
+    reach: params.reach,
     extrasOut: params.extrasOut,
   })
 }

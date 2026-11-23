@@ -1,9 +1,10 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, sql } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
 import { thought } from '$lib/server/db/schema'
 import type { MemoryAuthor } from '$lib/server/db/schema'
 import { tokenizeLexicalQuery } from '$lib/server/memory/lexical-fold'
 import { activeThoughtLifecycleCondition } from '$lib/server/memory/thought-lifecycle-filter'
+import { thoughtReachCondition, type ThoughtReach } from '$lib/server/retrieval/reach'
 
 export type LexicalSearchResult = {
   id: string
@@ -36,6 +37,8 @@ export async function lexicalSearch(params: {
   query: string
   limit: number
   authorFilter?: MemoryAuthor
+  /** Whose thoughts (reach.ts); default 'mine'. */
+  reach?: ThoughtReach
 }): Promise<LexicalSearchResult[]> {
   const tsQueryString = buildLexicalTsQuery(params.query)
   if (tsQueryString.length === 0) return []
@@ -57,10 +60,9 @@ export async function lexicalSearch(params: {
     .from(thought)
     .where(
       and(
-        eq(thought.userId, params.userId),
+        thoughtReachCondition(params.userId, params.reach ?? 'mine', params.authorFilter),
         activeThoughtLifecycleCondition(),
         matchExpr,
-        params.authorFilter ? eq(thought.author, params.authorFilter) : undefined,
       ),
     )
     .orderBy(desc(rankExpr))

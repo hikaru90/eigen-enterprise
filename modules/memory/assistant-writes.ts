@@ -12,13 +12,21 @@ import type { ToolContext } from '$lib/kernel/types'
  *   `capture_source: 'agent'` records it came through the brain); notes it
  *   writes are marked as the assistant's (author 'agent', label
  *   ASSISTANT_AUTHOR_LABEL), and it may change only those.
+ * - `coworker` — an AI co-worker acting as itself (plan/phase-ai-coworkers.md
+ *   §7): it writes into ITS OWN Memory with a member's rights, and what it
+ *   captures is recorded as written by it (author 'agent', its name, capture
+ *   source 'agent'). Its thoughts are company-visible and read-only to everyone
+ *   else (drizzle/0171). A person's own clicks stay theirs: the tools in
+ *   COWORKER_REFUSED_TOOLS refuse it, and it never makes anything private.
  * - null — an agent principal that is no person: writes fail loud
  *   (WORKS_FOR_NO_ONE), never as the agent's own id (that id is no user).
  * Reads run as the principal — for the brain, the person: their own Memory,
- * under row-level security, never anyone else's. What assistant writes hand
- * back carries ids and titles, never text.
+ * under row-level security, never anyone else's private items. What assistant
+ * writes hand back carries ids and titles, never text.
  */
-export type MemoryWriter = { kind: 'self' | 'assistant'; userId: string }
+export type MemoryWriter =
+  | { kind: 'self' | 'assistant'; userId: string }
+  | { kind: 'coworker'; userId: string; name: string }
 
 export const ASSISTANT_AUTHOR_LABEL = 'Assistant'
 
@@ -29,9 +37,18 @@ export const ASSISTANT_NEVER_SHARES =
 export const WORKS_FOR_NO_ONE =
   'The assistant can write to Memory only while it works for a person (answering them in chat). This run works for no one, so nothing was saved.'
 
+export const COWORKER_OFF =
+  'This AI co-worker is switched off or removed, so it does not work in Memory. An admin turns it back on in Settings › Co-workers.'
+
 export async function liveMemoryWriterOf(ctx: ToolContext): Promise<MemoryWriter | null> {
   if (isViaBrain(ctx.principal)) return { kind: 'assistant', userId: ctx.principal.id }
   if (ctx.principal.kind === 'human') return { kind: 'self', userId: ctx.principal.id }
+  if (ctx.principal.kind === 'coworker') {
+    const { getCoworker } = await import('$lib/server/coworkers')
+    const coworker = await getCoworker(ctx.principal.id)
+    if (!coworker.enabled || coworker.removedAt !== null) throw new KernelError('permission_denied', COWORKER_OFF)
+    return { kind: 'coworker', userId: coworker.id, name: coworker.name }
+  }
   // An agent principal that IS a person (their MCP API key) writes as them.
   const { getUserRole } = await import('$lib/server/auth/user-role')
   return (await getUserRole(ctx.principal.id)) ? { kind: 'self', userId: ctx.principal.id } : null
@@ -40,6 +57,64 @@ export async function liveMemoryWriterOf(ctx: ToolContext): Promise<MemoryWriter
 export function requireWriter(writer: MemoryWriter | null): MemoryWriter {
   if (!writer) throw new KernelError('permission_denied', WORKS_FOR_NO_ONE)
   return writer
+}
+
+const COWORKER_REFUSALS = {
+  sharing:
+    'An AI co-worker’s projects and notes are always shared with the company; only a person makes their own things private or shares them.',
+  check_in: 'Memory check-ins are questions to a person about themselves; an AI co-worker has none to answer.',
+  connected_agents: 'Connected external agents are a person’s own integrations; an AI co-worker has none.',
+  reminders:
+    'Reminders notify a person on their own devices; an AI co-worker has none. Its rhythms are its scheduled check-ins (Settings › Co-workers).',
+  private:
+    'An AI co-worker works in the open: what it writes is shared with the company, so it cannot make a project or note private.',
+  authorship: 'author and as_user are for API-key callers: an AI co-worker always writes as itself, under its own name.',
+} as const
+
+/**
+ * Memory tools an AI co-worker does not get (plan/phase-ai-coworkers.md §3:
+ * "a person's own click" stays human-only). Every other Memory tool it uses
+ * like a member, on its own Memory; reads see its own, the other co-workers'
+ * thoughts and what colleagues share — never a person's private items.
+ */
+export const COWORKER_REFUSED_TOOLS: ReadonlyMap<string, keyof typeof COWORKER_REFUSALS> = new Map([
+  // Sharing is a person's own click; a co-worker's things are always shared.
+  ['memory.set_project_visibility', 'sharing'],
+  ['memory.set_text_file_visibility', 'sharing'],
+  // Check-ins ask a person about their own life and profile.
+  ['memory.answer_check_in', 'check_in'],
+  // Connected external agents are a person's own integrations (outbound webhooks).
+  ['memory.list_connected_agents', 'connected_agents'],
+  ['memory.list_agent_projects', 'connected_agents'],
+  ['memory.assign_thought_to_agent', 'connected_agents'],
+  ['memory.bind_agent_project', 'connected_agents'],
+  ['memory.unbind_agent_project', 'connected_agents'],
+  // Reminders notify a person on their devices; a co-worker's rhythms are coworker_rhythm (C6).
+  ['reminders.create', 'reminders'],
+  ['reminders.list', 'reminders'],
+  ['reminders.update', 'reminders'],
+  ['reminders.pause', 'reminders'],
+  ['reminders.resume', 'reminders'],
+  ['reminders.delete', 'reminders'],
+  ['reminders.complete', 'reminders'],
+  ['reminders.snooze', 'reminders'],
+])
+
+/** Inputs that would let a co-worker hide its work (private) or write under another name (author / as_user). */
+const PRIVATE_INPUT_TOOLS = new Set(['memory.create_text_file', 'memory.create_project'])
+const AUTHORSHIP_INPUT_TOOLS = new Set(['memory.capture_thought', 'memory.create_text_file'])
+
+/** Fails loud when an AI co-worker calls what stays a person's own (COWORKER_REFUSED_TOOLS) or asks for privacy or another name. */
+export function refuseForCoworker(toolName: string, input: unknown): void {
+  const reason = COWORKER_REFUSED_TOOLS.get(toolName)
+  if (reason) throw new KernelError('permission_denied', COWORKER_REFUSALS[reason])
+  const body = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  if (PRIVATE_INPUT_TOOLS.has(toolName) && body.private === true) {
+    throw new KernelError('permission_denied', COWORKER_REFUSALS.private)
+  }
+  if (AUTHORSHIP_INPUT_TOOLS.has(toolName) && (body.author !== undefined || body.as_user !== undefined)) {
+    throw new KernelError('permission_denied', COWORKER_REFUSALS.authorship)
+  }
 }
 
 function refuseApiKeyAuthorship(input: { author?: string; as_user?: boolean }): void {

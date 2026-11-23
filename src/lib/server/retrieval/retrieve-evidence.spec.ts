@@ -88,6 +88,8 @@ function makeSequentialDb(selectQueues: unknown[][]) {
 
 const thoughtRow = {
   id: 't1',
+  // The hydrate query names each row's owner (the reader's own here; a co-worker's with reach 'all').
+  ownerId: 'u1',
   normalizedText: 'plain text',
   normalizedTextEncrypted: null,
   rerankSnippet: 'snippet',
