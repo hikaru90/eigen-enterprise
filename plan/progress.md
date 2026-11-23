@@ -2,6 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Release v0.5.38 (owner: "build a new release!")
+
+- **Pushed** main (`a440e305..10857f40`, 32 commits: the company export, AI Co-workers C1/C2, call chat, the contribute round, Memory one door, drive previews) and tag **v0.5.38**. The GitHub release workflow (run 45211314626) builds, signs and publishes. Not installed on any box yet.
+- **Gate fixes on the way:**
+  - `c4036434`: the Settings → Plugins spec didn't list `coworkers` as core (pin missed in `842b39dc`).
+  - `b1f7009b`: `phase-timing.spec.ts` asserted wall ≥ 8 ms after 5 + 3 ms timeouts, which flaked under the full gate (a `setTimeout` may fire about 1 ms early by `Date.now`). It now asserts that the wall time covers the phases.
+- **Next:** install v0.5.38 where the owner wants it (Settings → Updates or `ee upgrade`), then update ee-one's board.
+
 ## 2026-11-23 — Contribute round: 8 workstreams merged into main (owner: "get contributions from all boxes and start integrating them"; merged, not pushed, not released)
 
 - **Round:** `plan/contribute-round-2026-11-23.md`. Sources: ee-one, os.cerberusblue.com and the central board.
