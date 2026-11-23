@@ -36,9 +36,28 @@ export function evalBrainDatabaseUrl(testUrl: string, name: string = EVAL_BRAIN_
 const SCRIPTS = ['ensure-extensions.mjs', 'migrate.mjs', 'ensure-app-role.mjs', 'apply-rls.mjs']
 const scriptsDir = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', 'scripts')
 
+/**
+ * Bootstraps run one at a time across processes: the role grants of
+ * ensure-app-role.mjs are cluster-wide, and two at once fail with "tuple
+ * concurrently updated" (the gate runs static.pg.spec and coworkers.pg.spec in
+ * parallel). A session advisory lock on the test database serializes them.
+ */
+const BOOTSTRAP_LOCK = 7_303_118_401
+
 /** Drop + recreate the eval database and bootstrap it like a box. Returns its URL. */
 export async function recreateEvalBrainDatabase(testUrl: string, name: string = EVAL_BRAIN_DATABASE): Promise<string> {
   const evalUrl = evalBrainDatabaseUrl(testUrl, name)
+  const lock = postgres(testUrl, { max: 1, onnotice: () => {} })
+  try {
+    await lock`select pg_advisory_lock(${BOOTSTRAP_LOCK})`
+    return await bootstrap(testUrl, evalUrl, name)
+  } finally {
+    await lock`select pg_advisory_unlock(${BOOTSTRAP_LOCK})`.catch(() => {})
+    await lock.end({ timeout: 5 })
+  }
+}
+
+async function bootstrap(testUrl: string, evalUrl: string, name: string): Promise<string> {
   await dropEvalBrainDatabase(testUrl, name)
   const admin = postgres(testUrl, { max: 1, onnotice: () => {} })
   try {

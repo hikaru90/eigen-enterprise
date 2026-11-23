@@ -4,11 +4,11 @@ import { ALL_ITEMS } from './suites'
 
 describe('npm run eval:brain arguments', () => {
   it('defaults to the deterministic static mode', () => {
-    expect(parseBrainEvalArgs([])).toEqual({ mode: 'static', provider: null, only: null })
+    expect(parseBrainEvalArgs([])).toEqual({ mode: 'static', provider: null, only: null, suite: 'all' })
   })
 
   it('chat mode needs a provider: platform (real model) or mock (the e2e mock gateway)', () => {
-    expect(parseBrainEvalArgs(['--mode', 'chat', '--provider', 'platform'])).toEqual({ mode: 'chat', provider: 'platform', only: null })
+    expect(parseBrainEvalArgs(['--mode', 'chat', '--provider', 'platform'])).toEqual({ mode: 'chat', provider: 'platform', only: null, suite: 'all' })
     expect(() => parseBrainEvalArgs(['--mode', 'chat'])).toThrow(/--provider platform\|mock/)
     expect(() => parseBrainEvalArgs(['--provider', 'mock'])).toThrow(/only with --mode chat/)
     expect(() => parseBrainEvalArgs(['--mode', 'fast'])).toThrow(/--mode static\|chat/)
@@ -17,6 +17,12 @@ describe('npm run eval:brain arguments', () => {
   it('--only narrows to named items and refuses unknown ones', () => {
     expect(parseBrainEvalArgs(['--mode', 'chat', '--provider', 'mock', '--only', 'K01,L03']).only).toEqual(['K01', 'L03'])
     expect(() => parseBrainEvalArgs(['--only', 'K99'])).toThrow(/unknown item K99/)
+  })
+
+  it('--suite coworkers runs the co-workers suite alone (no brain chat items); other suites are refused', () => {
+    expect(parseBrainEvalArgs(['--mode', 'chat', '--provider', 'platform', '--suite', 'coworkers']).suite).toBe('coworkers')
+    expect(() => parseBrainEvalArgs(['--suite', 'vibes'])).toThrow(/--suite all\|coworkers/)
+    expect(() => parseBrainEvalArgs(['--suite', 'coworkers', '--only', 'K01'])).toThrow(/--only names brain items/)
   })
 })
 
