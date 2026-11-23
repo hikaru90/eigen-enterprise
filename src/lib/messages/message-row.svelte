@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type RowPerson = { id: string; name: string; image: string | null }
+  export type RowPerson = { id: string; name: string; image: string | null; kind?: 'human' | 'coworker' }
 </script>
 
 <script lang="ts">
@@ -16,6 +16,8 @@
   import { resolve } from '$app/paths'
   import { callLineLabel } from '$lib/calls/format'
   import UserAvatar from '$lib/components/user-avatar.svelte'
+  import AiMark from '$lib/coworkers/ai-mark.svelte'
+  import { m as msg } from '$lib/paraglide/messages.js'
   import EmojiPicker from './emoji-picker.svelte'
   import { renderMessageMarkdown, type MentionOptions } from './markdown'
   import MessageEdit from './message-edit.svelte'
@@ -187,7 +189,7 @@
     highlighted ? 'bg-(--tone-yellow)/25 hover:bg-(--tone-yellow)/25 focus-within:bg-(--tone-yellow)/25' : '',
   ]}
   tabindex="0"
-  aria-label="{m.authorName}, {timeFmt.format(at)}"
+  aria-label="{m.authorName}{m.authorKind === 'coworker' ? ` (${msg.coworkers_ai_mark_title()})` : ''}, {timeFmt.format(at)}"
   data-testid={inThread ? 'thread-item' : 'messages-item'}
   data-id={m.id}
   data-grouped={grouped ? 'true' : 'false'}
@@ -212,6 +214,7 @@
     {#if !grouped}
       <p class="flex items-baseline gap-2 leading-5">
         <span class="text-[15px] font-bold" data-testid="messages-author">{m.authorName}</span>
+        {#if m.authorKind === 'coworker'}<AiMark class="self-center" testid="messages-author-ai" />{/if}
         <time class="text-xs text-muted-foreground" datetime={m.createdAt} title={fullFmt.format(at)}>{timeFmt.format(at)}</time>
       </p>
     {/if}

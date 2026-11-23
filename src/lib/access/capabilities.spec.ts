@@ -9,6 +9,7 @@ describe('pageCapability', () => {
     ['/settings/company', 'company.manage'],
     ['/settings/domains', 'company.manage'],
     ['/settings/members', 'members.manage'],
+    ['/settings/coworkers', 'coworkers.manage'],
     ['/settings/approvals', 'approvals.manage'],
     ['/settings/backups', 'backups.manage'],
     ['/settings/updates', 'updates.manage'],
@@ -23,7 +24,7 @@ describe('pageCapability', () => {
     expect(pageCapability(path)).toBe(capability)
   })
 
-  it.each(['/', '/settings', '/settings/llm', '/settings/api-keys', '/settings/passkeys', '/brand', '/brand/material', '/m/email', '/m/websites', '/messages', '/m/email/people', '/drive'])(
+  it.each(['/', '/settings', '/settings/llm', '/settings/api-keys', '/settings/passkeys', '/settings/org', '/settings/org/u1', '/brand', '/brand/material', '/m/email', '/m/websites', '/messages', '/m/email/people', '/drive'])(
     '%s needs no capability',
     (path) => {
       expect(pageCapability(path)).toBeNull()

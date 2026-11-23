@@ -21,6 +21,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   // The company's domains: bought through eigenEnterprise or connected (plan/managed-domains.md) — owner and admins.
   { id: 'domains', name: 'Domains', href: '/settings/domains' },
   { id: 'members', name: 'Members & invites', href: '/settings/members' },
+  // Who reports to whom, people and AI co-workers (plan/phase-ai-coworkers.md C5) — every member;
+  // a seat's profile is below it (/settings/org/[id]).
+  { id: 'org', name: 'Org chart', href: '/settings/org' },
+  // AI co-workers: create from a template, model, lens, caps, on/off — owner and admins.
+  { id: 'coworkers', name: 'Co-workers', href: '/settings/coworkers' },
   { id: 'llm', name: 'AI provider', href: '/settings/llm' },
   { id: 'passkeys', name: 'Passkeys & sessions', href: '/settings/passkeys' },
   { id: 'api-keys', name: 'API keys', href: '/settings/api-keys' },

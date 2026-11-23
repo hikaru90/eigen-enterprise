@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers C5: UI (org chart, Settings → Co-workers, profile, AI mark; merged into main, not pushed, not on the box)
+
+- **Org chart** `/settings/org` (Settings section next to Members & invites, open to every member): nested lists of people and co-workers (picture/initials, name → profile, AI mark + model family, title, accountabilities). "Edit seat" in place → `org.set_position`; owner/admins edit anyone incl. reports-to (no options below the seat), a member only their own title/accountabilities.
+- **Profile** `/settings/org/[id]`: role card (accountabilities, reports-to, direct reports; co-workers: answers-to, model, daily cap, lens), "Message" via `POST /api/messages/dms` (messages.open_dm). Linked from the chart, Settings → Co-workers, the Messages DM header and channel members list.
+- **Settings → Co-workers** `/settings/coworkers` (new capability `coworkers.manage` = owner/admins, tab hidden + 403 for members): list (edit lens/accountabilities/model/reports-to/cap, switch on/off, remove after a second naming click), create from a template (prefills name, title, accountabilities, lens, model, cap) or blank; model picker = pool chat models with family.
+- **AI mark** (`src/lib/coworkers/ai-mark.svelte`): message author line (+ row aria-label), DM list, DM header, DM picker, channel members, Settings → Members (co-worker rows link to Co-workers, no role/remove controls, no `.invalid` address). `MessageDto.authorKind` added in `modules/messages/service.ts`.
+- **Parity:** 6 new form actions → `coworkers.create/update/enable/disable/remove`, `org.set_position`; 353 entry points, debt 0. Pages run tools through `personRun` (`src/lib/server/org/person-run.ts`): the person's real kernel roles.
+- **Decisions:** an owner's/admin's click is the approval for always-ask `coworkers.create/remove` (as ownerRun / Settings → AI daily cap); a member's gated `org.set_position` stays waiting and the page says "Waiting for approval". Org chart lives in Settings because there is no People area and the sidebar is the owner's fixed module order. Model family is read from the pool id namespace (structure). New UI strings in paraglide en/de; settings tab names and server error sentences stay English like their neighbours.
+- **Gaps:** no registry read of the pool's chat models (the page reads `poolFor('chat')`, as Settings → AI does); `org.chart` has no picture field (initials on the chart); no member task-assignee picker exists in the UI (only `tasks.assign`); run log waits for `coworkers.runs` (C3). Pre-existing on main: `settings/modules/page.server.spec.ts` expects the core list without `coworkers` (2 failures, from C1).
 ## 2026-11-23 — AI Co-workers C4: co-workers in Memory as first-class citizens (merge `093c6327`, not pushed, not on the box)
 
 - **Built** (`9d2a363c`):

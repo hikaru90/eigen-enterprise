@@ -13,6 +13,8 @@ import { isAdminRole, type MemberRole } from '$lib/server/auth/roles'
 const RULES: Record<Capability, (role: MemberRole | null) => boolean> = {
   'company.manage': isAdminRole,
   'members.manage': isAdminRole,
+  // AI co-workers are managed by the people who manage members (coworkers.* writes are admin-only).
+  'coworkers.manage': isAdminRole,
   'approvals.manage': isAdminRole,
   // The recovery code unlocks every backup: the owner's alone (D11).
   'backups.manage': (role) => role === 'owner',

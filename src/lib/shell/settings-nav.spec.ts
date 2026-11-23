@@ -16,6 +16,8 @@ describe('settings sub-navigation', () => {
       'Company',
       'Domains',
       'Members & invites',
+      'Org chart',
+      'Co-workers',
       'AI provider',
       'Passkeys & sessions',
       'API keys',
@@ -46,7 +48,7 @@ describe('settings sub-navigation', () => {
     expect(settingsSections(member).some((s) => s.id === 'updates')).toBe(false)
   })
   it('a member sees only the sections they can open', () => {
-    expect(settingsSections(member).map((s) => s.id)).toEqual(['account', 'llm', 'passkeys', 'api-keys'])
+    expect(settingsSections(member).map((s) => s.id)).toEqual(['account', 'org', 'llm', 'passkeys', 'api-keys'])
   })
   it('every section shown is one the capability set opens (no tab leads to a 403)', () => {
     for (const set of [owner, admin, member]) {
@@ -62,6 +64,9 @@ describe('settings sub-navigation', () => {
     ['/settings/backups', 'backups'],
     ['/settings/modules', 'modules'],
     ['/settings/updates', 'updates'],
+    ['/settings/org', 'org'],
+    ['/settings/org/u1', 'org'],
+    ['/settings/coworkers', 'coworkers'],
     ['/settings/extensions', null],
   ])('%s -> %s', (path, id) => {
     expect(currentSettingsSection(path)).toBe(id)

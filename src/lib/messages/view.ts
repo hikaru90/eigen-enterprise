@@ -44,6 +44,8 @@ export type MessageView = {
   authorId: string
   authorName: string
   authorImage: string | null
+  /** A person or an AI co-worker (shown with the AI mark). */
+  authorKind: 'human' | 'coworker'
   body: string
   createdAt: string
   editedAt: string | null

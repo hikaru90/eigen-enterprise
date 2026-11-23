@@ -24,6 +24,8 @@
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
   import UserAvatar from '$lib/components/user-avatar.svelte'
+  import AiMark from '$lib/coworkers/ai-mark.svelte'
+  import { m as msg } from '$lib/paraglide/messages.js'
   import type { ShownError } from '$lib/errors/agent-report'
   import { createDrafts } from '$lib/messages/drafts'
   import MessageComposer from '$lib/messages/message-composer.svelte'
@@ -76,7 +78,8 @@
   const liveCalls = getLiveCalls()
   const calls = callsClient()
 
-  type Person = { id: string; name: string; email: string; image?: string | null }
+  /** kind: a person or an AI co-worker (plan/phase-ai-coworkers.md §6: shown with the AI mark). */
+  type Person = { id: string; name: string; email: string; image?: string | null; kind?: 'human' | 'coworker' }
 
   // Page-owned state seeded once from the load (the live stream keeps it current).
   // svelte-ignore state_referenced_locally
@@ -197,7 +200,7 @@
 
   const rowPerson = (id: string): RowPerson => {
     const p = peopleById.get(id)
-    return { id, name: p ? p.name.trim() || p.email : 'Former member', image: p?.image ?? null }
+    return { id, name: p ? p.name.trim() || p.email : 'Former member', image: p?.image ?? null, kind: p?.kind ?? 'human' }
   }
   /** A DM's other participants (the row's avatar and the header). */
   const dmOthers = (c: ConversationView) => c.memberIds.filter((u) => u !== data.me).map(rowPerson)
@@ -930,6 +933,7 @@
         >
       {/if}
       <span class="min-w-0 flex-1 truncate">{c.title}</span>
+      {#if dmWith.length === 1 && dmWith[0].kind === 'coworker'}<AiMark testid="messages-dm-ai" />{/if}
       {#if c.unread > 0}
         <span
           class={[
@@ -1121,6 +1125,14 @@
                 />{:else}<Hash class="size-4 shrink-0" aria-hidden="true" />{/if}
             {/if}
             <span class="truncate">{selected.title}</span>
+            {#if selected.kind === 'dm' && dmWith.length === 1 && dmWith[0].kind === 'coworker'}
+              <AiMark testid="messages-title-ai" />
+              <a
+                href={resolve('/(nucleus)/settings/org/[id]', { id: dmWith[0].id })}
+                class="shrink-0 rounded-sm text-xs font-normal text-muted-foreground underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid="messages-title-profile">{msg.coworkers_profile()}</a
+              >
+            {/if}
           </h2>
           {#if selected.topic}
             <p class="truncate text-xs text-muted-foreground" data-testid="messages-topic">
@@ -1192,7 +1204,13 @@
                         />
                       </span>
                       <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm">{personLabel(p)}</span>
+                        <span class="flex items-center gap-1.5 truncate text-sm"
+                          >{#if p.kind === 'coworker'}<a
+                              href={resolve('/(nucleus)/settings/org/[id]', { id: p.id })}
+                              class="truncate rounded-sm underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                              >{personLabel(p)}</a
+                            ><AiMark testid="messages-member-ai" />{:else}<span class="truncate">{personLabel(p)}</span>{/if}</span
+                        >
                         <span class="block truncate text-xs text-muted-foreground"
                           >{presenceLabel(status, now)}</span
                         >
@@ -1699,9 +1717,13 @@
               />
             </span>
             <span class="min-w-0 flex-1">
-              <span class="block truncate font-medium">{personLabel(p)}</span>
+              <span class="flex items-center gap-1.5 truncate font-medium"
+                ><span class="truncate">{personLabel(p)}</span>{#if p.kind === 'coworker'}<AiMark
+                    testid="dm-person-ai"
+                  />{/if}</span
+              >
               <span class="block truncate text-xs text-muted-foreground"
-                >{p.email} · {presenceLabel(presenceFor(p.id), now)}</span
+                >{p.kind === 'coworker' ? msg.coworkers_ai_mark_title() : p.email} · {presenceLabel(presenceFor(p.id), now)}</span
               >
             </span>
           </label>
