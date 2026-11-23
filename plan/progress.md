@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Dashboard pages use the full pane width (owner: "alot of content on the dashboard pages is cut off … can we make this full width?"; `89c7223f`)
+
+- **Cause:** the Settings layout wrapped every section in `max-w-2xl`, against the page-frame rule (frame full width, only forms and reading text cap themselves). Domains, Members, API keys and Backups tables were squeezed into 672 px. Website app detail, website site and Reminders capped the whole page at `max-w-3xl`.
+- **Shipped:** those caps are gone. Company, AI provider and BYOK provider (pure forms) cap themselves at `max-w-2xl`. The per-form caps elsewhere stay.
+- **Tests:** check 0 errors. No visual test pins the widths. Released to the box.
+
 ## 2026-11-23 — Brand website capture works on servers: headless Chromium ships as ee's first capability (`ffa2aa98`, owner: "ship Chromium")
 
 - **Cause:** `brand.extract_start` answered `BrowserUnavailableError` on every install. Releases install node_modules with `--ignore-scripts` and never shipped a browser. Reproduced on the box: no `chrome-headless-shell` anywhere.
