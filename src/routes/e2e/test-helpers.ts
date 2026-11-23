@@ -247,7 +247,7 @@ export async function captureThought(
     data: { raw },
     headers: { accept: 'application/json' },
   })
-  if (!res.ok) {
+  if (!res.ok()) {
     const body = await res.text()
     throw new Error(`captureThought failed (${res.status()}): ${body}`)
   }
