@@ -28,6 +28,8 @@ const MIME_BY_EXT: Record<string, string> = {
   gif: 'image/gif',
   webp: 'image/webp',
   svg: 'image/svg+xml',
+  avif: 'image/avif',
+  bmp: 'image/bmp',
 }
 
 export function extensionOf(name: string): string {

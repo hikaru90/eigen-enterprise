@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { datedLabel, driveItemKind, initialsOf, shortWhen } from './display'
+import { datedLabel, driveItemKind, hasThumbnail, initialsOf, shortWhen, textPreviewOf, TEXT_PREVIEW_MAX_BYTES } from './display'
 
 describe('driveItemKind', () => {
   it('reads the kind from type, extension and MIME type', () => {
@@ -14,6 +14,38 @@ describe('driveItemKind', () => {
     expect(
       driveItemKind({ type: 'file', name: 'data.bin', mime: 'application/octet-stream' }),
     ).toBe('file')
+  })
+})
+
+describe('hasThumbnail', () => {
+  it('previews raster images (png, jpg, webp, gif, avif, bmp), not SVG (served as text) or other files', () => {
+    for (const [name, mime] of [
+      ['a.png', 'image/png'],
+      ['a.jpg', 'image/jpeg'],
+      ['a.webp', 'image/webp'],
+      ['a.gif', 'image/gif'],
+      ['a.avif', 'image/avif'],
+      ['a.bmp', 'image/bmp'],
+    ])
+      expect(hasThumbnail({ type: 'file', name, mime })).toBe(true)
+    expect(hasThumbnail({ type: 'file', name: 'logo.svg', mime: 'image/svg+xml' })).toBe(false)
+    expect(hasThumbnail({ type: 'file', name: 'brief.pdf', mime: 'application/pdf' })).toBe(false)
+    expect(hasThumbnail({ type: 'folder', name: 'Photos' })).toBe(false)
+  })
+})
+
+describe('textPreviewOf', () => {
+  it('previews documents and plain-text formats as text, CSV as a table, nothing else', () => {
+    expect(textPreviewOf({ type: 'file', name: 'notes.md', size: 10 })).toBe('text')
+    expect(textPreviewOf({ type: 'file', name: 'readme.txt' })).toBe('text')
+    expect(textPreviewOf({ type: 'file', name: 'config.JSON' })).toBe('text')
+    expect(textPreviewOf({ type: 'file', name: 'budget.csv', mime: 'text/csv' })).toBe('table')
+    expect(textPreviewOf({ type: 'file', name: 'mood.png', mime: 'image/png' })).toBe(null)
+    expect(textPreviewOf({ type: 'file', name: 'brief.pdf', mime: 'application/pdf' })).toBe(null)
+    expect(textPreviewOf({ type: 'folder', name: 'notes.md' })).toBe(null)
+  })
+  it('keeps the icon for files too large to load for a glance', () => {
+    expect(textPreviewOf({ type: 'file', name: 'big.md', size: TEXT_PREVIEW_MAX_BYTES + 1 })).toBe(null)
   })
 })
 

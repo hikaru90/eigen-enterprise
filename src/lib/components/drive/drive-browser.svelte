@@ -25,6 +25,8 @@
   import {
     datedLabel,
     driveItemKind,
+    hasThumbnail,
+    textPreviewOf,
     initialsOf,
     shortWhen,
     type DriveItemKind,
@@ -42,6 +44,7 @@
   } from '$lib/drive/upload'
   import type { ShownError } from '$lib/errors/agent-report'
   import DriveItemActions from './drive-item-actions.svelte'
+  import DriveTextPreview from './drive-text-preview.svelte'
   import NameDialog from './name-dialog.svelte'
 
   /**
@@ -731,6 +734,7 @@
             {#each visible as item (item.type + item.id)}
               {@const kind = driveItemKind(item)}
               {@const Icon = ICONS[kind]}
+              {@const thumb = hasThumbnail(item) && !trashView}
               {@const desc = descOf(item)}
               <tr
                 class="group border-b border-border/60 last:border-0 hover:bg-muted/50 {dropFolder?.id ===
@@ -748,12 +752,23 @@
                 <td class="px-3 py-2">
                   <span class="flex min-w-0 items-center gap-2.5">
                     <span
-                      class="flex size-7 shrink-0 items-center justify-center rounded-md {TILE[
-                        kind
-                      ]}"
+                      class="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md {thumb
+                        ? 'bg-muted/40'
+                        : TILE[kind]}"
                       title={KIND_LABEL[kind]}
                     >
-                      <Icon class="size-4" aria-hidden="true" />
+                      {#if thumb}
+                        <img
+                          src={contentHref(item)}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          class="size-full object-cover"
+                          data-testid="drive-list-thumb"
+                        />
+                      {:else}
+                        <Icon class="size-4" aria-hidden="true" />
+                      {/if}
                     </span>
                     <span class="sr-only">{KIND_LABEL[kind]}:</span>
                     {#if trashView}
@@ -847,6 +862,8 @@
         {#each visible as item (item.type + item.id)}
           {@const kind = driveItemKind(item)}
           {@const Icon = ICONS[kind]}
+          {@const thumb = hasThumbnail(item) && !trashView}
+          {@const textPreview = trashView ? null : textPreviewOf(item)}
           {@const desc = descOf(item)}
           <li
             class="group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md {dropFolder?.id ===
@@ -863,14 +880,15 @@
           >
             <a
               href={trashView ? undefined : openHref(item)}
-              class="flex aspect-[4/3] items-center justify-center overflow-hidden {kind ===
-                'image' && !trashView
+              class="flex aspect-[4/3] items-center justify-center overflow-hidden {thumb
                 ? 'bg-muted/40'
-                : TILE[kind]}"
+                : textPreview
+                  ? 'border-b border-border/60 bg-background'
+                  : TILE[kind]}"
               tabindex="-1"
               aria-hidden="true"
             >
-              {#if kind === 'image' && !trashView}
+              {#if thumb}
                 <img
                   src={contentHref(item)}
                   alt=""
@@ -878,6 +896,12 @@
                   class="size-full object-cover"
                   data-testid="drive-thumb"
                 />
+              {:else if textPreview}
+                <DriveTextPreview fileId={item.id} mode={textPreview}>
+                  {#snippet fallback()}
+                    <Icon class="size-10 opacity-80" />
+                  {/snippet}
+                </DriveTextPreview>
               {:else}
                 <Icon class="size-10 opacity-80" />
               {/if}

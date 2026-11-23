@@ -65,8 +65,9 @@ export default defineConfig({
     noDiscovery: true,
     holdUntilCrawlEnd: false,
     exclude: ['vitest-browser-svelte', '@testing-library/svelte-core', 'svelte'],
-    // CommonJS packages the office viewers import (noDiscovery: they must be listed).
-    include: ['@xmldom/xmldom'],
+    // CommonJS packages components import (noDiscovery: they must be listed):
+    // the office viewers (@xmldom/xmldom), the CSV grid (papaparse).
+    include: ['@xmldom/xmldom', 'papaparse'],
   },
   test: {
     name: 'components',

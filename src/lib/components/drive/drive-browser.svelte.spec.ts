@@ -7,7 +7,14 @@ import DriveBrowser from './drive-browser.svelte'
 const { gotoMock, invalidateAllMock, api } = vi.hoisted(() => ({
   gotoMock: vi.fn(),
   invalidateAllMock: vi.fn(),
-  api: { archive: vi.fn(), unarchive: vi.fn(), createFolder: vi.fn(), upload: vi.fn(), move: vi.fn() },
+  api: {
+    archive: vi.fn(),
+    unarchive: vi.fn(),
+    createFolder: vi.fn(),
+    upload: vi.fn(),
+    move: vi.fn(),
+    readText: vi.fn(),
+  },
 }))
 vi.mock('$app/navigation', () => ({ goto: gotoMock, invalidateAll: invalidateAllMock }))
 vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }))
@@ -181,6 +188,14 @@ describe('drive-browser: the full-width listing', () => {
     expect(page.getByTestId('drive-share').elements()).toHaveLength(0)
   })
 
+  it('previews images in the list view too, in place of the kind icon', async () => {
+    render(DriveBrowser, { props: { folderId: null, items: [folder, image], canEdit: true } })
+    await expect.element(page.getByTestId('drive-row').nth(1)).toBeInTheDocument()
+    const thumbs = page.getByTestId('drive-list-thumb')
+    expect(thumbs.elements()).toHaveLength(1)
+    await expect.element(thumbs).toHaveAttribute('src', '/api/drive/files/i1/content')
+  })
+
   it('switches to a grid with image previews, and remembers the choice in this browser', async () => {
     render(DriveBrowser, { props: { folderId: null, items: [folder, image], canEdit: true } })
     await page.getByTestId('drive-view-grid').click()
@@ -193,6 +208,32 @@ describe('drive-browser: the full-width listing', () => {
     await expect
       .element(page.getByTestId('drive-view-grid'))
       .toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('previews text files in the grid: the opening lines of a document, the first rows of a table', async () => {
+    const base = { parentId: null, ownerId: 'u1', updatedAt: at, trashedAt: null, size: 64, canEdit: true, canManage: true }
+    const notes = { ...base, type: 'file' as const, id: 'n1', name: 'notes.md', mime: 'text/markdown' }
+    const budget = { ...base, type: 'file' as const, id: 'b1', name: 'budget.csv', mime: 'text/csv' }
+    api.readText.mockImplementation(async (id: string) =>
+      id === 'n1' ? { content: '# Plan\nShip the drive previews.' } : { content: 'item,cost\npaper,12\n' },
+    )
+    localStorage.setItem('drive-view', 'grid')
+    render(DriveBrowser, { props: { folderId: null, items: [notes, budget], canEdit: true } })
+    const previews = page.getByTestId('drive-text-preview')
+    await expect.element(previews.nth(0)).toHaveAttribute('data-state', 'ready')
+    await expect.element(previews.nth(0)).toHaveTextContent('Ship the drive previews.')
+    await expect.element(previews.nth(1)).toHaveAttribute('data-state', 'ready')
+    expect(previews.nth(1).element().querySelectorAll('td')[2]?.textContent).toBe('paper')
+    expect(api.readText).toHaveBeenCalledWith('n1')
+    expect(api.readText).toHaveBeenCalledWith('b1')
+  })
+
+  it('keeps the kind icon when a text file cannot be read', async () => {
+    const notes = { type: 'file' as const, id: 'n2', name: 'notes.md', parentId: null, ownerId: 'u1', updatedAt: at, trashedAt: null, size: 64, canEdit: true, canManage: true }
+    api.readText.mockRejectedValue(new Error('gone'))
+    localStorage.setItem('drive-view', 'grid')
+    render(DriveBrowser, { props: { folderId: null, items: [notes], canEdit: true } })
+    await expect.element(page.getByTestId('drive-text-preview')).toHaveAttribute('data-state', 'failed')
   })
 
   it('opens in the view this browser last used', async () => {

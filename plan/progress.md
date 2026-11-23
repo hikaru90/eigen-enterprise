@@ -2,6 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Drive previews: image thumbnails in the list, text glances in the grid (owner: "include previews of the images in the drive? png, jpg, webp" · "even in list always include a small preview … text previews should also be visible in the small panes"; committed, not pushed, not on the box)
+
+- List view: raster images (png, jpg, jpeg, gif, webp, avif, bmp) show the image itself in the row's kind tile (`drive-list-thumb`); the grid already did. `hasThumbnail` (src/lib/drive/display.ts) is the one rule for both views; SVG keeps its icon (the content endpoint serves SVG as text, never active content).
+- Grid view: Markdown/txt/JSON/YAML/XML/log/… cards show their opening ~600 characters, CSV cards the first 6 rows × 4 columns (`drive-text-preview.svelte`), loaded once the card scrolls into view via the existing read (`GET /api/drive/files/:id/text`, same as `drive.read`: no new action, no parity debt). Files over 256 KB, and files that fail to read, keep the kind icon.
+- Upload MIME by extension now also knows .avif and .bmp.
+- Decisions: thumbnails are the original file scaled by the browser (no server-side thumbnail generation yet; the content endpoint is `no-store`, so large photo folders re-download on each visit — a thumbnail store is the follow-up if that hurts). List view keeps icons for text files (a 28 px tile can't hold legible text).
+- Tests: display.spec (hasThumbnail, textPreviewOf), preview.spec (mimeFor avif/bmp/webp), drive-browser component spec (list thumb, grid text + table preview, read failure → icon). vitest.browser.config prebundles papaparse (CommonJS; `noDiscovery`).
+
 ## 2026-11-23 — Assistant chat failed on the demo company: a regex lookahead in the hostname rule made OpenRouter's OpenInference refuse every turn (owner error report from demo.eigenenterprise.app)
 
 - **What broke:** on demo.eigenenterprise.app (incus `ee-demo` on rs500-1, unit `ee-os-b`) the chat answered "Something went wrong on my side …" (`durable agent run ended without an answer: model_error`). OpenRouter routes `~deepseek/deepseek-flash-latest` (→ `deepseek-v4.1-flash`) across many providers. One of them, **OpenInference**, answered `HTTP 400` (OpenRouter wraps it as 502) on every request whose tool list held a schema with `pattern: ^(?=.{1,253}$)…`. That is the kernel hostname rule, offered through 8 tools (substrate.domain_add/remove, website.app_deploy/app_domain_set/app_domain_remove, domains.set_target/remove/recheck/retry_certificate). Grammar-constrained tool decoding (vLLM/xgrammar) refuses lookaheads. A turn failed whenever all 3 gateway retries landed there: 28 such 400s in 6 h on the demo box.

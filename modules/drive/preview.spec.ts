@@ -50,6 +50,9 @@ describe('previewKind', () => {
     expect(mimeFor('a.pdf', 'application/pdf')).toBe('application/pdf')
     expect(mimeFor('a.md', '')).toBe('text/markdown')
     expect(mimeFor('a.bin', null)).toBe('application/octet-stream')
+    expect(mimeFor('a.webp', 'application/octet-stream')).toBe('image/webp')
+    expect(mimeFor('a.avif', '')).toBe('image/avif')
+    expect(mimeFor('a.bmp', null)).toBe('image/bmp')
   })
 })
 

@@ -17,6 +17,36 @@ export function driveItemKind(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): 
   return 'file'
 }
 
+/**
+ * Whether a row shows the file's own picture (list tile, grid card): raster
+ * images. SVG keeps its icon — the content endpoint serves it as text, never
+ * as active content.
+ */
+export function hasThumbnail(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): boolean {
+  return driveItemKind(item) === 'image' && item.mime !== 'image/svg+xml'
+}
+
+/** Plain-text formats a card shows the opening of (beyond .md/.txt and .csv). */
+const TEXT_PREVIEW_EXT = new Set(['markdown', 'log', 'json', 'yaml', 'yml', 'xml', 'tsv', 'ini', 'toml'])
+/** Above this a card keeps its icon: the preview would load the whole file. */
+export const TEXT_PREVIEW_MAX_BYTES = 256 * 1024
+
+/**
+ * How a grid card previews a file's text: 'table' (CSV: the first rows),
+ * 'text' (the opening lines), or null (no text preview: not a text format,
+ * or too large to load for a glance). A format fact by extension.
+ */
+export function textPreviewOf(item: Pick<DriveItem, 'type' | 'name' | 'mime' | 'size'>): 'text' | 'table' | null {
+  if (item.type !== 'file') return null
+  if ((item.size ?? 0) > TEXT_PREVIEW_MAX_BYTES) return null
+  const kind = driveItemKind(item)
+  if (kind === 'table') return 'table'
+  if (kind === 'document') return 'text'
+  const dot = item.name.lastIndexOf('.')
+  const ext = dot > 0 ? item.name.slice(dot + 1).toLowerCase() : ''
+  return TEXT_PREVIEW_EXT.has(ext) ? 'text' : null
+}
+
 /** Up to two initials for an owner avatar ("Ada Owner" → "AO", "ada" → "A"). */
 export function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
