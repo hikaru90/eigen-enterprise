@@ -3,6 +3,7 @@ import type { AssistantTab } from './types'
 import { AssistantChat, type AssistantChatDeps } from './assistant-chat.svelte'
 import { ComposerAttachments } from './composer-attachments.svelte'
 import { takePendingHandoff } from './handoff'
+import { readPanelSession, writePanelSession } from './panel-session'
 import {
   PANEL_DEFAULT_WIDTH,
   clampPanelWidth,
@@ -25,6 +26,8 @@ export type ComposerEdit = {
 export type AssistantDeps = AssistantChatDeps & {
   /** Where the panel width is remembered (per browser; may throw). */
   storage: () => StorageLike
+  /** Where open/closed and the tab are kept for this browser tab, across full page loads (may throw). */
+  sessionStorage: () => StorageLike
   /** The window's width, for the 60% cap. */
   viewportWidth: () => number
 }
@@ -73,11 +76,27 @@ export class AssistantController {
   openPanel(tab: AssistantTab = this.tab): void {
     this.tab = tab
     this.open = true
+    this.#remember()
     void this.chat.ensureLoaded()
   }
 
   close(): void {
     this.open = false
+    this.#remember()
+  }
+
+  /**
+   * After a full page load (board de821eda): the panel comes back as this tab
+   * left it, the conversation loading from the server. Called once on mount.
+   */
+  restoreSession(): void {
+    const session = readPanelSession(this.#deps.sessionStorage)
+    if (session?.open) this.openPanel(session.tab)
+    else if (session) this.tab = session.tab
+  }
+
+  #remember(): void {
+    writePanelSession(this.#deps.sessionStorage, { open: this.open, tab: this.tab })
   }
 
   toggle(): void {
@@ -87,6 +106,7 @@ export class AssistantController {
 
   selectTab(tab: AssistantTab): void {
     this.tab = tab
+    this.#remember()
   }
 
   /** Submit from the top bar or the panel composer: the panel opens on the chat. */

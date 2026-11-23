@@ -58,6 +58,7 @@ const controller = () =>
     speak: () => {},
     cancelSpeak: () => {},
     storage: () => localStorage,
+    sessionStorage: () => sessionStorage,
     viewportWidth: () => 1280,
   })
 
