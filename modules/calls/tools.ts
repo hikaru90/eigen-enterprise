@@ -250,7 +250,8 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
       name: 'calls.brain_recap',
       module: CALLS_MODULE_ID,
       summary:
-        'After a call: a recap of what the Company Brain heard, for whoever switched it on — written now, shown to you, posted nowhere.',
+        'After a call: a recap of what the Company Brain heard, for whoever switched it on — written now, shown to you, posted nowhere. ' +
+        'To import it into the brain: first list what you would save — notes (memory.capture_thought), tasks (memory.create_task, or tasks.assign for a colleague) and their project (memory.create_project for a new one) — and save only after the person says OK.',
       auditClass: 'read',
       inputSchema: callInput,
       permission: { roles: ['admin', 'member', 'agent'] },

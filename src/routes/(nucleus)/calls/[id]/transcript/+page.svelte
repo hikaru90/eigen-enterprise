@@ -5,6 +5,7 @@
   import BrainRecap from '$lib/calls/brain-recap.svelte'
   import { brainClient } from '$lib/calls/client'
   import { readingTurns } from '$lib/calls/format'
+  import { recapImportHref } from '$lib/calls/recap-import'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { docTitle } from '$lib/shell/title'
@@ -39,7 +40,11 @@
       </p>
     {/if}
     {#if recapOffered}
-      <BrainRecap callId={data.call.id} client={brainApi} />
+      <BrainRecap
+        callId={data.call.id}
+        client={brainApi}
+        importHref={data.shell?.assistant === true ? recapImportHref('', data.call) : null}
+      />
     {/if}
     {#if turns.length === 0}
       <p class="rounded-xl bg-white p-6 text-center text-sm text-muted-foreground" data-testid="call-transcript-empty">

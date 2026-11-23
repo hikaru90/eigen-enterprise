@@ -12,6 +12,7 @@
   import CallView from '$lib/calls/call-view.svelte'
   import { brainClient, callsClient, shownProblemOf } from '$lib/calls/client'
   import { getLiveCalls } from '$lib/calls/live-calls.svelte'
+  import { recapImportHref } from '$lib/calls/recap-import'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { ShownError } from '$lib/errors/agent-report'
   import { docTitle } from '$lib/shell/title'
@@ -156,6 +157,7 @@
       {transcription}
       {brain}
       brainRecap={brainApi}
+      recapImportHref={data.shell?.assistant === true ? recapImportHref('/', data.call) : null}
       transcriptHref={resolve('/(nucleus)/calls/[id]/transcript', { id: data.call.id })}
     />
   {/key}

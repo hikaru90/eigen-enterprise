@@ -61,6 +61,7 @@
     transcriptHref = null,
     brain = null,
     brainRecap = null,
+    recapImportHref = null,
   }: {
     active: ActiveCall
     call: CallDto
@@ -83,6 +84,8 @@
     brain?: CallBrain | null
     /** The recap after the call, offered to whoever switched the Brain on; null: no offer. */
     brainRecap?: Pick<BrainClient, 'brainRecap'> | null
+    /** Where "Import into the brain" drafts the recap into the assistant chat (recap-import.ts); null: no offer. */
+    recapImportHref?: string | null
   } = $props()
 
   let brainOpen = $state(false)
@@ -361,7 +364,12 @@
         <p class="text-base font-semibold">{endedText}</p>
         {#if recapOffered && brainRecap && active.call}
           <div class="mt-5">
-            <BrainRecap callId={active.call.id} client={brainRecap} tone="dark" />
+            <BrainRecap
+              callId={active.call.id}
+              client={brainRecap}
+              tone="dark"
+              importHref={recapImportHref}
+            />
           </div>
         {/if}
         <div class="mt-5 flex flex-wrap justify-center gap-2">

@@ -301,6 +301,27 @@ describe('call-view.svelte: Company Brain', () => {
 })
 
 describe('brain-recap.svelte', () => {
+  it('once written, the recap offers "Import into the brain": a link that drafts it into the assistant chat', async () => {
+    const client = { brainRecap: vi.fn(async () => 'Entschieden: Angebot geht morgen raus.') }
+    render(BrainRecap, { callId: 'call-9', client, importHref: '?prefill=Import%20it' })
+    expect(page.getByTestId('call-brain-recap-import').elements()).toHaveLength(0)
+    await page.getByTestId('call-brain-recap-button').click()
+    await expect
+      .element(page.getByTestId('call-brain-recap-import'))
+      .toHaveAttribute('href', '?prefill=Import%20it')
+    await expect
+      .element(page.getByTestId('call-brain-recap-import'))
+      .toHaveTextContent('Import into the brain')
+  })
+
+  it('with the Assistant off there is no import offer', async () => {
+    const client = { brainRecap: vi.fn(async () => 'Entschieden.') }
+    render(BrainRecap, { callId: 'call-9', client, importHref: null })
+    await page.getByTestId('call-brain-recap-button').click()
+    await expect.element(page.getByTestId('call-brain-recap-text')).toBeInTheDocument()
+    expect(page.getByTestId('call-brain-recap-import').elements()).toHaveLength(0)
+  })
+
   it('a refused recap says why', async () => {
     const client = {
       brainRecap: vi.fn(async () =>
