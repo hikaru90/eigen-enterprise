@@ -64,6 +64,7 @@
     user,
     presence,
     inkFrame = true,
+    notice,
     children,
   }: {
     shell: ShellData
@@ -81,6 +82,11 @@
      * frame keeps the brand's sidebar tokens (C3) instead.
      */
     inkFrame?: boolean
+    /**
+     * Pinned at the top of the page panel, above the page (the scroll
+     * container's first child, sticky): e.g. "Notifications are blocked".
+     */
+    notice?: Snippet
     children: Snippet
   } = $props()
 
@@ -392,6 +398,7 @@
         class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain"
         data-testid="shell-content"
       >
+        {@render notice?.()}
         {@render children()}
       </div>
       {#if assistant}<AssistantPanel {assistant} />{/if}

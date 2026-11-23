@@ -105,6 +105,10 @@
       presence={selfPresence}
       inkFrame={!brandActive}
     >
+      {#snippet notice()}
+        <!-- Blocked notifications stay pinned at the top of every page until allowed again (owner, 2026-11-23). -->
+        <NotificationsBanner variant="top" />
+      {/snippet}
       {@render children()}
     </AppShell>
   {:else}

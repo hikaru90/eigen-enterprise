@@ -73,13 +73,22 @@ test('installable Messages: manifest, service worker, notifications banner, offl
 
   // The banner follows the browser's real permission (headless Chromium may
   // report "denied" even when granted); the mapping itself is unit-tested.
+  // Blocked: a bar pinned at the top of the page that stays until allowed again.
   const permission = await page.evaluate(() => Notification.permission)
-  await expect(page.getByTestId('push-banner')).toHaveAttribute('data-state', permission === 'denied' ? 'denied' : 'ask')
-  await page.getByTestId('push-banner-dismiss').click()
-  await expect(page.getByTestId('push-banner')).toHaveCount(0)
-  await page.reload()
-  await expect(page.getByTestId('messages-live')).toHaveAttribute('data-state', 'live')
-  await expect(page.getByTestId('push-banner')).toHaveCount(0)
+  if (permission === 'denied') {
+    await expect(page.getByTestId('push-banner')).toHaveAttribute('data-state', 'denied')
+    await expect(page.getByTestId('push-banner-dismiss')).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByTestId('messages-live')).toHaveAttribute('data-state', 'live')
+    await expect(page.getByTestId('push-banner')).toHaveAttribute('data-state', 'denied')
+  } else {
+    await expect(page.getByTestId('push-banner')).toHaveAttribute('data-state', 'ask')
+    await page.getByTestId('push-banner-dismiss').click()
+    await expect(page.getByTestId('push-banner')).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByTestId('messages-live')).toHaveAttribute('data-state', 'live')
+    await expect(page.getByTestId('push-banner')).toHaveCount(0)
+  }
 
   // The page is now controlled by the worker: offline, a page load says so.
   await page.waitForFunction(() => navigator.serviceWorker.controller !== null)

@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Blocked notifications: a bar pinned at the top of every page (owner: "when notifications are not allowed, it should be displayed at the top sticky for users"; not committed)
+
+- **Shipped (working tree):** `NotificationsBanner variant="top"` in the nucleus layout, rendered through a new `notice` snippet of `AppShell` as the first child of the page's scroll container (`sticky top-0`). It shows only while the permission is `denied` — in browser tabs and the installed app — says where to allow it (browser settings vs. phone settings), and re-reads the permission on focus / tab visible, so it disappears once allowed again.
+- **Replaced (announced):** the blocked state moved out of the floating card (installed app, bottom) and the Messages sidebar card — those now show only "turn on" / "install first"; Settings → Notifications (inline) still explains a block. The top bar has no "Not now": a block stays visible until it's lifted (decision — say if desktop users should be able to hide it).
+- **Tests:** 6 new component tests in `notifications-banner.svelte.spec.ts`; `pwa.e2e.ts` now expects the non-dismissible bar when headless Chromium reports `denied`. Check 0 errors, lint clean. e2e not run; not on the box.
+
 ## 2026-11-23 — Scrolling sideways opens the side panels, phone and desktop (owner: "open the left and right sidebar when scrolling horizontally on mobile and on desktop"; not committed)
 
 - **Shipped (working tree):** `use:sideSwipe` on the shell frame (`src/lib/gestures/side-swipe-action.ts`, pure logic in `side-swipe.ts`). Phones: a one-finger flick anywhere — right opens the nav drawer, left opens the assistant; toward an open side it puts that side away first. Desktop: a horizontal trackpad scroll (or Shift+wheel) does the same — left opens the assistant panel, right closes it or brings back a collapsed sidebar. The docked desktop sidebar is never swiped away.

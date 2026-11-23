@@ -112,4 +112,60 @@ describe('notifications-banner.svelte — "Turn on notifications on this device"
     await expect.element(page.getByTestId('push-banner')).toHaveAttribute('data-state', 'ask')
     await expect.element(page.getByTestId('push-banner-dismiss')).not.toBeInTheDocument()
   })
+  it('top: when notifications are blocked, a bar pinned at the top that cannot be dismissed', async () => {
+    localStorage.setItem('eigenenterprise:push-banner-dismissed:denied', '1')
+    render(NotificationsBanner, {
+      variant: 'top',
+      readEnv: async () => env({ permission: 'denied', standalone: false }),
+      enable: vi.fn(),
+    })
+    const banner = page.getByTestId('push-banner')
+    await expect.element(banner).toHaveAttribute('data-state', 'denied')
+    await expect.element(banner).toHaveTextContent('Notifications are blocked')
+    await expect.element(banner).toHaveTextContent('browser’s settings')
+    await expect.element(banner).toHaveClass(/sticky/)
+    await expect.element(page.getByTestId('push-banner-dismiss')).not.toBeInTheDocument()
+  })
+
+  it('top: in the installed app it points at the phone’s settings', async () => {
+    render(NotificationsBanner, {
+      variant: 'top',
+      readEnv: async () => env({ permission: 'denied', standalone: true }),
+      enable: vi.fn(),
+    })
+    await expect.element(page.getByTestId('push-banner')).toHaveTextContent('phone’s settings')
+  })
+
+  it('top: hidden unless blocked', async () => {
+    const readEnv = vi.fn(async () => env({ permission: 'default' }))
+    render(NotificationsBanner, { variant: 'top', readEnv, enable: vi.fn() })
+    await vi.waitFor(() => expect(readEnv).toHaveBeenCalled())
+    await expect.element(page.getByTestId('push-banner')).not.toBeInTheDocument()
+  })
+
+  it('top: goes away once notifications are allowed again and the person comes back', async () => {
+    let current = env({ permission: 'denied' })
+    render(NotificationsBanner, { variant: 'top', readEnv: async () => current, enable: vi.fn() })
+    await expect.element(page.getByTestId('push-banner')).toHaveAttribute('data-state', 'denied')
+    current = env({ permission: 'default' })
+    window.dispatchEvent(new Event('focus'))
+    await expect.element(page.getByTestId('push-banner')).not.toBeInTheDocument()
+  })
+
+  it('floating and sidebar leave a block to the top bar', async () => {
+    const readEnv = vi.fn(async () => env({ permission: 'denied' }))
+    render(NotificationsBanner, { variant: 'floating', readEnv, enable: vi.fn() })
+    render(NotificationsBanner, { variant: 'sidebar', readEnv, enable: vi.fn() })
+    await vi.waitFor(() => expect(readEnv).toHaveBeenCalledTimes(2))
+    await expect.element(page.getByTestId('push-banner')).not.toBeInTheDocument()
+  })
+
+  it('inline (Settings) still explains a block', async () => {
+    render(NotificationsBanner, {
+      variant: 'inline',
+      readEnv: async () => env({ permission: 'denied' }),
+      enable: vi.fn(),
+    })
+    await expect.element(page.getByTestId('push-banner')).toHaveAttribute('data-state', 'denied')
+  })
 })

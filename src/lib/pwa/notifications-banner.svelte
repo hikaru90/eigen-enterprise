@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BellOff from '@lucide/svelte/icons/bell-off'
   import BellRing from '@lucide/svelte/icons/bell-ring'
   import X from '@lucide/svelte/icons/x'
   import { onMount } from 'svelte'
@@ -26,12 +27,17 @@
    *   home-screen app has its own permission and subscription on iPhone/iPad,
    *   so it must offer this itself (bug 87f5b9f8)
    * - inline: Settings → Account → Notifications, no "Not now"
+   * - top: only while notifications are blocked — a bar pinned at the top of
+   *   every signed-in page (owner, 2026-11-23), no "Not now"; it re-reads the
+   *   permission when the person comes back (focus / tab visible), so it goes
+   *   once they allow notifications again. Sidebar and floating leave a
+   *   block to it.
    *
    * The permission prompt only ever comes from the person's tap on "Turn on"
    * (iOS refuses it otherwise): `enable` asks for it before anything else.
    */
   type Props = {
-    variant?: 'sidebar' | 'floating' | 'inline'
+    variant?: 'sidebar' | 'floating' | 'inline' | 'top'
     /** Only in the installed app (display-mode standalone). */
     standaloneOnly?: boolean
     readEnv?: () => Promise<PushEnvironment>
@@ -54,7 +60,7 @@
   let dismissed = $state(false)
 
   function readDismissed(s: PushPromptState): boolean {
-    if (variant === 'inline') return false
+    if (variant === 'inline' || variant === 'top') return false
     try {
       return localStorage.getItem(pushPromptDismissKey(s, standalone)) === '1'
     } catch {
@@ -101,16 +107,50 @@
         if (promptState) dismissed = readDismissed(promptState)
       })
       .catch((err) => console.error('[pwa] could not read the notification state', err))
+    if (variant !== 'top') return
+    // Allowing notifications happens in the browser's or phone's settings, outside the page.
+    const reread = () =>
+      refresh().catch((err) => console.error('[pwa] could not re-read the notification state', err))
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') reread()
+    }
+    window.addEventListener('focus', reread)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', reread)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   })
 
-  const visible = $derived(
-    !dismissed &&
-      (!standaloneOnly || standalone) &&
-      (promptState === 'ask' || promptState === 'install-first' || promptState === 'denied'),
+  const offered = $derived(
+    variant === 'top'
+      ? promptState === 'denied'
+      : promptState === 'ask' ||
+          promptState === 'install-first' ||
+          (variant === 'inline' && promptState === 'denied'),
   )
+  const visible = $derived(!dismissed && (!standaloneOnly || standalone) && offered)
 </script>
 
-{#if visible}
+{#if visible && variant === 'top'}
+  <div
+    class="sticky top-0 z-30 flex shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-2 text-[13px]"
+    role="status"
+    aria-label="Notifications on this device"
+    data-testid="push-banner"
+    data-state={promptState}
+  >
+    <BellOff class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <p class="min-w-0">
+      <span class="font-medium">Notifications are blocked.</span>
+      <span class="text-muted-foreground">
+        {standalone
+          ? 'Allow notifications for this app in your phone’s settings to get messages, reminders and tasks here.'
+          : 'Allow notifications for this site in your browser’s settings to get messages, reminders and tasks here.'}
+      </span>
+    </p>
+  </div>
+{:else if visible}
   <div
     class={[
       'flex gap-2.5 rounded-lg border border-border bg-background p-3 text-[13px]',
