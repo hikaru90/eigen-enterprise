@@ -1,117 +1,82 @@
 import { expect, test } from '@playwright/test'
-import {
-  captureThoughtAndSeeItKnown,
-  completeOnboardingOverlay,
-  registerUser,
-} from './release-helpers'
+import { completeOnboardingOverlay, registerUser } from './release-helpers'
+import { gotoHydrated } from './test-helpers'
 
 const TEST_PROJECT = 'QA Test Project'
-const UNASSIGNED_THOUGHT = 'Remember to buy milk and eggs from the grocery store'
+const UNASSIGNED_TASK = 'Remember to buy milk and eggs from the grocery store'
 
+/**
+ * Memory › Projects: a task in no project is listed under "No project" with
+ * Assign; choosing a project in the dialog files it there at once.
+ *
+ * The task comes in through Memory › Tasks' own "Add a task" field (the person
+ * says it is a task, so no model has to classify it — the mock gateway cannot),
+ * and onboarding is the first-run tour on What the brain knows. Platform
+ * credits and the PayPal top-up are gone from the product (no /api/billing),
+ * so the spec no longer buys any.
+ */
 test.describe('Projects: unassigned task assignment @qa', () => {
   test.describe.configure({ mode: 'serial', timeout: 300_000 })
 
   test('assign task from No project section removes it and shows under project', async ({
     page,
     context,
-    baseURL,
   }) => {
-    await context.grantPermissions(['microphone'], {
-      origin: baseURL ?? 'http://127.0.0.1:5173',
-    })
-
     await test.step('register and onboard', async () => {
       await registerUser(context, page, { emailDomain: 'example.com' })
       // nucleus: post-auth lands on /
       await expect(page).toHaveURL(/:\d+\/$/)
-      await completeOnboardingOverlay(page, { creditAmount: 1000 })
+      await gotoHydrated(page, '/m/memory/capture')
+      await completeOnboardingOverlay(page)
     })
 
     await test.step('create a project via API', async () => {
       const res = await page.request.post('/api/timeline/projects', {
         data: { label: TEST_PROJECT, status: 'active' },
       })
-      expect(res.ok()).toBeTruthy()
+      expect(res.ok(), await res.text()).toBeTruthy()
     })
 
-    await test.step('capture an unassigned thought', async () => {
-      await captureThoughtAndSeeItKnown(page, UNASSIGNED_THOUGHT)
+    await test.step('add a task in no project from Memory › Tasks', async () => {
+      await gotoHydrated(page, '/m/memory/tasks')
+      const field = page.getByTestId('timeline-add-task').getByRole('textbox')
+      await field.fill(UNASSIGNED_TASK)
+      await field.press('Enter')
+      await expect(page.getByRole('button', { name: `Mark done: ${UNASSIGNED_TASK}` })).toBeVisible(
+        { timeout: 30_000 },
+      )
     })
 
-    await test.step('navigate to Projects view', async () => {
-      await page.goto('/m/memory/projects')
-      await page.waitForTimeout(2000)
+    const unassigned = page.getByTestId('unassigned-tasks')
+    const row = unassigned.getByRole('listitem').filter({ hasText: UNASSIGNED_TASK })
+
+    await test.step('the No project section lists it with Assign', async () => {
+      await gotoHydrated(page, '/m/memory/projects')
+      await expect(unassigned.getByRole('heading', { name: /No project \(\d+\)/ })).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(row.getByRole('button', { name: 'Assign' })).toBeVisible()
     })
 
-    await test.step('verify Assign button exists in No project section', async () => {
-      const noProjectSection = page.locator('text=No project').first()
-      await expect(noProjectSection).toBeVisible({ timeout: 10000 })
-
-      const assignBtn = page.getByRole('button', { name: 'Assign' }).first()
-      await expect(assignBtn).toBeVisible({ timeout: 5000 })
+    await test.step('Assign → pick the project in the dialog', async () => {
+      await row.getByRole('button', { name: 'Assign' }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+      // Choosing a project files the task at once and closes the dialog.
+      await dialog.getByRole('button', { name: new RegExp(TEST_PROJECT) }).click()
+      await expect(dialog).toBeHidden({ timeout: 10_000 })
     })
 
-    await test.step('click Assign and select project', async () => {
-      const taskBefore = await page
-        .locator('text=No project')
-        .first()
-        .locator('..')
-        .locator('..')
-        .locator('button:text("Assign")')
-        .first()
-
-      await taskBefore.click()
-
-      // Wait for assign dialog
-      const assignDialog = page.getByRole('dialog')
-      await expect(assignDialog).toBeVisible({ timeout: 5000 })
-
-      // Select the project
-      const projectOption = assignDialog.getByText(TEST_PROJECT)
-      await expect(projectOption).toBeVisible({ timeout: 3000 })
-      await projectOption.click()
-
-      // Confirm assignment
-      const confirmBtn = assignDialog.getByRole('button', { name: /assign|confirm|save/i })
-      await expect(confirmBtn).toBeVisible({ timeout: 3000 })
-      await confirmBtn.click()
-
-      // Wait for dialog to close
-      await expect(assignDialog).toBeHidden({ timeout: 5000 })
-    })
-
-    await test.step('verify task disappeared from No project list', async () => {
-      // Wait for UI to update
-      await page.waitForTimeout(2000)
-
-      // Check that the No project section count decreased or section is gone
-      const noProjectSection = page.locator('text=/No project/').first()
-      const sectionText = await noProjectSection.textContent({ timeout: 5000 }).catch(() => '')
-
-      // The count in parentheses should be lower
-      const match = sectionText.match(/\((\d+)\)/)
-      const count = match ? parseInt(match[1]) : 0
-
-      // If there were other unassigned tasks, count should be lower
-      // If this was the only one, the section might be gone
-      expect(count).toBeLessThanOrEqual(0)
-    })
-
-    await test.step('verify task appears under assigned project', async () => {
-      // Look for the thought text under the project
-      await page.waitForTimeout(1000)
-
-      // The thought should now be associated with the project
-      // Check via API to be certain
+    await test.step('it leaves No project and belongs to the project', async () => {
+      await expect(row).toHaveCount(0, { timeout: 10_000 })
       const res = await page.request.get('/api/temporal-events?author=user')
       expect(res.ok()).toBeTruthy()
-      const body = await res.json()
-      const thought = body.items?.find((t: { semanticSummary: string }) =>
-        t.semanticSummary?.includes('buy milk'),
-      )
-
-      expect(thought).toBeTruthy()
-      expect(thought.projectEntityId).toBeTruthy()
+      const body = (await res.json()) as {
+        items?: Array<{ semanticSummary: string; projectEntityId: string | null }>
+      }
+      const task = body.items?.find((t) => t.semanticSummary?.includes('buy milk'))
+      expect(task, JSON.stringify(body.items?.map((t) => t.semanticSummary))).toBeTruthy()
+      expect(task!.projectEntityId).toBeTruthy()
     })
   })
 })
