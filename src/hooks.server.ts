@@ -260,6 +260,13 @@ export const init: ServerInit = () => {
   void import('$lib/server/memory/shared-memory-keys')
     .then(({ reconcileSharedMemoryKeysAtStartup }) => reconcileSharedMemoryKeysAtStartup())
     .catch((err: unknown) => console.error('[shared-memory-keys] startup re-key failed', err))
+  // Company export (plan/phase-export.md X1): a build this restart cut off is failed, said plainly.
+  void import('$lib/server/export/company/live')
+    .then(async ({ failInterruptedExports }) => {
+      const n = await failInterruptedExports()
+      if (n) console.error(`[company-export] ${n} export(s) were cut off by the restart and are marked failed`)
+    })
+    .catch((err: unknown) => console.error('[company-export] startup check failed', err))
 }
 
 /**

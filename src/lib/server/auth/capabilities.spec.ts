@@ -11,12 +11,13 @@ describe('capabilitiesFor (one set, from the role)', () => {
     expect(Object.values(capabilitiesFor('owner')).every(Boolean)).toBe(true)
   })
 
-  it('an admin holds everything but Backups (the owner’s alone)', () => {
+  it('an admin holds everything but Backups and Export (the owner’s alone)', () => {
     expect(capabilitiesFor('admin')).toEqual({
       'company.manage': true,
       'members.manage': true,
       'approvals.manage': true,
       'backups.manage': false,
+      'export.manage': false,
       'updates.manage': true,
       'modules.manage': true,
       'website.manage': true,

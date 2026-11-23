@@ -10,6 +10,33 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - Decisions: thumbnails are the original file scaled by the browser (no server-side thumbnail generation yet; the content endpoint is `no-store`, so large photo folders re-download on each visit — a thumbnail store is the follow-up if that hurts). List view keeps icons for text files (a 28 px tile can't hold legible text).
 - Tests: display.spec (hasThumbnail, textPreviewOf), preview.spec (mimeFor avif/bmp/webp), drive-browser component spec (list thumb, grid text + table preview, read failure → icon). vitest.browser.config prebundles papaparse (CommonJS; `noDiscovery`).
 
+## 2026-11-23 — Company export X1: "export everything" (owner: "we promise our customers no vendor lock in. we need an export function that exports everything!"; committed, not pushed, not on the box)
+
+- **Plan:** `plan/phase-export.md` (new). Owner decision: **two exports**. The company export holds everything the company owns, with a member's private data as metadata only. The personal export gives each member their own data in full (X3, not built yet).
+- **Built (X1):** `src/lib/server/export/company/`:
+  - `plan.ts`: checks the rules against the live catalog and refuses before writing on any unclassified table, unclassified column or stale rule. One SELECT per table: secrets cut with `to_jsonb(t) - 'col'`, private rows as `jsonb_build_object(meta…) || {"_private": true}`.
+  - `rules.ts`: every one of the 166 public tables classified as full, private-as-meta (SQL predicate plus meta/content/secret per column) or excluded with a reason. The schemas `eigen_graph`, `ag_catalog`, `cron` and `net` are excluded whole.
+  - `archive.ts`: streaming zip straight to disk with sha256 per entry. It never overwrites, refuses unsafe paths and deletes the partial file on failure.
+  - `run.ts`: puts the archive together, with `data/<table>.jsonl`, `files/…`, README, RECONNECT and a manifest written last.
+  - `files.ts`: `files/drive/<real folder tree>` for live files (names kept; duplicates become " (2)"), plus `files/blobs/<store>/<sha256>` for revisions, trashed files, brand media, avatars and the logo. DM attachments are left out. A blob that is missing on disk fails the export.
+  - `live.ts`: start, get, list, remove, prune after 7 days, and the boot step that fails exports a restart interrupted.
+- **Tools** `kernel.export_company` (owner only, always asks, risk `external`), `kernel.export_status`, `kernel.export_list` and `kernel.export_delete` (`src/lib/kernel/export-tools.ts`). Settings → **Export** (new capability `export.manage`, owner only). `GET /api/exports/[id]/download` streams the zip. ui-parity maps `?/start` and `?/delete` to the tools; debt stays 0.
+- **Migration 0168_company_export** (+ journal, `kernel.schema.ts` `companyExport`); job type `company_export`.
+- **Decisions:**
+  - **Where "private" ends:** what the app shows the owner is exported in full, and what it hides from the owner is metadata only (details in plan §6). Contacts, Drive, private channels and shared mailboxes are full. DMs and their attachments, personal mailboxes, private Memory, calendar event details, assigned tasks, DM calls, unshared brain answers, assistant chats and reminders are metadata only.
+  - **Job:** the job queue only triggers the build, because its 5-minute stale-job requeue would start a second build.
+  - **Secrets:** never exported. RECONNECT.md lists the tables that held one.
+- **Found while building:** RLS covers only Memory, reminders and `user`. Every other module's privacy lives in service code, so the export has to restate those rules in `rules.ts`, and the integration spec checks them. In the app, DM attachments are ordinary Drive files that admins can manage. The export treats them as the DM's.
+- **Verified:** unit specs for plan, archive, run, files, tools and the Settings → Export page; `rules.integration.spec.ts` against the test DB. It checks that every table and column is classified and every query runs, that a DM message exports without its body while a channel message keeps it, and that a full export of the test DB unzips with row counts matching the manifest and no content on private thought rows. Lint and `npm run check` are clean. `ci:local` unit run: everything of this change green. Three failures aren't from it. `memory-sharing.integration.spec.ts` ("a colleague cannot change the project…") also fails on clean `main`. `modules/repos/service.spec.ts` passes alone and fails only under full-suite load. `layout.page-a11y.spec.ts` flags `drive-text-preview.svelte`, an uncommitted Drive change from a parallel session in this checkout.
+- **Not done / gaps:**
+  - No real run in the app yet, so the job, download and Drive blobs haven't been exercised against real files.
+  - Encrypted Memory columns of company-visible rows go out as ciphertext (X2 decrypts them into Markdown).
+  - Inbound raw mail in S3 isn't included (bodies are).
+  - Assistant transcripts (pi-durable SQLite) aren't included.
+  - App databases are planned as X1b.
+  - The personal export is X3.
+- **Next:** X1b (app databases through ee), X3 (personal export), X2 (readable formats: vCard, iCalendar, mbox, Markdown).
+
 ## 2026-11-23 — Assistant chat failed on the demo company: a regex lookahead in the hostname rule made OpenRouter's OpenInference refuse every turn (owner error report from demo.eigenenterprise.app)
 
 - **What broke:** on demo.eigenenterprise.app (incus `ee-demo` on rs500-1, unit `ee-os-b`) the chat answered "Something went wrong on my side …" (`durable agent run ended without an answer: model_error`). OpenRouter routes `~deepseek/deepseek-flash-latest` (→ `deepseek-v4.1-flash`) across many providers. One of them, **OpenInference**, answered `HTTP 400` (OpenRouter wraps it as 502) on every request whose tool list held a schema with `pattern: ^(?=.{1,253}$)…`. That is the kernel hostname rule, offered through 8 tools (substrate.domain_add/remove, website.app_deploy/app_domain_set/app_domain_remove, domains.set_target/remove/recheck/retry_certificate). Grammar-constrained tool decoding (vLLM/xgrammar) refuses lookaheads. A turn failed whenever all 3 gateway retries landed there: 28 such 400s in 6 h on the demo box.
@@ -1288,7 +1315,7 @@ Owner: "commit and push", then "deploy to os.cerberusblue.com".
 - **Decision log (owner may veto):** (1) the signal colours stay the same under a brand style (they are the product's accents; the brand re-skins page, text and primary actions around them). (2) Part colours follow the website's bento: Website blue, Email ice, Messages black, Calls/Calendar green, Memory violet, Drive grey, Brand yellow, Members/Contacts peach. (3) The signed-in area stays pinned light (the website also has a light mode); following the OS into dark is a follow-up, as many pages still assume light.
 - **Checked:** typecheck 0 errors; contrast and page a11y guards (273 tests); component tests for dashboard, module card, shell, page chrome, UI primitives, assistant, contribute (52). **Not checked:** the full component and e2e suites; feature pages beyond the shared chrome were not individually restyled.
 
-## 2026-11-13 — App design follows the eigenEnterprise website (main, not committed, not on the box)
+## 2026-11-13 — App design follows the eigenEnterprise website (main, committed, not pushed, not on the box)
 
 - **What:** the app's default theme (no active brand set) now uses the website's language from `../eigenEnterprise-website/assets/styles.css`: white page / neutral dark (#161616), grey large-radius tiles as cards (`--radius` 0.25rem → 1.25rem), black/white primary, blue focus ring (#1f43ff / #8ea2ff), yellow text selection, Geist Serif titles (h1–h3 and `font-display`, font + OFL license copied to `src/lib/assets/fonts/`). Buttons are full pills, and the solid/outline/secondary/destructive ones use mono uppercase labels; ghost and link buttons stay in Inter. Badges are mono uppercase chips. The website's signal colours are available as `signal-yellow|blue|green|ice` utilities. PWA theme colour, offline page and the unbranded install icon follow along.
 - **Not changed:** page layouts, the 13px text floor (the website's 11px chips stay at 13px), WCAG AA pairs (all 145 contrast checks pass; the signed-in area's error red is now oklch(0.45 …) like the rest, so it stays AA on the grey cards). An active brand set still overrides everything.

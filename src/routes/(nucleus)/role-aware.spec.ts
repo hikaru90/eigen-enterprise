@@ -64,6 +64,7 @@ import { load as approvals } from './settings/approvals/+page.server'
 import { _backupsDeps, load as backups } from './settings/backups/+page.server'
 import { load as company } from './settings/company/+page.server'
 import { load as domains } from './settings/domains/+page.server'
+import { _exportDeps, load as exportPage } from './settings/export/+page.server'
 import { load as members } from './settings/members/+page.server'
 import { load as modules } from './settings/modules/+page.server'
 import { _updatesDeps, load as updates } from './settings/updates/+page.server'
@@ -77,6 +78,7 @@ const LOADS: Record<string, { path: string; load: Load }> = {
   '/settings/members': { path: '/settings/members', load: members as Load },
   '/settings/approvals': { path: '/settings/approvals', load: approvals as Load },
   '/settings/backups': { path: '/settings/backups', load: backups as Load },
+  '/settings/export': { path: '/settings/export', load: exportPage as Load },
   '/settings/modules': { path: '/settings/modules', load: modules as Load },
   '/settings/updates': { path: '/settings/updates', load: updates as Load },
   '/m/website': { path: '/m/website', load: website as Load },
@@ -119,6 +121,7 @@ describe('role-aware UI: the capability set and the route guards agree', () => {
           throw new SubstrateUnavailableError('not on a box in this spec')
         },
       }) as never
+    _exportDeps.port = async () => ({ list: async () => [] }) as never
     _updatesDeps.client = () =>
       ({
         upgrade: async () => {
@@ -172,6 +175,7 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
       '/settings/backups',
       '/settings/company',
       '/settings/domains',
+      '/settings/export',
       '/settings/members',
       '/settings/modules',
       '/settings/updates',

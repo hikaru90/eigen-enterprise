@@ -1156,6 +1156,13 @@
       "when": 1795200000167,
       "tag": "0167_member_daily_ai_cap",
       "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1795200000168,
+      "tag": "0168_company_export",
+      "breakpoints": true
     }
   ]
 }

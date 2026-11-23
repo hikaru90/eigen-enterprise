@@ -17,6 +17,7 @@ import {
   type MemberAiCapPort,
 } from './member-ai-cap-tools'
 import { createNotificationTools, KERNEL_NOTIFICATION_TOOL_NAMES, type NotificationsPort } from './notification-tools'
+import { createExportTools, KERNEL_EXPORT_TOOL_NAMES, type ExportPort } from './export-tools'
 import { createOperationsTools, KERNEL_OPERATIONS_TOOL_NAMES, type OperationsPort } from './operations-tools'
 import { createSettingsTools, KERNEL_SETTINGS_TOOL_NAMES, type SettingsPort } from './settings-tools'
 import { registerModuleTools } from './wiring'
@@ -46,6 +47,8 @@ export type RegisterAdminToolsOptions = {
   operations?: OperationsPort
   /** Overrides the live daily-AI-cap-per-member port (tests inject fakes). */
   memberAiCap?: MemberAiCapPort
+  /** Overrides the live company-export port (tests inject fakes). */
+  exports?: ExportPort
 }
 
 /**
@@ -72,6 +75,7 @@ export async function registerAdminTools(
       ...KERNEL_NOTIFICATION_TOOL_NAMES,
       ...KERNEL_OPERATIONS_TOOL_NAMES,
       ...KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
+      ...KERNEL_EXPORT_TOOL_NAMES,
     ].every(
       (name) => kernel.registry.get(name) !== undefined,
     )
@@ -94,6 +98,7 @@ export async function registerAdminTools(
     ...createNotificationTools({ port: options.notifications ?? liveNotificationsPort() }),
     ...createOperationsTools({ port: options.operations ?? liveOperationsPort() }),
     ...createMemberAiCapTools({ port: options.memberAiCap ?? liveMemberAiCapPort() }),
+    ...createExportTools({ port: options.exports ?? liveExportPort() }),
   )
   registerModuleTools(kernel.registry, kernel.modules, tools)
 }
@@ -141,6 +146,18 @@ function liveOperationsPort(): OperationsPort {
     removeLogo: async (userId) => (await live()).removeLogo(userId),
     runBackup: async (author) => (await live()).runBackup(author),
     installRelease: async (release, author) => (await live()).installRelease(release, author),
+  }
+}
+
+/** The live company-export port, loaded on first use (registering the tools touches no server module). */
+function liveExportPort(): ExportPort {
+  const live = async () => (await import('$lib/server/export/company/live')).liveExportPort
+  return {
+    isOwner: async (userId) => (await live()).isOwner(userId),
+    start: async (userId) => (await live()).start(userId),
+    get: async (id) => (await live()).get(id),
+    list: async () => (await live()).list(),
+    remove: async (id) => (await live()).remove(id),
   }
 }
 

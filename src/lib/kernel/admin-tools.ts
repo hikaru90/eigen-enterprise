@@ -6,6 +6,7 @@ import { KernelError } from './errors'
 import { moduleSwitchedOff, type ActivationStore, type ModuleManifest, type ModuleRegistry } from './modules'
 import { KERNEL_NOTIFICATION_TOOL_NAMES } from './notification-tools'
 import { isDirectHuman } from './principals'
+import { KERNEL_EXPORT_TOOL_NAMES } from './export-tools'
 import { KERNEL_OPERATIONS_TOOL_NAMES } from './operations-tools'
 import { KERNEL_MEMBER_AI_CAP_TOOL_NAMES } from './member-ai-cap-tools'
 import { KERNEL_SETTINGS_TOOL_NAMES } from './settings-tools'
@@ -44,7 +45,7 @@ export const kernelManifest: ModuleManifest = {
   internal: true,
   version: '0.2.0',
   description:
-    'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person), the daily AI cap per member and a person’s own AI usage today, a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner).',
+    'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person), the daily AI cap per member and a person’s own AI usage today, a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner), and the company export (owner only).',
   // `settings`: the company settings tools (settings-tools.ts) belong to the kernel core;
   // `notifications`: a person's own notification devices (notification-tools.ts).
   toolNamespaces: [KERNEL_MODULE_ID, 'settings', 'notifications'],
@@ -54,6 +55,7 @@ export const kernelManifest: ModuleManifest = {
     ...KERNEL_NOTIFICATION_TOOL_NAMES,
     ...KERNEL_OPERATIONS_TOOL_NAMES,
     ...KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
+    ...KERNEL_EXPORT_TOOL_NAMES,
   ],
   permissions: { roles: ['admin'] },
 }

@@ -393,6 +393,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings ?/changeEmail': human(SIGN_IN),
   '/(nucleus)/settings/backups ?/check': noEffect('Verifies one backup end to end (download, decrypt, hash); writes nothing.'),
   '/(nucleus)/settings/backups ?/run': tool('kernel.backup_run'),
+  '/(nucleus)/settings/export ?/delete': tool('kernel.export_delete'),
+  '/(nucleus)/settings/export ?/start': tool('kernel.export_company'),
   '/(nucleus)/settings/backups ?/save': human(BACKUP_STORAGE),
   '/(nucleus)/settings/backups ?/test': human(BACKUP_STORAGE),
   '/(nucleus)/settings/backups/restore/[snapshot] ?/restore': human(RESTORE),

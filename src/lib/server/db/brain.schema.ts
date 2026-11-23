@@ -1579,6 +1579,8 @@ export const userJobTypeEnum = [
   'erpnext_invoice_push',
   /** Calendar K7: read one received mail for an agreed appointment (modules/calendar/mail-scan.ts). */
   'calendar_mail_proposal',
+  /** Company export X1: build the "export everything" archive (src/lib/server/export/company/live.ts). */
+  'company_export',
 ] as const
 export type UserJobType = (typeof userJobTypeEnum)[number]
 

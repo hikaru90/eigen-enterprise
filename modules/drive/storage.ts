@@ -46,11 +46,14 @@ export type BlobStore = {
 
 const isMissing = (err: unknown) => (err as NodeJS.ErrnoException).code === 'ENOENT'
 
+/** Where a blob lives under a store root (the layout above); refuses anything but a sha256. */
+export function blobPath(root: string, sha: string): string {
+  if (!SHA256.test(sha)) throw new Error(`not a sha256 blob name: ${sha}`)
+  return join(root, 'blobs', sha.slice(0, 2), sha.slice(2, 4), sha)
+}
+
 export function diskBlobStore(root: string): BlobStore {
-  const pathOf = (sha: string) => {
-    if (!SHA256.test(sha)) throw new Error(`not a sha256 blob name: ${sha}`)
-    return join(root, 'blobs', sha.slice(0, 2), sha.slice(2, 4), sha)
-  }
+  const pathOf = (sha: string) => blobPath(root, sha)
   const has = async (sha: string) => {
     try {
       await stat(pathOf(sha))

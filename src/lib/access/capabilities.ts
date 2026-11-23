@@ -16,6 +16,8 @@ export const CAPABILITIES = [
   'approvals.manage',
   /** Settings → Backups (the owner's alone, D11). */
   'backups.manage',
+  /** Settings → Export: exporting everything the company owns (the owner's alone, plan/phase-export.md). */
+  'export.manage',
   /** Settings → Updates: updating eigenEnterprise on this server. */
   'updates.manage',
   /** Settings → Plugins: switching plugins on and off. */
@@ -46,6 +48,7 @@ export const GUARDED_PAGES: readonly { prefix: string; capability: Capability }[
   { prefix: '/settings/members', capability: 'members.manage' },
   { prefix: '/settings/approvals', capability: 'approvals.manage' },
   { prefix: '/settings/backups', capability: 'backups.manage' },
+  { prefix: '/settings/export', capability: 'export.manage' },
   { prefix: '/settings/updates', capability: 'updates.manage' },
   { prefix: '/settings/modules', capability: 'modules.manage' },
   { prefix: '/m/website', capability: 'website.manage' },

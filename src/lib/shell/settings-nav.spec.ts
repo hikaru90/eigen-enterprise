@@ -6,7 +6,7 @@ const caps = (granted: readonly string[]) =>
   Object.fromEntries(CAPABILITIES.map((c) => [c, granted.includes(c)])) as Capabilities
 
 const owner = caps(CAPABILITIES)
-const admin = caps(CAPABILITIES.filter((c) => c !== 'backups.manage'))
+const admin = caps(CAPABILITIES.filter((c) => c !== 'backups.manage' && c !== 'export.manage'))
 const member = caps([])
 
 describe('settings sub-navigation', () => {
@@ -23,7 +23,12 @@ describe('settings sub-navigation', () => {
       'Plugins',
       'Updates',
     ])
-    expect(settingsSections(owner).map((s) => s.id).at(-1)).toBe('backups')
+    expect(settingsSections(owner).map((s) => s.id).slice(-2)).toEqual(['backups', 'export'])
+  })
+  it("Export is the owner's alone: admins and members never see it", () => {
+    expect(settingsSections(admin).some((s) => s.id === 'export')).toBe(false)
+    expect(settingsSections(member).some((s) => s.id === 'export')).toBe(false)
+    expect(currentSettingsSection('/settings/export')).toBe('export')
   })
   it("Backups is the owner's alone: admins and members never see it", () => {
     expect(settingsSections(admin).some((s) => s.id === 'backups')).toBe(false)

@@ -52,6 +52,7 @@ import { markOvernightJobActive, markOvernightJobInactive } from './active-overn
 import { createAdminSql } from './admin-db'
 import {
   CALENDAR_MAIL_PROPOSAL_JOB,
+  COMPANY_EXPORT_JOB,
   JOB_QUEUE_BATCH_LIMIT,
   ONBOARDING_GROUNDING_PUSH_JOB,
   OVERNIGHT_CONSOLIDATION_JOB,
@@ -190,6 +191,11 @@ async function dispatchJob(job: ClaimedJob): Promise<void> {
       // Skips itself while Calendar is switched off (owner, 2026-11-12).
       const { processCalendarMailProposalJob } = await import('$lib/server/calendar/mail-proposals')
       await processCalendarMailProposalJob(job)
+      return
+    }
+    case COMPANY_EXPORT_JOB: {
+      const { processCompanyExportJob } = await import('$lib/server/export/company/live')
+      await processCompanyExportJob(job)
       return
     }
     default:

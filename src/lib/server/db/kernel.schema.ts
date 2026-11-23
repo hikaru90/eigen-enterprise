@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   jsonb,
   pgTable,
@@ -58,3 +59,19 @@ export const kernelApprovalMode = pgTable('kernel_approval_mode', {
   updatedBy: text('updated_by').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/** Company export runs (migration 0168, plan/phase-export.md X1); the archive is <state dir>/exports/<id>.zip. */
+export const companyExport = pgTable('company_export', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  requestedBy: text('requested_by').notNull(),
+  status: text('status', { enum: ['pending', 'running', 'done', 'failed', 'deleted'] }).notNull().default('pending'),
+  bytes: bigint('bytes', { mode: 'number' }),
+  summary: jsonb('summary').$type<CompanyExportSummary>(),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+})
+
+export type CompanyExportSummary = { tables: number; rows: number; privateRows: number; files: number; excluded: number }

@@ -31,6 +31,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: 'updates', name: 'Updates', href: '/settings/updates' },
   // The owner's alone: backups hold the company's recovery code (D11).
   { id: 'backups', name: 'Backups', href: '/settings/backups' },
+  // The owner's alone: everything the company owns, in open formats (plan/phase-export.md).
+  { id: 'export', name: 'Export', href: '/settings/export' },
 ]
 
 export function settingsSections(capabilities: Capabilities): SettingsSection[] {
