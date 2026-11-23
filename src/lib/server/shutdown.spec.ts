@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installPromptShutdown } from './shutdown'
+import { installPromptShutdown, onShutdownSignal } from './shutdown'
 
 function fakeProcess() {
   const emitter = new EventEmitter()
@@ -23,6 +23,29 @@ describe('prompt shutdown (D3: recovery-on-reopen, never wait out SIGKILL)', () 
     vi.advanceTimersByTime(1)
     expect(exit).toHaveBeenCalledWith(0)
     expect(order).toEqual(['release lock', 'exit'])
+  })
+
+  it('background work registered with onShutdownSignal stops on the signal, before the grace; a failing step does not block the rest', () => {
+    const { proc, exit } = fakeProcess()
+    const order: string[] = []
+    const offA = onShutdownSignal('spec-a', () => {
+      order.push('a')
+      throw new Error('boom')
+    })
+    onShutdownSignal('spec-b', () => order.push('b'))
+    const offB = onShutdownSignal('spec-b', () => order.push('b again'))
+    installPromptShutdown({ process: proc as never, graceMs: 2000, log: () => {} })
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      proc.emit('SIGTERM')
+      expect(order).toEqual(['a', 'b again'])
+      expect(exit).not.toHaveBeenCalled()
+      expect(errors).toHaveBeenCalledWith('[shutdown] stopping spec-a failed', expect.any(Error))
+    } finally {
+      errors.mockRestore()
+      offA()
+      offB()
+    }
   })
 
   it('exits as soon as every request closed, and only once', () => {

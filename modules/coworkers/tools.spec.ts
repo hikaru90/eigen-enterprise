@@ -3,7 +3,9 @@ import { InMemoryApprovalModeStore, InMemoryApprovalStore, ModeAwareApprovalPoli
 import { coworkerPrincipal } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
+import { onCoworkersChanged } from '$lib/server/coworkers/changes'
 import { memoryCoworkerStore } from '$lib/server/coworkers/memory-store'
+import { MemoryCoworkerRunStore } from '$lib/server/coworkers/run-store'
 import type { CoworkerActor, OrgMember } from '$lib/server/coworkers/service'
 import { COWORKERS_GATED_TOOLS, COWORKERS_TOOL_NAMES, coworkersManifest } from './manifest'
 import { createCoworkersTools } from './tools'
@@ -24,7 +26,12 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
   const store = memoryCoworkerStore([person('olga', 'owner', 3), person('ari', 'admin', 2), person('mo', 'member', 1)])
   let n = 0
   const deps = { store, now: () => at, newId: () => `cw${String(++n).padStart(6, '0')}abcdef` }
+  const runs = new MemoryCoworkerRunStore()
+  /** Which conversations each reader may see (Messages decides this live). */
+  const sees: Record<string, string[]> = { olga: ['conv-launch', 'conv-dm'], mo: ['conv-launch'] }
   const tools = createCoworkersTools({
+    runs: async () => runs,
+    runLocations: async (reader, ids) => new Set(ids.filter((id) => (sees[reader.id] ?? []).includes(id))),
     deps: async () => deps,
     actor: async (ctx): Promise<CoworkerActor> => {
       const p = ctx.principal
@@ -50,7 +57,7 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
     await approvals.decide(pending!.id, 'approved', 'olga')
     return registry.execute(name, input, ctx)
   }
-  return { store, registry, tool, ownerCtx, memberCtx, approved, approvals }
+  return { store, registry, tool, ownerCtx, memberCtx, approved, approvals, runs }
 }
 
 describe('coworkers module', () => {
@@ -63,7 +70,7 @@ describe('coworkers module', () => {
 
   it('reads are for every member; writes for admins and the agent; create and remove always ask', () => {
     const { tool } = setup()
-    for (const name of ['coworkers.templates', 'coworkers.list', 'coworkers.get', 'org.chart']) {
+    for (const name of ['coworkers.templates', 'coworkers.list', 'coworkers.get', 'coworkers.runs', 'org.chart']) {
       expect(tool(name)).toMatchObject({ auditClass: 'read', permission: { roles: ['admin', 'member', 'agent'] } })
     }
     for (const name of ['coworkers.create', 'coworkers.update', 'coworkers.enable', 'coworkers.disable', 'coworkers.remove']) {
@@ -132,5 +139,96 @@ describe('coworkers module', () => {
     await expect(registry.execute('coworkers.disable', { user_id: cw.id }, ownerCtx)).rejects.toMatchObject({ code: 'approval_required' })
     const removed = (await approved('coworkers.remove', { user_id: cw.id }, ownerCtx)) as { removedAt: string | null; enabled: boolean }
     expect(removed).toMatchObject({ removedAt: at.toISOString(), enabled: false })
+  })
+
+  it('every co-worker change is announced in process, so the turns reload their agents (C3)', async () => {
+    const { registry, ownerCtx, approved } = setup('allow_all')
+    let changes = 0
+    const off = onCoworkersChanged(() => {
+      changes += 1
+    })
+    try {
+      const cw = (await approved('coworkers.create', { template_id: 'designer' }, ownerCtx)) as { id: string }
+      await registry.execute('coworkers.update', { user_id: cw.id, model_id: 'google/gemini-3.8-flash' }, ownerCtx)
+      await registry.execute('coworkers.disable', { user_id: cw.id }, ownerCtx)
+      await registry.execute('coworkers.enable', { user_id: cw.id }, ownerCtx)
+      await approved('coworkers.remove', { user_id: cw.id }, ownerCtx)
+      // A refused change announces nothing.
+      await expect(registry.execute('coworkers.update', { user_id: cw.id, name: 'Back' }, ownerCtx)).rejects.toMatchObject({ code: 'removed' })
+      await new Promise((r) => setTimeout(r, 0))
+      expect(changes).toBe(5)
+    } finally {
+      off()
+    }
+  })
+})
+
+describe('coworkers.runs (C3): the run log', () => {
+  it('lists a co-worker’s turns newest first with trigger, status, cost and timings; hides where a reader may not look', async () => {
+    const { registry, ownerCtx, memberCtx, approved, runs } = setup('allow_all')
+    const cw = (await approved('coworkers.create', { template_id: 'marketing-manager', name: 'Mara' }, ownerCtx)) as { id: string }
+    const first = await runs.enqueue({
+      coworkerUserId: cw.id,
+      triggerKind: 'mention',
+      conversationId: 'conv-launch',
+      threadRootId: 'root-1',
+      triggerMessageId: 'msg-1',
+      requestedByUserId: 'mo',
+      triggeredAt: new Date('2026-11-23T09:01:00Z'),
+    })
+    await runs.update(first!.id, {
+      status: 'done',
+      costUsd: 0.0123,
+      startedAt: new Date('2026-11-23T09:01:01Z'),
+      endedAt: new Date('2026-11-23T09:01:09Z'),
+    })
+    const second = await runs.enqueue({
+      coworkerUserId: cw.id,
+      triggerKind: 'dm',
+      conversationId: 'conv-dm',
+      threadRootId: null,
+      triggerMessageId: 'msg-2',
+      requestedByUserId: 'olga',
+      triggeredAt: new Date('2026-11-23T09:05:00Z'),
+    })
+    await runs.update(second!.id, { status: 'stopped', stopReason: 'daily_cap', error: 'reached its daily spend cap', endedAt: new Date('2026-11-23T09:05:01Z') })
+
+    const owner = (await registry.execute('coworkers.runs', { user_id: cw.id }, ownerCtx)) as { runs: Array<Record<string, unknown>> }
+    expect(owner.runs).toEqual([
+      expect.objectContaining({
+        id: second!.id,
+        triggerKind: 'dm',
+        status: 'stopped',
+        stopReason: 'daily_cap',
+        conversationId: 'conv-dm',
+        threadRootId: null,
+        threadUrl: '/messages?c=conv-dm',
+        hidden: false,
+        requestedByUserId: 'olga',
+        startedAt: null,
+      }),
+      expect.objectContaining({
+        id: first!.id,
+        triggerKind: 'mention',
+        status: 'done',
+        stopReason: null,
+        costUsd: 0.0123,
+        threadUrl: '/messages?c=conv-launch&t=root-1',
+        triggerMessageId: 'msg-1',
+        triggeredAt: '2026-11-23T09:01:00.000Z',
+        startedAt: '2026-11-23T09:01:01.000Z',
+        endedAt: '2026-11-23T09:01:09.000Z',
+      }),
+    ])
+    // The member is not in that DM: the run is listed, where it ran is not.
+    const member = (await registry.execute('coworkers.runs', { user_id: cw.id, limit: 5 }, memberCtx)) as { runs: Array<Record<string, unknown>> }
+    expect(member.runs[0]).toMatchObject({ id: second!.id, hidden: true, conversationId: null, threadRootId: null, triggerMessageId: null, threadUrl: null })
+    expect(member.runs[1]).toMatchObject({ id: first!.id, hidden: false, conversationId: 'conv-launch' })
+    expect(((await registry.execute('coworkers.runs', { user_id: cw.id, limit: 1 }, ownerCtx)) as { runs: unknown[] }).runs).toHaveLength(1)
+  })
+
+  it('an unknown co-worker answers not_found', async () => {
+    const { registry, memberCtx } = setup()
+    await expect(registry.execute('coworkers.runs', { user_id: 'nobody' }, memberCtx)).rejects.toMatchObject({ code: 'not_found' })
   })
 })

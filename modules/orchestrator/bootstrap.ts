@@ -96,6 +96,12 @@ export type OrchestratorBootOptions = {
    * registered while building the kernel (provideConnectedReposPort).
    */
   connectedRepos?: ConnectedReposPort
+  /**
+   * The cost ledger for agents that act as themselves (AI co-workers, plan/phase-ai-coworkers.md
+   * §3): the composition root injects src/lib/server/agent/ledger-spend.ts. Without it the
+   * runtime refuses to register a co-worker (fail loud), so co-workers need it.
+   */
+  spentUsdToday?: (userId: string) => Promise<number>
 }
 
 const connectedReposOption = (port: ConnectedReposPort | null) => (port ? { connectedRepos: port } : {})
@@ -146,6 +152,7 @@ export async function bootstrapOrchestrator(
       isToolActive: (name) => kernel.modules.isToolActive(name),
       eventSink: kernel.eventSink,
       ...(options.metaTools ? { metaTools: options.metaTools } : {}),
+      ...(options.spentUsdToday ? { spentUsdToday: options.spentUsdToday } : {}),
       journeys: options.journeys ?? new InMemoryJourneyStore(),
       spec: WEBSITE_FOUNDING_JOURNEY,
       ...(options.onboardingFacts ? { onboardingFacts: options.onboardingFacts } : {}),

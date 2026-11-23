@@ -11,9 +11,11 @@ const mocks = vi.hoisted(() => ({
   bootstrapChatGateway: vi.fn(),
   bootstrapRecap: vi.fn(),
   registerAdminTools: vi.fn(async () => undefined),
+  startCoworkerTurns: vi.fn(async () => ({ stop: () => {} })),
 }))
 
 vi.mock('$lib/kernel/admin-bootstrap', () => ({ registerAdminTools: mocks.registerAdminTools }))
+vi.mock('$lib/server/coworkers/live-turns', () => ({ startCoworkerTurns: mocks.startCoworkerTurns }))
 
 vi.mock('../../../modules/index', () => ({
   buildKernel: mocks.buildKernel,
@@ -186,6 +188,24 @@ describe('bootApp — startup composition root', () => {
       gatewayBooted: true,
       recapBooted: false,
     })
+  })
+
+  it('AI co-workers (C3): the runtime gets the cost ledger, and the co-worker turns start on the boot kernel and runtime', async () => {
+    const { bootApp } = await import('./boot')
+    const { ledgerSpentUsdToday } = await import('$lib/server/agent/ledger-spend')
+    const boot = await bootApp({ env: {} })
+    expect((orchestratorCalls[0]!.options as { spentUsdToday?: unknown }).spentUsdToday).toBe(ledgerSpentUsdToday)
+    await vi.waitFor(() =>
+      expect(mocks.startCoworkerTurns).toHaveBeenCalledWith({ registry: boot.kernel.registry, runtime: boot.orchestrator.runtime }),
+    )
+  })
+
+  it('AI co-workers: a boot that opts out starts none', async () => {
+    const { bootApp } = await import('./boot')
+    const boot = await bootApp({ env: {}, coworkers: { start: false } })
+    await new Promise((r) => setTimeout(r, 10))
+    const calls = mocks.startCoworkerTurns.mock.calls as unknown as Array<[{ registry: unknown }]>
+    expect(calls.filter(([input]) => input.registry === boot.kernel.registry)).toEqual([])
   })
 
   it('inactive gateway stage: no gateway boot and status reflects it', async () => {

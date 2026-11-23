@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import type { PersonDirectory, PersonRef } from '$lib/kernel/principals'
 import { authDb } from '$lib/server/db/auth-db'
-import { user } from '$lib/server/db/auth.schema'
+import { user, type UserKind } from '$lib/server/db/auth.schema'
 import { isAdminRole, kernelRolesFor, type MemberRole } from './roles'
 
 export { MEMBER_ROLES, isAdminRole, kernelRolesFor, type MemberRole } from './roles'
@@ -10,6 +10,12 @@ export { MEMBER_ROLES, isAdminRole, kernelRolesFor, type MemberRole } from './ro
 export async function getUserRole(userId: string): Promise<MemberRole | null> {
   const [row] = await authDb.select({ role: user.role }).from(user).where(eq(user.id, userId)).limit(1)
   return row?.role ?? null
+}
+
+/** A person or an AI co-worker, or null when there is no such user. */
+export async function getUserKind(userId: string): Promise<UserKind | null> {
+  const [row] = await authDb.select({ kind: user.kind }).from(user).where(eq(user.id, userId)).limit(1)
+  return row?.kind ?? null
 }
 
 export async function isUserAdmin(userId: string): Promise<boolean> {

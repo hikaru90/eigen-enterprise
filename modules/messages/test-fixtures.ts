@@ -1,4 +1,5 @@
 import type { AttachmentPort, DriveFileInfo, MessagesDeps } from './service'
+import { coworkerEmail } from '$lib/server/coworkers/service'
 import { FakeAccessPort, levelSatisfies, type AccessLevel, type GrantInput } from './access-port'
 import { MemoryDirectory, MemoryMessagesStore } from './memory-store'
 
@@ -7,9 +8,9 @@ export function fixture() {
   const store = new MemoryMessagesStore()
   const access = new FakeAccessPort()
   const directory = new MemoryDirectory([
-    { id: 'owner', name: 'Olga Owner', email: 'olga@co.test' },
-    { id: 'bea', name: 'Bea Member', email: 'bea@co.test' },
-    { id: 'carl', name: 'Carl Member', email: 'carl@co.test' },
+    { id: 'owner', name: 'Olga Owner', email: 'olga@co.test', kind: 'human' },
+    { id: 'bea', name: 'Bea Member', email: 'bea@co.test', kind: 'human' },
+    { id: 'carl', name: 'Carl Member', email: 'carl@co.test', kind: 'human' },
   ])
   for (const [id, role] of [
     ['owner', 'owner'],
@@ -31,7 +32,17 @@ export function fixture() {
   return { store, access, directory, deps }
 }
 
-type FakeFolder = { id: string; parentId: string | null; name: string; grants: GrantInput[] | null }
+/**
+ * Adds an AI co-worker to a fixture: a member (role member, kind coworker) whose
+ * address is the one the coworkers service builds, so its @handle is `slug`.
+ */
+export function addCoworker(f: ReturnType<typeof fixture>, c: { id: string; slug: string; name: string }): void {
+  f.directory.people.push({ id: c.id, name: c.name, email: coworkerEmail(c.slug, c.id), kind: 'coworker' })
+  f.directory.roles.set(c.id, 'member')
+  f.access.roles.set(c.id, 'member')
+}
+
+type FakeFolder ={ id: string; parentId: string | null; name: string; grants: GrantInput[] | null }
 
 /**
  * In-memory Drive behind AttachmentPort with the contract's semantics that

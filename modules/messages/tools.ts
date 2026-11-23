@@ -1,5 +1,6 @@
 import type { Conversation } from './store'
 import { z } from 'zod'
+import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { MESSAGES_MODULE_ID } from './manifest'
 import { setDoNotDisturb, type PresencePort } from './presence'
@@ -25,9 +26,13 @@ import {
 /**
  * messages.* kernel tools. A person reads what they may see (their channels
  * and their DMs) and writes exactly as /api/messages/* does — the same service
- * calls, the same push fan-out. Any other principal (the agent) reads only what
- * the whole company may see: channels with a company grant; never private
- * channels or DMs; and never writes (owner decision W-2).
+ * calls, the same push fan-out. An AI co-worker (plan/phase-ai-coworkers.md C3)
+ * takes part like a member, with its own access: it reads, posts, replies in
+ * threads, reacts, opens DMs and marks read in the conversations it may use —
+ * but creates no channel, uploads nothing, edits or deletes nothing, and never
+ * moderates (MEMBER_TOOLS lists what it reaches). Any other principal (the
+ * agent) reads only what the whole company may see: channels with a company
+ * grant; never private channels or DMs; and never writes (owner decision W-2).
  */
 
 type PushFn = (d: MessagesDeps, c: Conversation, m: MessageDto) => void
@@ -115,9 +120,32 @@ async function companyChannels(d: MessagesDeps): Promise<Conversation[]> {
 }
 
 const isPerson = (ctx: ToolContext) => ctx.principal.kind === 'human'
+/** A person or an AI co-worker: someone with a seat, who reads and writes with their own access. */
+const isMember = (ctx: ToolContext) => actsAsMember(ctx.principal)
+
+/**
+ * The tools an AI co-worker reaches like a member (C3). Everything else in
+ * Messages — creating channels, uploads, edits, deletes, Do not disturb — stays
+ * a person's own act.
+ */
+export const MEMBER_TOOLS = [
+  'messages.list_channels',
+  'messages.read',
+  'messages.thread',
+  'messages.members',
+  'messages.open_dm',
+  'messages.post',
+  'messages.react',
+  'messages.mark_read',
+] as const
 
 function personId(ctx: ToolContext): string {
   if (!isPerson(ctx)) throw new MessagesError('forbidden', 'only a person can do this in Messages')
+  return ctx.principal.id
+}
+
+function memberId(ctx: ToolContext): string {
+  if (!isMember(ctx)) throw new MessagesError('forbidden', 'only a member (a person or an AI co-worker) can do this in Messages')
   return ctx.principal.id
 }
 
@@ -159,7 +187,7 @@ export function createMessagesTools(
       inputSchema,
       permission: PERSON,
       handler: async (ctx, input) => {
-        const userId = personId(ctx)
+        const userId = (MEMBER_TOOLS as readonly string[]).includes(name) ? memberId(ctx) : personId(ctx)
         const out = await run(userId, await deps(), inputSchema.parse(input))
         return out ?? { ok: true }
       },
@@ -171,13 +199,13 @@ export function createMessagesTools(
       name: 'messages.list_channels',
       module: MESSAGES_MODULE_ID,
       summary:
-        'List the team chat conversations you may read: channels (and, for a person, their direct messages) with unread counts.',
+        'List the team chat conversations you may read: channels (and, for a member, their direct messages) with unread counts.',
       auditClass: 'read',
       inputSchema: listInput,
       permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx) => {
         const d = await deps()
-        if (isPerson(ctx)) return { conversations: await listConversations(d, ctx.principal.id) }
+        if (isMember(ctx)) return { conversations: await listConversations(d, ctx.principal.id) }
         return {
           conversations: (await companyChannels(d)).map((c) => ({ id: c.id, kind: c.kind, title: c.name, topic: c.topic })),
         }
@@ -200,7 +228,7 @@ export function createMessagesTools(
           if (!c) throw new Error('conversation not found')
           id = c.id
         }
-        if (isPerson(ctx)) return listMessages(d, ctx.principal.id, id!, { limit: i.limit, beforeId: i.before_id })
+        if (isMember(ctx)) return listMessages(d, ctx.principal.id, id!, { limit: i.limit, beforeId: i.before_id })
         const c = await d.store.getConversation(id!)
         if (!c || !(await companyChannel(d, c))) throw new Error('conversation not found')
         return messagePage(d, c, { limit: i.limit, beforeId: i.before_id })
@@ -213,7 +241,7 @@ export function createMessagesTools(
       auditClass: 'read',
       inputSchema: messageInput,
       permission: PERSON,
-      handler: async (ctx, input) => listThread(await deps(), personId(ctx), messageInput.parse(input).message_id),
+      handler: async (ctx, input) => listThread(await deps(), memberId(ctx), messageInput.parse(input).message_id),
     },
     {
       name: 'messages.members',
@@ -223,7 +251,7 @@ export function createMessagesTools(
       inputSchema: conversationInput,
       permission: PERSON,
       handler: async (ctx, input) => ({
-        members: await conversationMembers(await deps(), personId(ctx), conversationInput.parse(input).conversation_id),
+        members: await conversationMembers(await deps(), memberId(ctx), conversationInput.parse(input).conversation_id),
       }),
     },
     write(

@@ -1,7 +1,10 @@
 import { z } from 'zod'
-import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import type { ToolContext, ToolDescriptor, ToolPrincipal } from '$lib/kernel/types'
+import { notifyCoworkersChanged } from '$lib/server/coworkers/changes'
+import type { CoworkerRunRow, CoworkerRunStore } from '$lib/server/coworkers/run-store'
 import type { CoworkerActor, CoworkerDeps, CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
 import { COWORKER_TEMPLATE_IDS, COWORKER_TEMPLATES } from '$lib/server/coworkers/templates'
+import { COWORKER_RUN_STATUSES, COWORKER_STOP_REASONS, COWORKER_TRIGGER_KINDS } from '$lib/server/db/coworkers.schema'
 import { COWORKERS_CREATE_TOOL, COWORKERS_MODULE_ID, COWORKERS_REMOVE_TOOL } from './manifest'
 
 /**
@@ -14,11 +17,23 @@ import { COWORKERS_CREATE_TOOL, COWORKERS_MODULE_ID, COWORKERS_REMOVE_TOOL } fro
  * rights behind the approval gate); creating and removing a co-worker always
  * waits for a person's yes. A member edits only their own title and
  * accountabilities (org.set_position). A co-worker writes nothing here.
+ * Every co-worker change is announced in process (changes.ts), so the
+ * co-worker turns (C3) reload the runtime's agents and their triggers.
+ *
+ * coworkers.runs (C3) is a co-worker's run log: trigger, thread, who asked,
+ * status, cost and timings. Where a turn ran is shown only to a reader who may
+ * see that conversation (a DM or private channel they are not in never leaks:
+ * its location is hidden).
  */
+
+/** The conversations, of `conversationIds`, the reader may see. */
+export type RunLocationAccess = (reader: ToolPrincipal, conversationIds: string[]) => Promise<Set<string>>
 
 export type CoworkersToolDeps = {
   deps?: () => Promise<CoworkerDeps>
   actor?: (ctx: ToolContext) => Promise<CoworkerActor>
+  runs?: () => Promise<CoworkerRunStore>
+  runLocations?: RunLocationAccess
 }
 
 const READ_ROLES = ['admin', 'member', 'agent']
@@ -126,9 +141,44 @@ async function liveActor(ctx: ToolContext): Promise<CoworkerActor> {
 
 const nameOf = (output: unknown): string | undefined => (output as Pick<CoworkerView, 'name'> | undefined)?.name
 
+const runsInput = z.object({ user_id: userId, limit: z.number().int().min(1).max(100).optional() }).strict()
+const runEntrySchema = z.object({
+  id: z.string(),
+  triggerKind: z.enum(COWORKER_TRIGGER_KINDS),
+  status: z.enum(COWORKER_RUN_STATUSES),
+  stopReason: z.enum(COWORKER_STOP_REASONS).nullable(),
+  costUsd: z.number(),
+  requestedByUserId: z.string().nullable(),
+  conversationId: z.string().nullable(),
+  threadRootId: z.string().nullable(),
+  triggerMessageId: z.string().nullable(),
+  threadUrl: z.string().nullable(),
+  hidden: z.boolean(),
+  triggeredAt: z.string(),
+  startedAt: z.string().nullable(),
+  endedAt: z.string().nullable(),
+  error: z.string().nullable(),
+})
+
+async function liveRuns(): Promise<CoworkerRunStore> {
+  return (await import('$lib/server/coworkers/db-run-store')).liveCoworkerRunStore
+}
+
+const liveRunLocations: RunLocationAccess = async (reader, ids) =>
+  (await import('$lib/server/coworkers/run-log')).liveRunLocations(reader, ids)
+
+/** A change to the co-workers took effect: tell this process (the turns reload their agents). */
+async function announced<T>(change: Promise<T>): Promise<T> {
+  const out = await change
+  notifyCoworkersChanged()
+  return out
+}
+
 export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescriptor[] {
   const deps = opts.deps ?? liveDeps
   const actor = opts.actor ?? liveActor
+  const runs = opts.runs ?? liveRuns
+  const runLocations = opts.runLocations ?? liveRunLocations
   const service = () => import('$lib/server/coworkers/service')
   return [
     {
@@ -178,19 +228,21 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) => {
         const i = createInput.parse(input)
-        return (await service()).createCoworker(
-          await actor(ctx),
-          {
-            templateId: i.template_id,
-            name: i.name,
-            title: i.title,
-            lens: i.lens,
-            accountabilities: i.accountabilities,
-            modelId: i.model_id,
-            reportsToUserId: i.reports_to_user_id,
-            dailyCapUsd: i.daily_cap_usd,
-          },
-          await deps(),
+        return announced(
+          (await service()).createCoworker(
+            await actor(ctx),
+            {
+              templateId: i.template_id,
+              name: i.name,
+              title: i.title,
+              lens: i.lens,
+              accountabilities: i.accountabilities,
+              modelId: i.model_id,
+              reportsToUserId: i.reports_to_user_id,
+              dailyCapUsd: i.daily_cap_usd,
+            },
+            await deps(),
+          ),
         )
       },
     },
@@ -207,19 +259,21 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) => {
         const i = updateInput.parse(input)
-        return (await service()).updateCoworker(
-          await actor(ctx),
-          {
-            userId: i.user_id,
-            name: i.name,
-            title: i.title,
-            lens: i.lens,
-            accountabilities: i.accountabilities,
-            modelId: i.model_id,
-            reportsToUserId: i.reports_to_user_id,
-            dailyCapUsd: i.daily_cap_usd,
-          },
-          await deps(),
+        return announced(
+          (await service()).updateCoworker(
+            await actor(ctx),
+            {
+              userId: i.user_id,
+              name: i.name,
+              title: i.title,
+              lens: i.lens,
+              accountabilities: i.accountabilities,
+              modelId: i.model_id,
+              reportsToUserId: i.reports_to_user_id,
+              dailyCapUsd: i.daily_cap_usd,
+            },
+            await deps(),
+          ),
         )
       },
     },
@@ -234,7 +288,9 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       outputSchema: coworkerViewSchema,
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) =>
-        (await service()).setCoworkerEnabled(await actor(ctx), { userId: byIdInput.parse(input).user_id, enabled: true }, await deps()),
+        announced(
+          (await service()).setCoworkerEnabled(await actor(ctx), { userId: byIdInput.parse(input).user_id, enabled: true }, await deps()),
+        ),
     },
     {
       name: 'coworkers.disable',
@@ -247,7 +303,9 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       outputSchema: coworkerViewSchema,
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) =>
-        (await service()).setCoworkerEnabled(await actor(ctx), { userId: byIdInput.parse(input).user_id, enabled: false }, await deps()),
+        announced(
+          (await service()).setCoworkerEnabled(await actor(ctx), { userId: byIdInput.parse(input).user_id, enabled: false }, await deps()),
+        ),
     },
     {
       name: COWORKERS_REMOVE_TOOL,
@@ -261,7 +319,27 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       inputSchema: byIdInput,
       outputSchema: coworkerViewSchema,
       permission: { roles: ADMIN_ROLES },
-      handler: async (ctx, input) => (await service()).removeCoworker(await actor(ctx), { userId: byIdInput.parse(input).user_id }, await deps()),
+      handler: async (ctx, input) =>
+        announced((await service()).removeCoworker(await actor(ctx), { userId: byIdInput.parse(input).user_id }, await deps())),
+    },
+    {
+      name: 'coworkers.runs',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        "An AI co-worker's recent turns, newest first (limit, default 20): what triggered it (mention | dm | assignment | rhythm | event), the thread (with a link), who asked, status (queued | running | done | failed | stopped), why it stopped (stop_reason), its cost in USD and its timings. Where a turn ran is hidden for a conversation you may not see.",
+      auditClass: 'read',
+      inputSchema: runsInput,
+      outputSchema: z.object({ runs: z.array(runEntrySchema) }),
+      permission: { roles: READ_ROLES },
+      handler: async (ctx, input) => {
+        const i = runsInput.parse(input)
+        // An unknown id answers not_found, like coworkers.get.
+        await (await service()).getCoworker((await deps()).store, i.user_id)
+        const rows: CoworkerRunRow[] = await (await runs()).listForCoworker(i.user_id, i.limit ?? 20)
+        const visible = await runLocations(ctx.principal, rows.flatMap((r) => (r.conversationId ? [r.conversationId] : [])))
+        const { runEntry } = await import('$lib/server/coworkers/run-log')
+        return { runs: rows.map((r) => runEntry(r, visible)) }
+      },
     },
     {
       name: 'org.chart',

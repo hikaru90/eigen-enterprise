@@ -31,6 +31,7 @@ describe('bootApp — production wiring', () => {
         }),
       journeys: new InMemoryJourneyStore(),
       recap: { startTick: false },
+      coworkers: { start: false },
     })
 
     expect(boot.kernel.registry.get('kernel.module_activate')).toBeDefined()
@@ -68,6 +69,7 @@ describe('bootApp — production wiring', () => {
         }),
       journeys: new InMemoryJourneyStore(),
       recap: { startTick: false },
+      coworkers: { start: false },
     })
     // bootApp is memoized per process: switch on every module of THE boot's kernel.
     for (const t of boot.kernel.registry.list()) await boot.kernel.activations.set(t.module, true)
@@ -121,6 +123,7 @@ describe('bootApp — the brain reaches every tool of the person through ee', ()
         }),
       journeys: new InMemoryJourneyStore(),
       recap: { startTick: false },
+      coworkers: { start: false },
     })
     for (const t of boot.kernel.registry.list()) await boot.kernel.activations.set(t.module, true)
     const runtime = boot.orchestrator.runtime
@@ -229,6 +232,7 @@ const NO_BRAIN_REACH = ['agent.disable', 'agent.enable', 'brand.picker_choose', 
 const MEMBER_KEEPS_VIA_BRAIN = [
   'coworkers.get',
   'coworkers.list',
+  'coworkers.runs',
   'coworkers.templates',
   'org.chart',
   'org.set_position',

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { coworkerPrincipal } from '$lib/kernel/principals'
 import type { ToolContext } from '$lib/kernel/types'
 import { PresenceTracker } from '$lib/server/presence/tracker'
 import { MESSAGES_TOOL_NAMES, MESSAGES_WRITE_TOOLS } from './manifest'
 import { createChannel, openDm, postMessage } from './service'
-import { depthFixture, fixture } from './test-fixtures'
-import { createMessagesTools } from './tools'
+import { addCoworker, depthFixture, fixture } from './test-fixtures'
+import { createMessagesTools, MEMBER_TOOLS } from './tools'
 
 const ctx = (id: string, kind: 'human' | 'agent'): ToolContext => ({
   principal: { id, kind, roles: [kind === 'human' ? 'admin' : 'agent'] },
@@ -148,5 +149,89 @@ describe('messages.* write tools (the person acts with their own access)', () =>
     const { run } = await writeSetup()
     expect(await run('messages.set_do_not_disturb', 'bea', { do_not_disturb: true })).toMatchObject({ presence: { doNotDisturb: true } })
     expect(await run('messages.set_do_not_disturb', 'bea', { do_not_disturb: false })).toMatchObject({ presence: { doNotDisturb: false } })
+  })
+})
+
+describe('messages.* for an AI co-worker (plan/phase-ai-coworkers.md C3: a member with its own access)', () => {
+  const cw = (): ToolContext => ({ principal: coworkerPrincipal('cw-mkt', 'coworker-cw-mkt'), requestId: 'r-cw' })
+
+  async function coworkerSetup() {
+    const f = await writeSetup()
+    addCoworker(f, { id: 'cw-mkt', slug: 'marketing', name: 'Marketing' })
+    const general = await createChannel(f.deps, 'owner', { name: 'general', private: false })
+    const lead = await createChannel(f.deps, 'owner', { name: 'leadership', private: true, userIds: ['carl'] })
+    const launch = await createChannel(f.deps, 'owner', { name: 'launch', private: true, userIds: ['cw-mkt'] })
+    const humansDm = await openDm(f.deps, 'bea', ['carl'])
+    const { message: root } = await postMessage(f.deps, 'bea', general.id, '@marketing plan the launch')
+    const as = (name: string, input: unknown) => f.tools[name].handler(cw(), input)
+    return { ...f, general, lead, launch, humansDm, root, as }
+  }
+
+  it('reaches exactly the member tools; everything else stays a person’s own act', async () => {
+    const { as, general, root } = await coworkerSetup()
+    expect([...MEMBER_TOOLS].sort()).toEqual(
+      [
+        'messages.list_channels',
+        'messages.read',
+        'messages.thread',
+        'messages.members',
+        'messages.open_dm',
+        'messages.post',
+        'messages.react',
+        'messages.mark_read',
+      ].sort(),
+    )
+    for (const t of createMessagesTools().filter((t) => (MEMBER_TOOLS as readonly string[]).includes(t.name))) {
+      expect(t.permission.roles).toContain('member')
+    }
+    await expect(as('messages.create_channel', { name: 'mine', private: false })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(
+      as('messages.upload_attachments', { conversation_id: general.id, files: [{ filename: 'a.txt', content_base64: '' }] }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(as('messages.edit', { message_id: root.id, body: 'x' })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(as('messages.delete', { message_id: root.id })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(as('messages.set_do_not_disturb', { do_not_disturb: true })).rejects.toMatchObject({ code: 'forbidden' })
+  })
+
+  it('posts and replies in a thread as itself, where it may post; push fan-out as for a person', async () => {
+    const { as, general, launch, lead, root, pushed } = await coworkerSetup()
+    const reply = (await as('messages.post', { conversation_id: general.id, body: 'On it. @carl?', parent_id: root.id })) as {
+      message: Msg
+      parent: Msg
+    }
+    expect(reply.message.authorId).toBe('cw-mkt')
+    expect(reply.parent.id).toBe(root.id)
+    const inLaunch = (await as('messages.post', { conversation_id: launch.id, body: 'kick-off' })) as { message: Msg }
+    expect(pushed).toEqual([reply.message.id, inLaunch.message.id])
+    // A private channel it is not invited to does not exist for it.
+    await expect(as('messages.post', { conversation_id: lead.id, body: 'x' })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('reads what it may see — its channels and DMs — never a private channel or a DM it is not in', async () => {
+    const { as, general, launch, lead, humansDm, root } = await coworkerSetup()
+    const listed = (await as('messages.list_channels', {})) as { conversations: Array<{ id: string }> }
+    expect(listed.conversations.map((c) => c.id).sort()).toEqual([general.id, launch.id].sort())
+    const read = (await as('messages.read', { channel: 'general' })) as { messages: Msg[] }
+    expect(read.messages.map((m) => m.body)).toEqual(['@marketing plan the launch'])
+    const thread = (await as('messages.thread', { message_id: root.id })) as { parent: Msg }
+    expect(thread.parent.id).toBe(root.id)
+    const members = (await as('messages.members', { conversation_id: launch.id })) as { members: Array<{ id: string }> }
+    expect(members.members.map((p) => p.id).sort()).toEqual(['cw-mkt', 'owner'])
+    for (const id of [lead.id, humansDm.id]) {
+      await expect(as('messages.read', { conversation_id: id })).rejects.toMatchObject({ code: 'not_found' })
+      await expect(as('messages.members', { conversation_id: id })).rejects.toMatchObject({ code: 'not_found' })
+      await expect(as('messages.mark_read', { conversation_id: id })).rejects.toMatchObject({ code: 'not_found' })
+    }
+  })
+
+  it('opens a DM with a person, reacts and marks read', async () => {
+    const { as, root, general } = await coworkerSetup()
+    const { conversation } = (await as('messages.open_dm', { user_ids: ['bea'] })) as { conversation: { id: string; memberIds: string[] } }
+    expect(conversation.memberIds.sort()).toEqual(['bea', 'cw-mkt'])
+    const reacted = (await as('messages.react', { message_id: root.id, emoji: '👀' })) as { message: Msg }
+    expect(reacted.message.reactions.map((r) => r.emoji)).toEqual(['👀'])
+    await as('messages.mark_read', { conversation_id: general.id })
+    const listed = (await as('messages.list_channels', {})) as { conversations: Array<{ id: string; unread: number }> }
+    expect(listed.conversations.find((c) => c.id === general.id)?.unread).toBe(0)
   })
 })

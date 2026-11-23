@@ -24,6 +24,7 @@ vi.mock('$lib/server/llm/member-daily-cap-store', () => ({
   memberDailyCapStore: {
     readCapUsd: async () => capStore.cap,
     roleOf: async (userId: string) => capStore.roles[userId] ?? null,
+    kindOf: async (userId: string) => (capStore.roles[userId] ? 'human' : null),
     spentUsdSince: async (userId: string) => capStore.spent[userId] ?? 0,
     setCapUsd: async () => {},
   },

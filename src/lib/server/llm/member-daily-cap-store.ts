@@ -2,6 +2,7 @@ import { and, eq, gte, sql } from 'drizzle-orm'
 import { replyCostSchema, type ReplyCost } from '$lib/ai-usage/usage'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { getDb } from '$lib/server/db'
+import type { UserKind } from '$lib/server/db/auth.schema'
 import { companyAi } from '$lib/server/db/company.schema'
 import { activityCallLog, chatMessage } from '$lib/server/db/schema'
 import { parseStoredCapUsd } from './member-daily-cap'
@@ -19,6 +20,7 @@ export type MemberDailyCapStore = {
   readCapUsd(): Promise<number | null>
   setCapUsd(value: number | null, by: string): Promise<void>
   roleOf(userId: string): Promise<MemberRole | null>
+  kindOf(userId: string): Promise<UserKind | null>
   spentUsdSince(userId: string, since: Date): Promise<number>
   replyCost(userId: string, messageId: string): Promise<{ usage: ReplyCost | null } | null>
 }
@@ -48,6 +50,7 @@ export const memberDailyCapStore: MemberDailyCapStore = {
 
   // Loaded on first use: the auth database opens on import (no DB for callers that never cap).
   roleOf: async (userId) => (await import('$lib/server/auth/user-role')).getUserRole(userId),
+  kindOf: async (userId) => (await import('$lib/server/auth/user-role')).getUserKind(userId),
 
   // What one of the person's assistant replies cost (handle-agent-chat-post keeps it as metadata.usage).
   async replyCost(userId, messageId) {

@@ -6,6 +6,7 @@ import { DbJourneyStore, type JourneyStore } from '$lib/kernel/playbook'
 import type { PersonDirectory } from '$lib/kernel/principals'
 import type { WiredKernel } from '$lib/kernel/wiring'
 import { createDurableEngine } from '$lib/server/agent/durable-engine'
+import { ledgerSpentUsdToday } from '$lib/server/agent/ledger-spend'
 import {
   bootstrapChatGateway,
   bootstrapRecap,
@@ -61,6 +62,12 @@ export type AppBootOptions = {
   journeys?: JourneyStore
   /** Recap scheduler tick (default: start, 5-minute cadence; tests opt out). */
   recap?: { startTick?: boolean; intervalMs?: number }
+  /**
+   * The AI co-worker turns (plan/phase-ai-coworkers.md C3: the co-workers in the runtime,
+   * the Messages trigger listener, the turn queue). Default: started (not while building);
+   * specs without a database opt out.
+   */
+  coworkers?: { start?: boolean }
 }
 
 export type AppBootStatus = {
@@ -124,6 +131,26 @@ function startRecapTick(recap: RecapBoot, intervalMs: number): void {
       console.error('[recap] scheduler tick failed', err)
     })
   }, intervalMs)
+}
+
+/** globalThis guard: across HMR re-compositions only one set of co-worker turns may listen. */
+const coworkerTurnsHost = globalThis as { __eeCoworkerTurns?: { stop(): void } }
+
+/**
+ * Starts the AI co-workers (C3): loads them into the runtime, listens to Messages as each of
+ * them, resumes turns queued before a restart; stops on SIGTERM (no new turn is claimed) and
+ * on a re-composition. Lazy: composing the boot touches no database. A failure is logged loud;
+ * the rest of the app keeps running (like the durable warm-up).
+ */
+async function startCoworkers(kernel: WiredKernel, runtime: OrchestratorBoot['runtime']): Promise<void> {
+  const [{ startCoworkerTurns }, { onShutdownSignal }] = await Promise.all([
+    import('$lib/server/coworkers/live-turns'),
+    import('./shutdown'),
+  ])
+  coworkerTurnsHost.__eeCoworkerTurns?.stop()
+  const handle = await startCoworkerTurns({ registry: kernel.registry, runtime })
+  coworkerTurnsHost.__eeCoworkerTurns = handle
+  onShutdownSignal('AI co-worker turns', handle.stop)
 }
 
 /** Process-wide app boot (first call wins; later options are ignored). */
@@ -191,7 +218,14 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
     // itself stays DB-free).
     onboardingFacts: async (personId) =>
       (await import('$lib/server/onboarding/assisted')).onboardingFactsFor(personId),
+    // AI co-workers act as themselves: their daily cap is read from the real cost ledger.
+    spentUsdToday: ledgerSpentUsdToday,
   })
+  if (!building && (options.coworkers?.start ?? true)) {
+    void startCoworkers(kernel, orchestrator.runtime).catch((err: unknown) => {
+      console.error('[coworkers] could not start the AI co-workers at boot:', err)
+    })
+  }
   // Warm-up (crash-resume): open the harness now, not on the first chat turn.
   if (!building) {
     void durable.warmUp().catch((err: unknown) => {
