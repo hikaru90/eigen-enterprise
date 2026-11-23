@@ -22,6 +22,7 @@ import {
 import { checkSpeechModelEndpoints, speechModels } from '$lib/server/llm/speech-models'
 import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
+import { loadMemberAiCap, setMemberAiCapAction } from '$lib/server/settings/member-ai-cap-page'
 
 export type { LlmProviderId } from '$lib/server/llm/save-provider-config'
 
@@ -46,7 +47,12 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
   }
 
   const userId = event.locals.user.id
-  const [isAdmin, ownerId, ai] = await Promise.all([isUserAdmin(userId), companyOwnerId(), readCompanyAiView()])
+  const [isAdmin, ownerId, ai, memberAiCap] = await Promise.all([
+    isUserAdmin(userId),
+    companyOwnerId(),
+    readCompanyAiView(),
+    loadMemberAiCap(userId),
+  ])
 
   const [activeRow] = await getDb()
     .select({ provider: llmActiveProvider.provider })
@@ -102,6 +108,8 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
     ai,
     byokConfigured,
     activeProvider,
+    /** Daily AI cap per member (DC3): the cap and the person's own usage today (settings.my_ai_usage). */
+    memberAiCap,
     /** Speech always runs on OpenRouter: whether dictation can work, and each speech model's endpoints. */
     speech: { dictation, models: speechModelStatus },
     providers: {
@@ -122,6 +130,8 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
 }
 
 export const llmSettingsActions: Actions = {
+  setMemberAiCap: setMemberAiCapAction,
+
   setEigenInference: async (event) => {
     if (!event.locals.user) return fail(401, { aiMessage: 'You must be signed in.' })
     if (!(await isUserAdmin(event.locals.user.id))) {

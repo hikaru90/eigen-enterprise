@@ -30,13 +30,13 @@ export class LlmNotConfiguredError extends Error {
   }
 }
 
-/** Walks the error's cause chain (bounded) looking for LlmNotConfiguredError. */
-export function isLlmNotConfiguredError(e: unknown): boolean {
+/** Walks the error's cause chain (bounded) looking for an instance of `type`. */
+function inCauseChain(e: unknown, type: abstract new (...args: never[]) => Error): boolean {
   let current: unknown = e
   let guard = 0
   while (current && guard < 8) {
     guard += 1
-    if (current instanceof LlmNotConfiguredError) return true
+    if (current instanceof type) return true
     if (typeof current === 'object' && 'cause' in current) {
       current = (current as { cause?: unknown }).cause
       continue
@@ -44,4 +44,35 @@ export function isLlmNotConfiguredError(e: unknown): boolean {
     break
   }
   return false
+}
+
+/** Walks the error's cause chain (bounded) looking for LlmNotConfiguredError. */
+export function isLlmNotConfiguredError(e: unknown): boolean {
+  return inCauseChain(e, LlmNotConfiguredError)
+}
+
+/** What a member over the company's daily AI cap reads (chat and every other surface). */
+export const LLM_DAILY_CAP_MESSAGE =
+  "You've used today's AI allowance for this company. It resets at midnight UTC."
+
+/**
+ * The person's model calls today reached the company's per-person daily AI cap
+ * (plan/phase-demo-company.md D2): the gateway refuses before any provider call.
+ * Typed so chat and features show the plain message without message matching.
+ */
+export class LlmDailyCapError extends Error {
+  readonly capUsd: number
+  readonly spentUsd: number
+
+  constructor(input: { capUsd: number; spentUsd: number }) {
+    super(LLM_DAILY_CAP_MESSAGE)
+    this.name = 'LlmDailyCapError'
+    this.capUsd = input.capUsd
+    this.spentUsd = input.spentUsd
+  }
+}
+
+/** Walks the error's cause chain (bounded) looking for LlmDailyCapError. */
+export function isLlmDailyCapError(e: unknown): boolean {
+  return inCauseChain(e, LlmDailyCapError)
 }

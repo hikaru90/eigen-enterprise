@@ -9,6 +9,7 @@ import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
 import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
+import { assertGatewayCallWithinMemberDailyCap } from '$lib/server/llm/member-daily-cap'
 import { companySlotSource, resolveSlot, type SlotTarget } from '$lib/server/llm/slots'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
@@ -693,6 +694,8 @@ export async function llmChatCompletion(input: {
   /** OpenAI `tool_choice`, passed through verbatim when tools are sent. */
   toolChoice?: unknown
 }): Promise<unknown> {
+  // The company's daily AI cap per member (DC3): refused before any provider call or retry.
+  await assertGatewayCallWithinMemberDailyCap(input.userId)
   return serialLlmRequestsEnabled()
     ? runLlmRequestGated(input.userId, () => llmChatCompletionInner(input))
     : llmChatCompletionInner(input)
@@ -911,6 +914,7 @@ export async function llmCreateEmbeddings(input: {
   /** `'memory'` when the texts are a person's Memory: they are never logged. */
   contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
+  await assertGatewayCallWithinMemberDailyCap(input.userId)
   return serialLlmRequestsEnabled()
     ? runLlmRequestGated(input.userId, () => llmCreateEmbeddingsInner(input))
     : llmCreateEmbeddingsInner(input)
@@ -1076,6 +1080,7 @@ export async function llmCreateTranscription(input: {
   /** `'memory'` for a voice note to Memory: its transcript is never logged. */
   contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
+  await assertGatewayCallWithinMemberDailyCap(input.userId)
   const target = await resolveSlot('stt', input.userId)
   const run = () => llmCreateTranscriptionDedicated({ ...input, model: slotModel(target) }, target.config)
   return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
@@ -1197,6 +1202,7 @@ export async function llmCreateSpeech(input: {
   voice: string
   text: string
 }): Promise<Uint8Array> {
+  await assertGatewayCallWithinMemberDailyCap(input.userId)
   const target = await resolveSlot('tts', input.userId)
   const run = () => llmCreateSpeechDedicated({ ...input, model: slotModel(target) }, target.config)
   return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()

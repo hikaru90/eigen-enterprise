@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LlmNotConfiguredError } from '$lib/server/llm/errors'
+import { LlmDailyCapError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import {
   BRIEFING_BOOTSTRAP_MESSAGES,
   CHAT_LLM_NOT_CONFIGURED_MESSAGE,
@@ -28,6 +28,15 @@ describe('chatErrorTerminalPayload', () => {
     })
     const payload = chatErrorTerminalPayload(wrapped)
     expect(payload.code).toBe('llm_not_configured')
+  })
+
+  it('a member over the daily AI cap reads the plain allowance message (tagged llm_daily_cap), through wrapped causes', () => {
+    const wrapped = new Error('agent loop failed', { cause: new LlmDailyCapError({ capUsd: 1, spentUsd: 1.2 }) })
+    expect(chatErrorTerminalPayload(wrapped)).toEqual({
+      type: 'error',
+      error: "You've used today's AI allowance for this company. It resets at midnight UTC.",
+      code: 'llm_daily_cap',
+    })
   })
 })
 

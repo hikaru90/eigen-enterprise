@@ -1,14 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtendedPrivateEnv } from '$lib/server/env/private-env'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
-import { LlmNotConfiguredError } from './errors'
+import { LlmDailyCapError, LlmNotConfiguredError } from './errors'
 import {
   DEFAULT_CHAT_MAX_TOKENS,
   describeChatModel,
   llmChatCompletion,
   llmCreateEmbeddings,
+  llmCreateSpeech,
   llmCreateTranscription,
 } from './llm-client'
+
+/** The company's per-person daily AI cap (DC3): unset (null) unless a spec sets it. */
+const { capStore } = vi.hoisted(() => ({
+  capStore: {
+    cap: null as number | null,
+    roles: {} as Record<string, 'owner' | 'admin' | 'member'>,
+    spent: {} as Record<string, number>,
+  },
+}))
+vi.mock('$lib/server/llm/member-daily-cap-store', () => ({
+  memberDailyCapStore: {
+    readCapUsd: async () => capStore.cap,
+    roleOf: async (userId: string) => capStore.roles[userId] ?? null,
+    spentUsdSince: async (userId: string) => capStore.spent[userId] ?? 0,
+    setCapUsd: async () => {},
+  },
+}))
 
 const { mockEnv, logActivityCallMock, getDbMock, decryptTenantValueMock, captureServerEventMock } =
   vi.hoisted(() => {
@@ -2300,4 +2318,98 @@ describe('describeChatModel (what the gateway resolves for a chat call, no secre
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+})
+
+/**
+ * DC3 (plan/phase-demo-company.md D2): the company's per-person daily AI cap is enforced at the
+ * gateway boundary — every model call (chat, embeddings, speech) checks the person it is made
+ * for before resolving a provider or sending anything. Owner and admins are exempt; an unset
+ * cap caps nobody.
+ */
+describe('llm client: per-person daily AI cap (members)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.LLM_RULE_CHAT = 'rule-chat'
+    mockEnv.LLM_RULE_EMBEDDING = 'rule-embed'
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
+    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
+    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
+    mockEnv.LLM_API_KEY = 'key-1'
+    capStore.cap = 1
+    capStore.roles = { mia: 'member', ada: 'owner', ali: 'admin' }
+    capStore.spent = {}
+  })
+
+  afterEach(() => {
+    capStore.cap = null
+    capStore.roles = {}
+    capStore.spent = {}
+  })
+
+  const ok = () => vi.fn(async () => response(true, 200, { choices: [], data: [{ embedding: [0.1] }] }))
+
+  it('a member under the cap gets the model call', async () => {
+    capStore.spent = { mia: 0.5 }
+    const fetchMock = ok()
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'mia', messages: [{ role: 'user', content: 'hi' }] })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('a member over the cap is refused before anything is sent, once (no retries), with the plain message', async () => {
+    capStore.spent = { mia: 1.2 }
+    const fetchMock = ok()
+    vi.stubGlobal('fetch', fetchMock)
+    const err = await llmChatCompletion({ userId: 'mia', messages: [{ role: 'user', content: 'hi' }] }).catch(
+      (e: unknown) => e,
+    )
+    expect(err).toBeInstanceOf(LlmDailyCapError)
+    expect((err as Error).message).toBe(
+      "You've used today's AI allowance for this company. It resets at midnight UTC.",
+    )
+    await expect(llmCreateEmbeddings({ userId: 'mia', input: 'x' })).rejects.toBeInstanceOf(LlmDailyCapError)
+    await expect(
+      llmCreateTranscription({ userId: 'mia', audio: { bytes: new Uint8Array([1]), format: 'wav' } }),
+    ).rejects.toBeInstanceOf(LlmDailyCapError)
+    await expect(llmCreateSpeech({ userId: 'mia', voice: 'alloy', text: 'hi' })).rejects.toBeInstanceOf(
+      LlmDailyCapError,
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(logActivityCallMock).not.toHaveBeenCalled()
+  })
+
+  it('the owner and admins are never capped', async () => {
+    capStore.spent = { ada: 40, ali: 40 }
+    const fetchMock = ok()
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'ada', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ userId: 'ali', messages: [{ role: 'user', content: 'hi' }] })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('an unset cap caps nobody', async () => {
+    capStore.cap = null
+    capStore.spent = { mia: 40 }
+    const fetchMock = ok()
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'mia', messages: [{ role: 'user', content: 'hi' }] })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('counts against the person the call is logged to (the tenant user), as the cost log does', async () => {
+    capStore.spent = { mia: 2 }
+    const fetchMock = ok()
+    vi.stubGlobal('fetch', fetchMock)
+    // Fresh instances of both (earlier specs reset the module graph): one AsyncLocalStorage.
+    vi.resetModules()
+    const { tenantUserAsyncLocal } = await import('$lib/server/db/tenant-context')
+    const fresh = await import('./llm-client')
+    const err = await tenantUserAsyncLocal
+      .run('mia', () => fresh.llmChatCompletion({ userId: 'ada', messages: [{ role: 'user', content: 'hi' }] }))
+      .catch((e: unknown) => e)
+    expect((err as Error).name).toBe('LlmDailyCapError')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

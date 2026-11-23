@@ -91,6 +91,10 @@ vi.mock('$lib/server/llm/company-ai', () => ({
     },
   }),
 }))
+vi.mock('$lib/server/llm/member-daily-cap-store', () => ({
+  // no daily AI cap per member set (DC3)
+  memberDailyCapStore: { readCapUsd: async () => null },
+}))
 vi.mock('$lib/server/crypto/tenant-encryption', () => ({
   decryptTenantValue: decryptMock,
   encryptTenantValue: vi.fn(),

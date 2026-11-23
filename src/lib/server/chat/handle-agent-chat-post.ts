@@ -23,7 +23,7 @@ import {
 } from '$lib/server/db'
 import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/brain.schema'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
-import { isLlmNotConfiguredError } from '$lib/server/llm/errors'
+import { isLlmDailyCapError, isLlmNotConfiguredError, LLM_DAILY_CAP_MESSAGE } from '$lib/server/llm/errors'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
 import {
   findEditableTurn,
@@ -108,6 +108,10 @@ export function chatErrorTerminalPayload(err: unknown): {
   // detection, never message string matching.
   if (isLlmNotConfiguredError(err)) {
     return { type: 'error', error: CHAT_LLM_NOT_CONFIGURED_MESSAGE, code: 'llm_not_configured' }
+  }
+  // The company's daily AI cap per member (DC3): the person reads why, and when it resets.
+  if (isLlmDailyCapError(err)) {
+    return { type: 'error', error: LLM_DAILY_CAP_MESSAGE, code: 'llm_daily_cap' }
   }
   return { type: 'error', error: CHAT_TURN_FAILED_MESSAGE }
 }

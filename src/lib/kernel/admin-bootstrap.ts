@@ -11,6 +11,11 @@ import {
   KERNEL_ADMIN_TOOL_NAMES,
   KERNEL_MODULE_ID,
 } from './admin-tools'
+import {
+  createMemberAiCapTools,
+  KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
+  type MemberAiCapPort,
+} from './member-ai-cap-tools'
 import { createNotificationTools, KERNEL_NOTIFICATION_TOOL_NAMES, type NotificationsPort } from './notification-tools'
 import { createOperationsTools, KERNEL_OPERATIONS_TOOL_NAMES, type OperationsPort } from './operations-tools'
 import { createSettingsTools, KERNEL_SETTINGS_TOOL_NAMES, type SettingsPort } from './settings-tools'
@@ -39,6 +44,8 @@ export type RegisterAdminToolsOptions = {
   notifications?: NotificationsPort
   /** Overrides the live company-operations port (tests inject fakes). */
   operations?: OperationsPort
+  /** Overrides the live daily-AI-cap-per-member port (tests inject fakes). */
+  memberAiCap?: MemberAiCapPort
 }
 
 /**
@@ -64,6 +71,7 @@ export async function registerAdminTools(
       ...KERNEL_SETTINGS_TOOL_NAMES,
       ...KERNEL_NOTIFICATION_TOOL_NAMES,
       ...KERNEL_OPERATIONS_TOOL_NAMES,
+      ...KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
     ].every(
       (name) => kernel.registry.get(name) !== undefined,
     )
@@ -85,6 +93,7 @@ export async function registerAdminTools(
     }),
     ...createNotificationTools({ port: options.notifications ?? liveNotificationsPort() }),
     ...createOperationsTools({ port: options.operations ?? liveOperationsPort() }),
+    ...createMemberAiCapTools({ port: options.memberAiCap ?? liveMemberAiCapPort() }),
   )
   registerModuleTools(kernel.registry, kernel.modules, tools)
 }
@@ -108,6 +117,17 @@ function liveNotificationsPort(): NotificationsPort {
     sendTest: async (userId, deviceId) => (await live()).sendTest(userId, deviceId),
     loadSettings: async (userId) => (await live()).loadSettings(userId),
     saveSettings: async (userId, input) => (await live()).saveSettings(userId, input),
+  }
+}
+
+/** The live daily-AI-cap-per-member port (DC3), loaded on first use (like the settings port). */
+function liveMemberAiCapPort(): MemberAiCapPort {
+  const cap = async () => await import('$lib/server/llm/member-daily-cap')
+  const store = async () => (await import('$lib/server/llm/member-daily-cap-store')).memberDailyCapStore
+  return {
+    readCapUsd: async () => (await store()).readCapUsd(),
+    setCapUsd: async (value, actor) => (await store()).setCapUsd(value, actor),
+    usageToday: async (userId) => (await cap()).memberAiUsageToday(userId),
   }
 }
 

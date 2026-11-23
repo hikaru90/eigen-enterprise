@@ -28,6 +28,12 @@ vi.mock('$lib/server/llm/company-ai-settings', async (actual) => ({
 }))
 
 vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
+vi.mock('$lib/server/settings/member-ai-cap-page', () => ({
+  loadMemberAiCap: async () => ({
+    usage: { role: 'member', capUsd: null, capApplies: false, spentUsd: 0, remainingUsd: null, resetsAt: '2026-11-24T00:00:00.000Z' },
+  }),
+  setMemberAiCapAction: vi.fn(),
+}))
 vi.mock('$lib/server/auth/user-role', () => ({ isUserAdmin: isUserAdminMock }))
 vi.mock('$lib/server/llm/preferences', () => ({
   assertByokConfigured: vi.fn(),

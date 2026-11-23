@@ -3,7 +3,7 @@ import { authDb } from '$lib/server/db/auth-db'
 import { companyJoin, memberOpenJoin } from '$lib/server/db/auth.schema'
 import type { OpenJoinStore } from './open-join'
 
-/** Open join in Postgres (company_join, migration 0166): no row = off. */
+/** Open join in Postgres (company_join, migration 0167): no row = off. */
 export const dbOpenJoinStore: OpenJoinStore = {
   async get() {
     const [row] = await authDb.select({ on: companyJoin.openJoin }).from(companyJoin).where(eq(companyJoin.id, 'company')).limit(1)
