@@ -2,11 +2,12 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
+import { addTraceTokens } from '$lib/server/activity/trace-context'
 import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { getDb } from '$lib/server/db'
 import { env } from '$lib/server/env/private-env'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
-import { gatewayReportedCostUsdForLog, type TokenUsage } from '$lib/server/llm/gateway-cost'
+import { gatewayReportedCostUsdForLog, reportedTokenCount, type TokenUsage } from '$lib/server/llm/gateway-cost'
 import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
 import { assertGatewayCallWithinMemberDailyCap } from '$lib/server/llm/member-daily-cap'
@@ -827,6 +828,8 @@ async function llmChatCompletionInner(input: {
         })
       }
       logLlmChatResponse(logCtx, attempt, json, origin)
+      // The trace (e.g. one assistant reply) counts the tokens its calls reported.
+      addTraceTokens(reportedTokenCount(usage))
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,

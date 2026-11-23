@@ -8,6 +8,8 @@ import {
   approvalActionLabel,
   persistedApprovalIds,
   withApprovalStatus,
+  withRunningStepsStopped,
+  withToolStepFinished,
   statusLabelForProgressEvent,
   toolPreviewTurn,
   userTurn,
@@ -115,16 +117,37 @@ describe('nucleus-chat status line', () => {
 
 describe('nucleus-chat harness turns', () => {
   it('builds a tool preview turn with the bounded input summary', () => {
-    expect(toolPreviewTurn('email.send_mail', '{"to":"a@b.c"}')).toEqual({
+    expect(toolPreviewTurn('email.send_mail', 'to: a@b.c', { stepId: 's1', status: 'running' })).toEqual({
       role: 'tool_preview',
       tool: 'email.send_mail',
-      inputSummary: '{"to":"a@b.c"}',
+      inputSummary: 'to: a@b.c',
+      stepId: 's1',
+      status: 'running',
+      resultSummary: null,
     })
     expect(toolPreviewTurn('memory.echo', null)).toEqual({
       role: 'tool_preview',
       tool: 'memory.echo',
       inputSummary: null,
+      stepId: null,
+      status: null,
+      resultSummary: null,
     })
+  })
+
+  it('a finished step takes its state and result; steps still running when the reply ends are stopped', () => {
+    const entries = [
+      { key: 'a', ...toolPreviewTurn('drive.list', null, { stepId: 's1', status: 'running' }) },
+      { key: 'b', ...toolPreviewTurn('email.send_mail', 'to: a@b.c', { stepId: 's2', status: 'running' }) },
+      { key: 'c', role: 'user' as const, content: 'hi' },
+    ]
+    const finished = withToolStepFinished(entries, { stepId: 's2', failed: true, resultSummary: 'to is required' })
+    expect(finished[0]).toEqual(entries[0])
+    expect(finished[1]).toMatchObject({ status: 'failed', resultSummary: 'to is required' })
+    expect(finished[2]).toEqual(entries[2])
+    const stopped = withRunningStepsStopped(finished)
+    expect(stopped[0]).toMatchObject({ status: 'stopped' })
+    expect(stopped[1]).toMatchObject({ status: 'failed' })
   })
 
   it('builds an approval card turn: the action in plain words, the request id, its status', () => {
@@ -172,10 +195,22 @@ describe('nucleus-chat harness turns', () => {
     expect(
       nucleusTurnForProgressEvent({
         type: 'tool.preview',
+        stepId: 's1',
         tool: 'email.send_mail',
-        inputSummary: '{"to":"a@b.c"}',
+        inputSummary: 'to: a@b.c',
       }),
-    ).toEqual({ role: 'tool_preview', tool: 'email.send_mail', inputSummary: '{"to":"a@b.c"}' })
+    ).toEqual({
+      role: 'tool_preview',
+      tool: 'email.send_mail',
+      inputSummary: 'to: a@b.c',
+      stepId: 's1',
+      status: 'running',
+      resultSummary: null,
+    })
+    // The step's end updates its entry in place; it is never a turn or a status line of its own.
+    const finished = { type: 'tool.finished', stepId: 's1', tool: 'email.send_mail', failed: false, resultSummary: null } as const
+    expect(nucleusTurnForProgressEvent(finished)).toBeNull()
+    expect(statusLabelForProgressEvent(finished)).toBeNull()
     expect(
       nucleusTurnForProgressEvent({
         type: 'approval.required',
@@ -271,6 +306,16 @@ describe('nucleusTurnsFromPersisted', () => {
           },
           {
             role: 'assistant',
+            content: 'to: a@b.c',
+            metadata: { variant: 'tool_preview', tool: 'email.send_mail', stepId: 's1', status: 'failed', resultSummary: 'to is required' },
+          },
+          {
+            role: 'assistant',
+            content: '',
+            metadata: { variant: 'tool_preview', tool: 'drive.list', stepId: 's2', status: 'running' },
+          },
+          {
+            role: 'assistant',
             content: '{"x":1}',
             metadata: { variant: 'tool_call', tool: 'site.create' },
           },
@@ -288,7 +333,17 @@ describe('nucleusTurnsFromPersisted', () => {
     ).toEqual([
       { role: 'assistant', content: 'Welcome back.' },
       { role: 'user', content: 'build my site' },
-      { role: 'tool_preview', tool: 'site.create', inputSummary: 'pages' },
+      { role: 'tool_preview', tool: 'site.create', inputSummary: 'pages', stepId: null, status: null, resultSummary: null },
+      {
+        role: 'tool_preview',
+        tool: 'email.send_mail',
+        inputSummary: 'to: a@b.c',
+        stepId: 's1',
+        status: 'failed',
+        resultSummary: 'to is required',
+      },
+      // Stored while running: the reply ended before the tool did.
+      { role: 'tool_preview', tool: 'drive.list', inputSummary: null, stepId: 's2', status: 'stopped', resultSummary: null },
       {
         role: 'approval',
         tool: 'site.publish',
@@ -298,6 +353,16 @@ describe('nucleusTurnsFromPersisted', () => {
       },
       { role: 'assistant', content: 'Queued for your approval.' },
     ])
+  })
+
+  it('a stored reply keeps what it cost; a malformed cost is a broken row', () => {
+    const usage = { costUsd: 0.0042, tokens: 1234, modelCalls: 2 }
+    expect(nucleusTurnsFromPersisted([{ role: 'assistant', content: 'Done.', metadata: { usage } }], {})).toEqual([
+      { role: 'assistant', content: 'Done.', usage },
+    ])
+    expect(() =>
+      nucleusTurnsFromPersisted([{ id: 'm1', role: 'assistant', content: 'Done.', metadata: { usage: { costUsd: -1 } } }], {}),
+    ).toThrow(/malformed reply cost/)
   })
 
   it('restores each approval card with its current kernel status (decided cards lose their buttons)', () => {

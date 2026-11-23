@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { FeedLine, FeedState, RunConnection } from '$lib/agent-runs/feed'
-  import { Badge } from '$lib/components/ui/badge'
+  import ChatToolStep from '$lib/components/chat-tool-step.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'
+  import { summarizeToolInput, toolStepTarget, type ToolStepStatus } from '$lib/tool-steps/summary'
 
   /** The D8 live feed of one durable run (pure render of the folded feed state). */
   let { feed, connection }: { feed: FeedState; connection: RunConnection } = $props()
@@ -13,18 +14,17 @@
     return feed.running ? 'Running' : 'Idle'
   })
 
-  const toolStatus: Record<FeedLine['status'], string> = {
+  const toolStatus: Record<FeedLine['status'], ToolStepStatus> = {
     running: 'running',
     done: 'done',
     error: 'failed',
-    unfinished: 'not finished',
+    unfinished: 'stopped',
   }
 
-  function argsPreview(args: unknown): string {
-    if (args === undefined) return ''
-    const text = JSON.stringify(args)
-    if (text === '{}') return ''
-    return text.length > 160 ? `${text.slice(0, 159)}…` : text
+  /** The step as the chat shows it: the tool that really ran and a secret-free input summary. */
+  function step(line: FeedLine): { tool: string; inputSummary: string | null } {
+    const target = toolStepTarget(line.text, line.args)
+    return { tool: target.tool, inputSummary: summarizeToolInput(target.input) }
   }
 </script>
 
@@ -97,19 +97,15 @@
             ></span>{/if}
         </li>
       {:else}
-        <li class="flex min-w-0 flex-col gap-0.5 px-4 py-2 text-sm" data-testid="run-feed-tool">
-          <span class="flex min-w-0 items-center gap-2">
-            <span class="text-xs text-muted-foreground">Tool</span>
-            <code class="truncate font-mono text-[13px]">{line.text}</code>
-            <Badge variant={line.status === 'error' ? 'destructive' : 'secondary'}>
-              {toolStatus[line.status]}
-            </Badge>
-          </span>
-          {#if argsPreview(line.args)}
-            <code class="truncate font-mono text-xs text-muted-foreground"
-              >{argsPreview(line.args)}</code
-            >
-          {/if}
+        {@const shown = step(line)}
+        <li class="min-w-0 px-3 py-1" data-testid="run-feed-tool">
+          <ChatToolStep
+            tool={shown.tool}
+            status={toolStatus[line.status]}
+            inputSummary={shown.inputSummary}
+            showResult={false}
+            testid="run-feed-tool-step"
+          />
         </li>
       {/if}
     {:else}

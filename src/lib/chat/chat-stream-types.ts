@@ -1,3 +1,4 @@
+import type { ReplyCost } from '$lib/ai-usage/usage'
 import { extractCitationIds, stripCitationTokens } from './citation-tokens'
 
 export type ComposedEvidenceLine = { text: string; id?: string }
@@ -15,7 +16,9 @@ export type ChatStreamEvent =
    * gate. `inputSummary` is short and truncated server-side — never full args.
    */
   | { type: 'message_delta'; content: string }
-  | { type: 'tool.preview'; tool: string; inputSummary: string | null }
+  | { type: 'tool.preview'; stepId?: string; tool: string; inputSummary: string | null }
+  /** The tool step `stepId` ended (failed: a structured tool error); summaries are secret-free. */
+  | { type: 'tool.finished'; stepId: string; tool: string; failed: boolean; resultSummary: string | null }
   | { type: 'approval.required'; tool: string; approvalId: string }
   /**
    * First line of a member turn: the stored message and its session, so the
@@ -27,6 +30,8 @@ export type ChatStreamEvent =
       response: string
       sessionId: string
       messageId: string
+      /** What the reply cost (its model calls, from the gateway's cost log). */
+      usage?: ReplyCost
     }
   | {
       type: 'error'

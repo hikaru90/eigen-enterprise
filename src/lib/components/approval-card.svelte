@@ -26,7 +26,7 @@
 </script>
 
 <div
-  class="my-2 rounded-sm border-2 border-black bg-white px-3 py-3 text-black"
+  class="my-2 rounded-2xl border-2 border-black bg-white px-4 py-3 text-black"
   data-testid="approval-card"
 >
   <p class="text-xs font-medium tracking-[0.2em] text-black/60 uppercase">Needs your approval</p>
@@ -38,7 +38,7 @@
       <div class="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
-          class="bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          class="rounded-full bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           disabled={deciding}
           onclick={() => ondecide('approved')}
         >
@@ -46,7 +46,7 @@
         </button>
         <button
           type="button"
-          class="border-2 border-primary bg-background px-4 py-1 text-sm text-primary hover:bg-primary/5 disabled:opacity-50"
+          class="rounded-full border-2 border-primary bg-background px-4 py-1 text-sm text-primary hover:bg-primary/5 disabled:opacity-50"
           disabled={deciding}
           onclick={() => ondecide('denied')}
         >

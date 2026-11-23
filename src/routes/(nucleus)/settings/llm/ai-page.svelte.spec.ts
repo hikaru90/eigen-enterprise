@@ -146,7 +146,9 @@ describe('Settings → AI provider', () => {
     const usage = { role: 'member', capUsd: 1, capApplies: true, spentUsd: 0.25, remainingUsd: 0.75, resetsAt: '2026-11-24T00:00:00.000Z' }
     render(AiPage, props(data({ isAdmin: false, canManageAi: false, isOwner: false, memberAiCap: { usage } })))
     await expect.element(page.getByTestId('member-ai-cap-value')).toHaveTextContent('$1.00 per member per day.')
-    await expect.element(page.getByTestId('member-ai-usage')).toHaveTextContent('You today: $0.25 of $1.00 ($0.75 left; resets at midnight UTC).')
+    await expect.element(page.getByTestId('member-ai-usage')).toHaveTextContent(/Your AI use today\s*\$0\.25 of \$1\.00/)
+    await expect.element(page.getByTestId('member-ai-usage-meter-note')).toHaveTextContent(/\$0\.75 left today.*midnight UTC/)
+    await expect.element(page.getByRole('meter', { name: 'Your AI use today against the daily cap' })).toHaveAttribute('aria-valuenow', '0.25')
     expect(document.querySelector('input[name="capUsd"]')).toBeNull()
   })
 

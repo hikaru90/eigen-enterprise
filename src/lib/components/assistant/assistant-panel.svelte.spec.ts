@@ -24,6 +24,8 @@ const children = createRawSnippet(() => ({ render: () => '<p>Page body</p>' }))
 type Call = { url: string; body: unknown }
 let calls: Call[] = []
 let conversation: Record<string, unknown>
+/** The person's AI use today (GET /api/assistant/usage → settings.my_ai_usage); null: the read fails. */
+let usageToday: Record<string, unknown> | null
 /** Scripted /api/chat replies, one per request (empty: the echo reply below). */
 let chatReplies: Array<(signal: AbortSignal | null | undefined) => Response> = []
 /** What the speech-to-text endpoint hears in a dictation test. */
@@ -47,6 +49,9 @@ function stubFetch(): void {
         body: formBody ?? (init?.body instanceof Blob ? init.body : init?.body ? JSON.parse(String(init.body)) : null),
       })
       if (url === '/api/assistant/conversation') return Response.json(conversation)
+      if (url === '/api/assistant/usage') {
+        return usageToday ? Response.json(usageToday) : new Response('{}', { status: 500 })
+      }
       if (url === '/api/assistant/attachments') {
         const file = formBody?.get('file')
         if (!(file instanceof File)) throw new Error('attachment upload without a file')
@@ -132,6 +137,14 @@ beforeEach(() => {
     providerReady: true,
     isAdmin: false,
     approvalMode: null,
+  }
+  usageToday = {
+    role: 'member',
+    capUsd: 0.5,
+    capApplies: true,
+    spentUsd: 0.1,
+    remainingUsd: 0.4,
+    resetsAt: '2026-11-24T00:00:00.000Z',
   }
   localStorage.removeItem(PANEL_WIDTH_KEY)
   sessionStorage.removeItem(HANDOFF_PENDING_KEY)
@@ -364,6 +377,66 @@ describe('assistant panel', () => {
     const chat = calls.filter((c) => c.url === '/api/chat').at(-1)
     // No session id: the server starts a new conversation.
     expect(chat?.body).toEqual({ message: 'Fresh start' })
+  })
+
+  it('shows each tool the assistant ran as a step, and what the reply cost under it', async () => {
+    chatReplies = [
+      () =>
+        ndjson([
+          { type: 'tool.preview', stepId: 'st-1', tool: 'memory.capture_thought', inputSummary: 'raw: Call Acme' },
+          { type: 'tool.finished', stepId: 'st-1', tool: 'memory.capture_thought', failed: false, resultSummary: 'id: t-1' },
+          { type: 'tool.preview', stepId: 'st-2', tool: 'email.send_mail', inputSummary: 'to: a@b.c' },
+          { type: 'tool.finished', stepId: 'st-2', tool: 'email.send_mail', failed: true, resultSummary: 'subject is required' },
+          {
+            type: 'done',
+            response: 'Saved it; the mail needs a subject.',
+            sessionId: 's-1',
+            messageId: 'm-2',
+            usage: { costUsd: 0.0042, tokens: 1234, modelCalls: 3 },
+          },
+        ]),
+    ]
+    await openPanel()
+    await page.getByTestId('assistant-composer-input').fill('note: call Acme, mail them')
+    await page.getByTestId('assistant-send').click()
+    await expect.element(page.getByText('Saved it; the mail needs a subject.')).toBeInTheDocument()
+    const steps = page.getByTestId('tool-preview')
+    await expect.element(steps.nth(0)).toHaveAttribute('data-status', 'done')
+    await expect.element(steps.nth(0)).toHaveTextContent(/Capture thought/)
+    await expect.element(steps.nth(1)).toHaveAttribute('data-status', 'failed')
+    await expect.element(steps.nth(1)).toHaveTextContent(/subject is required/)
+    await expect.element(page.getByTestId('assistant-reply-cost')).toHaveTextContent('$0.0042 · 1.2k tokens')
+  })
+
+  it('the header shows today’s AI use against the cap, red from 80 %, linking to the settings', async () => {
+    usageToday = { ...usageToday, spentUsd: 0.42, remainingUsd: 0.08 }
+    await openPanel()
+    const meter = page.getByTestId('assistant-usage')
+    await expect.element(meter).toBeVisible()
+    await expect.element(meter).toHaveAttribute('data-zone', 'near')
+    await expect.element(meter).toHaveTextContent(/\$0\.42 \/ \$0\.50/)
+    await expect.element(page.getByTestId('assistant-usage-link')).toHaveAttribute('href', '/settings/llm')
+    // After a reply the meter is read again (the reply may have cost something).
+    const reads = () => calls.filter((c) => c.url === '/api/assistant/usage').length
+    const before = reads()
+    await page.getByTestId('assistant-composer-input').fill('hi')
+    await page.getByTestId('assistant-send').click()
+    await expect.element(page.getByText('You said: hi')).toBeInTheDocument()
+    await expect.poll(reads).toBeGreaterThan(before)
+  })
+
+  it('owner and admins see their use with no cap; a failed read says so', async () => {
+    usageToday = { ...usageToday, role: 'owner', capApplies: false, remainingUsd: null }
+    await openPanel()
+    await expect.element(page.getByTestId('assistant-usage')).toHaveAttribute('data-zone', 'exempt')
+    await expect.element(page.getByTestId('assistant-usage')).toHaveTextContent(/\$0\.10 today/)
+  })
+
+  it('when the usage cannot be read, the chat says so instead of an amount', async () => {
+    usageToday = null
+    await openPanel()
+    await expect.element(page.getByTestId('assistant-usage-failed')).toHaveTextContent('Your AI use today could not be read.')
+    expect(document.querySelector('[data-testid="assistant-usage"]')).toBeNull()
   })
 
   it('without an AI provider it says so and links straight to the setup', async () => {

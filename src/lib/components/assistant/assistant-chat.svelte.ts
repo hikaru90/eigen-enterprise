@@ -1,6 +1,7 @@
 import type { AssistantAttachment } from './attachments'
 import type { ApprovalModeState, AssistantConversation } from './types'
 import { SvelteMap } from 'svelte/reactivity'
+import type { AiUsageToday } from '$lib/ai-usage/usage'
 import {
   ApprovalRequestFailed,
   postApprovalDecision,
@@ -19,6 +20,8 @@ import {
   statusLabelForProgressEvent,
   userTurn,
   withApprovalStatus,
+  withRunningStepsStopped,
+  withToolStepFinished,
   type NucleusChatEntry,
   type NucleusTurn,
 } from './nucleus-chat'
@@ -73,6 +76,13 @@ export class AssistantChat {
   approvalErrors = $state<Record<string, string>>({})
   /** Bumped on "New conversation": the view remounts its composer state. */
   generation = $state(0)
+  /**
+   * The person's AI use today against the daily cap (GET /api/assistant/usage →
+   * settings.my_ai_usage): null until read; read again after every reply.
+   */
+  usage = $state<AiUsageToday | null>(null)
+  /** The last usage read failed (the meter says so instead of showing a stale amount). */
+  usageFailed = $state(false)
 
   /** The view's hook for keeping the newest line in view (no effect needed). */
   onchange: (() => void) | null = null
@@ -125,6 +135,20 @@ export class AssistantChat {
     return this.#sentFiles.get(key) ?? null
   }
 
+  /** Read the person's AI use today (the meter); a failure is shown, never a stale amount. */
+  async refreshUsage(): Promise<void> {
+    try {
+      const res = await this.#deps.fetch('/api/assistant/usage', { headers: { accept: 'application/json' } })
+      if (!res.ok) throw new Error(`usage read failed: HTTP ${res.status}`)
+      this.usage = (await res.json()) as AiUsageToday
+      this.usageFailed = false
+    } catch (err) {
+      console.error('[assistant] usage read failed', err)
+      this.usage = null
+      this.usageFailed = true
+    }
+  }
+
   /** Load the current conversation once (first open); later calls wait for it. */
   ensureLoaded(): Promise<void> {
     if (this.load === 'ready') return Promise.resolve()
@@ -161,6 +185,7 @@ export class AssistantChat {
       this.approvalMode = body.approvalMode
       this.load = 'ready'
       this.#changed()
+      void this.refreshUsage()
     } catch (err) {
       console.error('[assistant] conversation load failed', err)
       this.load = 'failed'
@@ -323,6 +348,13 @@ export class AssistantChat {
           if (event.type === 'tool_result' && event.tool === 'answer_question') {
             answerPreview = event.preview
           }
+          if (event.type === 'tool.finished') {
+            if (generation === this.generation) {
+              this.entries = withToolStepFinished(this.entries, event)
+              this.#changed()
+            }
+            return
+          }
           this.#append(nucleusTurnForProgressEvent(event))
           this.status = statusLabelForProgressEvent(event)
           this.#changed()
@@ -333,7 +365,7 @@ export class AssistantChat {
       const responseText = sanitizeFinalAnswerText(done.response ?? '', answerPreview)
       if (generation !== this.generation) return 'failed'
       if (done.sessionId) this.sessionId = done.sessionId
-      const reply = assistantTurnFromResponse(responseText)
+      const reply = assistantTurnFromResponse(responseText, done.usage)
       if (reply) {
         this.#deps.speak(reply.content)
         this.#append(reply)
@@ -354,6 +386,11 @@ export class AssistantChat {
       }
       return 'failed'
     } finally {
+      if (generation === this.generation) {
+        this.entries = withRunningStepsStopped(this.entries)
+        // Every reply (finished, stopped or failed) may have cost something: read the meter again.
+        void this.refreshUsage()
+      }
       if (this.#abort === ac) {
         this.busy = false
         this.status = null

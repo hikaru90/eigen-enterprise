@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  reportedTokenCount,
   extractGatewayReportedCostUsd,
   gatewayReportedCostUsdForLog,
   requireGatewayReportedCostUsd,
@@ -56,5 +57,15 @@ describe('gatewayReportedCostUsdForLog', () => {
 
   it('returns reported cost when present', () => {
     expect(gatewayReportedCostUsdForLog({ usage: { cost: 0.007 } })).toBe(0.007)
+  })
+})
+
+describe('reportedTokenCount', () => {
+  it('reads total_tokens, else prompt + completion, else nothing', () => {
+    expect(reportedTokenCount({ prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 })).toBe(15)
+    expect(reportedTokenCount({ prompt_tokens: 10, completion_tokens: 5 })).toBe(15)
+    expect(reportedTokenCount({ prompt_tokens: 10 })).toBe(10)
+    expect(reportedTokenCount(undefined)).toBe(0)
+    expect(reportedTokenCount({ total_tokens: -3 })).toBe(0)
   })
 })

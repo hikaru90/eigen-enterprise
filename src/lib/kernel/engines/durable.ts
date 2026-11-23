@@ -1,6 +1,7 @@
 import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
 import type { KernelRegistry } from '../registry'
 import { randomUUID } from 'node:crypto'
+import { summarizeToolInput, summarizeToolResult, toolStepTarget } from '../../tool-steps/summary'
 import { KernelError } from '../errors'
 import { delegatedPrincipal, type PersonDirectory } from '../principals'
 import { approvalIdFromError, approvalPendingResult, toolErrorResult } from './tool-error'
@@ -204,16 +205,39 @@ async function kernelToolOutcome(
   }
 }
 
+/**
+ * One tool's bridge execute, shown on the surface as a step (proposal 6b91931f): a
+ * `tool.preview` before it runs and a `tool.finished` after, both with secret-free
+ * summaries only ($lib/tool-steps/summary) — never the full input or result.
+ */
 function bridgeExecute(
   toolName: string,
   ctx: EngineContext,
 ): (args: Record<string, unknown>) => Promise<unknown> {
-  return (args) =>
-    kernelToolOutcome(
+  return async (args) => {
+    const stepId = randomUUID()
+    const target = toolStepTarget(toolName, args)
+    emitSurfaceEvent(ctx, {
+      type: 'tool.preview',
+      stepId,
+      tool: target.tool,
+      inputSummary: summarizeToolInput(target.input),
+    })
+    const outcome = await kernelToolOutcome(
       toolName,
       () => ctx.executeTool(toolName, args),
       (approvalId, tool) => emitSurfaceEvent(ctx, { type: 'approval.required', tool, approvalId }),
     )
+    const result = summarizeToolResult(outcome)
+    emitSurfaceEvent(ctx, {
+      type: 'tool.finished',
+      stepId,
+      tool: target.tool,
+      failed: result.failed,
+      resultSummary: result.summary,
+    })
+    return outcome
+  }
 }
 
 /**

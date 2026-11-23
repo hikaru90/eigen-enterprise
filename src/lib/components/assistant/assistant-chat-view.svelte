@@ -1,17 +1,21 @@
 <script lang="ts">
   import type { AssistantController } from './assistant-controller.svelte'
+  import ArrowUp from '@lucide/svelte/icons/arrow-up'
   import KeyRound from '@lucide/svelte/icons/key-round'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import Paperclip from '@lucide/svelte/icons/paperclip'
   import Pencil from '@lucide/svelte/icons/pencil'
-  import SendHorizontal from '@lucide/svelte/icons/send-horizontal'
+  import Sparkles from '@lucide/svelte/icons/sparkles'
   import Square from '@lucide/svelte/icons/square'
   import { onMount } from 'svelte'
   import { resolve } from '$app/paths'
+  import { replyCostLine } from '$lib/ai-usage/usage'
   import { putApprovalMode } from '$lib/chat/approvals-client'
+  import AiUsageMeter from '$lib/components/ai-usage-meter.svelte'
   import ApprovalCard from '$lib/components/approval-card.svelte'
   import ApprovalModeSelect from '$lib/components/approval-mode-select.svelte'
   import ChatMarkdown from '$lib/components/chat-markdown.svelte'
+  import ChatToolStep from '$lib/components/chat-tool-step.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { dictateInto } from '$lib/voice/dictation-insert'
@@ -22,7 +26,8 @@
 
   /**
    * The Chat tab: the current conversation with the company's agent —
-   * transcript (markdown, quiet tool lines, approval cards) and the composer:
+   * transcript (markdown, a rounded step per tool it ran, approval cards, and a quiet cost
+   * line under each reply) and the composer:
    * attach · message · microphone · send/stop, the microphone directly left of send
    * (Contribute: improve voice input), and "Read replies aloud" labelled under it.
    * The mic is the one dictation control (`$lib/voice/voice-dictation.svelte`, as in
@@ -99,7 +104,7 @@
 <div class="flex min-h-0 flex-1 flex-col" data-testid="assistant-chat">
   {#if chat.providerReady === false}
     <div
-      class="mx-3 mt-3 flex flex-col gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm"
+      class="mx-3 mt-3 flex flex-col gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-sm"
       data-testid="assistant-provider-missing"
     >
       <p class="flex items-center gap-2 font-medium">
@@ -120,7 +125,7 @@
 
   {#if chat.load === 'failed'}
     <ErrorNotice
-      class="mx-3 mt-3 rounded-md border border-destructive/40 px-3 py-2"
+      class="mx-3 mt-3 rounded-2xl border border-destructive/40 px-4 py-2.5"
       testid="assistant-load-failed"
       error="The conversation did not load."
       attempted="Loading the assistant conversation"
@@ -130,11 +135,17 @@
   {/if}
 
   {#if chat.entries.length === 0 && !chat.busy}
-    <div class="flex flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
+    <div class="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 text-center">
       {#if chat.load === 'loading'}
         <LoaderCircle class="size-4 animate-spin text-muted-foreground" aria-label="Loading" />
       {:else}
-        <p class="text-base tracking-wide text-muted-foreground">What do you need?</p>
+        <span
+          class="mb-2 grid size-10 place-items-center rounded-full bg-primary text-primary-foreground"
+          aria-hidden="true"
+        >
+          <Sparkles class="size-4" strokeWidth={1.75} />
+        </span>
+        <p class="text-base font-medium tracking-tight text-foreground">What do you need?</p>
         <p class="text-xs text-muted-foreground">
           Ask about anything in the company, or ask it to do the work.
         </p>
@@ -153,7 +164,7 @@
           <div class="group/message flex w-full flex-col items-end py-1.5">
             <div
               class={[
-                'flex max-w-[85%] min-w-0 flex-col gap-1.5 rounded-sm bg-primary px-3.5 py-2 wrap-break-word text-primary-foreground',
+                'flex max-w-[85%] min-w-0 flex-col gap-1.5 rounded-2xl rounded-br-md bg-primary px-4 py-2.5 wrap-break-word text-primary-foreground',
                 assistant.editing?.key === entry.key && 'opacity-50',
               ]}
             >
@@ -177,7 +188,7 @@
             {#if chat.editableKey === entry.key && assistant.editing?.key !== entry.key}
               <button
                 type="button"
-                class="mt-0.5 inline-flex cursor-pointer items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+                class="mt-1 inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                 aria-label="Edit message"
                 title="Edit and send again"
                 data-testid="assistant-message-edit"
@@ -205,14 +216,29 @@
               {/if}
             </ErrorNotice>
           {:else}
-            <div class="min-w-0 py-1.5 wrap-break-word">
+            <div class="min-w-0 py-2 wrap-break-word" data-testid="assistant-reply">
               <ChatMarkdown content={entry.content} />
+              {#if entry.usage && entry.usage.modelCalls > 0}
+                <p
+                  class="mt-1.5 text-xs text-muted-foreground tabular-nums"
+                  title="What this reply cost: {entry.usage.modelCalls} model {entry.usage.modelCalls === 1
+                    ? 'call'
+                    : 'calls'}, from the AI provider's cost log"
+                  data-testid="assistant-reply-cost"
+                >
+                  <span class="sr-only">This reply cost </span>{replyCostLine(entry.usage)}
+                </p>
+              {/if}
             </div>
           {/if}
         {:else if entry.role === 'tool_preview'}
-          <p class="truncate py-0.5 text-xs text-muted-foreground" data-testid="tool-preview">
-            → using {entry.tool}{entry.inputSummary ? ` · ${entry.inputSummary}` : ''}…
-          </p>
+          <ChatToolStep
+            tool={entry.tool}
+            status={entry.status}
+            inputSummary={entry.inputSummary}
+            resultSummary={entry.resultSummary}
+            testid="tool-preview"
+          />
         {:else if entry.role === 'approval'}
           {@const approvalId = entry.approvalId}
           <ApprovalCard
@@ -231,7 +257,7 @@
 
       {#if chat.busy}
         <div
-          class="flex items-center gap-2 px-1 pt-1 text-sm text-muted-foreground"
+          class="mt-1 inline-flex max-w-full items-center gap-2 rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground"
           data-testid="assistant-busy"
         >
           <LoaderCircle class="size-3.5 shrink-0 animate-spin" strokeWidth={1.75} />
@@ -244,7 +270,7 @@
   <footer class="shrink-0 px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
     {#if assistant.editing}
       <div
-        class="mb-1.5 flex flex-col gap-0.5 rounded-sm bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground"
+        class="mb-1.5 flex flex-col gap-0.5 rounded-2xl bg-muted px-3 py-2 text-xs text-muted-foreground"
         data-testid="assistant-editing"
       >
         <div class="flex items-center justify-between gap-2">
@@ -254,7 +280,7 @@
           </span>
           <button
             type="button"
-            class="cursor-pointer rounded-sm px-1.5 py-0.5 text-foreground hover:bg-foreground/[0.06]"
+            class="cursor-pointer rounded-full px-2 py-0.5 text-foreground hover:bg-background"
             aria-label="Cancel editing"
             onclick={() => assistant.cancelEdit()}>Cancel</button
           >
@@ -285,7 +311,7 @@
     {/if}
     <div
       data-testid="nucleus-chatbox"
-      class="flex items-stretch gap-1.5 rounded-md border border-primary/70 bg-card p-1.5 focus-within:border-primary focus-within:ring-1 focus-within:ring-ring"
+      class="flex items-center gap-1 rounded-3xl border border-border bg-card p-1.5 shadow-xs transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring"
     >
       <input
         bind:this={fileInputEl}
@@ -301,7 +327,7 @@
       <button
         type="button"
         class={[
-          'grid w-9 shrink-0 cursor-pointer place-items-center rounded-sm text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50',
+          'grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50',
           voiceActive && 'hidden',
         ]}
         aria-label="Attach files"
@@ -320,7 +346,7 @@
         aria-label="Message"
         data-testid="assistant-composer-input"
         class={[
-          'min-w-0 flex-1 border-0 bg-transparent px-1.5 text-sm text-foreground shadow-none outline-none placeholder:text-muted-foreground',
+          'h-9 min-w-0 flex-1 border-0 bg-transparent px-1.5 text-sm text-foreground shadow-none outline-none placeholder:text-muted-foreground',
           voiceActive && 'hidden',
         ]}
         disabled={chat.busy}
@@ -345,14 +371,14 @@
         aria-label={chat.busy ? 'Stop' : 'Send'}
         data-testid="assistant-send"
         class={[
-          'rounded-sm bg-primary px-3 text-primary-foreground hover:bg-primary/90',
+          'size-9 shrink-0 rounded-full bg-primary p-0 text-primary-foreground hover:bg-primary/85',
           voiceActive && 'hidden',
         ]}
       >
         {#if chat.busy}
-          <Square class="size-4 shrink-0" strokeWidth={1.75} />
+          <Square class="size-3.5 shrink-0 fill-current" strokeWidth={1.75} />
         {:else}
-          <SendHorizontal class="size-4 shrink-0" strokeWidth={1.75} />
+          <ArrowUp class="size-4 shrink-0" strokeWidth={2} />
         {/if}
       </Button>
     </div>
@@ -364,8 +390,22 @@
         attempted="Attaching a file to an assistant message"
       />
     {/each}
-    <div class="mt-1 flex items-center px-0.5">
+    <div class="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1">
       <VoiceOutputToggle />
+      {#if chat.usage}
+        <!-- In a narrow panel the header has no room: the meter sits here instead. -->
+        <a
+          href={resolve('/settings/llm')}
+          class="rounded-full @sm:hidden"
+          data-testid="assistant-usage-footer-link"
+        >
+          <AiUsageMeter usage={chat.usage} variant="compact" testid="assistant-usage-footer" />
+        </a>
+      {:else if chat.usageFailed}
+        <p class="text-xs text-muted-foreground" data-testid="assistant-usage-failed">
+          Your AI use today could not be read.
+        </p>
+      {/if}
     </div>
     {#if chat.isAdmin && chat.approvalMode}
       <div class="mt-2 px-1">
