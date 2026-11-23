@@ -4,7 +4,7 @@
 
 ## 1. What it is
 
-- A separate eigenEnterprise install, **demo.eigenenterprise.app**, with the same release, ee and systemd shape as every other box. It runs no special demo build.
+- A **hosted company on our cloud** (owner, 2026-11-23: "Hosted in the cloud"): slug `demo` → **demo.eigenenterprise.app**, on rs500-1 like any customer. Platform AI, backups and releases come from the fleet. It runs no special demo build. (Adopting the local box was rejected: visitors can't reach `os.ee.localhost`, and fleet releases would fight local installs.)
 - It holds one made-up company, **Northwind Studio**: a 6-person design and web agency in Hamburg. It has contacts and a sales pipeline, projects with tasks, message channels with history, calendar events, Drive documents, a brand (style + voice) and website pages, plus brain memories that make "ask the company brain" answer well.
 - Visitors click **Demo** on eigenenterprise.app and land on `demo.eigenenterprise.app/signup`. They type their email and get the normal sign-in code, then join Northwind as a **member**. There is no bypass sign-in and no shared guest account.
 - The data resets every night, and visitor accounts go with it.
@@ -22,5 +22,5 @@
 - **DC1 — Seed (M):** dataset + `demo-company seed`, proven on the test DB and the local box.
 - **DC2 — Open join (S–M):** setting, tool, `/signup` path, Settings toggle, parity entry, tests.
 - **DC3 — Member AI cap (S–M):** setting, tool, gateway enforcement, tests.
-- **DC4 — Demo box (owner):** provision the server, DNS for `demo.eigenenterprise.app`, install, claim, seed, snapshot, nightly restore timer.
+- **DC4 — Hosted demo company:** release with the demo module → owner: cloud /ops → New company, slug `demo` (card via the Stripe link, owner rule 2026-11-17) → claim → `kernel.module_activate demo` → `demo.seed_company`, `members.set_open_join on`, `settings.member_ai_cap_set`. Nightly reset on a hosted box is still open: `ee restore` needs the recovery code (the control plane holds an escrowed backup key), and the reseed needs an owner API key plus an approval each night.
 - **DC5 — Website link:** after DC4 is live.
