@@ -58,6 +58,40 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Decisions:** amounts are USD, the currency of the cost log and the cap (the company has no currency setting). A reply's cost includes only the model calls made while answering it. Background work it queued, like later memory enrichment, is not counted. A reply with no recorded model call shows no cost line.
 - **Not done:** the proposal's second half, "track what the brain has absorbed", is out of scope. Not tried in a running app or e2e.
 
+## 2026-11-23 — AI Co-workers wave 1 merged: C1 identity + org chart + `coworkers` module, C2 engine seams (merged into main, not pushed, not on the box)
+
+- **C2** (`dfe3a888` `c8c17796`, merge `7eb3ea62`):
+  - `AgentConfig.instructions` (`'engine-default'` or a function called every turn) and `actsAs` (`'person'` for the brain, `{kind:'self', principalFor, dailySpendCapUsd}` for co-workers) are required fields.
+  - New `modelId`. One pool check (`chatModelOverride`, `ModelNotInPoolError`) covers every `modelOverride` caller.
+  - `AgentRuntime` gains `dispatchAsAgent`, `loadAgents(CoworkerSource)`, `replaceAgent`, `unregisterAgent` and `describeAgents`.
+  - A co-worker's daily cap is read from the cost ledger (`ledger-spend.ts`).
+  - Agent ids may not contain `:`.
+  - Pool widened, vetted 2026-11-23 and checked against OpenRouter (tools supported): `anthropic/claude-sonnet-5.5`, `google/gemini-3.8-flash`, `qwen/qwen3.8-flash`, `mistralai/mistral-large-4-0`. The chat recommendation is unchanged.
+- **C1** (`842b39dc`, merge `5273f87d`, fix `coworker-<id>` agent ids on top):
+  - **Migration 0170_ai_coworkers:** `user.kind`, plus `org_position`, `coworker_profile` and `coworker_run`. 0169 was taken by call-chat, merged in parallel.
+  - **Kernel:** principal kind `coworker`, RLS-scoped by its own id; `coworkerPrincipal` and `actsAsMember`.
+  - **Sign-in:** Better Auth's session-create hook refuses co-workers.
+  - **Members:** `Member.kind`. `set_role` and `remove` refuse co-workers, and co-workers aren't counted as seats.
+  - **Module `coworkers`:** `coworkers.templates/list/get/create/update/enable/disable/remove` and `org.chart`/`org.set_position`, with six templates. `create` and `remove` always ask.
+  - Export rules classify the new tables.
+- **Decisions:**
+  - Removing a co-worker deactivates it, keeping the user row so its authorship survives; its direct reports move up to its manager.
+  - The new tables have no RLS: they're company-level, and the tools decide access.
+  - Co-workers can read the org chart but not write it.
+  - Co-workers get no notification mail.
+- **Verified:** `npm run check` 0 errors on merged main; 956 kernel, co-worker, agent and LLM specs pass. C1's Postgres integration spec (9 tests) proves:
+  - no sign-in;
+  - the RLS scope sees shared rows and never a private thought;
+  - set_role is refused;
+  - a non-pool model is refused;
+  - org-chart cycles are refused.
+- **Release check (before shipping):** `BRAND_EXTRACT_MODEL` on each box must be a pool chat model, or brand extraction fails loud. Gemini 3.8 Flash or Claude Sonnet 5.5 would work.
+- **Known gaps:**
+  - co-workers already appear in Settings → Members, where the role and remove controls are refused (C5);
+  - the @handle is `slug.id8` from the email (C3);
+  - no co-worker background runs yet (C6).
+- **Next:** wave 2, C3 (co-worker turn in Messages), C4 (memory), C5 (UI).
+
 ## 2026-11-23 — AI Co-workers: plan approved, wave 1 started (owner: "prepare a feature for agents having different roles … plan for this and then start subagents to build this feature")
 
 - **Plan:** `plan/phase-ai-coworkers.md` (new). AI colleagues in the org chart, each with its own role, accountabilities, lens, model and memory. They collaborate in Messages and act on their own.
