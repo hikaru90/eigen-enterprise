@@ -13,7 +13,9 @@ describe('capture phase-timing', () => {
     const report = timer.finish()
     expect(report.phases).toHaveLength(2)
     expect(report.phases.map((p) => p.phase)).toEqual(['normalize', 'embedding'])
-    expect(report.wallMs).toBeGreaterThanOrEqual(8)
+    // The wall clock spans both phases. (Not ">= 8": a 5 ms setTimeout may fire ~1 ms early by Date.now.)
+    expect(report.wallMs).toBeGreaterThan(0)
+    expect(report.wallMs).toBeGreaterThanOrEqual(report.phases.reduce((n, p) => n + p.ms, 0))
     for (const entry of report.phases) {
       expect(entry.ms).toBeGreaterThanOrEqual(0)
     }
