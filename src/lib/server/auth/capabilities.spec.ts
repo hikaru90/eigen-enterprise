@@ -15,6 +15,7 @@ describe('capabilitiesFor (one set, from the role)', () => {
     expect(capabilitiesFor('admin')).toEqual({
       'company.manage': true,
       'members.manage': true,
+      'coworkers.manage': true,
       'approvals.manage': true,
       'backups.manage': false,
       'export.manage': false,

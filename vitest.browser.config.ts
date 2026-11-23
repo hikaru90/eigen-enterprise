@@ -118,6 +118,9 @@ export default defineConfig({
       'src/lib/components/app-build-form.svelte.spec.ts',
       'src/lib/components/app-card.svelte.spec.ts',
       'src/lib/components/add-app-dialog.svelte.spec.ts',
+      // AI Co-workers (plan/phase-ai-coworkers.md C5): org chart, create from a template, members rows.
+      'src/lib/coworkers/*.svelte.spec.ts',
+      'src/lib/components/settings/member-row.svelte.spec.ts',
       'src/lib/messages/message-row.svelte.spec.ts',
       'src/lib/messages/message-edit.svelte.spec.ts',
       'src/lib/messages/message-composer.svelte.spec.ts',

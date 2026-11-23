@@ -87,6 +87,8 @@ export type MessageDto = {
   authorName: string
   /** The author's profile picture route (P-5), null without one. */
   authorImage: string | null
+  /** A person or an AI co-worker (plan/phase-ai-coworkers.md §6: co-workers' messages carry an AI mark). A former member reads as a person. */
+  authorKind: 'human' | 'coworker'
   body: string
   createdAt: string
   editedAt: string | null
@@ -203,6 +205,7 @@ export async function messageDtos(d: MessagesDeps, ms: Message[], people?: Map<s
       authorId: m.authorId,
       authorName: displayName(map.get(m.authorId)),
       authorImage: map.get(m.authorId)?.image ?? null,
+      authorKind: map.get(m.authorId)?.kind ?? 'human',
       body: deleted ? '' : m.body,
       createdAt: m.createdAt.toISOString(),
       editedAt: m.editedAt?.toISOString() ?? null,

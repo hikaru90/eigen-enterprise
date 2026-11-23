@@ -63,6 +63,7 @@ import { load as website } from './m/website/+page.server'
 import { load as approvals } from './settings/approvals/+page.server'
 import { _backupsDeps, load as backups } from './settings/backups/+page.server'
 import { load as company } from './settings/company/+page.server'
+import { _coworkersDeps, load as coworkers } from './settings/coworkers/+page.server'
 import { load as domains } from './settings/domains/+page.server'
 import { _exportDeps, load as exportPage } from './settings/export/+page.server'
 import { load as members } from './settings/members/+page.server'
@@ -76,6 +77,7 @@ const LOADS: Record<string, { path: string; load: Load }> = {
   '/settings/company': { path: '/settings/company', load: company as Load },
   '/settings/domains': { path: '/settings/domains', load: domains as Load },
   '/settings/members': { path: '/settings/members', load: members as Load },
+  '/settings/coworkers': { path: '/settings/coworkers', load: coworkers as Load },
   '/settings/approvals': { path: '/settings/approvals', load: approvals as Load },
   '/settings/backups': { path: '/settings/backups', load: backups as Load },
   '/settings/export': { path: '/settings/export', load: exportPage as Load },
@@ -122,6 +124,9 @@ describe('role-aware UI: the capability set and the route guards agree', () => {
         },
       }) as never
     _exportDeps.port = async () => ({ list: async () => [] }) as never
+    // Settings → Co-workers reads coworkers.* / org.chart past its guard.
+    _coworkersDeps.run = (async (_user: unknown, tool: string) =>
+      tool === 'coworkers.list' ? { coworkers: [] } : tool === 'coworkers.templates' ? { templates: [] } : { people: [] }) as never
     _updatesDeps.client = () =>
       ({
         upgrade: async () => {
@@ -158,7 +163,7 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
 
   it('the settings tabs hold only sections they can open', () => {
     const tabs = settingsSections(member)
-    expect(tabs.map((t) => t.id)).toEqual(['account', 'llm', 'passkeys', 'api-keys'])
+    expect(tabs.map((t) => t.id)).toEqual(['account', 'org', 'llm', 'passkeys', 'api-keys'])
     for (const tab of tabs) expect(pageCapability(tab.href) === null || member[pageCapability(tab.href)!]).toBe(true)
   })
 
@@ -174,6 +179,7 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
       '/settings/approvals',
       '/settings/backups',
       '/settings/company',
+      '/settings/coworkers',
       '/settings/domains',
       '/settings/export',
       '/settings/members',

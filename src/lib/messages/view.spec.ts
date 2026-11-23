@@ -23,6 +23,7 @@ const msg = (id: string, createdAt: string, authorId = 'a'): MessageView => ({
   authorId,
   authorName: authorId,
   authorImage: null,
+  authorKind: 'human',
   body: id,
   createdAt,
   editedAt: null,

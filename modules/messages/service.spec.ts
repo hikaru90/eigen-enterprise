@@ -193,4 +193,17 @@ describe('author profile (P-5)', () => {
       ['Olga Owner', null],
     ])
   })
+
+  it('every message says whether its author is a person or an AI co-worker (the AI mark)', async () => {
+    const { deps, directory } = fixture()
+    directory.people.find((p) => p.id === 'bea')!.kind = 'coworker'
+    const general = await createChannel(deps, 'owner', { name: 'general', private: false })
+    await postMessage(deps, 'bea', general.id, 'from the co-worker')
+    await postMessage(deps, 'owner', general.id, 'from a person')
+    const page = await listMessages(deps, 'carl', general.id)
+    expect(page.messages.map((m) => [m.authorName, m.authorKind])).toEqual([
+      ['Bea Member', 'coworker'],
+      ['Olga Owner', 'human'],
+    ])
+  })
 })

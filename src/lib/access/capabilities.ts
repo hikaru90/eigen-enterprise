@@ -12,6 +12,8 @@ export const CAPABILITIES = [
   'company.manage',
   /** Settings → Members & invites. */
   'members.manage',
+  /** Settings → Co-workers: creating, changing and removing AI co-workers (plan/phase-ai-coworkers.md C5). */
+  'coworkers.manage',
   /** Settings → Approval mode. */
   'approvals.manage',
   /** Settings → Backups (the owner's alone, D11). */
@@ -46,6 +48,7 @@ export const GUARDED_PAGES: readonly { prefix: string; capability: Capability }[
   // The company's domains belong with its name: the same people manage them.
   { prefix: '/settings/domains', capability: 'company.manage' },
   { prefix: '/settings/members', capability: 'members.manage' },
+  { prefix: '/settings/coworkers', capability: 'coworkers.manage' },
   { prefix: '/settings/approvals', capability: 'approvals.manage' },
   { prefix: '/settings/backups', capability: 'backups.manage' },
   { prefix: '/settings/export', capability: 'export.manage' },

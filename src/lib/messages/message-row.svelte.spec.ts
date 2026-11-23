@@ -10,6 +10,7 @@ const base: MessageView = {
   authorId: 'bea',
   authorName: 'Bea Member',
   authorImage: null,
+  authorKind: 'human',
   body: 'Hello **team**, ping @Carl',
   createdAt: '2026-11-04T09:00:00.000Z',
   editedAt: null,
@@ -64,6 +65,20 @@ describe('message-row.svelte', () => {
     render(MessageRow, props({ message: { ...base, body: 'dictated before recordings were kept' } }))
     await expect.element(page.getByTestId('messages-body')).toHaveTextContent('dictated before recordings were kept')
     expect(page.getByTestId('messages-voice').elements()).toHaveLength(0)
+  })
+
+  it('an AI co-worker’s message carries the AI mark on its author line, and says so to screen readers', async () => {
+    render(MessageRow, props({ message: { ...base, authorName: 'Marketing Manager', authorKind: 'coworker' } }))
+    const mark = page.getByTestId('messages-author-ai')
+    await expect.element(mark).toBeVisible()
+    await expect.element(mark).toHaveTextContent('AI')
+    await expect.element(page.getByTestId('messages-item')).toHaveAttribute('aria-label', expect.stringContaining('Marketing Manager (AI co-worker)'))
+  })
+
+  it('a person’s message has no AI mark', async () => {
+    render(MessageRow, props())
+    await expect.element(page.getByTestId('messages-author')).toHaveTextContent('Bea Member')
+    expect(page.getByTestId('messages-author-ai').elements()).toHaveLength(0)
   })
 
   it('a grouped row has no avatar or name, only the time in the gutter', async () => {

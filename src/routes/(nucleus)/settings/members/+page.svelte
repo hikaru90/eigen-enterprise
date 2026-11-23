@@ -2,7 +2,7 @@
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import { enhance } from '$app/forms'
-  import UserAvatar from '$lib/components/user-avatar.svelte'
+  import MemberRow from '$lib/components/settings/member-row.svelte'
   import { docTitle } from '$lib/shell/title'
   import { shownErrorOf, type AgentReport } from '$lib/errors/agent-report'
   import DictationField from '$lib/voice/dictation-field.svelte'
@@ -93,46 +93,7 @@
     <h3 class="text-sm font-semibold">People</h3>
     <ul class="divide-y divide-border border border-border">
       {#each data.members as m (m.id)}
-        <li class="flex flex-wrap items-center justify-between gap-3 p-3" data-testid="member-row">
-          <div class="flex min-w-0 items-center gap-2.5">
-            <UserAvatar name={m.name || m.email} image={m.image} size="sm" />
-            <div class="min-w-0">
-              <p class="truncate text-xs font-medium">{m.name || m.email}</p>
-              <p class="text-muted-foreground truncate text-xs">{m.email}</p>
-            </div>
-          </div>
-          {#if m.role === 'owner'}
-            <span class="text-xs" data-testid="member-role">Owner</span>
-          {:else}
-            <div class="flex items-center gap-2">
-              <form method="post" action="?/setRole" use:enhance class="flex items-center gap-2">
-                <input type="hidden" name="userId" value={m.id} />
-                <label class="sr-only" for="role-{m.id}">Role for {m.email}</label>
-                <select
-                  id="role-{m.id}"
-                  name="role"
-                  class="border-input bg-card h-8 border px-2 text-xs"
-                  value={m.role}
-                >
-                  <option value="admin">Admin</option>
-                  <option value="member">Member</option>
-                </select>
-                <button
-                  type="submit"
-                  class="border border-border px-2 py-1 text-xs hover:border-primary">Save</button
-                >
-              </form>
-              {#if m.id !== data.me.id}
-                <form method="post" action="?/remove" use:enhance>
-                  <input type="hidden" name="userId" value={m.id} />
-                  <button type="submit" class="px-2 py-1 text-xs text-red-700 hover:underline"
-                    >Remove</button
-                  >
-                </form>
-              {/if}
-            </div>
-          {/if}
-        </li>
+        <MemberRow member={m} meId={data.me.id} />
       {/each}
     </ul>
     {#each ['setRole', 'remove'] as a (a)}
