@@ -1,6 +1,6 @@
 # AI Co-workers — AI colleagues in the org chart (working title)
 
-**Status:** APPROVED 2026-11-23; C1–C6 and C8 merged into main the same day (see `plan/progress.md`), C7 waits for CB2. Direction approved (owner: "prepare a feature for agents having different roles … plan for this and then start subagents to build this feature"). Owner answers on the four open product calls are recorded in §2.
+**Status:** APPROVED 2026-11-23; C1–C8 merged into main the same day (see `plan/progress.md`); C7 runs in shadow until promoted by commit. Direction approved (owner: "prepare a feature for agents having different roles … plan for this and then start subagents to build this feature"). Owner answers on the four open product calls are recorded in §2.
 
 **Owner's words:** "the other agents also should have access to everything, but they should explicitly have different focuses and different views of the world and maybe even different models." · "the coworkers should be included in the org chart and should have different roles and different accountabilities." · "those agents don't work in a vacuum … the marketing manager would have the opportunity to speak with the go-to-market manager and maybe also with the designer … so that the humans can give tasks to the agent fleet and get real results back." · "They should talk to them through the chat and they should have equal rights when it comes to storing thoughts … they are really first-class citizens in eigenEnterprise."
 

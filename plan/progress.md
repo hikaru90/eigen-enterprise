@@ -2,6 +2,35 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers C7: event reactions in shadow (`68e40fc6`, merge `a7873a7b`, migration 0176, not pushed, not on the box)
+
+- **Built:**
+  - **Kind `coworkers.event_mine`** (yes/no, shadow, no current judge). Jev reads the co-worker's role card plus the event. The log keeps event metadata; for public channels it also keeps a 200-character excerpt, and private channel text is never kept.
+  - **Source `channel_message`:** a person's message in a channel the co-worker may read and post in, that doesn't @mention it (mentions stay C3 turns). It runs on C3's hub subscription.
+  - **Subscriptions** per co-worker (admin switch): `coworkers.event_subscriptions_get/set`.
+  - **Observer** (`src/lib/server/coworkers/events.ts`):
+    - one decision per co-worker per event, across processes;
+    - the co-worker's daily cap is checked first (`skipped_daily_cap`);
+    - at most `EVENT_DECISIONS_PER_HOUR = 20` per co-worker (`skipped_rate_limit`, counted and visible);
+    - cost lands on the co-worker.
+  - **"Would pick up"** on the co-worker profile (owner and admins):
+    - the switch, with 24-hour counts;
+    - the agreement line;
+    - recent decisions with Jev's choice and confidence, each with **Theirs / Not theirs** labels.
+
+    New tool `decisions.label` (owner and admins) and a `subject_user_id` filter on `decisions.log`. ui-parity debt 0.
+  - **Enforced branch, built and specced, not active:** a "yes" queues one `event` run that answers in the message's thread. **Promotion is one line** in `modules/coworkers/decision-kinds.ts`, `status: 'shadow'` → `'enforced'`, by commit after the labels show agreement.
+- **Skipped, with reason:**
+  - mail in a shared mailbox: the inbox notification fires on every change (read, star, move) with no "new mail" signal;
+  - call recap: generated only on request, so it isn't an event.
+- **Verified on merged main:** tsc clean, 733 co-worker/decisions/kernel/messages/boot/export/cli specs pass, including the Postgres spec against the mock decision endpoint (test DB on 0176). The worktree ran 1728 specs, plus 20 component specs.
+- **Gaps:**
+  - a subscribed co-worker costs one Jev call per public-channel message, capped at 20 per hour;
+  - an event claim left by a dying process stays `claimed` and is not retried;
+  - no batching across co-workers;
+  - no browser check.
+- **Phase status:** AI Co-workers C1–C8 are all built. Left: label the shadow decisions, then promote `coworkers.event_mine`; a browser check of the screens; release.
+
 ## 2026-11-23 — Decision: shadow Jev calls are billed (owner: "Yes, bill them")
 
 - Shadow decisions are billed like every other gateway call: on the requesting person or co-worker, at provider cost + 20% on eigenInference. This closes the open question from the CB2 entry (EigenMesh O3). It matches what's built, so there is no code change.
@@ -54,6 +83,21 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - the credential is a separate "eigenEnterprise maintainer" GitHub App with `contents: write` on the core repo only, which answers factory §8 (option 1);
   - branch protection allows only the owner and the App to push `main`;
   - decision, owner may veto: release tags and promotion stay with the owner.
+- **The owner's answers on §9.2, §9.3 and §9.5:** "people can vibe code modules without license. they will do so anyways. update -> notify assitant agent -> fix broken module. every module has to be open source, and i want to see what they do, they have to share their code". Built into the plan:
+  - **Modules never hold an update back.** The core updates, and only the core's health decides a rollback. A broken module is switched off loudly, its owner's assistant gets the repair task, and once repaired the module is published and comes back on by itself.
+  - **New factory risk class `module-repair`:** it redeploys without a click when `uses:` and permissions are unchanged and the tests pass; a repair that widens anything waits for the module owner. This relaxes factory D11 for this one class (announced, owner may veto).
+  - **R6: every module is Apache-2.0 and published before it runs.** The box publishes each commit, signed, to the central hub; the hub runs a secret scan and returns a signed receipt; ee deploys only receipted commits. Code is shared, data and secrets never.
+  - The owner sees every module's code, manifest, versions and installs on the hub. The box's owner gives a one-time OK.
+  - Sharing Contribute wishes stays switch-off-able; sharing module code doesn't. With the hub off, no new module code deploys, so the hub needs its own uptime.
+  - **Building modules is free;** curated is paid for the guarantee and support, not the code.
+  - **Every module is on the hub, so the usage map comes from the manifests and the fleet run covers every module in the fleet.** The "contract usage report" call is gone.
+  - Core PRs: DCO (decision).
+- **The owner on release tags:** "yes, ee-one can release too". Built into the plan (§4.1, U8):
+  - admins on a maintainer box may cut a release with `upstream.release` (pushing the `v*` tag through the maintainer App; CI signs) and promote it with `upstream.promote`, both admin-approved;
+  - the signing key stays in CI and on the owner's machine;
+  - the box runs the full release gate first, e2e and the rehearsal included, which needs Playwright on the box;
+  - the soak and the waves bind everyone, and skipping the soak is the owner's alone.
+- **Still open:** whether upgrade outcome reports are on by default.
 - **Finding:** today modules are compiled in and X0–X4 are not built, so **the only way a box can add a module is to edit the core**. Every vibe-coding box is a fork today. Hence U1 (`core-api` 1.0) and U2 (module runtime) come first, and U5 gives forks a way back.
 - **Found while mapping (fix in U0):**
   - `kernel.release_install` documents `release` as "the version", but ee's POST requires the full release name, so a bare version gets a 400.
