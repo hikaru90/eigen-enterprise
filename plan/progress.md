@@ -2,6 +2,34 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — AI Co-workers C4: co-workers in Memory as first-class citizens (merge `093c6327`, not pushed, not on the box)
+
+- **Built** (`9d2a363c`):
+  - Memory tools take a co-worker principal. Its captures record `author:'agent'`, `author_label` = its name, `capture_source:'agent'`. A switched-off or removed co-worker is refused.
+  - **Migration 0171_coworker_thoughts:** a SELECT policy `thought_coworker_read` lets every member read thoughts owned by a co-worker (also in `enable_rls.sql`). Writes stay owner-only.
+  - Co-worker thoughts are sealed with the company key from the first write (`src/lib/server/crypto/thought-seal-scope.ts`). The start-up re-key and enrichment treat them as shared.
+  - **Retrieval reach** `mine | team | all` (`src/lib/server/retrieval/reach.ts`) sits inside the candidate SQL, so access is decided before ranking.
+  - `memory.retrieve_thoughts` gains `scope` (default `all`) and returns `owner {id,name,kind}` and `editable`. Every other `searchThoughts` caller keeps `mine`.
+  - The company export now exports co-worker thoughts in full.
+- **Kept human-only (a person's own click):**
+  - visibility toggles, check-in answers, the external connected-agent tools, `reminders.*` (rhythms come in C6);
+  - `private:true` on notes and projects;
+  - `author`/`as_user` overrides.
+- **Verified:** Postgres spec 8/8:
+  - a co-worker captures as itself, company-sealed;
+  - people read its thoughts read-only, directly and through the brain;
+  - no one else can change them, not even with SQL;
+  - no co-worker and no other person ever finds a person's private thought, in any scope;
+  - enrichment runs;
+  - the re-key re-seals.
+
+  On merged main: tsc clean, 1235 memory/retrieval/kernel specs green.
+- **Gaps:**
+  - The Ask bar's `composeAnswer` still reads only the person's own thoughts.
+  - `memory.get_thought` by id refuses another owner's co-worker thought (retrieve `detail:'full'` works).
+  - The member daily AI cap may also apply to a co-worker's enrichment (role `member`), on top of its own cap. Checked in C3.
+  - The eval Keeps suite has no co-worker case yet (C8).
+
 ## 2026-11-23 — Release v0.5.38 (owner: "build a new release!")
 
 - **Pushed** main (`a440e305..10857f40`, 32 commits: the company export, AI Co-workers C1/C2, call chat, the contribute round, Memory one door, drive previews) and tag **v0.5.38**. The GitHub release workflow (run 45211314626) builds, signs and publishes. Not installed on any box yet.
