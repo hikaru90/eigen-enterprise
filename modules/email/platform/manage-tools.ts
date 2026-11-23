@@ -112,10 +112,10 @@ export function createEmailManageTools(deps: EmailManageToolDeps = {}): ToolDesc
   }
 
   const write = (
-    t: Omit<ToolDescriptor, 'module' | 'auditClass' | 'approvalRisk' | 'permission'> & { destructive?: boolean },
+    t: Omit<ToolDescriptor, 'module' | 'auditClass' | 'approvalRisk' | 'permission'> & { destructive?: boolean; external?: boolean },
   ): ToolDescriptor => {
-    const { destructive, ...rest } = t
-    return { ...rest, module: EMAIL_MODULE_ID, auditClass: 'mutate', approvalRisk: destructive ? 'destructive' : 'internal', permission: ROLES }
+    const { destructive, external, ...rest } = t
+    return { ...rest, module: EMAIL_MODULE_ID, auditClass: 'mutate', approvalRisk: destructive ? 'destructive' : external ? 'external' : 'internal', permission: ROLES }
   }
 
   return [
@@ -265,6 +265,8 @@ export function createEmailManageTools(deps: EmailManageToolDeps = {}): ToolDesc
     }),
     write({
       name: 'email.flow_set_status',
+      // Starting a flow mails the people on its list: an external act.
+      external: true,
       summary: 'Start (active) or pause an email flow.',
       activity: (input: z.infer<typeof flowStatus>) => (input.status === 'active' ? 'Started an email flow' : 'Paused an email flow'),
       inputSchema: flowStatus,

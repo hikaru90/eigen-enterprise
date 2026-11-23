@@ -204,6 +204,7 @@ export function createInboxTools(opts: InboxToolDeps = {}): ToolDescriptor[] {
       'Setup › Mailboxes (owner/admin): every mailbox with holder and counts (no mail content), members with their mailbox, groups, and the verified domains to create addresses on.',
       empty,
       async (ctx) => mailboxAdmin(await inbox(), actor(ctx)),
+      ADMIN_ROLES,
     ),
     read(
       'email.mail_list',

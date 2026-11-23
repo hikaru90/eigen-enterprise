@@ -42,7 +42,9 @@ describe('email platform tools', () => {
       const sends = name === 'email.send_template'
       expect(tool(name).auditClass).toBe(sends ? 'external' : 'mutate')
       const removes = (EMAIL_PLATFORM_DESTRUCTIVE_TOOLS as readonly string[]).includes(name)
-      expect(tool(name).approvalRisk).toBe(sends ? 'external' : removes ? 'destructive' : 'internal')
+      // Starting a flow mails the people on its list, so it is external like a send.
+      const mailsPeople = sends || name === 'email.flow_set_status'
+      expect(tool(name).approvalRisk).toBe(mailsPeople ? 'external' : removes ? 'destructive' : 'internal')
       expect(typeof tool(name).activity).toBe('function')
     }
   })

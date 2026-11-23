@@ -66,12 +66,17 @@ function setup(over: Partial<EmailManageToolDeps> & { mode?: 'own' | 'managed' }
 const draft = { name: 'Welcome', subject: 'Hi {{name}}', format: 'mjml', body: '<mjml></mjml>', sampleVariables: { name: 'Ann' } }
 
 describe('email manage tools: the same service calls the Email pages make', () => {
-  it('removing tools are destructive; every one has an activity sentence', () => {
+  it('removing tools are destructive, starting a flow is external; every one has an activity sentence', () => {
     const { tools } = setup()
     for (const t of tools) {
       if (t.auditClass === 'read') continue
       expect(typeof t.activity).toBe('function')
-      expect(t.approvalRisk).toBe((EMAIL_PLATFORM_DESTRUCTIVE_TOOLS as readonly string[]).includes(t.name) ? 'destructive' : 'internal')
+      const expected = (EMAIL_PLATFORM_DESTRUCTIVE_TOOLS as readonly string[]).includes(t.name)
+        ? 'destructive'
+        : t.name === 'email.flow_set_status'
+          ? 'external'
+          : 'internal'
+      expect(t.approvalRisk).toBe(expected)
     }
   })
 
