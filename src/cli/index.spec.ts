@@ -200,7 +200,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
         internal: true,
         version: '0.2.0',
         description:
-          'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person), a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner).',
+          'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person), the daily AI cap per member and a person’s own AI usage today, a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner).',
         tools: [
           'kernel.module_list',
           'kernel.module_activate',
@@ -219,6 +219,9 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'settings.logo_remove',
           'kernel.backup_run',
           'kernel.release_install',
+          'settings.member_ai_cap_get',
+          'settings.member_ai_cap_set',
+          'settings.my_ai_usage',
         ],
         active: true,
         core: true,

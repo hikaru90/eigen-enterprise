@@ -125,7 +125,7 @@ export const memberInvite = pgTable('member_invite', {
 })
 
 /**
- * Open join (migration 0166, plan/phase-demo-company.md D1): one row
+ * Open join (migration 0167, plan/phase-demo-company.md D1): one row
  * ('company'); no row = off. When on, /signup on a claimed ee server lets a
  * verified email join as a member (Settings → Members, members.set_open_join).
  */
@@ -137,7 +137,7 @@ export const companyJoin = pgTable('company_join', {
 })
 
 /**
- * Accounts that joined through open join (migration 0166): like an accepted
+ * Accounts that joined through open join (migration 0167): like an accepted
  * invite, it means the person joined an existing company (no company
  * onboarding, see members/joined.ts) rather than founding one.
  */

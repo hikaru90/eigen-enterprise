@@ -1,4 +1,4 @@
-import { boolean, doublePrecision, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { boolean, doublePrecision, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 import { CROPPABLE_LOGO_TYPES, LOGO_TYPES } from '$lib/company/identity'
 
 /**
@@ -40,6 +40,8 @@ export const companyAi = pgTable('company_ai', {
   ttsModel: text('tts_model'),
   decisionModel: text('decision_model'),
   embeddingModel: text('embedding_model'),
+  /** Per-person daily AI cap in USD for role `member` (migration 0167, DC3); null = no cap. */
+  memberDailyCapUsd: numeric('member_daily_cap_usd', { precision: 12, scale: 4 }),
   updatedBy: text('updated_by').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })

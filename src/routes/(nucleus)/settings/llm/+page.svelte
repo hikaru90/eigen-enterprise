@@ -4,6 +4,7 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import StatusPill from '$lib/components/page/status-pill.svelte'
+  import MemberAiCap from '$lib/components/settings/member-ai-cap.svelte'
   import SpeechStatus from '$lib/components/settings/speech-status.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
@@ -168,6 +169,8 @@
   </section>
 
   <SpeechStatus dictation={data.speech.dictation} models={data.speech.models} />
+
+  <MemberAiCap usage={data.memberAiCap.usage} canManage={data.canManageAi} message={form?.capMessage} />
 
   <details class="group space-y-4" data-testid="advanced" open={!data.ai.useEigenInference}>
     <summary class="cursor-pointer text-sm font-semibold">Advanced: your own keys</summary>

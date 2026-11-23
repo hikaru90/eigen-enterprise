@@ -45,6 +45,9 @@ function data(over: Record<string, unknown> = {}, ai: Record<string, unknown> = 
     byokConfigured: false,
     activeProvider: 'eurouter',
     speech: { dictation: { ready: true }, models: [] },
+    memberAiCap: {
+      usage: { role: 'owner', capUsd: null, capApplies: false, spentUsd: 0, remainingUsd: null, resetsAt: '2026-11-24T00:00:00.000Z' },
+    },
     providers: {
       eurouter: { configured: false, baseUrl: '', apiKey: '', ruleChat: '', ruleEmbedding: '' },
       openrouter: { configured: false, baseUrl: '', apiKey: '' },
@@ -128,6 +131,23 @@ describe('Settings → AI provider', () => {
     await expect.element(page.getByLabelText('Chat routing rule')).toBeVisible()
     expect(document.querySelector('input[name="modelChat"]')).toBeNull()
     expect(document.querySelector('input[name="modelEmbedding"]')).toBeNull()
+  })
+
+  it('an admin sets the daily AI cap per member; an empty field means no cap', async () => {
+    render(AiPage, props(data()))
+    const field = page.getByLabelText('Dollars per member per day')
+    await expect.element(field).toHaveValue(null)
+    await userEvent.fill(field, '0.5')
+    await userEvent.click(page.getByRole('button', { name: 'Save cap' }))
+    expect(submitted).toEqual([{ action: '?/setMemberAiCap', fields: { capUsd: '0.5' } }])
+  })
+
+  it('a member sees the cap and their own usage today, and cannot change it', async () => {
+    const usage = { role: 'member', capUsd: 1, capApplies: true, spentUsd: 0.25, remainingUsd: 0.75, resetsAt: '2026-11-24T00:00:00.000Z' }
+    render(AiPage, props(data({ isAdmin: false, canManageAi: false, isOwner: false, memberAiCap: { usage } })))
+    await expect.element(page.getByTestId('member-ai-cap-value')).toHaveTextContent('$1.00 per member per day.')
+    await expect.element(page.getByTestId('member-ai-usage')).toHaveTextContent('You today: $0.25 of $1.00 ($0.75 left; resets at midnight UTC).')
+    expect(document.querySelector('input[name="capUsd"]')).toBeNull()
   })
 
   it('a member sees the choices but cannot change them, and no keys', async () => {

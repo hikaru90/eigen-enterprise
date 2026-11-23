@@ -1,0 +1,61 @@
+import { and, eq, gte, sql } from 'drizzle-orm'
+import type { MemberRole } from '$lib/server/auth/roles'
+import { getDb } from '$lib/server/db'
+import { companyAi } from '$lib/server/db/company.schema'
+import { activityCallLog } from '$lib/server/db/schema'
+import { parseStoredCapUsd } from './member-daily-cap'
+
+/**
+ * Storage behind the per-person daily AI cap (DC3): the cap on the company_ai row (migration
+ * 0167), a person's role, and what their model calls cost since a moment — summed from the
+ * gateway's cost log (activity_call_log.total_cost_usd, what the company is billed per call).
+ */
+
+const ROW = 'company'
+const MISSING_ROW = 'The company AI settings row is missing (migration 0160_company_ai did not run).'
+
+export type MemberDailyCapStore = {
+  readCapUsd(): Promise<number | null>
+  setCapUsd(value: number | null, by: string): Promise<void>
+  roleOf(userId: string): Promise<MemberRole | null>
+  spentUsdSince(userId: string, since: Date): Promise<number>
+}
+
+export const memberDailyCapStore: MemberDailyCapStore = {
+  async readCapUsd() {
+    const [row] = await getDb()
+      .select({ cap: companyAi.memberDailyCapUsd })
+      .from(companyAi)
+      .where(eq(companyAi.id, ROW))
+      .limit(1)
+    if (!row) throw new Error(MISSING_ROW)
+    return parseStoredCapUsd(row.cap)
+  },
+
+  async setCapUsd(value, by) {
+    if (value !== null && !(Number.isFinite(value) && value > 0)) {
+      throw new Error(`The daily AI cap per member must be a positive USD amount or null; got ${value}.`)
+    }
+    const updated = await getDb()
+      .update(companyAi)
+      .set({ memberDailyCapUsd: value === null ? null : value.toFixed(4), updatedBy: by, updatedAt: new Date() })
+      .where(eq(companyAi.id, ROW))
+      .returning({ id: companyAi.id })
+    if (updated.length !== 1) throw new Error(MISSING_ROW)
+  },
+
+  // Loaded on first use: the auth database opens on import (no DB for callers that never cap).
+  roleOf: async (userId) => (await import('$lib/server/auth/user-role')).getUserRole(userId),
+
+  async spentUsdSince(userId, since) {
+    const [row] = await getDb()
+      .select({ total: sql<string>`coalesce(sum(${activityCallLog.totalCostUsd}::numeric), 0)` })
+      .from(activityCallLog)
+      .where(and(eq(activityCallLog.userId, userId), gte(activityCallLog.createdAt, since)))
+    const total = Number(row?.total)
+    if (!Number.isFinite(total) || total < 0) {
+      throw new Error(`activity_call_log cost sum for a person is not a non-negative number: ${JSON.stringify(row?.total)}`)
+    }
+    return total
+  },
+}
