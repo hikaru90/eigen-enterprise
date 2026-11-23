@@ -5,11 +5,13 @@ import {
   assignTask,
   commentOnTask,
   completeTask,
+  getTask,
   listAssignees,
   listTasks,
   markTaskSeen,
   needsYouTasks,
   type AssignedTaskDeps,
+  type CoworkerTaskEvent,
 } from './service'
 
 const people = [
@@ -23,6 +25,7 @@ function setup() {
   let clock = new Date('2026-11-19T09:00:00Z').getTime()
   let n = 0
   const notify = vi.fn(async () => {})
+  const coworkerWork = vi.fn(async (_e: CoworkerTaskEvent) => {})
   const deps: AssignedTaskDeps = {
     store,
     directory: {
@@ -30,10 +33,11 @@ function setup() {
       list: async () => people,
     },
     notify,
+    coworkerWork,
     now: () => new Date((clock += 60_000)),
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
   }
-  return { deps, store, notify }
+  return { deps, store, notify, coworkerWork }
 }
 
 const alex = { userId: 'alex', via: 'assistant' as const }
@@ -173,5 +177,65 @@ describe('assigned tasks', () => {
       { id: 'ony', name: 'Ony', email: 'ony@k.co' },
       { id: 'sam', name: 'Sam', email: 'sam@k.co' },
     ])
+  })
+})
+
+describe('a task given to an AI co-worker (plan/phase-ai-coworkers.md C6)', () => {
+  const withCoworker = [
+    { id: 'alex', name: 'Alex', email: 'alex@k.co', kind: 'human' as const },
+    { id: 'cw-mkt', name: 'Marketing', email: 'marketing.cwmkt000@coworker.invalid', kind: 'coworker' as const },
+  ]
+  function coworkerSetup() {
+    const s = setup()
+    const deps: AssignedTaskDeps = {
+      ...s.deps,
+      directory: { get: async (id) => withCoworker.find((p) => p.id === id) ?? null, list: async () => withCoworker },
+    }
+    return { ...s, deps }
+  }
+  const me = { userId: 'alex', via: 'person' as const }
+  const cw = { userId: 'cw-mkt', via: 'person' as const }
+
+  it('assigning queues its turn instead of a push: co-workers get no notifications', async () => {
+    const { deps, notify, coworkerWork } = coworkerSetup()
+    const task = await assignTask(deps, me, { assigneeId: 'cw-mkt', title: 'Draft the launch email' })
+    expect(notify).not.toHaveBeenCalled()
+    expect(coworkerWork).toHaveBeenCalledTimes(1)
+    expect(coworkerWork).toHaveBeenCalledWith({ kind: 'assigned', taskId: task.id, coworkerId: 'cw-mkt', byUserId: 'alex', at: expect.any(Date) })
+  })
+
+  it("a person's comment on the open task asks for one more turn; the co-worker's own comment notifies the person", async () => {
+    const { deps, notify, coworkerWork } = coworkerSetup()
+    const task = await assignTask(deps, me, { assigneeId: 'cw-mkt', title: 'Draft the launch email' })
+    coworkerWork.mockClear()
+    const after = await commentOnTask(deps, me, task.id, 'Add the price, please.')
+    expect(coworkerWork).toHaveBeenCalledWith({
+      kind: 'commented',
+      taskId: task.id,
+      coworkerId: 'cw-mkt',
+      byUserId: 'alex',
+      commentId: after.comments.at(-1)!.id,
+      at: expect.any(Date),
+    })
+    coworkerWork.mockClear()
+    await commentOnTask(deps, cw, task.id, 'Here is the draft.')
+    expect(coworkerWork).not.toHaveBeenCalled()
+    expect(notify).toHaveBeenCalledWith('alex', expect.objectContaining({ title: "Marketing commented on 'Draft the launch email'" }))
+  })
+
+  it('a comment on a task the co-worker completed asks for no turn', async () => {
+    const { deps, coworkerWork } = coworkerSetup()
+    const task = await assignTask(deps, me, { assigneeId: 'cw-mkt', title: 'Draft the launch email' })
+    await completeTask(deps, cw, task.id)
+    coworkerWork.mockClear()
+    await commentOnTask(deps, me, task.id, 'Thanks!')
+    expect(coworkerWork).not.toHaveBeenCalled()
+  })
+
+  it('getTask: the task as its assignee sees it; anyone else gets not found', async () => {
+    const { deps } = coworkerSetup()
+    const task = await assignTask(deps, me, { assigneeId: 'cw-mkt', title: 'Draft the launch email' })
+    expect((await getTask(deps, 'cw-mkt', task.id)).role).toBe('assignee')
+    await expect(getTask(deps, 'sam', task.id)).rejects.toMatchObject({ code: 'not_found' })
   })
 })

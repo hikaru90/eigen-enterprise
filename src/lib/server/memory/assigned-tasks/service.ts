@@ -33,10 +33,22 @@ export type TaskNotification = {
   email: boolean
 }
 
+/**
+ * A task given to an AI co-worker asks it for a turn (plan/phase-ai-coworkers.md
+ * C6): when it is assigned, and when a person comments on it while it is open.
+ * The co-worker works it and answers with a comment (and completes it when
+ * done). Co-workers get no push: this replaces the assignee's notification.
+ */
+export type CoworkerTaskEvent =
+  | { kind: 'assigned'; taskId: string; coworkerId: string; byUserId: string; at: Date }
+  | { kind: 'commented'; taskId: string; coworkerId: string; byUserId: string; commentId: string; at: Date }
+
 export type AssignedTaskDeps = {
   store: AssignedTaskStore
   directory: TaskDirectory
   notify: (userId: string, n: TaskNotification) => Promise<void>
+  /** Queues the co-worker's turn on a task given to it (live: $lib/server/coworkers/task-work.ts). */
+  coworkerWork: (e: CoworkerTaskEvent) => Promise<void>
   now?: () => Date
   newId?: () => string
 }
@@ -210,13 +222,18 @@ export async function assignTask(
     assignerSeenAt: at,
   }
   await d.store.insert(task)
-  await send(d, assignee.id, {
-    title: `${assigner.name} assigned you a task`,
-    body: snippet(dueOn ? `${title} · due ${dueOn}` : title),
-    url: TASKS_URL,
-    tag: `assigned-task-${task.id}`,
-    email: true,
-  })
+  if (assignee.kind === 'coworker') {
+    // An AI co-worker works it: its turn is queued (a failure to queue fails loud; the task stays assigned).
+    await d.coworkerWork({ kind: 'assigned', taskId: task.id, coworkerId: assignee.id, byUserId: assigner.id, at })
+  } else {
+    await send(d, assignee.id, {
+      title: `${assigner.name} assigned you a task`,
+      body: snippet(dueOn ? `${title} · due ${dueOn}` : title),
+      url: TASKS_URL,
+      tag: `assigned-task-${task.id}`,
+      email: true,
+    })
+  }
   return viewOne(d, actor.userId, task)
 }
 
@@ -259,16 +276,32 @@ export async function commentOnTask(d: AssignedTaskDeps, actor: TaskActor, taskI
   const { task, side } = await visibleTask(d, actor.userId, taskId)
   const text = body.trim()
   if (!text || text.length > COMMENT_MAX) throw new AssignedTaskError('invalid', `A comment needs 1 to ${COMMENT_MAX} characters.`)
-  const updated = await d.store.addComment({ id: newIdOf(d), taskId: task.id, authorId: actor.userId, body: text, createdAt: nowOf(d) }, side)
-  const author = (await d.directory.get(actor.userId))?.name ?? FORMER_MEMBER
-  await send(d, side === 'assignee' ? task.assignerId : task.assigneeId, {
-    title: `${author} commented on '${snippet(task.title, 80)}'`,
-    body: snippet(text),
-    url: TASKS_URL,
-    tag: `assigned-task-${task.id}`,
-    email: false,
-  })
+  const comment = { id: newIdOf(d), taskId: task.id, authorId: actor.userId, body: text, createdAt: nowOf(d) }
+  const updated = await d.store.addComment(comment, side)
+  const authorPerson = await d.directory.get(actor.userId)
+  const author = authorPerson?.name ?? FORMER_MEMBER
+  const assignee = side === 'assigner' ? await d.directory.get(task.assigneeId) : null
+  if (assignee?.kind === 'coworker') {
+    // A person's comment on an open task an AI co-worker works asks it for one more turn; a co-worker's comment does not.
+    if (authorPerson?.kind === 'human' && task.status === 'open') {
+      await d.coworkerWork({ kind: 'commented', taskId: task.id, coworkerId: assignee.id, byUserId: actor.userId, commentId: comment.id, at: comment.createdAt })
+    }
+  } else {
+    await send(d, side === 'assignee' ? task.assignerId : task.assigneeId, {
+      title: `${author} commented on '${snippet(task.title, 80)}'`,
+      body: snippet(text),
+      url: TASKS_URL,
+      tag: `assigned-task-${task.id}`,
+      email: false,
+    })
+  }
   return viewOne(d, actor.userId, updated)
+}
+
+/** One task as its assigner or assignee sees it (an AI co-worker's turn reads its task this way). */
+export async function getTask(d: AssignedTaskDeps, userId: string, taskId: string): Promise<AssignedTaskView> {
+  const { task } = await visibleTask(d, userId, taskId)
+  return viewOne(d, userId, task)
 }
 
 /** The person acknowledged what happened on the task (the "Got it" on Needs you). */

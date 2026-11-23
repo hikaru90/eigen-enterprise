@@ -5,6 +5,14 @@ import type { CoworkerTriggerKind } from '$lib/server/db/coworkers.schema'
  * assembled fresh every turn from its role card, the org chart, the company,
  * the thread and the trigger, plus the collaboration rules (§6). Pure: the
  * caller reads everything, this only writes it down.
+ *
+ * Three kinds of turn, by the trigger (structure, never meaning):
+ * - mention | dm (C3): it answers in the thread; the thread budget applies.
+ * - rhythm (C6): its scheduled check-in; the answer is posted as a new
+ *   top-level message in the rhythm's conversation (the recent log is context).
+ * - assignment (C6): it works an assigned task; the answer is posted as a
+ *   comment on the task, and it completes the task itself (tasks.complete)
+ *   when the work is done, or says what blocks it and leaves it open.
  */
 
 export type PromptKind = 'human' | 'coworker'
@@ -30,6 +38,18 @@ export type PromptMessage = {
   at: string
 }
 
+/** An assigned task as the co-worker sees it (assignment turns). */
+export type PromptTask = {
+  id: string
+  title: string
+  context: string
+  /** YYYY-MM-DD or null. */
+  dueOn: string | null
+  assigner: PromptPerson
+  /** Oldest first. */
+  comments: PromptMessage[]
+}
+
 export type CoworkerPromptInput = {
   self: {
     id: string
@@ -43,14 +63,22 @@ export type CoworkerPromptInput = {
   }
   org: PromptOrgEntry[]
   company: { name: string | null; profile: string | null; brandVoice: string | null }
-  conversation: { kind: 'channel' | 'dm'; title: string; inThread: boolean }
-  /** The thread (or DM log), oldest first: the last messages only. */
+  /** Where it answers or posts; null for an assignment (it works on a task). */
+  conversation: { kind: 'channel' | 'dm'; title: string; inThread: boolean } | null
+  /** The thread (or DM log, or a rhythm's channel log), oldest first: the last messages only. */
   transcript: PromptMessage[]
   /** Whether older messages of the thread are left out of `transcript`. */
   hasOlder: boolean
-  trigger: { kind: CoworkerTriggerKind; from: PromptPerson; body: string }
-  /** Co-worker turns this thread may still take before a person has to step in (this one included). */
-  turnsLeft: number
+  /** The task of an assignment turn; null otherwise. */
+  task: PromptTask | null
+  /**
+   * What asked for the turn: the message (mention, dm), the rhythm's
+   * instruction (rhythm, `from` = who set it up), or for an assignment the
+   * person's new comment (`body`; the first turn's body is the task's title).
+   */
+  trigger: { kind: CoworkerTriggerKind; from: PromptPerson; body: string; followUp?: boolean }
+  /** Co-worker turns this thread may still take before a person has to step in (this one included); null outside a thread turn. */
+  turnsLeft: number | null
 }
 
 const who = (p: PromptPerson) => `${p.name} (${p.handle ? `@${p.handle}, ` : ''}${p.kind === 'coworker' ? 'AI co-worker' : 'person'})`
@@ -88,22 +116,59 @@ function company(c: CoworkerPromptInput['company']): string {
   return `# The company\n${lines.join('\n')}`
 }
 
-function thread(input: CoworkerPromptInput): string {
+function thread(input: CoworkerPromptInput, conversation: NonNullable<CoworkerPromptInput['conversation']>): string {
   const where =
-    input.conversation.kind === 'dm'
-      ? `a direct message (${input.conversation.title})`
-      : `${input.conversation.title}${input.conversation.inThread ? ', in a thread' : ''}`
+    conversation.kind === 'dm' ? `a direct message (${conversation.title})` : `${conversation.title}${conversation.inThread ? ', in a thread' : ''}`
   const older = input.hasOlder ? '(older messages not shown; read them with messages.read or messages.thread)\n' : ''
   const lines = input.transcript.map((m) => `[${m.at}] ${who(m.author)}:\n${m.body.trim() || '(no text)'}`)
   return `# The conversation: ${where}\n${older}${lines.join('\n\n') || '(no messages yet)'}`
 }
 
+function task(t: PromptTask): string {
+  const lines = [`Title: ${t.title}`, `Task id: ${t.id}`, `Assigned by: ${who(t.assigner)}`, `Due: ${t.dueOn ?? 'no due day'}`]
+  lines.push(t.context.trim() ? `What they told you:\n${t.context.trim()}` : 'No further context was given.')
+  const comments = t.comments.map((m) => `[${m.at}] ${who(m.author)}:\n${m.body.trim() || '(no text)'}`)
+  return `# The task assigned to you\n${lines.join('\n')}\n\nComments so far:\n${comments.join('\n\n') || '(none yet)'}`
+}
+
 function trigger(t: CoworkerPromptInput['trigger']): string {
+  const body = t.body.trim() || '(no text)'
+  if (t.kind === 'rhythm') return `# Why you are acting now\nIt is time for your scheduled check-in, which ${who(t.from)} set up:\n${body}`
+  if (t.kind === 'assignment') {
+    return t.followUp
+      ? `# Why you are acting now\n${who(t.from)} commented on the task:\n${body}`
+      : `# Why you are acting now\n${who(t.from)} assigned you the task above.`
+  }
   const how = t.kind === 'dm' ? 'wrote to you in a direct message' : t.kind === 'mention' ? 'mentioned you' : `asked you (${t.kind})`
-  return `# Why you are answering now\n${who(t.from)} ${how}:\n${t.body.trim() || '(no text)'}`
+  return `# Why you are answering now\n${who(t.from)} ${how}:\n${body}`
+}
+
+const SHARED_RULES = `- Argue from your accountability and your lens. Do not just agree: when your lens says something is wrong, say so and say why.
+- Stay in your role. When something belongs to someone else's accountability, say so and @mention who owns it (see the org chart) with a concrete question.`
+
+function rhythmRules(input: CoworkerPromptInput): string {
+  const where = input.conversation?.kind === 'dm' ? 'this direct message' : (input.conversation?.title ?? 'the conversation')
+  return `# How you work here
+${SHARED_RULES}
+- Your answer is posted for you as a new message in ${where}, as you. Do not post it yourself with messages.post.
+- Write the post itself, ready to read: no preamble, no greeting, no questions about whether to post.
+- Be concise: a few short paragraphs or a list.`
+}
+
+function assignmentRules(input: CoworkerPromptInput): string {
+  const t = input.task!
+  return `# How you work here
+${SHARED_RULES}
+- Do the work with your tools. Your answer is posted for you as your comment on the task, as you: your result, or what you need. Do not comment yourself with tasks.comment.
+- When the task is done, mark it done with tasks.complete (task_id ${t.id}) before you answer.
+- When something blocks you, say what blocks it and who can unblock it, and leave the task open.
+- Be concise: a few short paragraphs or a list, no filler, no greeting.
+- ${t.assigner.name} (${at(t.assigner)}) reads your comment; ${input.self.accountableHuman.name} (${at(input.self.accountableHuman)}) is the person you answer to.`
 }
 
 function rules(input: CoworkerPromptInput): string {
+  if (input.trigger.kind === 'rhythm') return rhythmRules(input)
+  if (input.trigger.kind === 'assignment') return assignmentRules(input)
   const human = input.self.accountableHuman
   return `# How you work here
 - Argue from your accountability and your lens. Do not just agree: when your lens says something is wrong, say so and say why.
@@ -115,11 +180,14 @@ function rules(input: CoworkerPromptInput): string {
 - This thread has ${input.turnsLeft} co-worker turn${input.turnsLeft === 1 ? '' : 's'} left before ${human.name} (${at(human)}) has to step in; do not spend them on back-and-forth.`
 }
 
-/** The whole system prompt of one co-worker turn. */
+/** The whole system prompt of one co-worker turn. Fails loud on an input that does not fit its trigger. */
 export function assembleCoworkerPrompt(input: CoworkerPromptInput): string {
-  return [roleCard(input.self), orgChart(input.org, input.self.id), company(input.company), thread(input), trigger(input.trigger), rules(input)].join(
-    '\n\n',
-  )
+  const kind = input.trigger.kind
+  if (kind === 'assignment' && !input.task) throw new Error('an assignment turn needs its task')
+  if (kind !== 'assignment' && !input.conversation) throw new Error(`a ${kind} turn needs its conversation`)
+  if ((kind === 'mention' || kind === 'dm') && input.turnsLeft === null) throw new Error(`a ${kind} turn needs the thread's turns left`)
+  const where = input.task ? task(input.task) : thread(input, input.conversation!)
+  return [roleCard(input.self), orgChart(input.org, input.self.id), company(input.company), where, trigger(input.trigger), rules(input)].join('\n\n')
 }
 
 /** The turn's input (the durable conversation's user message): the trigger, in one line of context and its words. */

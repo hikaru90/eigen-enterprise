@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { KernelError } from '$lib/kernel/errors'
 import { CoworkerError } from '$lib/server/coworkers/service'
-import { _profileDeps, load as profileLoad } from './[id]/+page.server'
 import { _orgDeps, actions, load } from './+page.server'
+import { _profileDeps, actions as profileActions, load as profileLoad } from './[id]/+page.server'
 
 /**
  * Settings → Org chart and a seat's profile (plan/phase-ai-coworkers.md C5):
@@ -44,6 +44,8 @@ const run = (async (user: { id: string }, tool: string, input: unknown) => {
   if (tool === 'org.chart') return { people }
   if (tool === 'coworkers.list') return { coworkers: [coworker] }
   if (tool === 'coworkers.get') return coworker
+  if (tool === 'coworkers.runs') return { runs: [{ id: 'run-1', triggerKind: 'rhythm', status: 'done' }] }
+  if (tool === 'coworkers.notice_seen') return { runId: 'run-1', seen: true }
   return people[1]
 }) as typeof _orgDeps.run
 
@@ -117,8 +119,11 @@ describe('setPosition', () => {
 describe('profile load', () => {
   it("a co-worker's profile: its seat, manager, and role card from coworkers.get", async () => {
     const data = (await profileLoad({ locals, params: { id: 'cw1' } } as never)) as Record<string, unknown>
-    expect(calls.map((c) => c.tool)).toEqual(['org.chart', 'coworkers.list', 'coworkers.get'])
+    expect(calls.map((c) => c.tool)).toEqual(['org.chart', 'coworkers.list', 'coworkers.get', 'coworkers.runs'])
     expect(calls[2]!.input).toEqual({ user_id: 'cw1' })
+    // C6: its run log.
+    expect(calls[3]!.input).toEqual({ user_id: 'cw1', limit: 30 })
+    expect(data.runs).toEqual([{ id: 'run-1', triggerKind: 'rhythm', status: 'done' }])
     expect(data.manager).toEqual({ id: 'owner', name: 'Olga' })
     expect(data.coworker).toEqual({
       lens: 'Reach first.',
@@ -132,11 +137,22 @@ describe('profile load', () => {
   it("a person's profile has no co-worker card and lists their direct reports", async () => {
     const data = (await profileLoad({ locals, params: { id: 'owner' } } as never)) as Record<string, unknown>
     expect(calls.map((c) => c.tool)).not.toContain('coworkers.get')
+    expect(calls.map((c) => c.tool)).not.toContain('coworkers.runs')
     expect(data.coworker).toBeNull()
+    expect(data.runs).toEqual([])
     expect(data.reports).toEqual([
       { id: 'me', name: 'Ony', kind: 'human' },
       { id: 'cw1', name: 'Mara', kind: 'coworker' },
     ])
+  })
+
+  it('"Got it" on a co-worker row in Needs you → coworkers.notice_seen as the person (C6)', async () => {
+    const out = await profileActions.noticeSeen({
+      locals,
+      request: new Request('http://x/settings/org/cw1', { method: 'POST', body: new URLSearchParams({ run_id: 'run-1' }) }),
+    } as never)
+    expect(calls).toEqual([expect.objectContaining({ tool: 'coworkers.notice_seen', input: { run_id: 'run-1' } })])
+    expect(out).toEqual({ action: 'noticeSeen', ok: true })
   })
 
   it('answers 404 for someone not in the chart', async () => {

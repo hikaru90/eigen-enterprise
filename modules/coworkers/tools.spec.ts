@@ -5,8 +5,9 @@ import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { onCoworkersChanged } from '$lib/server/coworkers/changes'
 import { memoryCoworkerStore } from '$lib/server/coworkers/memory-store'
+import { MemoryRhythmStore } from '$lib/server/coworkers/rhythms'
 import { MemoryCoworkerRunStore } from '$lib/server/coworkers/run-store'
-import type { CoworkerActor, OrgMember } from '$lib/server/coworkers/service'
+import { getCoworker, type CoworkerActor, type OrgMember } from '$lib/server/coworkers/service'
 import { COWORKERS_GATED_TOOLS, COWORKERS_TOOL_NAMES, coworkersManifest } from './manifest'
 import { createCoworkersTools } from './tools'
 
@@ -29,8 +30,32 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
   const runs = new MemoryCoworkerRunStore()
   /** Which conversations each reader may see (Messages decides this live). */
   const sees: Record<string, string[]> = { olga: ['conv-launch', 'conv-dm'], mo: ['conv-launch'] }
+  const rhythmStore = new MemoryRhythmStore(runs)
+  const started: string[] = []
   const tools = createCoworkersTools({
     runs: async () => runs,
+    rhythms: async () => ({
+      store: rhythmStore,
+      runs,
+      coworkers: { get: (id) => getCoworker(store, id) },
+      targets: {
+        // Every co-worker is in #launch only.
+        coworkerMayPost: async (_cw, id) => id === '11111111-1111-4111-8111-111111111111',
+        titleFor: async (reader, id) => (id === '11111111-1111-4111-8111-111111111111' && reader !== 'nobody' ? '#launch' : null),
+        listFor: async () => [{ id: '11111111-1111-4111-8111-111111111111', title: '#launch', kind: 'channel' as const }],
+      },
+      start: (id) => {
+        started.push(id)
+      },
+      ready: () => {},
+      now: () => at,
+    }),
+    notices: async () => ({
+      runs,
+      nameOf: async (id) => (await getCoworker(store, id)).name,
+      visible: async (reader, ids) => new Set(ids.filter((id) => (sees[reader] ?? []).includes(id))),
+      now: () => at,
+    }),
     runLocations: async (reader, ids) => new Set(ids.filter((id) => (sees[reader.id] ?? []).includes(id))),
     deps: async () => deps,
     actor: async (ctx): Promise<CoworkerActor> => {
@@ -57,7 +82,7 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
     await approvals.decide(pending!.id, 'approved', 'olga')
     return registry.execute(name, input, ctx)
   }
-  return { store, registry, tool, ownerCtx, memberCtx, approved, approvals, runs }
+  return { store, registry, tool, ownerCtx, memberCtx, approved, approvals, runs, started }
 }
 
 describe('coworkers module', () => {
@@ -175,6 +200,9 @@ describe('coworkers.runs (C3): the run log', () => {
       triggerMessageId: 'msg-1',
       requestedByUserId: 'mo',
       triggeredAt: new Date('2026-11-23T09:01:00Z'),
+      rhythmId: null,
+      taskId: null,
+      triggerKey: null,
     })
     await runs.update(first!.id, {
       status: 'done',
@@ -190,6 +218,9 @@ describe('coworkers.runs (C3): the run log', () => {
       triggerMessageId: 'msg-2',
       requestedByUserId: 'olga',
       triggeredAt: new Date('2026-11-23T09:05:00Z'),
+      rhythmId: null,
+      taskId: null,
+      triggerKey: null,
     })
     await runs.update(second!.id, { status: 'stopped', stopReason: 'daily_cap', error: 'reached its daily spend cap', endedAt: new Date('2026-11-23T09:05:01Z') })
 
@@ -230,5 +261,70 @@ describe('coworkers.runs (C3): the run log', () => {
   it('an unknown co-worker answers not_found', async () => {
     const { registry, memberCtx } = setup()
     await expect(registry.execute('coworkers.runs', { user_id: 'nobody' }, memberCtx)).rejects.toMatchObject({ code: 'not_found' })
+  })
+})
+
+describe('rhythms and Needs you (C6)', () => {
+  const LAUNCH = '11111111-1111-4111-8111-111111111111'
+  const OTHER = '22222222-2222-4222-8222-222222222222'
+  const rhythm = { weekdays: ['MO', 'WE'], time: '09:00', time_zone: 'Europe/Berlin', instruction: 'Post the standup.', conversation_id: LAUNCH }
+
+  it('members read rhythms; admins create, change, run now and delete them; output schemas hold', async () => {
+    const { registry, ownerCtx, memberCtx, approved, runs, started, tool } = setup('allow_all')
+    for (const name of ['coworkers.rhythm_list', 'coworkers.needs_you']) expect(tool(name)).toMatchObject({ auditClass: 'read', permission: { roles: ['admin', 'member', 'agent'] } })
+    for (const name of ['coworkers.rhythm_create', 'coworkers.rhythm_update', 'coworkers.rhythm_delete', 'coworkers.rhythm_run_now']) {
+      expect(tool(name)).toMatchObject({ auditClass: 'mutate', permission: { roles: ['admin', 'agent'] } })
+      expect(tool(name).outputSchema).toBeDefined()
+    }
+    expect(tool('coworkers.notice_seen')).toMatchObject({ auditClass: 'mutate', permission: { roles: ['admin', 'member', 'agent'] } })
+    const cw = (await approved('coworkers.create', { template_id: 'marketing-manager', name: 'Mara' }, ownerCtx)) as { id: string }
+
+    await expect(registry.execute('coworkers.rhythm_create', { user_id: cw.id, ...rhythm }, memberCtx)).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(registry.execute('coworkers.rhythm_create', { user_id: cw.id, ...rhythm, conversation_id: OTHER }, ownerCtx)).rejects.toMatchObject({ code: 'not_found' })
+    await expect(registry.execute('coworkers.rhythm_create', { user_id: cw.id, ...rhythm, time: '9:00' }, ownerCtx)).rejects.toMatchObject({ code: 'invalid_input' })
+    const created = (await registry.execute('coworkers.rhythm_create', { user_id: cw.id, ...rhythm }, ownerCtx)) as { id: string; nextAt: string }
+    expect(created).toMatchObject({ targetTitle: '#launch', weekdays: ['MO', 'WE'], nextAt: '2026-11-25T08:00:00.000Z' })
+
+    const listed = (await registry.execute('coworkers.rhythm_list', { user_id: cw.id }, memberCtx)) as { rhythms: { id: string }[]; targets: unknown[] }
+    expect(listed.rhythms.map((r) => r.id)).toEqual([created.id])
+    expect(listed.targets).toEqual([{ id: LAUNCH, title: '#launch', kind: 'channel' }])
+
+    const off = (await registry.execute('coworkers.rhythm_update', { rhythm_id: created.id, enabled: false }, ownerCtx)) as { enabled: boolean; nextAt: null }
+    expect(off).toMatchObject({ enabled: false, nextAt: null })
+
+    const now = (await registry.execute('coworkers.rhythm_run_now', { rhythm_id: created.id }, ownerCtx)) as { run: { id: string; triggerKind: string; status: string } }
+    expect(now.run).toMatchObject({ triggerKind: 'rhythm', status: 'queued', rhythmId: created.id })
+    expect(started).toEqual([now.run.id])
+    expect(runs.rows).toHaveLength(1)
+
+    await expect(registry.execute('coworkers.rhythm_delete', { rhythm_id: created.id }, memberCtx)).rejects.toMatchObject({ code: 'permission_denied' })
+    expect(await registry.execute('coworkers.rhythm_delete', { rhythm_id: created.id }, ownerCtx)).toEqual({ id: created.id, deleted: true })
+    expect(((await registry.execute('coworkers.rhythm_list', { user_id: cw.id }, memberCtx)) as { rhythms: unknown[] }).rhythms).toEqual([])
+  })
+
+  it('needs_you lists only your own notices with where to look; notice_seen clears one, and refuses another person’s', async () => {
+    const { registry, ownerCtx, memberCtx, approved, runs } = setup('allow_all')
+    const cw = (await approved('coworkers.create', { template_id: 'marketing-manager', name: 'Mara' }, ownerCtx)) as { id: string }
+    const run = await runs.enqueue({
+      coworkerUserId: cw.id,
+      triggerKind: 'rhythm',
+      conversationId: 'conv-launch',
+      threadRootId: null,
+      triggerMessageId: null,
+      requestedByUserId: 'olga',
+      triggeredAt: at,
+      rhythmId: null,
+      taskId: null,
+      triggerKey: 'rhythm:r:1',
+    })
+    await runs.update(run!.id, { status: 'done', threadRootId: 'post-1', endedAt: at })
+    await runs.addNotices(run!.id, ['olga'], at)
+
+    const mine = (await registry.execute('coworkers.needs_you', {}, ownerCtx)) as { notices: Array<{ href: string; coworker: { name: string } }> }
+    expect(mine.notices).toEqual([expect.objectContaining({ href: '/messages?c=conv-launch&t=post-1', coworker: { id: cw.id, name: 'Mara' } })])
+    expect(((await registry.execute('coworkers.needs_you', {}, memberCtx)) as { notices: unknown[] }).notices).toEqual([])
+    await expect(registry.execute('coworkers.notice_seen', { run_id: run!.id }, memberCtx)).rejects.toMatchObject({ code: 'not_found' })
+    expect(await registry.execute('coworkers.notice_seen', { run_id: run!.id }, ownerCtx)).toEqual({ runId: run!.id, seen: true })
+    expect(((await registry.execute('coworkers.needs_you', {}, ownerCtx)) as { notices: unknown[] }).notices).toEqual([])
   })
 })

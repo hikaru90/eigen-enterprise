@@ -81,6 +81,10 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   org_position: full,
   coworker_profile: full,
   coworker_run: full,
+  // C6 (0173): a co-worker's rhythms (schedule, instruction, target conversation) and the
+  // "Needs you" notices of its proactive runs: company-level, shown in the app, all in full.
+  coworker_rhythm: full,
+  coworker_run_notice: full,
   access_grant: full,
   user_api_key: fullWith('key_hash'),
   push_subscription: excluded('device push endpoints; each device subscribes again on the new system'),

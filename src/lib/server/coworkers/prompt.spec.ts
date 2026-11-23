@@ -31,6 +31,7 @@ function input(over: Partial<CoworkerPromptInput> = {}): CoworkerPromptInput {
       { author: gtm, body: 'Price at $12 per seat.', at: '2026-11-23T09:02:00.000Z' },
     ],
     hasOlder: false,
+    task: null,
     trigger: { kind: 'mention', from: gtm, body: '@marketing does that fit the story?' },
     turnsLeft: 6,
     ...over,
@@ -104,5 +105,50 @@ describe('assembleCoworkerPrompt', () => {
 
   it('the turn input is the trigger itself, with who sent it', () => {
     expect(coworkerTurnInput({ kind: 'mention', from: ann, body: ' @marketing plan the launch ' })).toBe('Ann Owner (@ann, person):\n@marketing plan the launch')
+  })
+
+  it('a rhythm turn: the scheduled instruction, the channel log as context, posted as a new message', () => {
+    const p = assembleCoworkerPrompt(
+      input({
+        conversation: { kind: 'channel', title: '#marketing', inThread: false },
+        trigger: { kind: 'rhythm', from: ann, body: 'Post the marketing standup: yesterday, today, blockers.' },
+        turnsLeft: null,
+      }),
+    )
+    expect(p).toContain('# The conversation: #marketing\n')
+    expect(p).toContain('# Why you are acting now\nIt is time for your scheduled check-in, which Ann Owner (@ann, person) set up:\nPost the marketing standup')
+    expect(p).toContain('posted for you as a new message in #marketing')
+    expect(p).toContain('Do not post it yourself with messages.post')
+    expect(p).not.toContain('co-worker turns left')
+  })
+
+  it('an assignment turn: the task with its comments, posted as a comment, completed with tasks.complete', () => {
+    const task = {
+      id: 'task-1',
+      title: 'Draft the launch email',
+      context: 'For the December list.',
+      dueOn: '2026-12-01',
+      assigner: ann,
+      comments: [{ author: ann, body: 'Keep it short.', at: '2026-11-23T10:00:00.000Z' }],
+    }
+    const first = assembleCoworkerPrompt(input({ conversation: null, transcript: [], task, trigger: { kind: 'assignment', from: ann, body: task.title }, turnsLeft: null }))
+    expect(first).toContain('# The task assigned to you\nTitle: Draft the launch email\nTask id: task-1\nAssigned by: Ann Owner (@ann, person)\nDue: 2026-12-01')
+    expect(first).toContain('What they told you:\nFor the December list.')
+    expect(first).toContain('[2026-11-23T10:00:00.000Z] Ann Owner (@ann, person):\nKeep it short.')
+    expect(first).toContain('Ann Owner (@ann, person) assigned you the task above.')
+    expect(first).toContain('mark it done with tasks.complete (task_id task-1)')
+    expect(first).toContain('say what blocks it and who can unblock it, and leave the task open')
+    expect(first).toContain('Do not comment yourself with tasks.comment')
+    expect(first).not.toContain('# The conversation')
+    const followUp = assembleCoworkerPrompt(
+      input({ conversation: null, transcript: [], task, trigger: { kind: 'assignment', from: ann, body: 'Add the price.', followUp: true }, turnsLeft: null }),
+    )
+    expect(followUp).toContain('Ann Owner (@ann, person) commented on the task:\nAdd the price.')
+  })
+
+  it('fails loud on an input that does not fit its trigger', () => {
+    expect(() => assembleCoworkerPrompt(input({ trigger: { kind: 'assignment', from: ann, body: 'x' }, turnsLeft: null }))).toThrow('needs its task')
+    expect(() => assembleCoworkerPrompt(input({ conversation: null, trigger: { kind: 'rhythm', from: ann, body: 'x' } }))).toThrow('needs its conversation')
+    expect(() => assembleCoworkerPrompt(input({ turnsLeft: null }))).toThrow("needs the thread's turns left")
   })
 })

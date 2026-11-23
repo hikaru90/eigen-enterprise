@@ -1,7 +1,7 @@
 <script lang="ts">
+  import type { ActionFeedback } from './action-result'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { m } from '$lib/paraglide/messages.js'
-  import type { ActionFeedback } from './action-result'
 
   /** One action's answer under its form: saved, waiting for an owner's or admin's approval, or the error notice. */
   let { feedback, done, testid = 'action-feedback' }: { feedback: ActionFeedback | null; done?: string; testid?: string } =

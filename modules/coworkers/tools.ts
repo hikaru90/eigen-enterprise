@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor, ToolPrincipal } from '$lib/kernel/types'
 import { notifyCoworkersChanged } from '$lib/server/coworkers/changes'
+import type { NoticeDeps } from '$lib/server/coworkers/notices'
+import type { RhythmDeps, RhythmView } from '$lib/server/coworkers/rhythms'
 import type { CoworkerRunRow, CoworkerRunStore } from '$lib/server/coworkers/run-store'
 import type { CoworkerActor, CoworkerDeps, CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
 import { COWORKER_TEMPLATE_IDS, COWORKER_TEMPLATES } from '$lib/server/coworkers/templates'
@@ -24,6 +26,11 @@ import { COWORKERS_CREATE_TOOL, COWORKERS_MODULE_ID, COWORKERS_REMOVE_TOOL } fro
  * status, cost and timings. Where a turn ran is shown only to a reader who may
  * see that conversation (a DM or private channel they are not in never leaks:
  * its location is hidden).
+ *
+ * C6, proactive: coworkers.rhythm_* are a co-worker's scheduled check-ins
+ * (list for members; create, update, delete and run now for admins), and
+ * coworkers.needs_you / coworkers.notice_seen are the reader's own "Needs you"
+ * rows for finished rhythm and assignment runs.
  */
 
 /** The conversations, of `conversationIds`, the reader may see. */
@@ -34,6 +41,8 @@ export type CoworkersToolDeps = {
   actor?: (ctx: ToolContext) => Promise<CoworkerActor>
   runs?: () => Promise<CoworkerRunStore>
   runLocations?: RunLocationAccess
+  rhythms?: () => Promise<RhythmDeps>
+  notices?: () => Promise<NoticeDeps>
 }
 
 const READ_ROLES = ['admin', 'member', 'agent']
@@ -153,12 +162,79 @@ const runEntrySchema = z.object({
   threadRootId: z.string().nullable(),
   triggerMessageId: z.string().nullable(),
   threadUrl: z.string().nullable(),
+  taskId: z.string().nullable(),
+  taskUrl: z.string().nullable(),
+  rhythmId: z.string().nullable(),
   hidden: z.boolean(),
   triggeredAt: z.string(),
   startedAt: z.string().nullable(),
   endedAt: z.string().nullable(),
   error: z.string().nullable(),
 })
+
+// --- rhythms and "Needs you" (C6) ---------------------------------------------
+const WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const
+const weekdaysField = z.array(z.enum(WEEKDAY_CODES)).min(1).max(7).describe('Weekdays, RFC 5545 codes: MO TU WE TH FR SA SU.')
+const timeField = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM on a 24-hour clock')
+  .describe('Wall time HH:MM (24 h) in time_zone.')
+const zoneField = z.string().min(1).max(64).describe('IANA time zone, e.g. Europe/Berlin.')
+const instructionField = z.string().min(1).max(2000).describe('What to post at each check-in, e.g. "Post the marketing standup: yesterday, today, blockers."')
+const conversationField = z.string().uuid().describe('The conversation it posts in (a channel or DM it is a member of; messages.list_channels).')
+const rhythmIdField = z.string().uuid()
+const rhythmListInput = z.object({ user_id: userId }).strict()
+const rhythmCreateInput = z
+  .object({
+    user_id: userId,
+    weekdays: weekdaysField,
+    time: timeField,
+    time_zone: zoneField,
+    instruction: instructionField,
+    conversation_id: conversationField,
+    enabled: z.boolean().optional(),
+  })
+  .strict()
+const rhythmUpdateInput = z
+  .object({
+    rhythm_id: rhythmIdField,
+    weekdays: weekdaysField.optional(),
+    time: timeField.optional(),
+    time_zone: zoneField.optional(),
+    instruction: instructionField.optional(),
+    conversation_id: conversationField.optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict()
+const rhythmByIdInput = z.object({ rhythm_id: rhythmIdField }).strict()
+const noticeSeenInput = z.object({ run_id: z.string().uuid() }).strict()
+export const rhythmViewSchema = z.object({
+  id: z.string(),
+  coworkerUserId: z.string(),
+  weekdays: z.array(z.enum(WEEKDAY_CODES)),
+  time: z.string(),
+  timeZone: z.string(),
+  instruction: z.string(),
+  targetConversationId: z.string().nullable(),
+  targetTitle: z.string().nullable(),
+  hidden: z.boolean(),
+  enabled: z.boolean(),
+  nextAt: z.string().nullable(),
+  lastSlotAt: z.string(),
+  createdBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+})
+
+async function liveRhythms(): Promise<RhythmDeps> {
+  return (await import('$lib/server/coworkers/rhythm-live')).liveRhythmDeps()
+}
+
+async function liveNotices(): Promise<NoticeDeps> {
+  return (await import('$lib/server/coworkers/rhythm-live')).liveNoticeDeps()
+}
+
+const rhythmLine = (r: Pick<RhythmView, 'weekdays' | 'time' | 'timeZone'>) => `${r.weekdays.join(' ')} ${r.time} ${r.timeZone}`
 
 async function liveRuns(): Promise<CoworkerRunStore> {
   return (await import('$lib/server/coworkers/db-run-store')).liveCoworkerRunStore
@@ -179,7 +255,11 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
   const actor = opts.actor ?? liveActor
   const runs = opts.runs ?? liveRuns
   const runLocations = opts.runLocations ?? liveRunLocations
+  const rhythms = opts.rhythms ?? liveRhythms
+  const notices = opts.notices ?? liveNotices
   const service = () => import('$lib/server/coworkers/service')
+  const rhythmService = () => import('$lib/server/coworkers/rhythms')
+  const noticeService = () => import('$lib/server/coworkers/notices')
   return [
     {
       name: 'coworkers.templates',
@@ -338,8 +418,132 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
         const rows: CoworkerRunRow[] = await (await runs()).listForCoworker(i.user_id, i.limit ?? 20)
         const visible = await runLocations(ctx.principal, rows.flatMap((r) => (r.conversationId ? [r.conversationId] : [])))
         const { runEntry } = await import('$lib/server/coworkers/run-log')
-        return { runs: rows.map((r) => runEntry(r, visible)) }
+        return { runs: rows.map((r) => runEntry(r, visible, ctx.principal.id)) }
       },
+    },
+    {
+      name: 'coworkers.rhythm_list',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        "An AI co-worker's rhythms (scheduled check-ins): weekdays, time and time zone, the instruction, the conversation it posts in (hidden when you may not see it), whether it is on and when it runs next; and targets: the conversations a new rhythm of it can post in (it is a member, you can see them).",
+      auditClass: 'read',
+      inputSchema: rhythmListInput,
+      outputSchema: z.object({
+        rhythms: z.array(rhythmViewSchema),
+        targets: z.array(z.object({ id: z.string(), title: z.string(), kind: z.enum(['channel', 'dm']) })),
+      }),
+      permission: { roles: READ_ROLES },
+      handler: async (ctx, input) => {
+        const id = rhythmListInput.parse(input).user_id
+        const d = await rhythms()
+        const svc = await rhythmService()
+        return { rhythms: await svc.listRhythms(d, ctx.principal.id, id), targets: await svc.rhythmTargets(d, ctx.principal.id, id) }
+      },
+    },
+    {
+      name: 'coworkers.rhythm_create',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        'Give an AI co-worker a rhythm: on these weekdays at this time (time zone), it takes a turn and posts the instruction\'s result as a new message in conversation_id. The co-worker must be a member of that conversation. It always posts (no model decides whether). Owner and admins.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof rhythmCreateInput>) => `Set up a rhythm for an AI co-worker: ${rhythmLine({ weekdays: input.weekdays, time: input.time, timeZone: input.time_zone })}`,
+      inputSchema: rhythmCreateInput,
+      outputSchema: rhythmViewSchema,
+      permission: { roles: ADMIN_ROLES },
+      handler: async (ctx, input) => {
+        const i = rhythmCreateInput.parse(input)
+        return (await rhythmService()).createRhythm(await rhythms(), await actor(ctx), {
+          coworkerUserId: i.user_id,
+          weekdays: i.weekdays,
+          time: i.time,
+          timeZone: i.time_zone,
+          instruction: i.instruction,
+          targetConversationId: i.conversation_id,
+          enabled: i.enabled,
+        })
+      },
+    },
+    {
+      name: 'coworkers.rhythm_update',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        "Change a co-worker's rhythm (only the fields given): weekdays, time, time_zone, instruction, conversation_id (it must be a member), enabled. A new schedule, or switching it back on, starts from now: no missed check-in is posted late.",
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (_input: z.infer<typeof rhythmUpdateInput>, output: unknown) => {
+        const r = output as RhythmView | undefined
+        return r ? `Changed an AI co-worker's rhythm: ${rhythmLine(r)}${r.enabled ? '' : ' (off)'}` : "Changed an AI co-worker's rhythm"
+      },
+      inputSchema: rhythmUpdateInput,
+      outputSchema: rhythmViewSchema,
+      permission: { roles: ADMIN_ROLES },
+      handler: async (ctx, input) => {
+        const i = rhythmUpdateInput.parse(input)
+        return (await rhythmService()).updateRhythm(await rhythms(), await actor(ctx), {
+          id: i.rhythm_id,
+          weekdays: i.weekdays,
+          time: i.time,
+          timeZone: i.time_zone,
+          instruction: i.instruction,
+          targetConversationId: i.conversation_id,
+          enabled: i.enabled,
+        })
+      },
+    },
+    {
+      name: 'coworkers.rhythm_delete',
+      module: COWORKERS_MODULE_ID,
+      summary: "Delete a co-worker's rhythm: it posts no more check-ins. Its past runs stay in the run log.",
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => "Deleted an AI co-worker's rhythm",
+      inputSchema: rhythmByIdInput,
+      outputSchema: z.object({ id: z.string(), deleted: z.literal(true) }),
+      permission: { roles: ADMIN_ROLES },
+      handler: async (ctx, input) => (await rhythmService()).deleteRhythm(await rhythms(), await actor(ctx), rhythmByIdInput.parse(input).rhythm_id),
+    },
+    {
+      name: 'coworkers.rhythm_run_now',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        "Run a co-worker's rhythm now, outside its schedule: it takes the turn and posts in the rhythm's conversation; the schedule is unchanged. Returns the queued run (follow it in coworkers.runs).",
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => "Ran an AI co-worker's rhythm now",
+      inputSchema: rhythmByIdInput,
+      outputSchema: z.object({ run: runEntrySchema }),
+      permission: { roles: ADMIN_ROLES },
+      handler: async (ctx, input) => {
+        const run = await (await rhythmService()).runRhythmNow(await rhythms(), await actor(ctx), rhythmByIdInput.parse(input).rhythm_id)
+        const visible = await runLocations(ctx.principal, run.conversationId ? [run.conversationId] : [])
+        const { runEntry } = await import('$lib/server/coworkers/run-log')
+        return { run: runEntry(run, visible, ctx.principal.id) }
+      },
+    },
+    {
+      name: 'coworkers.needs_you',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        'Your "Needs you" rows from AI co-workers: their finished or stopped rhythm and assignment runs that you answer for or asked for, newest first, each with its run (status, stop reason, cost) and where to look (href). Acknowledge one with coworkers.notice_seen.',
+      auditClass: 'read',
+      inputSchema: emptyInput,
+      outputSchema: z.object({
+        notices: z.array(z.object({ run: runEntrySchema, coworker: z.object({ id: z.string(), name: z.string() }), at: z.string(), href: z.string() })),
+      }),
+      permission: { roles: READ_ROLES },
+      handler: async (ctx) => ({ notices: await (await noticeService()).needsYouNotices(await notices(), ctx.principal.id) }),
+    },
+    {
+      name: 'coworkers.notice_seen',
+      module: COWORKERS_MODULE_ID,
+      summary: 'Acknowledge one of your "Needs you" rows from an AI co-worker (run_id from coworkers.needs_you): it leaves your Needs you.',
+      auditClass: 'mutate',
+      activity: () => "Acknowledged an AI co-worker's result",
+      inputSchema: noticeSeenInput,
+      outputSchema: z.object({ runId: z.string(), seen: z.literal(true) }),
+      permission: { roles: READ_ROLES },
+      handler: async (ctx, input) => (await noticeService()).markNoticeSeen(await notices(), ctx.principal.id, noticeSeenInput.parse(input).run_id),
     },
     {
       name: 'org.chart',

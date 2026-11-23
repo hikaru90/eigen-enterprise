@@ -38,7 +38,12 @@ export type ComposeCoworkerTurnsInput = {
   company: (coworkerId: string) => Promise<CompanyContext>
   turnCost: CoworkerTurnsDeps['turnCost']
   inTrace: CoworkerTurnsDeps['inTrace']
+  rhythms: CoworkerTurnsDeps['rhythms']
+  /** Reads a task as the co-worker (null when it is gone or not its); its comment is posted through the kernel (tasks.comment). */
+  readTask: CoworkerTurnsDeps['tasks']['get']
 } & Pick<CoworkerTurnsDeps, 'now' | 'threadTurnBudget' | 'heartbeatMs' | 'staleAfterMs'>
+
+const asCoworker = (coworkerId: string) => ({ principal: coworkerPrincipal(coworkerId, coworkerAgentId(coworkerId)), requestId: randomUUID() })
 
 export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): CoworkerTurnsHandle {
   const prompts = new TurnPrompts()
@@ -59,7 +64,7 @@ export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): Coworker
       const out = (await input.registry.execute(
         'messages.post',
         { conversation_id: p.conversationId, body: p.body, ...(p.parentId ? { parent_id: p.parentId } : {}) },
-        { principal: coworkerPrincipal(coworkerId, coworkerAgentId(coworkerId)), requestId: randomUUID() },
+        asCoworker(coworkerId),
       )) as { message?: { id?: unknown } }
       const id = out.message?.id
       if (typeof id !== 'string') throw new Error('messages.post answered without the posted message')
@@ -67,6 +72,14 @@ export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): Coworker
     },
     turnCost: input.turnCost,
     inTrace: input.inTrace,
+    rhythms: input.rhythms,
+    tasks: {
+      get: input.readTask,
+      // tasks.comment as the co-worker itself: permission, audit and the assigner's push like any assignee's comment.
+      comment: async (coworkerId, taskId, body) => {
+        await input.registry.execute('tasks.comment', { task_id: taskId, body }, asCoworker(coworkerId))
+      },
+    },
     ...(input.now ? { now: input.now } : {}),
     ...(input.threadTurnBudget === undefined ? {} : { threadTurnBudget: input.threadTurnBudget }),
     ...(input.heartbeatMs === undefined ? {} : { heartbeatMs: input.heartbeatMs }),
@@ -108,13 +121,16 @@ export async function startCoworkerTurns(input: {
   registry: Pick<KernelRegistry, 'execute'>
   runtime: Pick<AgentRuntime, 'loadAgents' | 'dispatchAsAgent'>
 }): Promise<CoworkerTurnsHandle> {
-  const [{ messagesDeps, messagesHub }, coworkers, { liveCoworkerRunStore }, { liveCompanyContext }, { runWithTrace }] = await Promise.all([
-    import('../../../../modules/messages/live'),
-    import('./index'),
-    import('./db-run-store'),
-    import('./company-context'),
-    import('$lib/server/activity/trace-context'),
-  ])
+  const [{ messagesDeps, messagesHub }, coworkers, { liveCoworkerRunStore }, { liveCompanyContext }, { runWithTrace }, { liveRhythmStore }, { liveReadTask }] =
+    await Promise.all([
+      import('../../../../modules/messages/live'),
+      import('./index'),
+      import('./db-run-store'),
+      import('./company-context'),
+      import('$lib/server/activity/trace-context'),
+      import('./db-rhythm-store'),
+      import('./task-work'),
+    ])
   const handle = composeCoworkerTurns({
     registry: input.registry,
     runtime: input.runtime,
@@ -125,6 +141,8 @@ export async function startCoworkerTurns(input: {
     company: liveCompanyContext,
     turnCost: liveTurnCost,
     inTrace: runWithTrace,
+    rhythms: liveRhythmStore,
+    readTask: liveReadTask,
   })
   await handle.reload()
   const unsubscribe = onCoworkersChanged(() => handle.reload())

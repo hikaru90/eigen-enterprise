@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock } = vi.hoisted(() => ({
+const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock, rhythmsTickMock } = vi.hoisted(() => ({
   domainsTickMock: vi.fn(async () => {}),
+  rhythmsTickMock: vi.fn(async () => {}),
   shareTickMock: vi.fn(async () => {}),
   recoverMock: vi.fn(),
   ensureMock: vi.fn(),
@@ -34,6 +35,9 @@ vi.mock('./drive-blobs-tick', () => ({
 }))
 vi.mock('./contribute-share-tick', () => ({
   tickContributeShare: shareTickMock,
+}))
+vi.mock('./coworker-rhythms-tick', () => ({
+  tickCoworkerRhythms: rhythmsTickMock,
 }))
 vi.mock('$lib/server/plugins/background', () => ({
   pluginOn: pluginOnMock,
@@ -98,6 +102,9 @@ describe('tickGlobalJobQueue', () => {
     expect(drainMock).toHaveBeenCalledOnce()
     // Contribute is a system module: its sharing runs on every tick (its own switch is in Settings).
     expect(shareTickMock).toHaveBeenCalledOnce()
+    // AI co-workers are core: their rhythms run on every tick, whatever plugins are off (C6).
+    expect(rhythmsTickMock).toHaveBeenCalledOnce()
+    expect(pluginOnMock).not.toHaveBeenCalledWith('coworkers', expect.anything())
     expect(pluginOnMock).toHaveBeenCalledWith('memory', 'overnight consolidation')
     expect(pluginOnMock).toHaveBeenCalledWith('email', 'email background work (DNS checks, scheduled sends, flows)')
   })

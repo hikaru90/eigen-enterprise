@@ -1,8 +1,8 @@
+import type { OrgPerson } from './org-tree'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page, userEvent } from 'vitest/browser'
 import OrgChartTree from './org-chart-tree.svelte'
-import type { OrgPerson } from './org-tree'
 
 /**
  * The org chart tree (plan/phase-ai-coworkers.md C5): seats nested under the

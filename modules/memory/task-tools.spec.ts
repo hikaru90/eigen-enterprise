@@ -16,6 +16,9 @@ function setup(writer: { kind: 'self' | 'assistant'; userId: string } | null = {
     store: memoryAssignedTaskStore(),
     directory: { get: async (id) => people.find((p) => p.id === id) ?? null, list: async () => people },
     notify,
+    coworkerWork: async () => {
+      throw new Error('no AI co-workers in this spec')
+    },
   }
   const writerOf = vi.fn(async () => writer)
   const tools = createTaskTools({ deps: async () => deps, writerOf })
