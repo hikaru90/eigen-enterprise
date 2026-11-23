@@ -189,6 +189,11 @@ describe('agentSettingsPort.apply', () => {
     await agentSettingsPort.apply({ setting: 'ai_chat_routing_rule', value: 'rule-9' }, 'u-actor')
     expect(m.updateSet).toHaveBeenCalledWith(expect.objectContaining({ ruleChat: 'rule-9' }))
   })
+  it('ai_embedding_routing_rule sets the EUrouter embedding rule (Settings › AI saveModelConfig)', async () => {
+    m.updateReturning.mockResolvedValue([{ provider: 'eurouter' }])
+    await agentSettingsPort.apply({ setting: 'ai_embedding_routing_rule', value: 'rule-e' }, 'u-actor')
+    expect(m.updateSet).toHaveBeenCalledWith(expect.objectContaining({ ruleEmbedding: 'rule-e' }))
+  })
   it('ai_slot_model only takes a model from the pool (invalid input names the choices)', async () => {
     await expect(
       agentSettingsPort.apply({ setting: 'ai_slot_model', slot: 'chat', value: 'vendor/unvetted' }, 'u-actor'),

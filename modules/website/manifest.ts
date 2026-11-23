@@ -35,6 +35,8 @@ export const websiteManifest: ModuleManifest = {
   tools: [
     ...WEBSITE_TOOL_NAMES,
     WEBSITE_ACTIVITY_TOOL,
+    // The welcome's founding interview as one act (founding-tools.ts).
+    'website.found_company',
     ...GITHUB_CONNECT_TOOL_NAMES,
     ...APP_TOOL_NAMES,
     ...SUBSTRATE_TOOL_NAMES,

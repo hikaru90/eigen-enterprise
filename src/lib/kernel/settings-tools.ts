@@ -76,6 +76,7 @@ export const settingChangeSchema = z.discriminatedUnion('setting', [
     value: z.string().min(1),
   }),
   z.object({ setting: z.literal('ai_chat_routing_rule'), value: z.string().min(1) }),
+  z.object({ setting: z.literal('ai_embedding_routing_rule'), value: z.string().min(1) }),
   z.object({ setting: z.literal('ai_use_eigen_inference'), value: z.boolean() }),
   z.object({ setting: z.literal('ai_slot_model'), slot: z.enum(AI_SLOTS), value: z.string().min(1) }),
 ])
@@ -95,6 +96,10 @@ const UPDATABLE: ReadonlyArray<{ setting: SettingChange['setting']; description:
   {
     setting: 'ai_chat_routing_rule',
     description: 'The EUrouter chat routing rule id (EUrouter routes by rule, not model name).',
+  },
+  {
+    setting: 'ai_embedding_routing_rule',
+    description: 'The EUrouter embedding routing rule id (Settings → AI provider, EUrouter model config).',
   },
   {
     setting: 'ai_use_eigen_inference',
@@ -177,6 +182,8 @@ function changeSentence(change: SettingChange): string {
       return `Set the chat model of ${change.provider} to ${change.value}`
     case 'ai_chat_routing_rule':
       return 'Set the EUrouter chat routing rule'
+    case 'ai_embedding_routing_rule':
+      return 'Set the EUrouter embedding routing rule'
     case 'ai_use_eigen_inference':
       return change.value ? 'Switched the company to eigenInference' : 'Switched the company to its own AI key'
     case 'ai_slot_model':
@@ -240,7 +247,7 @@ export function createSettingsTools(deps: SettingsToolDeps): ToolDescriptor[] {
       name: 'settings.update',
       module: KERNEL_SETTINGS_MODULE_ID,
       summary:
-        'Change one company setting from the allowlist (company_name, ai_active_provider, ai_chat_model, ai_chat_routing_rule). Every change waits for the owner’s approval, in every approval mode; the approval covers exactly this one change. Returns the settings after the change.',
+        'Change one company setting from the allowlist (company_name, ai_active_provider, ai_chat_model, ai_chat_routing_rule, ai_embedding_routing_rule, ai_use_eigen_inference, ai_slot_model). Every change waits for the owner’s approval, in every approval mode; the approval covers exactly this one change. Returns the settings after the change.',
       auditClass: 'mutate',
       activity: (input: SettingChange) => changeSentence(input),
       approvalRisk: 'internal',

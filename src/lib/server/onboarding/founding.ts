@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { KERNEL_EVENT_SOURCE } from '$lib/kernel/cloudevents'
 import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import {
@@ -138,4 +139,35 @@ export async function recordFoundingInterview(
     approvalPending,
     completed: allExecuted,
   }
+}
+
+/** The pages the founding artifacts create: once they exist and no journey is open, the company is founded. */
+export const FOUNDING_SLUGS = ['brand-tone-of-voice', 'home', 'about', 'contact']
+
+/** The founding interview already ran (its pages exist, no journey is open): it runs once. */
+export class AlreadyFoundedError extends Error {
+  constructor() {
+    super('Your company website already exists. Ask the company brain to change it — the founding interview runs once.')
+  }
+}
+
+/**
+ * The founding interview as one act — the welcome wizard (POST
+ * /api/onboarding/founding) and the website.found_company tool: refuses an
+ * already-founded company, then records the answers and runs the artifacts
+ * as `principal` through the registry (publishes stay approval-gated).
+ */
+export async function foundCompanyWebsite(call: FoundingInterviewCall): Promise<FoundingRecordResult> {
+  const active = await call.journeys.getActive(WEBSITE_FOUNDING_JOURNEY.kind)
+  if (!active) {
+    // Deterministic already-founded check (no error-message sniffing): the
+    // founding slugs exist and no journey is open → the artifacts ran once.
+    const listed = (await call.registry.execute(
+      'website.list_pages',
+      {},
+      { principal: call.principal, requestId: randomUUID() },
+    )) as Array<{ slug: string }>
+    if (listed.some((p) => FOUNDING_SLUGS.includes(p.slug))) throw new AlreadyFoundedError()
+  }
+  return recordFoundingInterview(call)
 }

@@ -10,6 +10,10 @@ export const MEMBERS_TOOL_NAMES = [
   'members.group_create',
   'members.group_update',
   'members.group_delete',
+  'members.remove',
+  'members.set_my_called',
+  'members.set_my_name',
+  'members.set_my_picture',
 ] as const
 
 /**

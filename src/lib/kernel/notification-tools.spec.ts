@@ -6,6 +6,7 @@ import {
   createNotificationTools,
   KERNEL_NOTIFICATION_TOOL_NAMES,
   type NotificationDevice,
+  type NotificationSettings,
   type NotificationsPort,
 } from './notification-tools'
 import { delegatedPrincipal } from './principals'
@@ -18,6 +19,14 @@ const viaBrain: ToolContext = {
 }
 const bareAgent: ToolContext = { principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }, requestId: 'r3' }
 
+const settings: NotificationSettings = {
+  timezoneOffsetMinutes: 60,
+  eventNotificationsEnabled: true,
+  eventReminderLeadMinutes: 10,
+  dailySummaryEnabled: false,
+  dailySummaryTimeLocal: '08:00',
+}
+
 const iphone: NotificationDevice = {
   id: 'd1',
   endpointHash: 'abc',
@@ -29,11 +38,17 @@ const iphone: NotificationDevice = {
 
 function setup() {
   const sent: Array<{ userId: string; deviceId?: string }> = []
+  const saved: Array<{ userId: string; input: NotificationSettings }> = []
   const port: NotificationsPort = {
     devices: async () => [{ ...iphone, endpoint: 'https://secret-capability-url' } as NotificationDevice],
     sendTest: async (userId, deviceId) => {
       sent.push({ userId, deviceId })
       return { sent: 1, failed: 0, removed: 0 }
+    },
+    loadSettings: async () => settings,
+    saveSettings: async (userId, input) => {
+      saved.push({ userId, input })
+      return { ...input, message: 'Saved.' }
     },
   }
   const registry = new KernelRegistry({
@@ -42,15 +57,17 @@ function setup() {
     approvalStore: new InMemoryApprovalStore(),
   })
   for (const tool of createNotificationTools({ port })) registry.register(tool)
-  return { registry, sent }
+  return { registry, sent, saved }
 }
 
 describe('notification tools', () => {
-  it('are exactly notifications.devices and notifications.test', () => {
+  it('are exactly notifications.devices, .test, .settings_get and .settings_set', () => {
     const { registry } = setup()
     expect(KERNEL_NOTIFICATION_TOOL_NAMES.map((n) => registry.get(n)?.name)).toEqual([
       'notifications.devices',
       'notifications.test',
+      'notifications.settings_get',
+      'notifications.settings_set',
     ])
   })
 
@@ -71,5 +88,25 @@ describe('notification tools', () => {
   it('fails loud for a principal that is no person (whose devices?)', async () => {
     const { registry } = setup()
     await expect(registry.execute('notifications.devices', {}, bareAgent)).rejects.toThrow(/person/)
+  })
+
+  it('reads and saves the person’s own notification settings (the settings pages’ save)', async () => {
+    const { registry, saved } = setup()
+    expect(await registry.execute('notifications.settings_get', {}, viaBrain)).toEqual(settings)
+    const input = { ...settings, dailySummaryEnabled: true, dailySummaryTimeLocal: '07:30' }
+    const out = await registry.execute('notifications.settings_set', input, person)
+    expect(saved).toEqual([{ userId: 'u1', input }])
+    expect(out).toMatchObject({ dailySummaryTimeLocal: '07:30', message: 'Saved.' })
+  })
+
+  it('refuses a reminder lead under one minute or a bad time before saving', async () => {
+    const { registry, saved } = setup()
+    for (const bad of [{ eventReminderLeadMinutes: 0 }, { dailySummaryTimeLocal: 'eight' }]) {
+      await expect(registry.execute('notifications.settings_set', { ...settings, ...bad }, person)).rejects.toMatchObject({
+        code: 'invalid_input',
+      })
+    }
+    expect(saved).toHaveLength(0)
+    await expect(registry.execute('notifications.settings_get', {}, bareAgent)).rejects.toThrow(/person/)
   })
 })

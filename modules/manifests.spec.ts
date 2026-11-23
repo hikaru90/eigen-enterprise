@@ -154,9 +154,9 @@ describe('merged module manifests', () => {
     expect(await activations.get('website')).toBe(true)
   })
 
-  it('the Assistant is an official plugin: no tools of its own, switched off by a person it stays off — the agent cannot switch it back on', async () => {
+  it('the Assistant is an official plugin: one tool (renaming your own conversation), switched off by a person it stays off — the agent cannot switch it back on', async () => {
     const assistant = moduleManifests.find((m) => m.id === 'assistant')
-    expect(assistant).toMatchObject({ name: 'Assistant', tools: [] })
+    expect(assistant).toMatchObject({ name: 'Assistant', tools: ['assistant.conversation_rename'] })
     expect(assistant?.internal).toBeUndefined()
     const { kernel: k, activations } = kernel()
     const { registerAdminTools } = await import('$lib/kernel/admin-bootstrap')

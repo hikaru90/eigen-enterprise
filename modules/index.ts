@@ -32,6 +32,8 @@ import type { AppDatabase } from '$lib/server/db/context'
 import { createGitHubTokenClient } from '$lib/server/github/token'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { ASSISTANT_MODULE_ID, assistantManifest } from './assistant/manifest'
+import { createAssistantTools } from './assistant/tools'
+import { createWebsiteFoundingTools } from './website/founding-tools'
 import { BRAND_MODULE_ID, BRAND_WRITE_TOOLS, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
 import { CALENDAR_MODULE_ID, CALENDAR_WRITE_TOOLS, calendarManifest } from './calendar/manifest'
@@ -201,6 +203,14 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'members.group_create',
   'members.group_update',
   'members.group_delete',
+  // Removing a member takes their access away (destructive); a person's own profile
+  // (what they are called, their names and picture) is internal.
+  'members.remove',
+  'members.set_my_called',
+  'members.set_my_name',
+  'members.set_my_picture',
+  // Assistant: naming one's own conversation (internal).
+  'assistant.conversation_rename',
   // Drive: an agent's write replaces a company file's text (kept as a revision).
   'drive.write_text',
   // Drive: an agent's new document (internal documents go here, never the website).
@@ -381,6 +391,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createMemoryTools(),
     ...createEmailTools(),
     ...createWebsiteTools(),
+    ...createWebsiteFoundingTools(),
     ...createBrandTools(),
     ...createRepoTools({
       engine: options.repoEngine ?? createRepoEngine({ eventSink }),
@@ -396,6 +407,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createEmailPlatformTools(),
     ...createInboxTools(),
     ...createMembersTools(),
+    ...createAssistantTools(),
     ...createMessagesTools(),
     ...createDriveTools(),
     ...createContributeTools(),

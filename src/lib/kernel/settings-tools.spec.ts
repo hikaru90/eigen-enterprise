@@ -134,6 +134,7 @@ describe('settings.get', () => {
       'ai_active_provider',
       'ai_chat_model',
       'ai_chat_routing_rule',
+      'ai_embedding_routing_rule',
       'ai_use_eigen_inference',
       'ai_slot_model',
     ])

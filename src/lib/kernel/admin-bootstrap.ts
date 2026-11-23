@@ -12,6 +12,7 @@ import {
   KERNEL_MODULE_ID,
 } from './admin-tools'
 import { createNotificationTools, KERNEL_NOTIFICATION_TOOL_NAMES, type NotificationsPort } from './notification-tools'
+import { createOperationsTools, KERNEL_OPERATIONS_TOOL_NAMES, type OperationsPort } from './operations-tools'
 import { createSettingsTools, KERNEL_SETTINGS_TOOL_NAMES, type SettingsPort } from './settings-tools'
 import { registerModuleTools } from './wiring'
 
@@ -36,6 +37,8 @@ export type RegisterAdminToolsOptions = {
   settings?: SettingsPort
   /** Overrides the live notification-devices port (tests inject fakes). */
   notifications?: NotificationsPort
+  /** Overrides the live company-operations port (tests inject fakes). */
+  operations?: OperationsPort
 }
 
 /**
@@ -56,7 +59,12 @@ export async function registerAdminTools(
   // a no-op, partial registration stays loud.
   const alreadyRegistered =
     kernel.modules.get(KERNEL_MODULE_ID) !== undefined &&
-    [...KERNEL_ADMIN_TOOL_NAMES, ...KERNEL_SETTINGS_TOOL_NAMES, ...KERNEL_NOTIFICATION_TOOL_NAMES].every(
+    [
+      ...KERNEL_ADMIN_TOOL_NAMES,
+      ...KERNEL_SETTINGS_TOOL_NAMES,
+      ...KERNEL_NOTIFICATION_TOOL_NAMES,
+      ...KERNEL_OPERATIONS_TOOL_NAMES,
+    ].every(
       (name) => kernel.registry.get(name) !== undefined,
     )
   if (alreadyRegistered) return
@@ -76,6 +84,7 @@ export async function registerAdminTools(
       approvalMode: kernel.approvalMode,
     }),
     ...createNotificationTools({ port: options.notifications ?? liveNotificationsPort() }),
+    ...createOperationsTools({ port: options.operations ?? liveOperationsPort() }),
   )
   registerModuleTools(kernel.registry, kernel.modules, tools)
 }
@@ -97,6 +106,21 @@ function liveNotificationsPort(): NotificationsPort {
   return {
     devices: async (userId) => (await live()).devices(userId),
     sendTest: async (userId, deviceId) => (await live()).sendTest(userId, deviceId),
+    loadSettings: async (userId) => (await live()).loadSettings(userId),
+    saveSettings: async (userId, input) => (await live()).saveSettings(userId, input),
+  }
+}
+
+/** The live company-operations port (logo, backup now, release install), loaded on first use. */
+function liveOperationsPort(): OperationsPort {
+  const live = async () => (await import('$lib/server/settings/operations')).liveOperationsPort
+  return {
+    can: async (userId, capability) => (await live()).can(userId, capability),
+    setLogo: async (userId, input) => (await live()).setLogo(userId, input),
+    recropLogo: async (userId, crop) => (await live()).recropLogo(userId, crop),
+    removeLogo: async (userId) => (await live()).removeLogo(userId),
+    runBackup: async (author) => (await live()).runBackup(author),
+    installRelease: async (release, author) => (await live()).installRelease(release, author),
   }
 }
 

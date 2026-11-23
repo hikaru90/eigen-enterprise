@@ -1,0 +1,113 @@
+import type { ToolContext } from './types'
+import { describe, expect, it } from 'vitest'
+import { InMemoryApprovalModeStore, InMemoryApprovalStore, ModeAwareApprovalPolicy } from './approvals'
+import { InMemoryEventSink } from './events'
+import { createOperationsTools, KERNEL_OPERATIONS_TOOL_NAMES, type OperationsCapability, type OperationsPort } from './operations-tools'
+import { delegatedPrincipal } from './principals'
+import { KernelRegistry } from './registry'
+
+const owner: ToolContext = { principal: delegatedPrincipal({ id: 'u-owner', roles: ['admin', 'member'] }, 'orchestrator'), requestId: 'r1' }
+const admin: ToolContext = { principal: { id: 'u-admin', kind: 'human', roles: ['admin', 'member'] }, requestId: 'r2' }
+const bareAgent: ToolContext = { principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }, requestId: 'r3' }
+
+function setup() {
+  const calls: unknown[] = []
+  const caps: Record<string, OperationsCapability[]> = {
+    'u-owner': ['company.manage', 'backups.manage', 'owner'],
+    'u-admin': ['company.manage'],
+  }
+  const port: OperationsPort = {
+    can: async (userId, capability) => (caps[userId] ?? []).includes(capability),
+    setLogo: async (userId, input) => {
+      calls.push(['setLogo', userId, input.mime, Array.from(input.bytes), input.crop])
+      return input.mime === 'image/png' && input.crop === undefined
+        ? { ok: false, status: 400, error: 'Position the logo in the frame, then save.' }
+        : { ok: true }
+    },
+    recropLogo: async (userId, crop) => {
+      calls.push(['recropLogo', userId, crop])
+      return { ok: true }
+    },
+    removeLogo: async (userId) => {
+      calls.push(['removeLogo', userId])
+    },
+    runBackup: async (author) => {
+      calls.push(['runBackup', author])
+      return { runId: 'run-1' }
+    },
+    installRelease: async (release, author) => {
+      calls.push(['installRelease', release, author])
+      return { jobId: 'job-1', status: 'running' }
+    },
+  }
+  const approvals = new InMemoryApprovalStore()
+  const registry = new KernelRegistry({
+    eventSink: new InMemoryEventSink(),
+    approvalPolicy: new ModeAwareApprovalPolicy(new Set(), new InMemoryApprovalModeStore('allow_all')),
+    approvalStore: approvals,
+  })
+  for (const tool of createOperationsTools({ port })) registry.register(tool)
+  /** Runs once behind the owner's approval (every one of these always asks). */
+  const approved = async (name: string, input: unknown, ctx: ToolContext) => {
+    const gated = await registry.execute(name, input, ctx).catch((e) => e)
+    expect(gated).toMatchObject({ code: 'approval_required' })
+    await approvals.decide(gated.details.approvalId, 'approved', 'u-owner')
+    return registry.execute(name, input, ctx)
+  }
+  return { registry, calls, approved }
+}
+
+describe('company operations tools', () => {
+  it('are the logo, backup-now and release-install tools, each always behind the owner’s approval', () => {
+    const { registry } = setup()
+    for (const name of KERNEL_OPERATIONS_TOOL_NAMES) {
+      expect(registry.get(name)).toMatchObject({ auditClass: 'mutate', approvalAlways: true })
+    }
+  })
+
+  it('uploads a logo from base64 with its crop, as the person, after approval', async () => {
+    const { calls, approved } = setup()
+    const crop = { left: 0, top: 0, size: 10 }
+    const out = await approved('settings.logo_set', { image_base64: 'AQID', mime: 'image/webp', crop }, admin)
+    expect(out).toEqual({ ok: true })
+    expect(calls).toEqual([['setLogo', 'u-admin', 'image/webp', [1, 2, 3], crop]])
+  })
+
+  it('a refused logo is invalid input with the page’s sentence', async () => {
+    const { approved } = setup()
+    await expect(approved('settings.logo_set', { image_base64: 'AQID', mime: 'image/png' }, admin)).rejects.toMatchObject({
+      code: 'invalid_input',
+      message: 'Position the logo in the frame, then save.',
+    })
+  })
+
+  it('re-crops and removes the logo', async () => {
+    const { calls, approved } = setup()
+    await approved('settings.logo_recrop', { crop: { left: 1, top: 2, size: 3 } }, owner)
+    await approved('settings.logo_remove', {}, owner)
+    expect(calls).toEqual([
+      ['recropLogo', 'u-owner', { left: 1, top: 2, size: 3 }],
+      ['removeLogo', 'u-owner'],
+    ])
+  })
+
+  it('runs a backup and installs a release as the owner (author human:<id>)', async () => {
+    const { calls, approved } = setup()
+    expect(await approved('kernel.backup_run', {}, owner)).toEqual({ runId: 'run-1' })
+    expect(await approved('kernel.release_install', { release: '0.5.36' }, owner)).toEqual({ jobId: 'job-1', status: 'running' })
+    expect(calls).toEqual([
+      ['runBackup', 'human:u-owner'],
+      ['installRelease', '0.5.36', 'human:u-owner'],
+    ])
+  })
+
+  it('never more than the person may: an admin cannot back up or update; no person, no call', async () => {
+    const { calls, approved } = setup()
+    await expect(approved('kernel.backup_run', {}, admin)).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(approved('kernel.release_install', { release: '0.5.36' }, admin)).rejects.toMatchObject({
+      code: 'permission_denied',
+    })
+    await expect(approved('settings.logo_remove', {}, bareAgent)).rejects.toMatchObject({ code: 'no_person' })
+    expect(calls).toEqual([])
+  })
+})

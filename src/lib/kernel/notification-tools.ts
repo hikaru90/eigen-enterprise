@@ -12,7 +12,12 @@ import { z } from 'zod'
  * URL), so the registry strips them should a port let one slip.
  */
 
-export const KERNEL_NOTIFICATION_TOOL_NAMES = ['notifications.devices', 'notifications.test'] as const
+export const KERNEL_NOTIFICATION_TOOL_NAMES = [
+  'notifications.devices',
+  'notifications.test',
+  'notifications.settings_get',
+  'notifications.settings_set',
+] as const
 
 const deviceSchema = z.object({
   id: z.string(),
@@ -27,7 +32,30 @@ export type NotificationDevice = z.infer<typeof deviceSchema>
 const testResultSchema = z.object({ sent: z.number(), failed: z.number(), removed: z.number() })
 export type TestNotificationResult = z.infer<typeof testResultSchema>
 
+/** A person's own notification settings (Settings → Notifications, /m/memory/settings). */
+const settingsSchema = z.object({
+  timezoneOffsetMinutes: z.number(),
+  eventNotificationsEnabled: z.boolean(),
+  eventReminderLeadMinutes: z.number(),
+  dailySummaryEnabled: z.boolean(),
+  dailySummaryTimeLocal: z.string(),
+})
+export type NotificationSettings = z.infer<typeof settingsSchema>
+
+const settingsSetInput = z
+  .object({
+    timezoneOffsetMinutes: z.number().int(),
+    eventNotificationsEnabled: z.boolean(),
+    eventReminderLeadMinutes: z.number().int().min(1),
+    dailySummaryEnabled: z.boolean(),
+    dailySummaryTimeLocal: z.string().regex(/^\d{1,2}:\d{2}$/),
+  })
+  .strict()
+
 export type NotificationsPort = {
+  loadSettings(userId: string): Promise<NotificationSettings>
+  /** Saves exactly as the settings pages do (the same parse and save); fails loud on a bad value. */
+  saveSettings(userId: string, input: NotificationSettings): Promise<NotificationSettings & { message: string }>
   devices(userId: string): Promise<NotificationDevice[]>
   /** Fails loud when nothing could be delivered (no device, or every push service refused). */
   sendTest(userId: string, deviceId?: string): Promise<TestNotificationResult>
@@ -69,6 +97,30 @@ export function createNotificationTools(deps: { port: NotificationsPort }): Tool
         const { deviceId } = input as { deviceId?: string }
         return deps.port.sendTest(personOf(ctx), deviceId)
       },
+    },
+    {
+      name: 'notifications.settings_get',
+      module: 'kernel',
+      summary:
+        'Your own notification settings: time zone offset (minutes), event reminders on/off and how many minutes before, the daily summary on/off and its local time (HH:MM).',
+      auditClass: 'read',
+      inputSchema: z.object({}),
+      outputSchema: settingsSchema,
+      permission: { roles: ['admin', 'member'] },
+      handler: async (ctx) => deps.port.loadSettings(personOf(ctx)),
+    },
+    {
+      name: 'notifications.settings_set',
+      module: 'kernel',
+      summary:
+        'Save your own notification settings (all five fields, as notifications.settings_get returns them): the same save as Settings → Notifications. The time zone snaps to the nearest offered offset; the reminder lead is at least 1 minute.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => 'Changed my notification settings',
+      inputSchema: settingsSetInput,
+      outputSchema: settingsSchema.extend({ message: z.string() }),
+      permission: { roles: ['admin', 'member'] },
+      handler: async (ctx, input) => deps.port.saveSettings(personOf(ctx), settingsSetInput.parse(input)),
     },
   ]
 }
