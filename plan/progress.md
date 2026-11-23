@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — TOP PRIORITY: the CLI (and so the agent) reaches everything (owner: "this is unacceptable")
+
+- **Finding:** the agent is offered every active registry tool, but 129 of the app's 340 mutating entry points are UI-only (`debt` in `src/lib/kernel/ui-parity.ts`; email 41, memory 31, drive 9, kernel 9, messages 9, calendar 7, calls 6, contacts 6, members 4, rest 7). Read gaps too: no tool reads the inbox, messages can't be posted, calendar events can't be created.
+- **Decision (owner, binding):** the `ee` CLI must reach everything the app can do, and so the agent too. UI-only actions and missing read tools are bugs, not backlog; new features ship their tool in the same change; clearing debt beats new features. AGENTS.md guardrail strengthened.
+- **Now:** all debt being cleared in parallel module worktrees (subagents, low effort); results below when merged.
+
 ## 2026-11-23 — Fleet: a box upgraded ahead of the control plane no longer gets locked out
 
 - **What broke:** ee-one upgraded to v0.5.35 at 08:29, and from then on every fleet poll was refused with `400 bad report`. The box announced the new feature `claims`, and the live control plane predated it (`features` was a strict enum). A probe of `/api/fleet/v1/enroll` confirmed it: the request without `claims` got 401 (token), the same request with `claims` got 400 (shape). While polls fail, the box gets no claims, release targets or settings; the edge kept serving.
