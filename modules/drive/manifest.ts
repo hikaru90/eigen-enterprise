@@ -23,6 +23,37 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
+/** File management with UI parity (./file-tools.ts): New folder, Upload, Rename, Move, Share, Trash, Versions. */
+export const DRIVE_FILE_TOOL_NAMES = [
+  'drive.create_folder',
+  'drive.upload',
+  'drive.save_file_bytes',
+  'drive.list_revisions',
+  'drive.restore_revision',
+  'drive.rename',
+  'drive.move',
+  'drive.trash',
+  'drive.list_trash',
+  'drive.restore',
+  'drive.delete_forever',
+  'drive.get_sharing',
+  'drive.set_sharing',
+] as const
+
+/** The file-management writes: each waits on the approval mode (wired in modules/index.ts). */
+export const DRIVE_WRITE_TOOLS = [
+  'drive.create_folder',
+  'drive.upload',
+  'drive.save_file_bytes',
+  'drive.restore_revision',
+  'drive.rename',
+  'drive.move',
+  'drive.trash',
+  'drive.restore',
+  'drive.delete_forever',
+  'drive.set_sharing',
+] as const
+
 export const DRIVE_TOOL_NAMES = [
   'drive.list',
   'drive.shared_with_me',
@@ -36,6 +67,7 @@ export const DRIVE_TOOL_NAMES = [
   'drive.app_status',
   'drive.app_run',
   'drive.app_stop',
+  ...DRIVE_FILE_TOOL_NAMES,
   ...DRIVE_PDF_TOOL_NAMES,
   ...DRIVE_PDF_ANNOTATE_TOOL_NAMES,
 ] as const

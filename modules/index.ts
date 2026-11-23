@@ -50,7 +50,7 @@ import { createContributeTools } from './contribute/tools'
 import { DOMAINS_MODULE_ID, domainsManifest } from './domains/manifest'
 import { createDomainsTools } from './domains/tools'
 import { driveSourceWriter } from './drive'
-import { DRIVE_MODULE_ID, driveManifest } from './drive/manifest'
+import { DRIVE_MODULE_ID, DRIVE_WRITE_TOOLS, driveManifest } from './drive/manifest'
 import { resolveDriveStorageDir } from './drive/storage'
 import { createDriveTools } from './drive/tools'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
@@ -202,6 +202,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // Drive archive: hides items from everyone's normal view (reversible, nothing deleted).
   'drive.archive',
   'drive.unarchive',
+  // Drive file management (create, upload, rename, move, share, trash, delete forever, revisions).
+  ...DRIVE_WRITE_TOOLS,
   // Calls: starting a call rings people (internal) — an agent's ring waits on the approval mode.
   'calls.start',
   // Contacts: an agent's adds, edits and logged contacts wait on the approval mode (internal).

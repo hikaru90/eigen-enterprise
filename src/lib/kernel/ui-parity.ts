@@ -52,7 +52,7 @@ export type UiParity =
   | { transport: string }
 
 /** The number of `debt` entries. Lower it when you clear debt; the spec fails if it is not exact. */
-export const DEBT_CEILING = 129
+export const DEBT_CEILING = 120
 
 const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
@@ -307,23 +307,23 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/drive/apps/[previewId] DELETE': tool('drive.app_stop'),
   '/api/drive/archive POST': tool('drive.archive'),
   '/api/drive/archive/suggestions POST': tool('drive.suggest_archive'),
-  '/api/drive/documents POST': debt('drive', 'New empty Document (.md) or Table (.csv); drive.create_document makes .md with text only.'),
-  '/api/drive/files/[id]/content PUT': debt('drive', 'Save an office file’s bytes (PDF, Word, PowerPoint) as a new revision.'),
+  '/api/drive/documents POST': tool('drive.create_document'),
+  '/api/drive/files/[id]/content PUT': tool('drive.save_file_bytes'),
   '/api/drive/files/[id]/lock DELETE': transport(EDIT_LOCK),
   '/api/drive/files/[id]/lock POST': transport(EDIT_LOCK),
   '/api/drive/files/[id]/lock PUT': transport(EDIT_LOCK),
-  '/api/drive/files/[id]/revisions POST': debt('drive', 'Restore a file revision.'),
+  '/api/drive/files/[id]/revisions POST': tool('drive.restore_revision'),
   '/api/drive/files/[id]/text PUT': tool('drive.write_text'),
-  '/api/drive/folders POST': debt('drive', 'Create a folder.'),
+  '/api/drive/folders POST': tool('drive.create_folder'),
   '/api/drive/folders/[id]/app DELETE': tool('drive.app_stop'),
   '/api/drive/folders/[id]/app POST': tool('drive.app_run'),
-  '/api/drive/items/[type]/[id] DELETE': debt('drive', 'Move a file or folder to the trash, or delete it forever.'),
-  '/api/drive/items/[type]/[id] PATCH': debt('drive', 'Rename or move a file or folder.'),
+  '/api/drive/items/[type]/[id] DELETE': tool('drive.trash'),
+  '/api/drive/items/[type]/[id] PATCH': tool('drive.rename'),
   '/api/drive/items/[type]/[id]/archive DELETE': tool('drive.unarchive'),
   '/api/drive/items/[type]/[id]/archive POST': tool('drive.archive'),
-  '/api/drive/items/[type]/[id]/grants PUT': debt('drive', 'Share: set who may open or edit.'),
-  '/api/drive/items/[type]/[id]/restore POST': debt('drive', 'Restore from the trash.'),
-  '/api/drive/upload POST': debt('drive', 'Upload files.'),
+  '/api/drive/items/[type]/[id]/grants PUT': tool('drive.set_sharing'),
+  '/api/drive/items/[type]/[id]/restore POST': tool('drive.restore'),
+  '/api/drive/upload POST': tool('drive.upload'),
 
   // ─── Messages ─────────────────────────────────────────────────────────────
   '/api/messages/channels POST': debt('messages', 'Create a channel.'),

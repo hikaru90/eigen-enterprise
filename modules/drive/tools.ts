@@ -8,6 +8,7 @@ import { EeClient } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
 import { appStatus, PREVIEW_ID, runApp, stopApp, type AppPreviewDeps } from './app-preview'
 import { liveSuggestChat, SUGGEST_DEFAULT_DAYS, SUGGEST_MAX_DAYS, SUGGEST_MIN_DAYS, suggestArchive, type SuggestChat } from './archive-suggest'
+import { createDriveFileTools } from './file-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
@@ -49,7 +50,12 @@ const readInput = z.object({ file_id: z.string().min(1) }).strict()
 export const DRIVE_READ_MAX_BYTES = 2 * 1024 * 1024
 const writeInput = z.object({ file_id: z.string().min(1), content: z.string() }).strict()
 const createInput = z
-  .object({ name: z.string().trim().min(1), content: z.string(), folder_id: z.string().min(1).nullable().optional() })
+  .object({
+    name: z.string().trim().min(1),
+    kind: z.enum(['md', 'csv']).optional(),
+    content: z.string().optional(),
+    folder_id: z.string().min(1).nullable().optional(),
+  })
   .strict()
 const itemsInput = z
   .object({
@@ -165,7 +171,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       name: 'drive.create_document',
       module: DRIVE_MODULE_ID,
       summary:
-        'Create a new Markdown (.md) document in Drive with its text (name, content; folder_id, omit for the top level). This is where the company’s internal documents go — pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes — never the public website. Working for a person, it lands in their Drive as theirs. Revise it later with drive.write_text.',
+        'Create a new Markdown (.md) document — or, with kind "csv", a table — in Drive (name; content, omit for an empty file; folder_id, omit for the top level). This is where the company’s internal documents go — pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes — never the public website. Working for a person, it lands in their Drive as theirs. Revise it later with drive.write_text.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: z.infer<typeof createInput>, output: unknown) => {
@@ -177,7 +183,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       handler: async (ctx, input) => {
         const i = createInput.parse(input)
         // A new document belongs to its creator: the person (also via the brain), in their own Drive.
-        const file = await (await service()).createDocument(actorOf(ctx), i.folder_id ?? null, 'md', i.name, i.content)
+        const file = await (await service()).createDocument(actorOf(ctx), i.folder_id ?? null, i.kind ?? 'md', i.name, i.content)
         return { file }
       },
     },
@@ -300,6 +306,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
         return stopApp(await appDeps(), 'folder_id' in i ? { actor: actorOf(ctx), folderId: i.folder_id } : { previewId: i.preview_id }, author)
       },
     },
+    ...createDriveFileTools({ service }),
     ...createDrivePdfTools({ service }),
     ...createDrivePdfAnnotateTools({ service }),
   ]
