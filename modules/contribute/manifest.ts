@@ -3,7 +3,10 @@ import type { ModuleManifest } from '$lib/kernel/modules'
 export const CONTRIBUTE_MODULE_ID = 'contribute'
 
 /** The agent's hands on the board: read what people asked for, pick it up, ship it. */
-export const CONTRIBUTE_TOOL_NAMES = ['contribute.list', 'contribute.get', 'contribute.update'] as const
+export const CONTRIBUTE_TOOL_NAMES = ['contribute.list', 'contribute.get', 'contribute.propose', 'contribute.vote', 'contribute.update'] as const
+
+/** The agent's proposals and votes wait on the company's approval mode (APPROVAL_REQUIRED_TOOLS). */
+export const CONTRIBUTE_WRITE_TOOLS = ['contribute.propose', 'contribute.vote'] as const
 
 /**
  * Contribute (ported from Eigen's Contribute board): everyone in the company

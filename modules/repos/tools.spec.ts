@@ -48,4 +48,21 @@ describe('repos.* tools', () => {
     expect((await t.service.tick()).synced).toBe(1)
     expect(t.drive.keys('repos').some((k) => k.includes('src/index.ts'))).toBe(false)
   })
+
+  it('repos.available lists each token’s visible repos; repos.set_repo starts and stops syncing one (UI parity)', async () => {
+    const t = setup()
+    const { id: tokenId } = await t.service.addToken('user-1', TOKEN)
+    const by = Object.fromEntries(createReposTools({ service: async () => t.service }).map((x) => [x.name, x]))
+    expect(by['repos.available']).toMatchObject({ auditClass: 'read', permission: { roles: ['owner', 'admin'] } })
+    expect(by['repos.set_repo']).toMatchObject({ auditClass: 'mutate', approvalRisk: 'internal', permission: { roles: ['owner', 'admin'] } })
+    const before = (await by['repos.available'].handler(agent, {})) as { tokens: Array<{ id: string; repos: Array<{ repoId: number; syncing: boolean }> }> }
+    expect(before.tokens).toEqual([expect.objectContaining({ id: tokenId, repos: [expect.objectContaining({ repoId: t.data.repo.id, syncing: false })] })])
+    expect(JSON.stringify(before)).not.toContain(TOKEN)
+    expect(await by['repos.set_repo'].handler(agent, { tokenId, repoId: t.data.repo.id, syncing: true })).toEqual({ repo: 'kindred/shop', syncing: true })
+    expect((await t.store.sources()).filter((s) => s.enabled)).toHaveLength(1)
+    expect(by['repos.set_repo'].activity!({ tokenId, repoId: 1, syncing: false }, { repo: 'kindred/shop', syncing: false })).toBe('Stopped syncing kindred/shop into Drive')
+    expect(await by['repos.set_repo'].handler(agent, { tokenId, repoId: t.data.repo.id, syncing: false })).toEqual({ repo: 'kindred/shop', syncing: false })
+    expect((await t.store.sources()).filter((s) => s.enabled)).toHaveLength(0)
+    await expect(by['repos.set_repo'].handler(agent, { tokenId, repoId: t.data.repo.id, syncing: false })).rejects.toThrow('That repo is not synced.')
+  })
 })
