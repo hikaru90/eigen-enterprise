@@ -6,16 +6,18 @@ import BrainKnows from './brain-knows.svelte'
 /**
  * "Your Brain knows 1,200 decisions" (board request): the retention line on
  * the assistant page, the count in the viewer's locale grouping, linking to
- * the Memory that holds them.
+ * "What the brain knows", the list that holds them.
  */
 describe('brain-knows.svelte', () => {
-  it('shows the count with the locale’s digit grouping and links to Memory', async () => {
+  it('shows the count with the locale’s digit grouping and links to What the brain knows', async () => {
     render(BrainKnows, { count: 1200 })
     const line = page.getByTestId('brain-knows')
     await expect
       .element(line)
       .toHaveTextContent(`Your Brain knows ${new Intl.NumberFormat().format(1200)} decisions`)
-    await expect.element(line).toHaveAttribute('href', '/m/memory')
+    // The list that holds them (plan/concept-memory-one-door.md §2.2), not the
+    // module root, which lands on Tasks where the decisions are not listed.
+    await expect.element(line).toHaveAttribute('href', '/m/memory/capture')
   })
 
   it('says one decision in the singular', async () => {
