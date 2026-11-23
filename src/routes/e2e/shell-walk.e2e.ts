@@ -72,9 +72,10 @@ test('every navigation entry and settings section renders inside the one shell',
   const entries: Array<[string, RegExp, RegExp]> = [
     ['messages', /\/messages$/, /^Messages · eigenEnterprise$/],
     ['website', /\/m\/website$/, / · Website · eigenEnterprise$/],
-    ['email', /\/m\/email$/, /^Email · eigenEnterprise$/],
+    // Email opens your inbox (58201e6c); Memory lands on Tasks (92ae9c93, plan/concept-memory-one-door.md).
+    ['email', /\/m\/email\/inbox$/, /^Inbox · Email · eigenEnterprise$/],
     ['brand', /\/brand$/, /^Brand · eigenEnterprise$/],
-    ['memory', /\/m\/memory$/, /^Memory · eigenEnterprise$/],
+    ['memory', /\/m\/memory\/tasks$/, /^Tasks · Memory · eigenEnterprise$/],
     ['settings', /\/settings$/, /^Account · Settings · eigenEnterprise$/],
   ]
   await page.goto('/settings')
@@ -108,7 +109,7 @@ test('every navigation entry and settings section renders inside the one shell',
   expect(panelBox.width).toBeGreaterThanOrEqual(320)
   await page.screenshot({ path: `${SHOTS}/assistant-panel.png` })
   await sidebar(page).getByTestId('shell-nav-memory').click()
-  await expect(page).toHaveURL(/\/m\/memory$/)
+  await expect(page).toHaveURL(/\/m\/memory\/tasks$/)
   await expect(panel.getByText('What can you do?')).toBeVisible()
   await page.getByTestId('assistant-close').click()
   await expect(panel).toHaveCount(0)
@@ -206,7 +207,7 @@ test('every navigation entry and settings section renders inside the one shell',
   await expect(page.getByTestId('shell-drawer').getByTestId('shell-nav-memory')).toBeVisible()
   await page.screenshot({ path: `${SHOTS}/phone-drawer.png` })
   await page.getByTestId('shell-drawer').getByTestId('shell-nav-memory').click()
-  await expect(page).toHaveURL(/\/m\/memory$/)
+  await expect(page).toHaveURL(/\/m\/memory\/tasks$/)
   await page.screenshot({ path: `${SHOTS}/phone-memory.png` })
   // Phone: the top bar keeps the assistant; asking opens it as a full-screen sheet.
   await page.getByTestId('assistant-bar-input').fill('Hello')
