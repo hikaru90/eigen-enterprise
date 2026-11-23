@@ -27,6 +27,7 @@
   import { datedLabel, driveItemKind, initialsOf } from '$lib/drive/display'
   import { driveShownError } from '$lib/drive/shown-error'
   import type { ShownError } from '$lib/errors/agent-report'
+  import OfficeViewerLoader from '$lib/office/office-viewer-loader.svelte'
   import { OFFICE_VIEWERS } from '$lib/office/viewers'
   import { docTitle } from '$lib/shell/title'
 
@@ -506,31 +507,18 @@
           {:else if officeViewer}
             <!-- Keyed on the content too: a restored version reopens in the viewer. -->
             {#key `${data.file.id}:${data.file.updatedAt}`}
-              {#await officeViewer()}
-                <div
-                  class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
-                  data-testid="drive-office-loading"
-                >
-                  Opening {data.file.name}…
-                </div>
-              {:then viewer}
-                <viewer.default
-                  fileId={data.file.id}
-                  name={data.file.name}
-                  canEdit={data.canEdit && !data.file.archivedAt}
-                  heartbeatMs={data.heartbeatMs}
-                  folderId={data.file.parentId}
-                  author={data.viewer ?? undefined}
-                  onsaved={(f) => (saved = f)}
-                />
-              {:catch err}
-                <ErrorNotice
-                  class="m-6"
-                  testid="drive-office-error"
-                  error={`The viewer could not be loaded: ${err instanceof Error ? err.message : String(err)}`}
-                  attempted={`Loading the office viewer for ${data.file.name} in the browser`}
-                />
-              {/await}
+              <OfficeViewerLoader
+                load={officeViewer}
+                viewerProps={{
+                  fileId: data.file.id,
+                  name: data.file.name,
+                  canEdit: data.canEdit && !data.file.archivedAt,
+                  heartbeatMs: data.heartbeatMs,
+                  folderId: data.file.parentId,
+                  author: data.viewer ?? undefined,
+                  onsaved: (f) => (saved = f),
+                }}
+              />
             {/key}
           {:else if data.kind === 'pdf'}
             <iframe

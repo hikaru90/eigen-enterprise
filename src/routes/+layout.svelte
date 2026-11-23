@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { browser } from '$app/environment'
-  import { afterNavigate } from '$app/navigation'
+  import { afterNavigate, beforeNavigate } from '$app/navigation'
   import { base } from '$app/paths'
-  import { page } from '$app/state'
+  import { page, updated } from '$app/state'
   import './layout.css'
   import {
     isPostHogEnabled,
@@ -11,8 +11,11 @@
     resetPostHog,
     capturePageview,
   } from '$lib/analytics/posthog-client'
+  import { fullReloadHref, watchStaleChunks } from '$lib/app-update/detect'
+  import { appUpdate, checkUpdated } from '$lib/app-update/state.svelte'
   import favicon from '$lib/assets/favicon.png'
   import { startCaptureQueueRunner } from '$lib/capture/queue'
+  import AppUpdatedBanner from '$lib/components/app-updated-banner.svelte'
   import { activeVisualSetStyleTag, brandShellVars } from '../../modules/brand/style-format/emitter'
   import { googleFontLinks, withFontFallbacks } from '../../modules/brand/system/component-set'
 
@@ -31,6 +34,14 @@
   import { startThemeSync } from '$lib/theme/theme'
 
   let { children } = $props()
+
+  // A new release replaced this tab's build (kit.version polls /_app/version.json):
+  // the next in-app navigation is a full page load, so it gets the new build's
+  // chunks instead of asking for hashed files that are gone (bug 593f7e08).
+  beforeNavigate((nav) => {
+    const href = fullReloadHref(nav, updated.current)
+    if (href) location.href = href
+  })
 
   const app = $derived((page.data as { app?: { name: string; iconVersion: string | null } }).app)
 
@@ -90,6 +101,8 @@
     })
 
     const stopPushNavigation = startPushNavigationFromServiceWorker()
+    // Any lazy load that fails after an update shows the reload notice app-wide.
+    const stopStaleChunkWatch = watchStaleChunks(window, checkUpdated, () => (appUpdate.detected = true))
 
     if ((page.data as { user?: { id: string } | null }).user) {
       // Re-validate this device's push subscription with the server on every start (src/lib/push/sync.ts).
@@ -111,6 +124,7 @@
     return () => {
       stopPushNavigation()
       stopThemeSync()
+      stopStaleChunkWatch()
     }
   })
 </script>
@@ -160,3 +174,4 @@
 <div class="bg-background min-h-dvh">
   {@render children()}
 </div>
+<AppUpdatedBanner />
