@@ -48,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims', 'hostedAddress'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 /**
@@ -192,6 +192,19 @@ export const domainClaimV1 = z
   .strict()
 export type DomainClaimV1 = z.infer<typeof domainClaimV1>
 
+/**
+ * The company's free hosted address (plan/hosted-address.md H1): mail on `mailDomain`
+ * (`<slug>.<HOSTED_DOMAIN>`) and the public website on `siteHost` (`www.<slug>.<HOSTED_DOMAIN>`),
+ * until it brings its own domain. The control plane writes their DNS; adopted boxes get null.
+ */
+export const hostedAddressV1 = z
+  .object({
+    mailDomain: z.string().min(1).max(253),
+    siteHost: z.string().min(1).max(253),
+  })
+  .strict()
+export type HostedAddressV1 = z.infer<typeof hostedAddressV1>
+
 /** Known fields, each optional so a box can tell "not sent" from "sent as null". */
 const desiredKnown = {
   protocol: z.literal(FLEET_PROTOCOL),
@@ -219,6 +232,8 @@ const desiredKnown = {
   domains: managedDomainsV1.nullable().optional(),
   /** Every domain claim the company holds (verified or not, with its TXT); null = none to show. */
   claims: z.array(domainClaimV1).max(500).nullable().optional(),
+  /** The company's free hosted address (mail + website); null = none (adopted or self-hosted). */
+  hostedAddress: hostedAddressV1.nullable().optional(),
 }
 
 export const desiredV1 = z.object(desiredKnown).strip()

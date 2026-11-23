@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import { settingsSchema, type DesiredState } from '../company-repo.ts'
 import { EE_VERSION } from '../version.ts'
-import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
+import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, IMPLEMENTED_FEATURES, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
 import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest, type DomainClaimV1 } from './protocol.ts'
 
 const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
@@ -120,7 +120,7 @@ describe('fleet: enroll', () => {
     expect(managed).toEqual({ controlPlane: CP, boxId: BOX, pollSeconds: 30 })
     expect(f.calls[0]!.url).toBe(`${CP}${FLEET_PATHS.enroll}`)
     const sent = JSON.parse(String(f.calls[0]!.init.body))
-    expect(sent).toMatchObject({ protocol: 1, enrollToken: TOKEN, eeVersion: EE_VERSION, features: [...FLEET_FEATURES] })
+    expect(sent).toMatchObject({ protocol: 1, enrollToken: TOKEN, eeVersion: EE_VERSION, features: IMPLEMENTED_FEATURES })
     expect(f.secrets[FLEET_SCOPE]![BOX_KEY]).toBeTruthy()
     expect(sent.publicKey).not.toBe(f.secrets[FLEET_SCOPE]![BOX_KEY])
     expect(f.secrets['os']![LOCAL_TOKEN]).toMatch(/^[A-Za-z0-9_-]{43}$/)

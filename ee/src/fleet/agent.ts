@@ -57,7 +57,8 @@ export const FLEET_BACKUP_SCHEDULE = { hour: 3 } as const
 export const FLEET_BACKUP_RETENTION_DAYS = 30
 
 /** Exactly the desired-state features this box implements. */
-export const IMPLEMENTED_FEATURES: FleetFeature[] = [...FLEET_FEATURES]
+// hostedAddress is announced once ee applies it (plan/hosted-address.md HA-ee).
+export const IMPLEMENTED_FEATURES: FleetFeature[] = FLEET_FEATURES.filter((f) => f !== 'hostedAddress')
 
 export class FleetError extends Error {
   constructor(

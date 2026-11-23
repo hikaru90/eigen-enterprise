@@ -181,9 +181,23 @@ describe('managed domains', () => {
 describe('domain claims (plan/domains-one-claim.md D4)', () => {
   const claim = { host: 'www.acme.com', verified: false, txtName: '_ee-verify.www.acme.com', txtValue: 'tok-' + 'a'.repeat(40) }
 
-  it('claims is a feature, appended at the end', () => {
-    expect(FLEET_FEATURES.at(-1)).toBe('claims')
+  it('claims is a feature, appended right after domains', () => {
     expect(FLEET_FEATURES.indexOf('claims')).toBe(FLEET_FEATURES.indexOf('domains') + 1)
+  })
+
+  it('hostedAddress is a feature, appended at the end (plan/hosted-address.md H1)', () => {
+    expect(FLEET_FEATURES.at(-1)).toBe('hostedAddress')
+    expect(FLEET_FEATURES.indexOf('hostedAddress')).toBe(FLEET_FEATURES.indexOf('claims') + 1)
+  })
+
+  it('desired.hostedAddress is a strict, nullable, optional { mailDomain, siteHost }', () => {
+    const base = { protocol: 1, pollSeconds: 60 }
+    const hosted = { mailDomain: 'acme.eigenenterprise.app', siteHost: 'www.acme.eigenenterprise.app' }
+    expect(desiredV1.parse({ ...base, hostedAddress: hosted }).hostedAddress).toEqual(hosted)
+    expect(desiredV1.parse({ ...base, hostedAddress: null }).hostedAddress).toBeNull()
+    expect(desiredV1.parse(base).hostedAddress).toBeUndefined()
+    expect(() => desiredV1.parse({ ...base, hostedAddress: { ...hosted, extra: 1 } })).toThrow()
+    expect(() => desiredV1.parse({ ...base, hostedAddress: { mailDomain: '' , siteHost: 'x' } })).toThrow()
   })
 
   it('desired.claims is a strict, nullable, optional list of { host, verified, txtName, txtValue }', () => {
