@@ -1,65 +1,62 @@
 import type { Pathname } from '$app/types'
+import { m } from '$lib/paraglide/messages.js'
 
-export type MemorySurfaceTab = 'overview' | 'tasks' | 'reminders' | 'projects' | 'notes' | 'capture'
+export type MemorySurfaceTab = 'tasks' | 'projects' | 'documents' | 'reminders' | 'knows'
 
 /**
- * The Memory module page's sub-navigation (phase-cohesion §3): one page at
- * /m/memory, every section its own URL under it (rule 5). The old
- * /memory/* and /capture URLs are gone (404), never redirected.
- * `description` is the one short line under the tabs saying what the current
- * tab holds (Contribute d5e61e1f): a few words, not an explanation.
+ * The Memory module page's sub-navigation (phase-cohesion §3): one page under
+ * /m/memory, every section its own URL (rule 5). Memory shows what the brain
+ * holds (plan/concept-memory-one-door.md §2.2, decision 1): nothing is typed
+ * in here — the Ask bar is the one door. There is no Overview tab: /m/memory
+ * lands on Tasks. Documents keeps its /m/memory/notes URL and "What the brain
+ * knows" keeps /m/memory/capture, so links already sent out (check-in pushes,
+ * bookmarks) still land.
+ * `label` and `description` are messages (en + de), read at render time;
+ * `description` is the one line under the tabs saying what the tab holds.
  */
 export const MEMORY_TABS: ReadonlyArray<{
   id: MemorySurfaceTab
-  label: string
+  label: () => string
   href: Pathname
-  description: string
+  description: () => string
 }> = [
   {
-    id: 'overview',
-    label: 'Overview',
-    href: '/m/memory',
-    description: 'Your open tasks at a glance, each with its project.',
-  },
-  {
     id: 'tasks',
-    label: 'Tasks',
+    label: () => m.memory_tab_tasks(),
     href: '/m/memory/tasks',
-    description: 'Things to do, by day. Tick the circle to mark one done.',
-  },
-  {
-    id: 'reminders',
-    label: 'Reminders',
-    href: '/m/memory/reminders',
-    description: 'Things that come back every week. Due ones show under Needs you.',
+    description: () => m.memory_tab_tasks_line(),
   },
   {
     id: 'projects',
-    label: 'Projects',
+    label: () => m.memory_tab_projects(),
     href: '/m/memory/projects',
-    description: 'Tasks grouped under a goal. The company Roadmap is pinned first.',
+    description: () => m.memory_tab_projects_line(),
   },
   {
-    id: 'notes',
-    label: 'Notes',
+    id: 'documents',
+    label: () => m.memory_tab_notes(),
     href: '/m/memory/notes',
-    description: 'Longer text you write and keep, like a document.',
+    description: () => m.memory_tab_documents_line(),
   },
   {
-    id: 'capture',
-    label: 'Capture',
+    id: 'reminders',
+    label: () => m.memory_tab_reminders(),
+    href: '/m/memory/reminders',
+    description: () => m.memory_tab_reminders_line(),
+  },
+  {
+    id: 'knows',
+    label: () => m.memory_tab_knows(),
     href: '/m/memory/capture',
-    description: 'Jot down a thought quickly; it is sorted into tasks and projects for you.',
+    description: () => m.memory_tab_knows_line(),
   },
 ]
 
-/** Which Memory tab is current for a pathname (null outside the Memory page). */
+/** Which Memory tab is current for a pathname (null outside the tabs). */
 export function activeMemorySurfaceTab(pathname: string): MemorySurfaceTab | null {
   const path = pathname.replace(/\/+$/, '')
-  if (path === '/m/memory') return 'overview'
   for (const tab of MEMORY_TABS) {
-    if (tab.id !== 'overview' && (path === tab.href || path.startsWith(`${tab.href}/`)))
-      return tab.id
+    if (path === tab.href || path.startsWith(`${tab.href}/`)) return tab.id
   }
   return null
 }

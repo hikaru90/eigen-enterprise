@@ -10,9 +10,7 @@ import {
   assertTimelineSsotCountsAndLists,
   assertTimelineTasksSearch,
   assertCheckInDeepLinkShowsPendingQuestion,
-  captureThoughtViaUi,
-  captureThoughtViaUiAutoAccept,
-  captureThoughtViaUiDismissVerbatim,
+  captureThoughtAndSeeItKnown,
   completeOnboardingOverlay,
   exerciseAuthenticatedUi,
   exerciseProjectsLifecycle,
@@ -28,7 +26,7 @@ test.describe('Release smoke @release', () => {
     assertReleasePreflight()
   })
 
-  test('register → onboard → PayPal → capture → exercise UI → re-login', async ({
+  test('register → onboard → PayPal → brain takes a thought in → exercise UI → re-login', async ({
     page,
     context,
     baseURL,
@@ -70,41 +68,20 @@ test.describe('Release smoke @release', () => {
       await assertCheckInDeepLinkShowsPendingQuestion(page)
     })
 
-    await test.step('capture a thought through the UI (interpret → confirm if needed)', async () => {
-      await captureThoughtViaUi(page, releaseThought)
-      await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible()
+    // Memory has no input of its own (plan/concept-memory-one-door.md): thoughts come in
+    // through the brain; the release checks they land under What the brain knows, indexed.
+    await test.step('a thought the brain takes in is listed under What the brain knows, indexed', async () => {
+      await captureThoughtAndSeeItKnown(page, releaseThought)
       await expect(
-        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
-      ).toContainText('Lisbon')
-    })
-
-    await test.step('capture deviation modal: dismiss stores verbatim', async () => {
-      const dismissRaw =
-        'Release smoke dismiss: keep this meeting in Lisbon next week exactly as written'
-      await captureThoughtViaUiDismissVerbatim(page, dismissRaw)
-      await expect(
-        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
-      ).toContainText('Lisbon')
-    })
-
-    await test.step('capture deviation modal: auto-accept after countdown', async () => {
-      await captureThoughtViaUiAutoAccept(
-        page,
-        'Release smoke auto-accept: reinterpret this offsite plan for Porto next month',
-      )
-      await expect(
-        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
+        page.getByTestId('brain-knows-row').filter({ hasText: 'Lisbon' }).first(),
       ).toBeVisible()
     })
 
-    await test.step('capture action-item wording through interpret (no invalid-category fail)', async () => {
-      await captureThoughtViaUi(
+    await test.step('action-item wording is taken in (no invalid-category fail)', async () => {
+      await captureThoughtAndSeeItKnown(
         page,
         'Release smoke action item: email the Lisbon host about venue deposit',
       )
-      await expect(
-        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
-      ).toContainText(/Lisbon|venue|deposit/i)
     })
 
     await test.step('timeline cold-mount fetch budget (no duplicate list/stats)', async () => {

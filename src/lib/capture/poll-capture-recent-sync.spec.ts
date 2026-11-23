@@ -51,7 +51,7 @@ describe('pollCaptureRecentSync', () => {
     })
 
     await vi.advanceTimersByTimeAsync(0)
-    expect(fetchMock).toHaveBeenCalledWith('/api/capture/recent', { cache: 'no-store' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/capture/recent?limit=8', { cache: 'no-store' })
     expect(syncs).toEqual([['t1']])
     cancel()
   })
@@ -161,7 +161,7 @@ describe('pollCaptureRecentSync', () => {
     })
 
     await vi.advanceTimersByTimeAsync(0)
-    expect(fetchMock).toHaveBeenCalledWith('/api/capture/recent?authorLayerKey=apikey%3Akey-1', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/capture/recent?authorLayerKey=apikey%3Akey-1&limit=8', {
       cache: 'no-store',
     })
     cancel()
@@ -187,7 +187,7 @@ describe('pollCaptureRecentSync', () => {
     })
 
     await vi.advanceTimersByTimeAsync(0)
-    expect(fetchMock).toHaveBeenCalledWith('/api/capture/recent?author=user', { cache: 'no-store' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/capture/recent?author=user&limit=8', { cache: 'no-store' })
     cancel()
   })
 

@@ -242,7 +242,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.create_text_file',
-      'Write a note (title and/or body text) into Memory › Notes. It is shared with everyone in the company unless private is true. Working for a person, it lands in their Notes marked as written by the assistant; returns the note id and title.',
+      'Write a note (title and/or body text) into Memory › Documents. It is shared with everyone in the company unless private is true. Working for a person, it lands in their Documents marked as written by the assistant; returns the note id and title.',
       'mutate',
       z.object({
         title: z.string().optional(),

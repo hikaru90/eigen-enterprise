@@ -1,35 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-const { activationsGet, listEvents } = vi.hoisted(() => ({
-  listEvents: vi.fn(async (_q: unknown) => ({
-    items: [
-      {
-        id: 'task:t1',
-        thoughtId: 't1',
-        itemType: 'task',
-        semanticSummary: 'Ship invoice',
-        projectEntityId: 'p1',
-        projectLabel: 'Billing',
-      },
-      {
-        id: 'ev1',
-        thoughtId: 't9',
-        itemType: 'event',
-        semanticSummary: 'Dentist',
-        projectEntityId: null,
-        projectLabel: null,
-      },
-      {
-        id: 'task:t2',
-        thoughtId: 't2',
-        itemType: 'task',
-        semanticSummary: 'Call mum',
-        projectEntityId: null,
-        projectLabel: null,
-      },
-    ],
-    nextCursor: null,
-  })),
+const { activationsGet } = vi.hoisted(() => ({
   activationsGet: vi.fn(async (_id: string) => true),
 }))
 
@@ -42,19 +13,13 @@ vi.mock('$lib/server/boot', () => ({
     activations: { get: activationsGet },
   }),
 }))
-const deleteThought = vi.hoisted(() => vi.fn())
-vi.mock('$lib/server/memory/delete-thought', () => ({ deleteThoughtForUser: deleteThought }))
 
 const privateEnv = vi.hoisted(() => ({ POSTHOG_API_KEY: '' as string | undefined }))
 vi.mock('$lib/server/env/private-env', () => ({ env: privateEnv }))
 
-vi.mock('$lib/server/memory/temporal-event-list', () => ({
-  listTemporalEventsForUser: listEvents,
-  isTaskListItem: (item: { itemType: string }) => item.itemType === 'task',
-}))
 
 const { load: layoutLoad } = await import('./+layout.server')
-const { load, actions } = await import('./+page.server')
+const { load } = await import('./+page.server')
 
 const signedIn = { locals: { user: { id: 'u1' } } }
 
@@ -82,62 +47,13 @@ describe('/m/memory layout', () => {
   })
 })
 
-describe('/m/memory page (the task list)', () => {
-  it('loads open tasks with their project as a tag, dropping calendar events', async () => {
-    const data = (await load(signedIn as never)) as {
-      tasks: { id: string; summary: string; project: { entityId: string; label: string } | null }[]
-    }
-    expect(listEvents).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'u1', status: 'open', includeTasks: true }),
-    )
-    expect(data.tasks).toEqual([
-      {
-        id: 'task:t1',
-        thoughtId: 't1',
-        summary: 'Ship invoice',
-        project: { entityId: 'p1', label: 'Billing' },
-      },
-      { id: 'task:t2', thoughtId: 't2', summary: 'Call mum', project: null },
-    ])
-  })
-})
-
-describe('/m/memory ?/deleteTask', () => {
-  const post = (user: { id: string } | null, thoughtId: string | null) => {
-    const body = new FormData()
-    if (thoughtId !== null) body.set('thoughtId', thoughtId)
-    return actions.deleteTask({
-      locals: { user },
-      request: new Request('http://x/m/memory?/deleteTask', { method: 'POST', body }),
-    } as never)
-  }
-
-  it('needs a signed-in person and a task', async () => {
-    expect(await post(null, 't1')).toMatchObject({ status: 401 })
-    expect(await post({ id: 'u1' }, '')).toMatchObject({ status: 400 })
-    expect(deleteThought).not.toHaveBeenCalled()
+describe('/m/memory (no Overview any more: it lands on Tasks)', () => {
+  it('redirects to /m/memory/tasks, where the open tasks are (plan/concept-memory-one-door.md, decision 1)', () => {
+    expect(() => load(signedIn as never)).toThrow(expect.objectContaining({ status: 307, location: '/m/memory/tasks' }))
   })
 
-  it('deletes the task’s thought for good, as the signed-in person', async () => {
-    deleteThought.mockResolvedValueOnce({ ok: true })
-    expect(await post({ id: 'u1' }, 't1')).toEqual({ deleted: true })
-    expect(deleteThought).toHaveBeenCalledWith('u1', 't1')
-  })
-
-  it('reports a task that is not theirs as not found, and a Roadmap task as the board’s', async () => {
-    deleteThought.mockResolvedValueOnce({ ok: false, reason: 'not_found' })
-    expect(await post({ id: 'u1' }, 'tX')).toMatchObject({ status: 404 })
-    deleteThought.mockResolvedValueOnce({
-      ok: false,
-      reason: 'system_project_task',
-      projectLabel: 'Roadmap',
-    })
-    expect(await post({ id: 'u1' }, 'tR')).toMatchObject({
-      status: 409,
-      data: {
-        error: expect.stringContaining('Roadmap'),
-        agent: { attempted: 'Deleting a task on /m/memory', input: { thoughtId: 'tR' } },
-      },
-    })
+  it('has no form actions left (the Overview’s Delete is the Tasks drawer’s, memory.delete_task)', async () => {
+    const page = await import('./+page.server')
+    expect('actions' in page).toBe(false)
   })
 })

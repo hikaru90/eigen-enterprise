@@ -14,8 +14,10 @@ export type RecentCaptureSyncFilter = {
   category?: string
 }
 
+/** `limit`: how many of the newest the caller shows — the server's own default (8) when left out. */
 export async function fetchRecentCaptureSyncPayload(
   filter?: RecentCaptureSyncFilter,
+  limit?: number,
 ): Promise<RecentCaptureSyncPayload> {
   const params = new URLSearchParams()
   if (filter?.authorLayerKey) {
@@ -24,6 +26,7 @@ export async function fetchRecentCaptureSyncPayload(
     params.set('author', filter.author)
   }
   if (filter?.category) params.set('category', filter.category)
+  if (limit !== undefined) params.set('limit', String(limit))
   const url = params.toString() ? `/api/capture/recent?${params.toString()}` : '/api/capture/recent'
   const res = await fetch(url, { cache: 'no-store' })
   if (!res.ok) {
@@ -42,14 +45,15 @@ export async function fetchRecentCaptureMerge(input: {
     details: Record<string, CaptureSubmitResult>
   }
 }): Promise<RecentCaptureMergeResult> {
-  const payload = await fetchRecentCaptureSyncPayload(input.filter)
+  const payload = await fetchRecentCaptureSyncPayload(input.filter, input.limit)
   const { snippets, details } = input.getState()
   return mergeRecentCaptureFromServer(snippets, details, payload, input.limit)
 }
 
 /**
- * Poll recent capture list so MCP / other-tab ingests appear on the capture page
- * with live enrich status updates.
+ * Poll the recent list so what the assistant, MCP or another tab files appears on
+ * Memory › What the brain knows with live enrich status updates. It asks for
+ * `limit` rows, the same number the page shows, so a poll never shortens the list.
  */
 export function pollCaptureRecentSync(input: {
   limit: number
@@ -71,7 +75,7 @@ export function pollCaptureRecentSync(input: {
     if (cancelled) return
     try {
       const filter = input.getFilter?.()
-      const payload = await fetchRecentCaptureSyncPayload(filter)
+      const payload = await fetchRecentCaptureSyncPayload(filter, input.limit)
       const { snippets, details } = input.getState()
       const merged = mergeRecentCaptureFromServer(snippets, details, payload, input.limit)
       const detailChanged = payload.recentThoughtDetails.some((thought) => {

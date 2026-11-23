@@ -158,7 +158,7 @@ export function writeGraphScaleSpendReport(report: GraphScaleSpendReport): strin
   return reportPath
 }
 
-/** Open capture so headed runs show the app instead of about:blank. */
+/** Open Memory › What the brain knows so headed runs show the app instead of about:blank. */
 export async function openGraphScaleSpendCapturePage(page: Page): Promise<void> {
   await page.goto('/m/memory/capture')
   await expect(
@@ -166,7 +166,6 @@ export async function openGraphScaleSpendCapturePage(page: Page): Promise<void> 
   ).toBeHidden({
     timeout: 15_000,
   })
-  await expect(page.getByText('Before your first capture')).toBeHidden()
 }
 
 export async function openGraphScaleSpendActivityPage(
@@ -186,16 +185,18 @@ export async function setGraphScaleSpendPageTitle(page: Page, label: string): Pr
 }
 
 /**
- * Capture through the real Capture UI: type, click Capture, watch stored summary,
- * wait until indexing finishes on screen.
+ * Put a thought in through the capture API (the Capture box is gone: the Ask bar is the
+ * one door, plan/concept-memory-one-door.md — so this measures the capture pipeline
+ * without the chat turn in front of it), wait until it is indexed, and see it as
+ * Indexed under Memory › What the brain knows.
  */
-export async function captureThoughtThroughUi(
+export async function captureThoughtAndWaitIndexed(
   page: Page,
   rawText: string,
 ): Promise<{ thoughtId: string; wallMs: number; entityCount: number }> {
   const trimmed = rawText.trim()
   if (!trimmed) {
-    throw new Error('captureThoughtThroughUi: rawText is required')
+    throw new Error('captureThoughtAndWaitIndexed: rawText is required')
   }
 
   if (!page.url().includes('/m/memory/capture')) {
@@ -203,61 +204,16 @@ export async function captureThoughtThroughUi(
   }
 
   const startedAt = Date.now()
-
-  await page.locator('#thought').fill(trimmed)
-  const captureBtn = page.getByRole('button', { name: 'Capture', exact: true })
-  await expect(captureBtn).toBeEnabled({ timeout: 30_000 })
-
-  const interpretResponsePromise = page.waitForResponse(
-    (res) => res.url().includes('/api/capture/interpret') && res.request().method() === 'POST',
-    { timeout: 300_000 },
-  )
-
-  const errorBanner = page.locator('p.text-destructive.text-sm').first()
-  await captureBtn.click()
-
-  const interpretRes = await interpretResponsePromise
-  const interpretBody = await interpretRes.text()
-  if (!interpretRes.ok()) {
-    throw new Error(interpretBody.trim() || `Capture interpret failed (${interpretRes.status()})`)
+  const submitted = await page.request.post('/api/capture/submit', {
+    data: { raw: trimmed },
+    headers: { accept: 'application/json' },
+    timeout: 300_000,
+  })
+  if (!submitted.ok()) {
+    throw new Error((await submitted.text()).trim() || `Capture submit failed (${submitted.status()})`)
   }
-
-  const interpretJson = JSON.parse(interpretBody) as {
-    thoughtId?: string
-    status?: string
-    queueStatus?: string
-    error?: string
-  }
-  if (interpretJson.error) throw new Error(interpretJson.error)
-  const thoughtId = interpretJson.thoughtId ?? ''
-  if (!thoughtId) {
-    if (await errorBanner.isVisible().catch(() => false)) {
-      const message = (await errorBanner.textContent())?.trim()
-      throw new Error(message ? `Capture failed: ${message}` : 'Capture failed')
-    }
-    throw new Error('Capture interpret succeeded but returned no thought id')
-  }
-
-  const status =
-    interpretJson.status ??
-    (interpretJson.queueStatus === 'awaiting_confirmation' ? 'awaiting_confirmation' : 'ingested')
-  if (status === 'awaiting_confirmation') {
-    const confirmModal = page.getByTestId('capture-confirmation-modal')
-    await expect(confirmModal).toBeVisible({ timeout: 60_000 })
-    const confirmResponsePromise = page.waitForResponse(
-      (res) => res.url().includes('/api/capture/confirm') && res.request().method() === 'POST',
-      { timeout: 300_000 },
-    )
-    await confirmModal.getByRole('button', { name: /Confirm|Bestätigen/i }).click()
-    const confirmRes = await confirmResponsePromise
-    if (!confirmRes.ok()) {
-      throw new Error(
-        (await confirmRes.text()).trim() || `Capture confirm failed (${confirmRes.status()})`,
-      )
-    }
-  }
-
-  await expect(page.getByText('Category:')).toBeVisible({ timeout: 60_000 })
+  const thoughtId = ((await submitted.json()) as { thought?: { id?: string } }).thought?.id ?? ''
+  if (!thoughtId) throw new Error('Capture submit succeeded but returned no thought id')
 
   await expect
     .poll(
@@ -277,9 +233,10 @@ export async function captureThoughtThroughUi(
     )
     .not.toBeNull()
 
-  await expect(page.getByText('Indexing now').first()).toBeHidden({ timeout: 300_000 })
-  await expect(page.getByText('Waiting to index').first()).toBeHidden({ timeout: 300_000 })
-  await expect(page.getByText('Indexing failed').first()).toBeHidden({ timeout: 5_000 })
+  await page.reload()
+  await expect(
+    page.getByTestId('brain-knows-row').first().getByTestId('brain-knows-status'),
+  ).toHaveText('Indexed', { timeout: 60_000 })
 
   const resultBody = await page.evaluate(async (id) => {
     const res = await fetch(`/api/capture/result/${encodeURIComponent(id)}`)

@@ -48,7 +48,7 @@ describe('orchestrator persona: reach beyond modules (Contribute d80e155d)', () 
   })
 })
 
-describe('orchestrator persona: the website is public, internal documents go to Drive or Memory › Notes (Contribute)', () => {
+describe('orchestrator persona: the website is public, internal documents go to Drive or Memory › Documents (Contribute)', () => {
   it('routes internal documents away from the website and names the tools for them', () => {
     expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('WHERE CONTENT GOES')
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/website is the company’s public website/i)
@@ -56,7 +56,7 @@ describe('orchestrator persona: the website is public, internal documents go to 
     expect(ORCHESTRATOR_PERSONA_PROMPT).toMatch(/never become website pages, not even private ones/i)
     expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('drive.create_document')
     expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('memory.create_text_file')
-    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('Memory › Notes')
+    expect(ORCHESTRATOR_PERSONA_PROMPT).toContain('Memory › Documents')
   })
 
   it('names Drive among the modules it can offer', () => {

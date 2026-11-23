@@ -7,13 +7,14 @@
   import { enterPrivateAnalyticsSurface } from '$lib/analytics/posthog-client'
   import PageHeader from '$lib/components/page/page-header.svelte'
   import { activeMemorySurfaceTab, MEMORY_TABS } from '$lib/memory/memory-surface-nav'
+  import { m } from '$lib/paraglide/messages.js'
   import MemoryPrivacyNote from './memory-privacy-note.svelte'
 
   let { data, children }: { data: LayoutData; children: Snippet } = $props()
   const current = $derived(activeMemorySurfaceTab(page.url.pathname))
-  const tabs = MEMORY_TABS.map((t) => ({ id: t.id, label: t.label, href: t.href }))
+  const tabs = MEMORY_TABS.map((t) => ({ id: t.id, label: t.label(), href: t.href }))
   const currentDescription = $derived(
-    MEMORY_TABS.find((t) => t.id === current)?.description ?? null,
+    MEMORY_TABS.find((t) => t.id === current)?.description() ?? null,
   )
 
   // Memory shows a person's private text: while it is open, product analytics gets nothing read
@@ -22,7 +23,7 @@
 </script>
 
 <!-- The Memory module page: the one page header with status, tabs below.
-     Full-height app layout (Capture/Notes fill the pane), so it is its own
+     Full-height app layout (What the brain knows / Documents fill the pane), so it is its own
      frame rather than PageFrame's padded column — still full width (P-3). -->
 <div class="flex min-h-0 w-full flex-1 flex-col" data-page-frame data-testid="memory-page">
   <div class="w-full px-4 pt-6 sm:px-8 sm:pt-10">
@@ -37,7 +38,7 @@
       tabTestId={(id) => `memory-tab-${id}`}
     >
       {#snippet info()}
-        <p>Tasks, projects and notes you and the agent keep — and a place to capture a thought.</p>
+        <p>{m.memory_info()}</p>
         <MemoryPrivacyNote analyticsSeesAi={data.privacy.analyticsSeesAi} />
       {/snippet}
       {#snippet actions()}

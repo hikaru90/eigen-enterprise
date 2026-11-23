@@ -6,7 +6,7 @@ import {
   GRAPH_SCALE_SPEND_PICNIC_PROBE_MAX,
 } from '../../../evals/graph-scale/seed-corpus'
 import {
-  captureThoughtThroughUi,
+  captureThoughtAndWaitIndexed,
   fetchSpendProbeSnapshot,
   formatGraphScaleSpendLine,
   initGraphScaleSpendProbe,
@@ -72,7 +72,7 @@ test.describe('Graph-scale ingest spend', () => {
 
         const spendBefore = await fetchSpendProbeSnapshot(page.request, userId)
 
-        const capture = await captureThoughtThroughUi(page, texts[index])
+        const capture = await captureThoughtAndWaitIndexed(page, texts[index])
 
         const spendAfter = await fetchSpendProbeSnapshot(page.request, userId)
         const row = spendDeltaRow({

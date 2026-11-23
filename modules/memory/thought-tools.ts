@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { BRAIN_KNOWS_LIMIT, brainKnowsIndexState, brainKnowsSource } from '$lib/memory/brain-knows'
+import type { RecentCaptureThoughtsPayload } from '$lib/server/capture/load-recent-capture-thoughts'
 import { ASSISTANT_AUTHOR_LABEL, liveMemoryWriterOf, requireWriter, type MemoryWriter } from './assistant-writes'
 import { THOUGHT_TOOL_NAMES } from './manifest'
 
@@ -39,6 +41,8 @@ export type ThoughtToolService = {
   assignProject(userId: string, thoughtId: string, target: { projectEntityId: string } | { projectLabel: string }): Promise<unknown>
   getThought(userId: string, thoughtId: string): Promise<unknown | null>
   listArchivedThoughtIds(userId: string, limit: number): Promise<string[]>
+  /** Memory › What the brain knows: the newest thoughts with their enrichment state. */
+  listRecentThoughts(userId: string, limit: number, category: string | undefined): Promise<RecentCaptureThoughtsPayload>
   listThoughtNotes(userId: string, thoughtId: string): Promise<unknown[]>
   linkNote(userId: string, thoughtId: string, textFileId: string): Promise<{ linked: boolean; reason?: 'thought_not_found' | 'text_file_not_found' }>
   unlinkNote(userId: string, thoughtId: string, textFileId: string): Promise<boolean>
@@ -58,7 +62,7 @@ export type ThoughtToolService = {
 }
 
 export async function liveThoughtToolService(): Promise<ThoughtToolService> {
-  const [capture, queue, lifecycle, del, relevance, profile, due, throttle, consts, assign, notes, entities, repair, graph, agents, agentAssign, trace, detail] =
+  const [capture, queue, lifecycle, del, relevance, profile, due, throttle, consts, assign, notes, entities, repair, graph, agents, agentAssign, trace, detail, recent] =
     await Promise.all([
       import('$lib/server/capture/service'),
       import('$lib/server/capture/queue-capture'),
@@ -78,6 +82,7 @@ export async function liveThoughtToolService(): Promise<ThoughtToolService> {
       import('$lib/server/agents/assign-thought'),
       import('$lib/server/activity/trace-context'),
       import('$lib/server/memory/thought-detail'),
+      import('$lib/server/capture/load-recent-capture-thoughts'),
     ])
   const traced = <T>(fn: () => Promise<T>) => trace.runWithTrace(crypto.randomUUID(), fn)
   return {
@@ -100,6 +105,7 @@ export async function liveThoughtToolService(): Promise<ThoughtToolService> {
     assignProject: (u, t, target) => assign.assignThoughtToProject(u, t, target),
     getThought: (u, t) => detail.getThoughtForUser(u, t),
     listArchivedThoughtIds: (u, limit) => del.listArchivedThoughtIds(u, limit),
+    listRecentThoughts: (u, limit, category) => recent.loadRecentCaptureThoughts(u, limit, category ? { category } : undefined),
     listThoughtNotes: (u, t) => notes.listTextFilesForThought(u, t),
     linkNote: (u, t, n) => notes.linkTextFileToThought(u, t, n),
     unlinkNote: (u, t, n) => notes.unlinkTextFileFromThought(u, t, n),
@@ -147,6 +153,12 @@ const projectEntityId = z.string().min(1).describe('The project id (memory.list_
 
 const empty = z.object({}).strict()
 const thoughtInput = z.object({ thought_id: thoughtId }).strict()
+const listThoughtsInput = z
+  .object({
+    limit: z.number().int().min(1).max(50).optional().describe('At most this many, newest first (default 30, at most 50).'),
+    category: z.string().trim().min(1).max(100).optional().describe('Only thoughts of this category (e.g. task, idea, decision).'),
+  })
+  .strict()
 const archivedInput = z.object({ limit: z.number().int().min(1).max(200).optional().describe('At most this many (default 50).') }).strict()
 const editInput = z
   .object({ thought_id: thoughtId, change: z.string().trim().min(1).max(4000).describe('What to change, in plain words; Memory rewrites and re-reads the thought.') })
@@ -262,6 +274,26 @@ export function createThoughtTools(opts: ThoughtToolDeps = {}): ToolDescriptor[]
         const found = await s.getThought(w.userId, i.thought_id)
         if (!found) throw new Error(NOT_YOURS)
         return { thought: found }
+      }),
+    def('memory.list_thoughts', 'List what the brain took in from the person, newest first (Memory › What the brain knows): each thought’s text, category, date, where it came from (source.kind: app_input | assistant | connected_agent | cli_or_mcp | app | evaluation | unrecorded) and status (indexed | pending | indexing | failed; failed ones can be retried with memory.retry_enrichment).', listThoughtsInput,
+      async (s, w, i) => {
+        const { recentThoughts, recentThoughtDetails } = await s.listRecentThoughts(w.userId, i.limit ?? BRAIN_KNOWS_LIMIT, i.category)
+        const details = new Map(recentThoughtDetails.map((d) => [d.id, d]))
+        return {
+          thoughts: recentThoughts.map((row) => {
+            const detail = details.get(row.id)
+            if (!detail) throw new Error(`Thought ${row.id} was listed without its enrichment state.`)
+            return {
+              id: row.id,
+              text: row.normalizedText,
+              category: row.category,
+              createdAt: row.createdAt,
+              source: brainKnowsSource({ source: row.source ?? null, author: row.author ?? 'user', authorLabel: row.authorLabel }),
+              status: brainKnowsIndexState(detail),
+              error: detail.queueError ?? null,
+            }
+          }),
+        }
       }),
     def('memory.list_archived_thoughts', 'List the person’s archived thoughts (hidden from Memory’s lists, still stored), most recently changed first; limit default 50.', archivedInput,
       async (s, w, i) => {

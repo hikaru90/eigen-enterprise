@@ -2,6 +2,7 @@
   import type { TemporalEventListItem } from '../api/temporal-events/+server'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import XIcon from '@lucide/svelte/icons/x'
+  import { resolve } from '$app/paths'
   import MemorySurfaceDrawer from '$lib/components/memory-surface-drawer.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Drawer from '$lib/components/ui/drawer'
@@ -91,6 +92,21 @@
               item,
             )}
           </p>
+          {#if item.projectEntityId && item.projectLabel}
+            <!-- The task's project, one click away (it was the Overview tab's pill before). -->
+            <p class="text-sm">
+              <span class="text-muted-foreground">{m.memory_task_project()}:</span>
+              <a
+                href={resolve('/(nucleus)/m/memory/projects/[entityId]', {
+                  entityId: item.projectEntityId,
+                })}
+                class="rounded-sm text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/60"
+                data-testid="temporal-event-project"
+              >
+                {item.projectLabel}
+              </a>
+            </p>
+          {/if}
         </Drawer.Header>
         <Drawer.Close
           class="text-destructive hover:bg-destructive/10 shrink-0 rounded-md p-1.5 transition-colors -ring focus-visible:ring-1 focus-visible:outline-none"

@@ -1,105 +1,83 @@
 <script lang="ts">
-  import ErrorNotice from '$lib/components/error-notice.svelte'
-  import Check from '@lucide/svelte/icons/check'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import ChevronRight from '@lucide/svelte/icons/chevron-right'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
-  import PencilLine from '@lucide/svelte/icons/pencil-line'
   import Trash2 from '@lucide/svelte/icons/trash-2'
-  import X from '@lucide/svelte/icons/x'
   import { tick } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import {
-    captureIndexingListStatus,
-    captureIndexingRetryEligible,
-  } from '$lib/capture/capture-indexing-status'
   import type {
     CaptureRecentThoughtSnippet,
     CaptureSubmitResult,
   } from '$lib/capture/capture-result-types'
-  import type { ProgressEvent } from '$lib/capture/consume-capture-ndjson'
-  import type { CaptureIngestPhase } from '$lib/capture/ingest-phases'
-  import {
-    captureThoughtAuthorship,
-    recentThoughtPrimaryLabel,
-    recentThoughtSecondaryLabel,
-  } from '$lib/capture/recent-thought-display'
-  import CaptureQueueStatus from '$lib/components/capture-queue-status.svelte'
   import CaptureStoredSummary from '$lib/components/capture-stored-summary.svelte'
-  import MemoryAuthorBadge from '$lib/components/memory-author-badge.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { Label } from '$lib/components/ui/label'
   import * as Select from '$lib/components/ui/select'
-  import { Textarea } from '$lib/components/ui/textarea'
+  import {
+    brainKnowsIndexLabel,
+    brainKnowsIndexState,
+    brainKnowsSource,
+    brainKnowsSourceLabel,
+    type BrainKnowsIndexState,
+  } from '$lib/memory/brain-knows'
+  import { m } from '$lib/paraglide/messages.js'
 
+  /**
+   * Memory › What the brain knows (plan/concept-memory-one-door.md §2.2): the
+   * read-only list of what the brain took in, newest first — each thought with
+   * where it came from, its category, its date and whether it is indexed yet
+   * (indexed · not indexed yet · indexing · failed + Retry), Delete, and the
+   * detail on expand. Nothing is typed in here: the Ask bar is the one door.
+   * The same rows are memory.list_thoughts for the CLI and the agent.
+   */
   let {
     thoughts,
     thoughtDetails,
     enrichingThoughtIds = new Set<string>(),
     expandedId = null,
-    editingId = null,
-    editRequest = '',
-    editLoading = false,
     deletingId = null,
     retryingId = null,
     loadingDetailId = null,
-    editProgressEvents = [],
-    pipeline,
+    limit,
     onExpand,
     onCollapse,
-    onEdit,
     onDelete,
     onRetry,
-    onAttach,
     onUnlinkFile,
     onNoteUpdated,
-    onEditRequestChange,
-    onSubmitEdit,
-    onCancelEdit,
     onFilterChange,
-    onToggleDone,
-    hasAgentCaptures: _hasAgentCaptures,
   }: {
     thoughts: CaptureRecentThoughtSnippet[]
     thoughtDetails: Record<string, CaptureSubmitResult>
+    /** Thoughts this page is watching while they index (shown as indexing). */
     enrichingThoughtIds?: ReadonlySet<string>
     expandedId?: string | null
-    editingId?: string | null
-    editRequest?: string
-    editLoading?: boolean
     deletingId?: string | null
     retryingId?: string | null
     loadingDetailId?: string | null
-    editProgressEvents?: ProgressEvent[]
-    pipeline: Array<CaptureIngestPhase | CaptureIngestPhase[]>
+    /** How many the list shows at most (it says so when it is full). */
+    limit: number
     onExpand: (thoughtId: string) => void | Promise<void>
     onCollapse: (thoughtId: string) => void
-    onEdit: (thoughtId: string) => void
     onDelete: (thoughtId: string) => void
     onRetry: (thoughtId: string) => void
-    onAttach?: (thoughtId: string) => void
     onUnlinkFile?: (thoughtId: string, fileId: string) => void
     onNoteUpdated?: (thoughtId: string) => void | Promise<void>
-    onEditRequestChange: (value: string) => void
-    onSubmitEdit: () => void
-    onCancelEdit: () => void
     onFilterChange?: (filter: { category?: string }) => void
-    onToggleDone?: (thoughtId: string) => void
-    hasAgentCaptures?: boolean
   } = $props()
+
+  const dateFormat = new Intl.DateTimeFormat(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 
   function formatWhen(iso: string): string {
     const date = new Date(iso)
-    if (Number.isNaN(date.getTime())) return ''
-    const diffMs = Date.now() - date.getTime()
-    const minutes = Math.floor(diffMs / 60_000)
-    if (minutes < 1) return 'just now'
-    if (minutes < 60) return `${minutes}m ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours}h ago`
-    const days = Math.floor(hours / 24)
-    if (days < 7) return `${days}d ago`
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    if (Number.isNaN(date.getTime())) throw new Error(`thought date is not a date: ${iso}`)
+    return dateFormat.format(date)
   }
 
   function toggleThought(snippetId: string, expanded: boolean) {
@@ -129,23 +107,20 @@
     entryElements.get(thoughtId)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
   }
 
-  function enrichListStatus(
-    thoughtId: string,
-    detail: CaptureSubmitResult | undefined,
-  ): { label: string; spinning: boolean; failed: boolean } | null {
-    return captureIndexingListStatus(detail, enrichingThoughtIds.has(thoughtId))
+  /** null while the row's detail (its enrichment state) has not arrived yet. */
+  function indexState(thoughtId: string): BrainKnowsIndexState | null {
+    const detail = thoughtDetails[thoughtId]
+    if (!detail) return null
+    const state = brainKnowsIndexState(detail)
+    return state === 'pending' && enrichingThoughtIds.has(thoughtId) ? 'indexing' : state
   }
 
-  function showRetryAction(
-    thoughtId: string,
-    detail: CaptureSubmitResult | undefined,
-    enrichStatus: ReturnType<typeof enrichListStatus>,
-  ): boolean {
-    return captureIndexingRetryEligible(detail, enrichStatus)
+  const statusClass: Record<BrainKnowsIndexState, string> = {
+    indexed: 'border-border text-muted-foreground',
+    pending: 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300',
+    indexing: 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300',
+    failed: 'border-destructive/40 bg-destructive/10 text-destructive',
   }
-
-  const tabEntryClass = 'flex flex-col overflow-visible bg-card p-0.5'
-  const tabTriggerClass = 'rounded-full px-3 py-2 text-foreground'
 
   let categoryFilter = $state<string>('all')
 
@@ -156,182 +131,114 @@
     if (categoryFilter !== 'all') filter.category = categoryFilter
     onFilterChange?.(filter)
   }
-
-  // Server handles filtering — no client-side filter needed.
-  // When filter changes, parent refetches from server with filter params.
-  const filteredThoughts = $derived(thoughts)
 </script>
 
-{#if thoughts.length === 0}
-  <div class="flex h-full min-h-0 flex-col items-center justify-center px-2 py-10">
-    <p class="text-muted-foreground text-center text-xs leading-relaxed">
-      Captures appear here after you submit. Type or dictate a thought above — nothing to file or
-      tag.
-    </p>
-  </div>
+{#if thoughts.length === 0 && categoryFilter === 'all'}
+  <p class="px-1 py-10 text-center text-sm text-muted-foreground" data-testid="brain-knows-empty">
+    {m.memory_knows_empty()}
+  </p>
 {:else}
   <div class="flex h-full min-h-0 flex-col overflow-hidden">
-    <div class="relative z-10 shrink-0 bg-background pb-2">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent</h2>
-        <div class="flex flex-wrap items-center gap-2">
-          {#if categories.length > 1}
-            <Select.Root
-              type="single"
-              bind:value={categoryFilter}
-              onValueChange={() => handleFilterChange()}
-            >
-              <Select.Trigger class="h-auto w-auto gap-1 px-2 py-1 text-xs">
-                Category
-              </Select.Trigger>
-              <Select.Content>
-                <Select.Item value="all">All categories</Select.Item>
-                {#each categories as cat (cat)}
-                  <Select.Item value={cat}>{cat}</Select.Item>
-                {/each}
-              </Select.Content>
-            </Select.Root>
-          {/if}
-        </div>
-      </div>
+    <div class="relative z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 bg-background pb-2">
+      <h2 class="text-sm font-medium text-muted-foreground">{m.memory_knows_list_label()}</h2>
+      {#if categories.length > 1 || categoryFilter !== 'all'}
+        <Select.Root
+          type="single"
+          bind:value={categoryFilter}
+          onValueChange={() => handleFilterChange()}
+        >
+          <Select.Trigger class="h-auto w-auto gap-1 px-2 py-1 text-sm">
+            {m.memory_knows_category()}
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="all">{m.memory_knows_all_categories()}</Select.Item>
+            {#each categories as cat (cat)}
+              <Select.Item value={cat}>{cat}</Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      {/if}
     </div>
     <div class="relative min-h-0 flex-1">
       <div
-        class="absolute inset-0 z-0 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        class="absolute inset-0 z-0 overflow-y-auto pb-28 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
-        <div class="flex flex-col gap-2 pb-28">
-          {#each filteredThoughts as snippet (snippet.id)}
+        <ul class="flex flex-col gap-2" aria-label={m.memory_knows_list_label()}>
+          {#each thoughts as snippet (snippet.id)}
             {@const detail = thoughtDetails[snippet.id]}
-            {@const authorship = captureThoughtAuthorship(detail, snippet)}
             {@const expanded = expandedId === snippet.id}
-            {@const loadingDetail = loadingDetailId === snippet.id}
-            {@const enrichStatus = enrichListStatus(snippet.id, detail)}
-            {@const secondary = recentThoughtSecondaryLabel(detail, snippet)}
-            <div class="{tabEntryClass} min-w-0" use:entryAnchor={snippet.id}>
-              <div class="flex w-full min-w-0 items-start justify-between gap-2 {tabTriggerClass}">
+            {@const state = indexState(snippet.id)}
+            {@const source = brainKnowsSource({
+              source: snippet.source ?? null,
+              author: detail?.author ?? snippet.author ?? 'user',
+              authorLabel: detail?.authorLabel ?? snippet.authorLabel ?? null,
+            })}
+            <li
+              class="flex min-w-0 flex-col overflow-visible rounded-lg border border-border bg-card"
+              use:entryAnchor={snippet.id}
+              data-testid="brain-knows-row"
+            >
+              <div class="flex w-full min-w-0 items-start justify-between gap-2 px-3 py-2">
                 <button
                   type="button"
-                  class="flex min-w-0 flex-1 items-start gap-2 text-left"
+                  class="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                   aria-expanded={expanded}
-                  aria-label={expanded ? 'Collapse thought' : 'Expand thought'}
+                  aria-label={expanded ? m.memory_knows_hide_details() : m.memory_knows_show_details()}
                   onclick={() => toggleThought(snippet.id, expanded)}
                 >
                   {#if expanded}
-                    <ChevronDown
-                      class="mt-0.5 size-4 shrink-0 text-foreground"
-                      aria-hidden="true"
-                    />
+                    <ChevronDown class="mt-0.5 size-4 shrink-0 text-foreground" aria-hidden="true" />
                   {:else}
-                    <ChevronRight
-                      class="mt-0.5 size-4 shrink-0 text-foreground"
-                      aria-hidden="true"
-                    />
+                    <ChevronRight class="mt-0.5 size-4 shrink-0 text-foreground" aria-hidden="true" />
                   {/if}
                   <div class="min-w-0 flex-1">
-                    <p
-                      class="whitespace-pre-wrap text-sm {expanded
-                        ? 'line-clamp-3'
-                        : 'line-clamp-2'}"
-                    >
+                    <p class="whitespace-pre-wrap text-sm {expanded ? 'line-clamp-3' : 'line-clamp-2'}">
                       {snippet.normalizedText}
                     </p>
                     <div
-                      class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+                      class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground"
                     >
-                      <MemoryAuthorBadge
-                        author={authorship.author}
-                        authorLabel={authorship.authorLabel}
-                      />
-                      <span class="font-medium text-foreground">
-                        {recentThoughtPrimaryLabel(detail, snippet)}
+                      <span data-testid="brain-knows-source">{brainKnowsSourceLabel(source)}</span>
+                      <span class="font-medium text-foreground" data-testid="brain-knows-category">
+                        {snippet.category}
                       </span>
-                      {#if secondary}
-                        <span>{secondary}</span>
-                      {/if}
-                      {#if enrichStatus}
+                      <time datetime={snippet.createdAt}>{formatWhen(snippet.createdAt)}</time>
+                      {#if state}
                         <span
-                          class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 {enrichStatus.failed
-                            ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                            : 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'}"
+                          class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 {statusClass[state]}"
+                          data-testid="brain-knows-status"
+                          data-state={state}
                         >
-                          {#if enrichStatus.spinning}
-                            <LoaderCircleIcon
-                              class="size-3 shrink-0 animate-spin"
-                              aria-hidden="true"
-                            />
+                          {#if state === 'indexing'}
+                            <LoaderCircleIcon class="size-3 shrink-0 animate-spin" aria-hidden="true" />
                           {/if}
-                          {enrichStatus.label}
+                          {brainKnowsIndexLabel(state)}
                         </span>
-                        {#if enrichStatus.failed && detail?.queueError}
-                          <ErrorNotice
-                            class="text-xs"
-                            error={detail.queueError}
-                            attempted="Indexing a captured thought (background enrichment job)"
-                          />
-                        {/if}
                       {/if}
-                      <span class="ml-auto">{formatWhen(snippet.createdAt)}</span>
                     </div>
                   </div>
                 </button>
                 <div class="-mt-0.5 flex shrink-0 items-center gap-1">
-                  {#if showRetryAction(snippet.id, detail, enrichStatus)}
+                  {#if state === 'failed'}
                     <Button
                       type="button"
                       variant="ghost"
-                      class="h-auto rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                      class="h-auto rounded-full px-2 py-0.5 text-sm text-muted-foreground hover:text-foreground"
                       disabled={retryingId === snippet.id}
-                      onclick={(e) => {
-                        e.stopPropagation()
-                        onRetry(snippet.id)
-                      }}
+                      data-testid="brain-knows-retry"
+                      onclick={() => onRetry(snippet.id)}
                     >
-                      {retryingId === snippet.id ? 'Retrying…' : 'Retry'}
+                      {retryingId === snippet.id ? m.memory_knows_retrying() : m.memory_knows_retry()}
                     </Button>
                   {/if}
-                  {#if onToggleDone}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      class="h-auto rounded-full p-1.5 text-muted-foreground hover:text-foreground"
-                      aria-label={(detail ?? snippet).lifecycleStatus === 'completed'
-                        ? 'Reopen'
-                        : 'Mark done'}
-                      disabled={deletingId === snippet.id}
-                      onclick={(e) => {
-                        e.stopPropagation()
-                        onToggleDone(snippet.id)
-                      }}
-                    >
-                      <Check class="size-4" strokeWidth={2} aria-hidden="true" />
-                    </Button>
-                  {/if}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class="h-auto rounded-md p-1.5 text-foreground hover:text-foreground/70"
-                    aria-label={editingId === snippet.id ? 'Cancel edit' : 'Edit'}
-                    onclick={(e) => {
-                      e.stopPropagation()
-                      onEdit(snippet.id)
-                    }}
-                  >
-                    {#if editingId === snippet.id}
-                      <X class="size-4" strokeWidth={2} aria-hidden="true" />
-                    {:else}
-                      <PencilLine class="size-4" strokeWidth={2} aria-hidden="true" />
-                    {/if}
-                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     class="h-auto rounded-full p-1.5 text-destructive hover:text-destructive/80"
-                    aria-label={deletingId === snippet.id ? 'Deleting…' : 'Delete'}
+                    aria-label={deletingId === snippet.id ? m.memory_knows_deleting() : m.memory_knows_delete()}
                     disabled={deletingId === snippet.id}
-                    onclick={(e) => {
-                      e.stopPropagation()
-                      onDelete(snippet.id)
-                    }}
+                    data-testid="brain-knows-delete"
+                    onclick={() => onDelete(snippet.id)}
                   >
                     {#if deletingId === snippet.id}
                       <LoaderCircleIcon class="size-4 animate-spin" aria-hidden="true" />
@@ -341,11 +248,18 @@
                   </Button>
                 </div>
               </div>
+              {#if state === 'failed' && detail?.queueError}
+                <ErrorNotice
+                  class="px-3 pb-2 text-sm"
+                  error={detail.queueError}
+                  attempted="Indexing a thought the brain took in (background enrichment job)"
+                />
+              {/if}
 
               {#if expanded}
-                <div class="space-y-3 border-t border-border px-3 pb-3 pt-2">
-                  {#if loadingDetail || !detail}
-                    <p class="text-sm text-muted-foreground">Loading thought details…</p>
+                <div class="space-y-3 border-t border-border px-3 pt-2 pb-3">
+                  {#if loadingDetailId === snippet.id || !detail}
+                    <p class="text-sm text-muted-foreground">{m.memory_knows_loading_detail()}</p>
                   {:else}
                     <CaptureStoredSummary
                       thought={detail}
@@ -355,76 +269,19 @@
                         : undefined}
                       onNoteUpdated={onNoteUpdated ? () => onNoteUpdated(snippet.id) : undefined}
                     />
-                    {#if onAttach}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        class="h-auto px-3 py-1.5 text-xs"
-                        onclick={() => onAttach(snippet.id)}
-                      >
-                        Attach note
-                      </Button>
-                    {/if}
-                  {/if}
-
-                  {#if editingId === snippet.id}
-                    {#if editLoading}
-                      <div class="-mx-3 border-t border-border bg-muted/30 px-3 py-3">
-                        <CaptureQueueStatus
-                          processing={true}
-                          pendingCount={0}
-                          events={editProgressEvents}
-                          {pipeline}
-                        />
-                      </div>
-                    {/if}
-                    <div class="-mx-3 mt-3 border-t border-border">
-                      <div class="space-y-2 px-3 pt-4">
-                        <Label for="edit-{snippet.id}" class="text-sm">
-                          Describe your changes in plain language
-                        </Label>
-                        <Textarea
-                          id="edit-{snippet.id}"
-                          value={editRequest}
-                          oninput={(e) => onEditRequestChange(e.currentTarget.value)}
-                          placeholder="Example: Make this shorter and categorize as task."
-                          class="min-h-24 border border-border bg-muted/30 p-3 text-sm text-foreground shadow-none backdrop-blur-sm md:text-sm"
-                        />
-                      </div>
-                      <div
-                        class="flex flex-row items-center justify-end gap-2 border-t border-border bg-muted/30 p-3"
-                      >
-                        {#if editLoading}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            class="h-auto rounded-full px-4 py-2 text-sm font-medium leading-5 text-muted-foreground hover:text-destructive"
-                            onclick={onCancelEdit}
-                          >
-                            Cancel
-                          </Button>
-                        {/if}
-                        <Button
-                          type="button"
-                          class="h-auto px-4 py-2 text-sm font-medium leading-5"
-                          disabled={editLoading || !editRequest.trim()}
-                          onclick={onSubmitEdit}
-                        >
-                          Submit changes
-                        </Button>
-                      </div>
-                    </div>
                   {/if}
                 </div>
               {/if}
-            </div>
+            </li>
           {/each}
-          {#if filteredThoughts.length === 0}
-            <p class="text-xs text-muted-foreground px-1 py-2">
-              No captures match the current filters.
-            </p>
-          {/if}
-        </div>
+        </ul>
+        {#if thoughts.length === 0}
+          <p class="px-1 py-2 text-sm text-muted-foreground">{m.memory_knows_no_match()}</p>
+        {:else if thoughts.length >= limit}
+          <p class="px-1 py-2 text-sm text-muted-foreground" data-testid="brain-knows-newest">
+            {m.memory_knows_newest({ count: limit })}
+          </p>
+        {/if}
       </div>
     </div>
   </div>

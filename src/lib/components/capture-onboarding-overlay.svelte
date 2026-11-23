@@ -8,11 +8,12 @@
   import { Button } from '$lib/components/ui/button'
   import * as Card from '$lib/components/ui/card'
   import { ONBOARDING_GROUNDING_PUSH_DELAY_MS } from '$lib/grounding/onboarding-welcome-constants'
+  import { m } from '$lib/paraglide/messages.js'
   import { getPushSupportState, postSubscribe, subscribeToPush } from '$lib/push/client'
 
   let { open }: { open: boolean } = $props()
 
-  /** 0 welcome · 1 capture · 2 notifications */
+  /** 0 welcome · 1 the one door (the Ask bar) · 2 notifications */
   let step = $state(0)
   const lastStep = 2
 
@@ -149,14 +150,11 @@
             yours — portable across every AI tool you use, not locked to theirs.
           </p>
         {:else if step === 1}
-          <p class="text-xs leading-relaxed">
-            Eigen Enterprise captures what's on your mind and keeps it organized and searchable.
-            Nothing to file, nothing to tag.
+          <!-- The one door (plan/concept-memory-one-door.md): what's on your mind goes into the Ask bar. -->
+          <p class="text-sm leading-relaxed" data-testid="onboarding-one-door">
+            {m.onboarding_capture_body()}
           </p>
-          <p class="text-xs leading-relaxed">
-            Type it or say it. It files it away and remembers it for you — so next time you ask, it
-            already knows what you knew.
-          </p>
+          <p class="text-sm leading-relaxed">{m.onboarding_capture_body_2()}</p>
         {:else}
           <p class="text-xs leading-relaxed">
             Enable notifications so Eigen Enterprise can nudge you with a quick question after setup
@@ -239,7 +237,7 @@
           >
         {:else if pushDone || pushUnsupportedReason}
           <form method="post" action="?/completeOnboarding" use:enhance={completeOnboardingEnhance}>
-            <Button type="submit" class="rounded-[4px] text-xs">Start capturing →</Button>
+            <Button type="submit" class="rounded-[4px] text-xs">{m.onboarding_start()}</Button>
           </form>
         {/if}
       </Card.Footer>

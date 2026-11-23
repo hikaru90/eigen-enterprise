@@ -1,14 +1,12 @@
 import { test } from '@playwright/test'
 import { completeOnboardingOverlay } from './release-helpers'
 import { registerUser } from './test-helpers'
-import {
-  assertVoiceTranscribeApi,
-  exerciseVoiceCaptureUi,
-  installVoiceCaptureMocks,
-} from './voice-capture-helpers'
+import { assertVoiceTranscribeApi } from './voice-capture-helpers'
 
 test.describe('Voice capture @release', () => {
-  test('transcribe API and mic button fill the thought field', async ({
+  // The Capture page's mic is gone (plan/concept-memory-one-door.md): voice goes in through
+  // the Ask bar's dictation (its own component tests). The transcribe API stays.
+  test('the transcribe API turns speech into text', async ({
     page,
     context,
     baseURL,
@@ -29,14 +27,8 @@ test.describe('Voice capture @release', () => {
 
     await registerUser(context, page)
     await completeOnboardingOverlay(page)
-    await installVoiceCaptureMocks(page)
-
     await test.step('transcribe API returns speech text', async () => {
       await assertVoiceTranscribeApi(page)
-    })
-
-    await test.step('mic UI appends transcript to #thought', async () => {
-      await exerciseVoiceCaptureUi(page)
     })
   })
 })

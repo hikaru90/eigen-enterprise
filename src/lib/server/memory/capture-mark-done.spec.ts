@@ -125,18 +125,13 @@ describe('capture page mark-done (bare thought uuid resolution)', () => {
     )
   })
 
-  it('capture page uses the shared quick-action client, not PATCH /api/thoughts', () => {
+  it('What the brain knows (/m/memory/capture) is read-only: no done toggle — tasks are done on Tasks (plan/concept-memory-one-door.md)', () => {
     const page = readFileSync(path.join(here, '../../../routes/(nucleus)/m/memory/capture/+page.svelte'), 'utf-8')
-    expect(page).toContain('postTimelineQuickAction')
-    expect(page).not.toMatch(/PATCH[^"']*\/api\/thoughts/)
-  })
-
-  it('capture-recent-thoughts exposes a done toggle wired to the page handler', () => {
-    const component = readFileSync(
-      path.join(here, '../../components/capture-recent-thoughts.svelte'),
-      'utf-8',
-    )
-    expect(component).toContain('onToggleDone')
-    expect(component).toMatch(/aria-label=\{?\s*[\s\S]{0,200}(Mark done|Reopen)/)
+    const component = readFileSync(path.join(here, '../../components/capture-recent-thoughts.svelte'), 'utf-8')
+    for (const source of [page, component]) {
+      expect(source).not.toContain('onToggleDone')
+      expect(source).not.toContain('postTimelineQuickAction')
+      expect(source).not.toMatch(/PATCH[^"']*\/api\/thoughts/)
+    }
   })
 })

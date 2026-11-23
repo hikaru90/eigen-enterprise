@@ -35,7 +35,7 @@ export const INTERNAL_DOCUMENT_TOOLS = ['drive.create_document', 'memory.create_
 
 /** One routing sentence every page-writing tool carries, so the agent never picks the website for internal documents. */
 const PUBLIC_ONLY =
-  'The website is the company’s public website: only content meant for visitors. Internal documents (pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes) never go here, not even as a private page — save them to Drive as Markdown with drive.create_document, or to Memory › Notes with memory.create_text_file. Agent writes are checked and refused when the content is an internal document.'
+  'The website is the company’s public website: only content meant for visitors. Internal documents (pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes) never go here, not even as a private page — save them to Drive as Markdown with drive.create_document, or to Memory › Documents with memory.create_text_file. Agent writes are checked and refused when the content is an internal document.'
 
 async function configuredOrigin(): Promise<string> {
   const { env } = await import('$env/dynamic/private')
@@ -110,7 +110,7 @@ async function requirePublicContent(
   if (verdict.audience === 'public_website') return
   throw new KernelError(
     'invalid_input',
-    `Not put on the website: “${page.title}” is an internal document, not public website content (${verdict.reason}). The website is the company’s public site. Save it to Drive as Markdown with drive.create_document, or to Memory › Notes with memory.create_text_file.`,
+    `Not put on the website: “${page.title}” is an internal document, not public website content (${verdict.reason}). The website is the company’s public site. Save it to Drive as Markdown with drive.create_document, or to Memory › Documents with memory.create_text_file.`,
     { refused: 'internal_document', reason: verdict.reason, saveWith: [...INTERNAL_DOCUMENT_TOOLS] },
   )
 }

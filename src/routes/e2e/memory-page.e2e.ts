@@ -4,9 +4,11 @@ import { registerUser } from './test-helpers'
 
 /**
  * Phase-cohesion C3 (Memory): one Memory module page in the shell. Open it
- * from the navigation, walk every sub-page (each its own URL under
- * /m/memory), capture a thought that is a task, find it under Tasks, complete
- * it, and see the old URLs gone. Screenshots go to MEMORY_PAGE_SHOTS
+ * from the navigation (it lands on Tasks: no Overview any more), walk every
+ * sub-page (each its own URL under /m/memory), see that nothing is typed in on
+ * Memory (the Ask bar is the one door, plan/concept-memory-one-door.md), find
+ * a thought the brain took in under What the brain knows and its task under
+ * Tasks, complete it, and see the old URLs gone. Screenshots go to MEMORY_PAGE_SHOTS
  * (default test-results/memory-page) and are meant to be looked at.
  */
 
@@ -53,7 +55,7 @@ async function expectMemoryTab(page: Page, tab: string, title: RegExp): Promise<
   await expect(page).toHaveTitle(title)
 }
 
-test('Memory is one module page: nav → sub-pages → capture → task → complete it', async ({
+test('Memory is one module page: nav → Tasks → sub-pages → what the brain knows → task → complete it', async ({
   page,
   context,
 }) => {
@@ -61,17 +63,18 @@ test('Memory is one module page: nav → sub-pages → capture → task → comp
   await page.setViewportSize({ width: 1280, height: 860 })
   const ownerId = await newOwner(context, page)
 
-  await test.step('open Memory from the navigation: Active, a plain task list', async () => {
+  await test.step('open Memory from the navigation: Active, it lands on Tasks', async () => {
     await page.goto('/')
     const navEntry = page.getByTestId('shell-sidebar').getByTestId('shell-nav-memory')
     await expect(navEntry).toHaveAttribute('href', '/m/memory')
     await navEntry.click()
-    await expect(page).toHaveURL(/\/m\/memory$/)
-    await expectMemoryTab(page, 'overview', /^Memory · eigenEnterprise$/)
+    await expect(page).toHaveURL(/\/m\/memory\/tasks$/)
+    await expectMemoryTab(page, 'tasks', /^Tasks · Memory · eigenEnterprise$/)
     await expect(page.getByTestId('module-status')).toHaveText('Active')
     await expect(page.getByText('Not active')).toHaveCount(0)
-    await expect(page.getByTestId('memory-task-list')).toBeVisible()
-    await page.screenshot({ path: `${SHOTS}/overview.png`, fullPage: true })
+    await expect(page.getByTestId('memory-tab-overview')).toHaveCount(0)
+    await expect(page.getByTestId('memory-tab-description')).toHaveText('One step someone does.')
+    await page.screenshot({ path: `${SHOTS}/tasks-landing.png`, fullPage: true })
   })
 
   await test.step('open Settings from the header (right) and save one', async () => {
@@ -87,10 +90,10 @@ test('Memory is one module page: nav → sub-pages → capture → task → comp
 
   for (const [tab, path, title] of [
     ['tasks', '/m/memory/tasks', /^Tasks · Memory · eigenEnterprise$/],
-    ['reminders', '/m/memory/reminders', /^Reminders · Memory · eigenEnterprise$/],
     ['projects', '/m/memory/projects', /^Projects · Memory · eigenEnterprise$/],
-    ['notes', '/m/memory/notes', /^Notes · Memory · eigenEnterprise$/],
-    ['capture', '/m/memory/capture', /^Capture · Memory · eigenEnterprise$/],
+    ['documents', '/m/memory/notes', /^Documents · Memory · eigenEnterprise$/],
+    ['reminders', '/m/memory/reminders', /^Reminders · Memory · eigenEnterprise$/],
+    ['knows', '/m/memory/capture', /^What the brain knows · Memory · eigenEnterprise$/],
   ] as const) {
     await test.step(`sub-page ${tab}`, async () => {
       await page.getByTestId(`memory-tab-${tab}`).click()
@@ -104,41 +107,20 @@ test('Memory is one module page: nav → sub-pages → capture → task → comp
   const stamp = Date.now()
   const raw = `TODO: call the printer about the flyer order ${stamp}`
 
-  await test.step('capture a thought through the composer', async () => {
-    const thought = page.locator('#thought')
-    const captureBtn = page.getByRole('button', { name: 'Capture', exact: true })
-    await expect(async () => {
-      await thought.fill(raw)
-      await expect(captureBtn).toBeEnabled({ timeout: 1_000 })
-    }).toPass({ timeout: 15_000 })
-    const interpret = page.waitForResponse(
-      (res) => res.url().includes('/api/capture/interpret') && res.request().method() === 'POST',
-      { timeout: 60_000 },
-    )
-    await captureBtn.click()
-    // The restyled composer really submits to the capture pipeline. The mock
-    // gateway speaks chat, not the interpret JSON protocol (and has no
-    // embeddings), so in this harness the server answers with a parse error
-    // and the page must say so plainly, keeping the text for a retry.
-    const res = await interpret
-    if (res.ok()) {
-      const modal = page.getByTestId('capture-confirmation-modal')
-      if (await modal.isVisible({ timeout: 3_000 }).catch(() => false))
-        await modal.getByRole('button', { name: /^Confirm$/i }).click()
-      await expect(
-        page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
-      ).toContainText(/printer|flyer/i, { timeout: 60_000 })
-    } else {
-      await expect(page.locator('p.text-destructive').first()).toBeVisible()
-      await expect(thought).toHaveValue(raw)
-    }
-    await page.screenshot({ path: `${SHOTS}/capture-submitted.png`, fullPage: true })
+  await test.step('nothing is typed in on Memory: What the brain knows points to the Ask bar', async () => {
+    await expect(page.getByTestId('brain-knows')).toBeVisible()
+    await expect(page.locator('#thought')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Capture', exact: true })).toHaveCount(0)
+    await expect(page.getByTestId('tell-the-brain')).toContainText('Ask bar')
+    await page.getByTestId('tell-the-brain-open').click()
+    await expect(page.getByPlaceholder('Ask the company brain…')).toBeFocused()
+    await page.keyboard.press('Escape')
   })
 
-  // What the capture pipeline stores for that thought with a real model: a
+  // What the brain stores for "TODO: call the printer …" with a real model: a
   // task thought plus its due date. Seeded here because the mock cannot.
   const summary = `Call the printer about the flyer order ${stamp}`
-  await test.step('a captured task appears in Recent and under Tasks', async () => {
+  await test.step('the thought shows under What the brain knows, its task under Tasks', async () => {
     const [row] = await sql()`
       insert into thought (user_id, raw_text, normalized_text, lexical_text, category,
         capture_source, enrich_queue_status, enriched_at)
@@ -152,9 +134,12 @@ test('Memory is one module page: nav → sub-pages → capture → task → comp
         'day', 'UTC', 0.9, ${summary}, ${summary})`
 
     await page.reload()
-    await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText(`flyer order ${stamp}`).first()).toBeVisible({ timeout: 30_000 })
-    await page.screenshot({ path: `${SHOTS}/capture-recent.png`, fullPage: true })
+    const known = page.getByTestId('brain-knows-row').filter({ hasText: `flyer order ${stamp}` })
+    await expect(known).toBeVisible({ timeout: 30_000 })
+    await expect(known.getByTestId('brain-knows-source')).toHaveText('Typed or spoken in the app')
+    await expect(known.getByTestId('brain-knows-category')).toHaveText('task')
+    await expect(known.getByTestId('brain-knows-status')).toHaveText('Indexed')
+    await page.screenshot({ path: `${SHOTS}/brain-knows.png`, fullPage: true })
 
     await page.getByTestId('memory-tab-tasks').click()
     await expect(page).toHaveURL(/\/m\/memory\/tasks$/)

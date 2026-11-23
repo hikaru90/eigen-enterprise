@@ -11,11 +11,7 @@ import {
   registerUser,
   TEST_PASSWORD,
 } from './test-helpers'
-import {
-  assertVoiceTranscribeApi,
-  exerciseVoiceCaptureUi,
-  installVoiceCaptureMocks,
-} from './voice-capture-helpers'
+import { assertVoiceTranscribeApi } from './voice-capture-helpers'
 
 // Playwright workers may not inherit .env from the parent shell; load explicitly for preflight.
 dotenv.config({ path: path.resolve(process.cwd(), '.env'), quiet: true, override: true })
@@ -96,21 +92,13 @@ function captureIndexingInFlight(thought: CaptureThoughtRow | null): boolean {
 
 /** Wait for background enrichment only while the capture queue is actually in flight. */
 async function waitForThoughtIndexed(page: Page, thoughtId: string, raw: string): Promise<void> {
-  await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible({
-    timeout: RELEASE_WAIT_MS,
-  })
-  // After interpret→confirm, the list shows interpreted text (may differ from verbatim raw).
+  // Memory › What the brain knows lists it (the text may be the cleaned-up version of raw).
   const tokenMatch = raw.match(/[A-Za-zÄÖÜäöüß]{5,}/)
   const token = tokenMatch?.[0]
-  if (token) {
-    await expect(
-      page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
-    ).toContainText(token, { timeout: RELEASE_WAIT_MS })
-  } else {
-    await expect(
-      page.getByRole('button', { name: /Expand thought|Collapse thought/ }).first(),
-    ).toBeVisible({ timeout: RELEASE_WAIT_MS })
-  }
+  const rows = page.getByTestId('brain-knows-row')
+  await expect(token ? rows.filter({ hasText: token }).first() : rows.first()).toBeVisible({
+    timeout: RELEASE_WAIT_MS,
+  })
 
   await expect
     .poll(
@@ -210,10 +198,10 @@ export type AuthenticatedSurface = {
 
 /** Main authenticated routes exercised before a release. */
 export const AUTHENTICATED_SURFACES: AuthenticatedSurface[] = [
-  { path: '/m/memory/capture', label: 'Capture' },
+  { path: '/m/memory/capture', label: 'What the brain knows' },
   { path: '/m/memory/tasks', label: 'Memory tasks' },
   { path: '/m/memory/projects', label: 'Memory projects' },
-  { path: '/m/memory/notes', label: 'Memory notes' },
+  { path: '/m/memory/notes', label: 'Memory documents' },
   { path: '/', label: 'Dashboard' },
   { path: '/assistant/activity', label: 'Activity' },
   { path: '/settings', label: 'Settings' },
@@ -675,253 +663,28 @@ export async function completeOnboardingOverlay(
   }
 }
 
-function parseInterpretResponse(bodyText: string): {
-  thoughtId: string
-  status: 'ingested' | 'awaiting_confirmation' | string
-} {
-  const json = JSON.parse(bodyText) as {
-    thoughtId?: string
-    status?: string
-    queueStatus?: string
-    error?: string
-  }
-  if (json.error) throw new Error(json.error)
-  const thoughtId = json.thoughtId ?? ''
-  const status =
-    json.status ??
-    (json.queueStatus === 'awaiting_confirmation' ? 'awaiting_confirmation' : 'ingested')
-  return { thoughtId, status }
-}
-
 /**
- * Fill Capture composer and wait until Svelte bind:value has accepted it (button enables).
- * Early fills after domcontentloaded are often wiped by hydration; re-fill until stable.
+ * Put a thought in the way the assistant's memory.capture_thought does (Memory
+ * has no input of its own: the Ask bar is the one door, plan/concept-memory-one-door.md),
+ * then see it listed under Memory › What the brain knows and wait until it is indexed.
  */
-async function fillCaptureComposer(page: Page, raw: string): Promise<Locator> {
-  const thought = page.locator('#thought')
-  const captureBtn = page.getByRole('button', { name: 'Capture', exact: true })
-  await expect(thought).toBeVisible({ timeout: RELEASE_WAIT_MS })
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    await thought.click()
-    await thought.fill(raw)
-    const value = await thought.inputValue().catch(() => '')
-    if (value === raw && (await captureBtn.isEnabled().catch(() => false))) {
-      return captureBtn
-    }
-    await page.waitForTimeout(250)
-  }
-
-  const stuckValue = await thought.inputValue().catch(() => '')
-  throw new Error(
-    `Capture button stayed disabled (thought value=${JSON.stringify(stuckValue)}, expected=${JSON.stringify(raw)})`,
-  )
-}
-
-/**
- * Capture through the UI confirmation gate:
- * Capture → interpret → (modal Confirm if LLM deviates) → full ingest.
- * When the LLM does not deviate, interpret returns ingested and no modal appears.
- */
-export async function captureThoughtViaUi(page: Page, raw: string): Promise<string> {
+export async function captureThoughtAndSeeItKnown(page: Page, raw: string): Promise<string> {
   await dismissBlockingLayers(page)
+  const res = await page.request.post('/api/capture/submit', {
+    data: { raw },
+    headers: { accept: 'application/json' },
+  })
+  if (!res.ok()) {
+    throw new Error((await res.text()).trim() || `Capture submit failed (${res.status()})`)
+  }
+  const { thought } = (await res.json()) as { thought: { id: string } }
   await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
   await dismissBlockingLayers(page)
-
   if (await visible(onboardingDialog(page))) {
     throw new Error('Onboarding overlay still open — complete onboarding before capture')
   }
-
-  const captureBtn = await fillCaptureComposer(page, raw)
-
-  const errorBanner = page.locator('p.text-destructive.text-sm').first()
-  const { thoughtId, status } = await submitInterpretViaUi(page, {
-    raw,
-    captureBtn,
-    errorBanner,
-  })
-
-  if (status === 'awaiting_confirmation') {
-    const confirmModal = page.getByTestId('capture-confirmation-modal')
-    await expect(confirmModal).toBeVisible({ timeout: RELEASE_WAIT_MS })
-    await expect(confirmModal.getByRole('button', { name: /^Confirm$/i })).toBeEnabled({
-      timeout: RELEASE_WAIT_MS,
-    })
-
-    const confirmResponsePromise = page.waitForResponse(
-      (res) => res.url().includes('/api/capture/confirm') && res.request().method() === 'POST',
-      { timeout: RELEASE_INDEXING_WAIT_MS },
-    )
-    await confirmModal.getByRole('button', { name: /^Confirm$/i }).click()
-    const confirmRes = await confirmResponsePromise
-    if (!confirmRes.ok()) {
-      throw new Error(
-        (await confirmRes.text()).trim() || `Capture confirm failed (${confirmRes.status()})`,
-      )
-    }
-  }
-
-  await waitForThoughtIndexed(page, thoughtId, raw)
-  return thoughtId
-}
-
-/**
- * Submit Capture and wait for interpret. Retries once on transient LLM HTTP 400
- * (provider rejection), which the gateway may return intermittently under load.
- */
-async function submitInterpretViaUi(
-  page: Page,
-  input: {
-    raw: string
-    captureBtn: Locator
-    errorBanner?: Locator
-  },
-): Promise<{ thoughtId: string; status: string }> {
-  let lastError = 'Capture interpret failed'
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) {
-      await fillCaptureComposer(page, input.raw)
-    }
-    const interpretResponsePromise = page.waitForResponse(
-      (res) => res.url().includes('/api/capture/interpret') && res.request().method() === 'POST',
-      { timeout: RELEASE_INDEXING_WAIT_MS },
-    )
-    await input.captureBtn.click()
-    await expect(page.getByTestId('capture-interpret-pending')).toBeVisible({
-      timeout: RELEASE_WAIT_MS,
-    })
-    const interpretRes = await interpretResponsePromise
-    const interpretBody = await interpretRes.text()
-    if (interpretRes.ok()) {
-      const parsed = parseInterpretResponse(interpretBody)
-      if (parsed.thoughtId) return parsed
-      lastError = 'Capture interpret succeeded but returned no thought id'
-      break
-    }
-    lastError = interpretBody.trim() || `Capture interpret failed (${interpretRes.status()})`
-    const retryable = /LLM HTTP 400|provider rejected|invalid_request_error/i.test(lastError)
-    if (!retryable || attempt === 1) break
-  }
-  if (input.errorBanner && (await visible(input.errorBanner, QUICK_MS))) {
-    const message = (await input.errorBanner.textContent())?.trim()
-    if (message) throw new Error(`Capture failed: ${message}`)
-  }
-  throw new Error(lastError)
-}
-
-/**
- * Capture → interpret deviation modal → Dismiss → store verbatim.
- * Injects forceConfirmation on interpret (non-production) so the modal path is
- * deterministic regardless of the live LLM judge.
- */
-export async function captureThoughtViaUiDismissVerbatim(
-  page: Page,
-  raw: string,
-): Promise<string> {
-  await dismissBlockingLayers(page)
-  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
-  await dismissBlockingLayers(page)
-
-  await page.route('**/api/capture/interpret', async (route) => {
-    if (route.request().method() !== 'POST') {
-      await route.continue()
-      return
-    }
-    const existing = route.request().postDataJSON() as Record<string, unknown>
-    await route.continue({
-      postData: JSON.stringify({ ...existing, forceConfirmation: true }),
-      headers: {
-        ...route.request().headers(),
-        'content-type': 'application/json',
-      },
-    })
-  })
-
-  try {
-    const captureBtn = await fillCaptureComposer(page, raw)
-    const { thoughtId, status } = await submitInterpretViaUi(page, { raw, captureBtn })
-    if (status !== 'awaiting_confirmation') {
-      throw new Error(
-        `Expected awaiting_confirmation for dismiss-verbatim test, got status=${status}`,
-      )
-    }
-
-    const confirmModal = page.getByTestId('capture-confirmation-modal')
-    await expect(confirmModal).toBeVisible({ timeout: RELEASE_WAIT_MS })
-
-    const confirmResponsePromise = page.waitForResponse(
-      (res) => res.url().includes('/api/capture/confirm') && res.request().method() === 'POST',
-      { timeout: RELEASE_INDEXING_WAIT_MS },
-    )
-    await confirmModal.getByRole('button', { name: /^Dismiss$/i }).click()
-    const confirmRes = await confirmResponsePromise
-    if (!confirmRes.ok()) {
-      throw new Error((await confirmRes.text()).trim() || 'Capture dismiss (verbatim) failed')
-    }
-    const thought = await fetchCaptureThoughtResult(page, thoughtId)
-    if (thought?.normalizedText !== raw) {
-      throw new Error(
-        `Expected verbatim normalizedText=${JSON.stringify(raw)}, got ${JSON.stringify(thought?.normalizedText)}`,
-      )
-    }
-
-    await waitForThoughtIndexed(page, thoughtId, raw)
-    return thoughtId
-  } finally {
-    await page.unroute('**/api/capture/interpret')
-  }
-}
-
-/**
- * Capture → interpret deviation modal → wait for 5s auto-accept.
- * Injects forceConfirmation on interpret (non-production) for a deterministic modal.
- */
-export async function captureThoughtViaUiAutoAccept(page: Page, raw: string): Promise<string> {
-  await dismissBlockingLayers(page)
-  await page.goto('/m/memory/capture', { waitUntil: 'domcontentloaded' })
-  await dismissBlockingLayers(page)
-
-  await page.route('**/api/capture/interpret', async (route) => {
-    if (route.request().method() !== 'POST') {
-      await route.continue()
-      return
-    }
-    const existing = route.request().postDataJSON() as Record<string, unknown>
-    await route.continue({
-      postData: JSON.stringify({ ...existing, forceConfirmation: true }),
-      headers: {
-        ...route.request().headers(),
-        'content-type': 'application/json',
-      },
-    })
-  })
-
-  try {
-    const captureBtn = await fillCaptureComposer(page, raw)
-    const { thoughtId, status } = await submitInterpretViaUi(page, { raw, captureBtn })
-    if (status !== 'awaiting_confirmation') {
-      throw new Error(`Expected awaiting_confirmation for auto-accept test, got status=${status}`)
-    }
-
-    const confirmModal = page.getByTestId('capture-confirmation-modal')
-    await expect(confirmModal).toBeVisible({ timeout: RELEASE_WAIT_MS })
-
-    const confirmResponsePromise = page.waitForResponse(
-      (res) => res.url().includes('/api/capture/confirm') && res.request().method() === 'POST',
-      { timeout: RELEASE_INDEXING_WAIT_MS },
-    )
-    // Do not click — wait for client 5s countdown to auto-confirm.
-    const confirmRes = await confirmResponsePromise
-    if (!confirmRes.ok()) {
-      throw new Error((await confirmRes.text()).trim() || 'Capture auto-accept failed')
-    }
-    await expect(confirmModal).toBeHidden({ timeout: RELEASE_WAIT_MS })
-
-    await waitForThoughtIndexed(page, thoughtId, raw)
-    return thoughtId
-  } finally {
-    await page.unroute('**/api/capture/interpret')
-  }
+  await waitForThoughtIndexed(page, thought.id, raw)
+  return thought.id
 }
 
 export async function visitAuthenticatedSurfaces(page: Page): Promise<void> {
@@ -1103,14 +866,14 @@ function textMatchPattern(value: string): RegExp {
 }
 
 export async function assertMarkDoneFromProjectsView(page: Page): Promise<void> {
-  // Locate the task by its thoughtId (returned by captureThoughtViaUi), not by a synthetic
+  // Locate the task by its thoughtId (returned by captureThoughtAndSeeItKnown), not by a synthetic
   // "marker-<ts>" token. The interpret LLM reasonably strips a bare `marker-<ts>` as noise —
   // which has broken this guard twice (first "markdone-<ts>" → "mark done-<ts>", then
   // "marker-<ts>" dropped entirely). The UI row's accessible name is the rendered
   // semanticSummary, so we fetch that same value from the API and match it as a substring.
   const stamp = Date.now()
   const captureText = `TODO: finish the release checklist item for the ${stamp} release review`
-  const thoughtId = await captureThoughtViaUi(page, captureText)
+  const thoughtId = await captureThoughtAndSeeItKnown(page, captureText)
 
   let itemId = ''
   let summary = ''
@@ -1209,7 +972,7 @@ export async function exerciseProjectsLifecycle(page: Page): Promise<void> {
 
   const created = await createProjectViaUi(page, projectName)
 
-  await captureThoughtViaUi(page, projectTaskThought)
+  await captureThoughtAndSeeItKnown(page, projectTaskThought)
   await pollUntil(
     `task linked to "${projectName}"`,
     async () => ((await findProject(page, created.entityId))?.openTaskCount ?? 0) > 0,
@@ -1224,7 +987,7 @@ export async function exerciseProjectsLifecycle(page: Page): Promise<void> {
     )
   }
 
-  await captureThoughtViaUi(page, postRenameThought)
+  await captureThoughtAndSeeItKnown(page, postRenameThought)
   await pollUntil(
     `second task on "${renamedProject}"`,
     async () => {
@@ -1236,7 +999,7 @@ export async function exerciseProjectsLifecycle(page: Page): Promise<void> {
 
   await dismissProjectViaUi(page, created.entityId, renamedProject)
 
-  await captureThoughtViaUi(page, postDismissThought)
+  await captureThoughtAndSeeItKnown(page, postDismissThought)
   if (await findProject(page, created.entityId)) {
     throw new Error('Dismissed project reappeared after follow-up capture')
   }
@@ -1262,8 +1025,8 @@ export async function assertProjectWaterfallAndAdvance(page: Page): Promise<void
   }
   const created = (await createRes.json()) as { entityId: string }
 
-  const firstThoughtId = await captureThoughtViaUi(page, `TODO: ${firstSummary}`)
-  const secondThoughtId = await captureThoughtViaUi(page, `TODO: ${secondSummary}`)
+  const firstThoughtId = await captureThoughtAndSeeItKnown(page, `TODO: ${firstSummary}`)
+  const secondThoughtId = await captureThoughtAndSeeItKnown(page, `TODO: ${secondSummary}`)
 
   for (const thoughtId of [firstThoughtId, secondThoughtId]) {
     const assignRes = await page.request.post('/api/timeline/projects/assign', {
@@ -1368,8 +1131,8 @@ export async function assertProjectDetailPageViews(page: Page): Promise<void> {
   }
   const created = (await createRes.json()) as { entityId: string }
 
-  const openThoughtId = await captureThoughtViaUi(page, `TODO: ${openToken} prepare kickoff notes`)
-  const doneThoughtId = await captureThoughtViaUi(page, `TODO: ${doneToken} finish the checklist`)
+  const openThoughtId = await captureThoughtAndSeeItKnown(page, `TODO: ${openToken} prepare kickoff notes`)
+  const doneThoughtId = await captureThoughtAndSeeItKnown(page, `TODO: ${doneToken} finish the checklist`)
 
   for (const thoughtId of [openThoughtId, doneThoughtId]) {
     const assignRes = await page.request.post('/api/timeline/projects/assign', {
@@ -1430,8 +1193,8 @@ export async function assertProjectReviewTidyUp(page: Page): Promise<void> {
   }
   const created = (await createRes.json()) as { entityId: string }
 
-  const openThoughtId = await captureThoughtViaUi(page, `TODO: ${openToken} prepare kickoff notes`)
-  const doneThoughtId = await captureThoughtViaUi(page, `TODO: ${doneToken} finish the checklist`)
+  const openThoughtId = await captureThoughtAndSeeItKnown(page, `TODO: ${openToken} prepare kickoff notes`)
+  const doneThoughtId = await captureThoughtAndSeeItKnown(page, `TODO: ${doneToken} finish the checklist`)
 
   for (const thoughtId of [openThoughtId, doneThoughtId]) {
     const assignRes = await page.request.post('/api/timeline/projects/assign', {
@@ -1845,7 +1608,7 @@ export async function exerciseAuthenticatedUi(page: Page): Promise<void> {
 
   await exerciseSettingsMenu(page)
   await exerciseMemoryUi(page)
-  await exerciseCaptureUi(page)
+  await exerciseBrainKnowsUi(page)
   await exerciseSettingsUi(page)
   await exerciseApiKeysUi(page)
   await exerciseActivityUi(page)
@@ -1868,7 +1631,7 @@ async function exerciseSettingsMenu(page: Page): Promise<void> {
 async function exerciseMemoryUi(page: Page): Promise<void> {
   await page.goto('/m/memory/tasks')
 
-  for (const tab of ['Tasks', 'Projects', 'Notes'] as const) {
+  for (const tab of ['Tasks', 'Projects', 'Documents', 'Reminders', 'What the brain knows'] as const) {
     await page.getByRole('link', { name: tab, exact: true }).click()
     await expect(page).not.toHaveURL(/\/login/)
   }
@@ -1883,8 +1646,8 @@ async function exerciseMemoryUi(page: Page): Promise<void> {
 
   await page.getByRole('link', { name: 'Projects', exact: true }).click()
 
-  await page.getByRole('link', { name: 'Notes', exact: true }).click()
-  const newNote = page.getByRole('button', { name: 'New note', exact: true })
+  await page.getByRole('link', { name: 'Documents', exact: true }).click()
+  const newNote = page.getByRole('button', { name: 'New document', exact: true })
   if (await newNote.isVisible().catch(() => false)) {
     await newNote.click()
     await expect(page.getByRole('dialog')).toBeVisible()
@@ -1892,17 +1655,16 @@ async function exerciseMemoryUi(page: Page): Promise<void> {
   }
 }
 
-async function exerciseCaptureUi(page: Page): Promise<void> {
+async function exerciseBrainKnowsUi(page: Page): Promise<void> {
+  // The voice transcribe API stays (the Ask bar's dictation); the Capture mic is gone.
   await assertVoiceTranscribeApi(page, { timeoutMs: RELEASE_WAIT_MS })
-  await installVoiceCaptureMocks(page)
-  await exerciseVoiceCaptureUi(page, { timeoutMs: RELEASE_WAIT_MS })
 
   await page.goto('/m/memory/capture')
-
-  const expand = page.getByRole('button', { name: 'Expand thought' }).first()
+  await expect(page.getByTestId('brain-knows')).toBeVisible({ timeout: RELEASE_WAIT_MS })
+  const expand = page.getByRole('button', { name: 'Show details' }).first()
   if (await expand.isVisible().catch(() => false)) {
     await expand.click()
-    await page.getByRole('button', { name: 'Collapse thought' }).first().click()
+    await page.getByRole('button', { name: 'Hide details' }).first().click()
   }
 }
 

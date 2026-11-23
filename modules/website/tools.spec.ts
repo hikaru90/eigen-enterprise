@@ -259,7 +259,7 @@ describe('the website is the public site: tool descriptions route internal docum
   const summary = (name: string) => tools.find((t) => t.name === name)!.summary
 
   it.each(['website.create_page', 'website.update_page', 'website.publish_page'])(
-    '%s says the website is public-only and names the Drive and Memory › Notes tools',
+    '%s says the website is public-only and names the Drive and Memory › Documents tools',
     (name) => {
       expect(summary(name)).toMatch(/public website/i)
       expect(summary(name)).toMatch(/internal documents/i)
@@ -304,7 +304,7 @@ describe('internal-document guard on agent page writes (Contribute: never a webs
   const publicCopy = { audience: 'public_website', reason: 'Product page for visitors.' } as const
   const deck = { slug: 'pitch-deck', title: 'Seed pitch deck', body: '# We raise €1.5M', kind: 'doc' as const }
 
-  it('create_page refuses an internal document: no page, a clear error naming Drive and Memory › Notes', async () => {
+  it('create_page refuses an internal document: no page, a clear error naming Drive and Memory › Documents', async () => {
     const { registry, store, classify } = setup(internal)
     const err = await registry.execute('website.create_page', deck, agent).catch((e) => e)
     expect(err).toBeInstanceOf(KernelError)

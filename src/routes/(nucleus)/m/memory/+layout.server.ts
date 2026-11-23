@@ -5,8 +5,8 @@ import { env } from '$lib/server/env/private-env'
 import { MEMORY_MODULE_ID } from '../../../../../modules/memory/manifest'
 
 /**
- * The Memory module page (phase-cohesion §3): one page with Overview, Tasks,
- * Projects, Notes and Capture as sub-pages. Memory is a system module, so its
+ * The Memory module page (phase-cohesion §3): one page with Tasks, Projects,
+ * Documents, Reminders and What the brain knows as sub-pages. Memory is a system module, so its
  * status comes from the same activation the kernel gates its tools on — the
  * header can never say "Not active" while the tools work.
  */
