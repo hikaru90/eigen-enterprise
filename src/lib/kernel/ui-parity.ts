@@ -52,7 +52,7 @@ export type UiParity =
   | { transport: string }
 
 /** The number of `debt` entries. Lower it when you clear debt; the spec fails if it is not exact. */
-export const DEBT_CEILING = 28
+export const DEBT_CEILING = 15
 
 const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
@@ -109,11 +109,11 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/drive/github ?/syncNow': tool('repos.sync_now'),
 
   // ─── Calendar ─────────────────────────────────────────────────────────────
-  '/(nucleus)/m/calendar ?/acceptProposal': debt('calendar', 'Accept an appointment found in mail (event + invitation).'),
-  '/(nucleus)/m/calendar ?/delete': debt('calendar', 'Delete an event, a series or one occurrence.'),
-  '/(nucleus)/m/calendar ?/dismissProposal': debt('calendar', 'Dismiss an appointment found in mail.'),
-  '/(nucleus)/m/calendar ?/preferences': debt('calendar', 'Default visibility of my new events.'),
-  '/(nucleus)/m/calendar ?/save': debt('calendar', 'Create or edit an event, a series or one occurrence (or accept a proposal with edits).'),
+  '/(nucleus)/m/calendar ?/acceptProposal': tool('calendar.accept_proposal'),
+  '/(nucleus)/m/calendar ?/delete': tool('calendar.delete_event'),
+  '/(nucleus)/m/calendar ?/dismissProposal': tool('calendar.dismiss_proposal'),
+  '/(nucleus)/m/calendar ?/preferences': tool('calendar.set_default_visibility'),
+  '/(nucleus)/m/calendar ?/save': tool('calendar.update_event'),
   '/(nucleus)/m/calendar ?/weekNumbers': noEffect(VIEW_STATE),
 
   // ─── Email ────────────────────────────────────────────────────────────────
@@ -121,11 +121,11 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/m/email/domains/[id] ?/receiving': tool('email.domain_set_receiving'),
   '/(nucleus)/m/email/domains/[id] ?/recheck': tool('email.domain_recheck'),
   '/(nucleus)/m/email/domains/[id] ?/tracking': tool('email.domain_set_tracking'),
-  '/(nucleus)/m/email/inbox ?/acceptProposal': debt('calendar', 'Accept the appointment found in this mail.'),
+  '/(nucleus)/m/email/inbox ?/acceptProposal': tool('calendar.accept_proposal'),
   '/(nucleus)/m/email/inbox ?/createLabel': tool('email.label_create'),
   '/(nucleus)/m/email/inbox ?/createMine': tool('email.mailbox_create_mine'),
   '/(nucleus)/m/email/inbox ?/deleteLabel': tool('email.label_delete'),
-  '/(nucleus)/m/email/inbox ?/dismissProposal': debt('calendar', 'Dismiss the appointment found in this mail.'),
+  '/(nucleus)/m/email/inbox ?/dismissProposal': tool('calendar.dismiss_proposal'),
   '/(nucleus)/m/email/inbox ?/label': tool('email.mail_label'),
   '/(nucleus)/m/email/inbox ?/move': tool('email.mail_move'),
   '/(nucleus)/m/email/inbox ?/read': tool('email.mail_mark_read'),
@@ -341,13 +341,13 @@ export const UI_PARITY: Record<string, UiParity> = {
   // ─── Calls ────────────────────────────────────────────────────────────────
   '/api/calls POST': tool('calls.start'),
   '/api/calls/[id]/accept POST': human(CALL_PRESENCE),
-  '/api/calls/[id]/brain POST': debt('calls', 'Switch the Company Brain on or off in a call.'),
-  '/api/calls/[id]/brain/answers/[answerId]/share POST': debt('calls', 'Share a Brain answer with the call.'),
+  '/api/calls/[id]/brain POST': tool('calls.brain_set'),
+  '/api/calls/[id]/brain/answers/[answerId]/share POST': tool('calls.brain_share_answer'),
   '/api/calls/[id]/brain/ask POST': transport(CHAT),
-  '/api/calls/[id]/brain/recap POST': debt('calls', 'A recap of the call by the Company Brain.'),
+  '/api/calls/[id]/brain/recap POST': tool('calls.brain_recap'),
   '/api/calls/[id]/decline POST': human(CALL_PRESENCE),
-  '/api/calls/[id]/guests POST': debt('calls', 'Invite guests by email to a call.'),
-  '/api/calls/[id]/guests/[guestId] DELETE': debt('calls', 'Remove a guest from a call.'),
+  '/api/calls/[id]/guests POST': tool('calls.invite_guests'),
+  '/api/calls/[id]/guests/[guestId] DELETE': tool('calls.remove_guest'),
   '/api/calls/[id]/hangup POST': human(CALL_PRESENCE),
   '/api/calls/[id]/transcript POST': transport(SPEECH),
   '/api/calls/[id]/transcription POST': human(CALL_CONSENT),
@@ -356,7 +356,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/calls/guest/[token]/transcript POST': transport(SPEECH),
   '/api/calls/guest/[token]/transcription POST': human(CALL_GUEST),
   '/api/calls/livekit POST': transport(WEBHOOK),
-  '/api/calls/meetings POST': debt('calls', 'Book a meeting (now or later) with guests by email and a duration.'),
+  '/api/calls/meetings POST': tool('calls.schedule'),
 
   // ─── Contribute ───────────────────────────────────────────────────────────
   '/api/contribute POST': tool('contribute.propose'),

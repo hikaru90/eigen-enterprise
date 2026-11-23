@@ -34,9 +34,9 @@ import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { ASSISTANT_MODULE_ID, assistantManifest } from './assistant/manifest'
 import { BRAND_MODULE_ID, BRAND_WRITE_TOOLS, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
-import { CALENDAR_MODULE_ID, calendarManifest } from './calendar/manifest'
+import { CALENDAR_MODULE_ID, CALENDAR_WRITE_TOOLS, calendarManifest } from './calendar/manifest'
 import { createCalendarTools } from './calendar/tools'
-import { CALLS_MODULE_ID, callsManifest } from './calls/manifest'
+import { CALLS_MODULE_ID, CALLS_WRITE_TOOLS, callsManifest } from './calls/manifest'
 import { createCallsTools } from './calls/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
@@ -210,8 +210,12 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'drive.unarchive',
   // Drive file management (create, upload, rename, move, share, trash, delete forever, revisions).
   ...DRIVE_WRITE_TOOLS,
-  // Calls: starting a call rings people (internal) — an agent's ring waits on the approval mode.
-  'calls.start',
+  // Calls: ringing, booking meetings / inviting guests (external mail), removing a guest and
+  // the Company Brain's switch and shares wait on the approval mode.
+  ...CALLS_WRITE_TOOLS,
+  // Calendar: changes to the person's calendar (and accepting a mailed appointment, which
+  // sends an invitation) wait on the approval mode.
+  ...CALENDAR_WRITE_TOOLS,
   // Contacts: an agent's adds, edits and logged contacts wait on the approval mode (internal).
   ...CONTACTS_WRITE_TOOLS,
   // Contribute: a proposal or vote made through the agent waits on the approval mode (internal).
@@ -318,7 +322,9 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
   // announced so the other processes (the ee CLI, a second app slot) drop theirs.
   const activations =
     options.activations ??
-    new CachedActivationStore(new DbActivationStore(db), { announce: (id) => notifyActivationChange(db, id) })
+    new CachedActivationStore(new DbActivationStore(db), {
+      announce: (id) => notifyActivationChange(db, id),
+    })
   const eventSink = options.eventSink ?? new DbEventSink(db)
   const approvalStore = options.approvalStore ?? new DbApprovalStore(db)
   const approvalMode = options.approvalMode ?? new DbApprovalModeStore(db)
@@ -350,7 +356,8 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
         tarballMaxBytes: GITHUB_TARBALL_MAX_BYTES,
         // Test seam (the e2e mock GitHub); same precedent as llm/oauth/github-copilot.ts.
         apiBase: process.env.GITHUB_TOKEN_API_BASE_URL?.trim() || 'https://api.github.com',
-        codeloadOrigin: process.env.GITHUB_CODELOAD_BASE_URL?.trim() || 'https://codeload.github.com',
+        codeloadOrigin:
+          process.env.GITHUB_CODELOAD_BASE_URL?.trim() || 'https://codeload.github.com',
       }),
     tarballDir: githubTarballDir,
     tarballMaxBytes: GITHUB_TARBALL_MAX_BYTES,
@@ -558,7 +565,9 @@ export function callContextsFromMessages(load: () => Promise<MessagesDeps>): Cal
       if (!found || !(await found.svc.canUse(found.d, actorId, found.c, 'edit'))) return null
       const members = await found.svc.conversationMembers(found.d, actorId, found.c.id)
       const title =
-        found.c.kind === 'channel' ? `#${found.c.name}` : members.map((p) => p.name.trim() || p.email).join(', ')
+        found.c.kind === 'channel'
+          ? `#${found.c.name}`
+          : members.map((p) => p.name.trim() || p.email).join(', ')
       return { title, memberIds: members.map((p) => p.id) }
     },
     async isMember(userId, kind, id) {
@@ -580,15 +589,23 @@ export function callLogToMessages(load: () => Promise<MessagesDeps>): CallLogPor
       await svc.postCallLine(await load(), {
         conversationId: ended.contextId,
         authorId: ended.startedBy,
-        call: { callId: ended.callId, outcome: ended.outcome, durationSeconds: ended.durationSeconds },
+        call: {
+          callId: ended.callId,
+          outcome: ended.outcome,
+          durationSeconds: ended.durationSeconds,
+        },
       })
     },
   }
 }
 
-const liveMessagesDeps = async (): Promise<MessagesDeps> => (await import('./messages/live')).messagesDeps()
+const liveMessagesDeps = async (): Promise<MessagesDeps> =>
+  (await import('./messages/live')).messagesDeps()
 
-const liveCallsPorts = () => ({ contexts: callContextsFromMessages(liveMessagesDeps), log: callLogToMessages(liveMessagesDeps) })
+const liveCallsPorts = () => ({
+  contexts: callContextsFromMessages(liveMessagesDeps),
+  log: callLogToMessages(liveMessagesDeps),
+})
 
 /** This process's Calls service, its conversations answered by the live Messages. */
 export async function liveCallsService(): Promise<CallsService> {
