@@ -44,7 +44,6 @@ const REMAINING: Area[] = [
       'src/lib/memory/',
       'src/lib/components/memory-',
       'src/lib/components/capture-',
-      'src/lib/components/first-capture-nudge.svelte',
       'src/lib/components/grounding-question-card.svelte',
     ],
   },

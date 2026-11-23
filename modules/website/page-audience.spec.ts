@@ -39,7 +39,7 @@ describe('buildAudienceMessages', () => {
     expect(system!.content).toMatch(/internal document/i)
     // The routing the refusal names is part of the judge's framing too.
     expect(system!.content).toMatch(/Drive/)
-    expect(system!.content).toMatch(/Memory › Notes/)
+    expect(system!.content).toMatch(/Memory › Documents/)
     expect(user).toMatchObject({ role: 'user' })
     const page = JSON.parse(String(user!.content).slice(String(user!.content).indexOf('{')))
     expect(page).toEqual({

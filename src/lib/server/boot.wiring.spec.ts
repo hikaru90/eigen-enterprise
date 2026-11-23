@@ -352,6 +352,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'memory.list_tasks',
   'memory.list_text_files',
   'memory.list_thought_notes',
+  'memory.list_thoughts',
   'memory.order_project_task',
   'memory.pause_scheduled_task',
   'memory.relink_thought',

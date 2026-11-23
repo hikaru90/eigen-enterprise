@@ -23,6 +23,8 @@ describe('capture-onboarding-overlay.svelte', () => {
     await page.getByRole('button', { name: 'Next' }).click()
     await expect.element(page.getByText('Step 2 of 3')).toBeInTheDocument()
     await expect.element(page.getByText('Just drop it in.')).toBeInTheDocument()
+    // The one door: what's on your mind goes into the Ask bar, not a Capture box.
+    await expect.element(page.getByTestId('onboarding-one-door')).toHaveTextContent(/Ask bar/)
 
     await page.getByRole('button', { name: 'Next' }).click()
     await expect.element(page.getByText('Step 3 of 3')).toBeInTheDocument()

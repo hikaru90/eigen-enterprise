@@ -14,6 +14,8 @@ export function thoughtToRecentSnippet(
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     author: thought.author ?? existing?.author ?? 'user',
     authorLabel: thought.authorLabel ?? existing?.authorLabel ?? null,
+    // The detail carries no capture source: the listed row's stays.
+    ...(existing?.source !== undefined ? { source: existing.source } : {}),
     lifecycleStatus: thought.lifecycleStatus ?? existing?.lifecycleStatus ?? 'open',
   }
 }

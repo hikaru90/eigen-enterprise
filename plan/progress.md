@@ -2,6 +2,33 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Memory one door M2: Capture becomes "What the brain knows", Overview gone, Notes are Documents (plan/concept-memory-one-door.md, decision 1 approved; branch, not merged, not on the box)
+
+- **Tabs:** Tasks · Projects · Documents · Reminders · What the brain knows (`src/lib/memory/memory-surface-nav.ts`, labels and one-line explanations are Paraglide messages, en + de). `/m/memory` redirects (307) to `/m/memory/tasks`.
+- **What the brain knows** (`/m/memory/capture`, URL kept): read-only list of the newest 30 thoughts. Each row shows its source (from `capture_source` + author: typed or spoken in the app · through the assistant · from <connected agent> · ee CLI or MCP · added by the app · evaluation · not recorded), category, date, and indexed / not indexed yet / indexing / failed + Retry. Rows have Delete and the detail on expand (unlinking a linked document still works there). The check-in (grounding) card and the first-run tour stay. At the top, "Tell the company brain in the Ask bar — it files it" with a button that focuses the Ask bar (`tell-the-brain.svelte`; with the Assistant off it says there is no Ask bar). The list polls every 5 s with the page's own limit (`poll-capture-recent-sync` now sends `limit`), so what the assistant files shows up while the page is open.
+- **New read tool `memory.list_thoughts`** (same rows as the page: text, category, date, `source.kind`, status, error). `memory.retry_enrichment` and `memory.delete_thought` already existed.
+- **The one door:** Memory's empty states and hints (Tasks, focus, timeline, projects, project next action, Documents) and the first-run tour now point to the Ask bar instead of "capture a thought". Agent-facing tool texts say "Memory › Documents".
+- **Tasks drawer** links the task's project to its page (it was the Overview's pill). Delete was already in the drawer.
+- **Removed (announced, owner decision 1):**
+  - Overview tab and its page (`/m/memory/+page.svelte`, form action `?/deleteTask`): the open tasks are Tasks › To do + Overdue (all time, with project and Delete in the drawer).
+  - Capture's input box, its mic (`voice-input-button.svelte`), the interpret step with its 5-second auto-accept confirmation modal (`capture-confirmation-modal.svelte`, `capture-interpret-pending.svelte`), and the ⌘/Ctrl+Enter shortcut.
+  - The attach-a-document-to-a-thought dialog (`capture-attach-file-dialog.svelte`).
+  - Per-row natural-language Edit and the Mark done / Reopen toggle on Capture's list. Both are still reachable through the Ask bar (`memory.edit_thought`, `memory.set_thought_status`), and tasks are done on Tasks.
+  - The offline capture queue list on the page (`capture-queue-list.svelte`, `capture-queue-status.svelte`, `ingest-phase-indicator.svelte`, `capture-step-ring.svelte`). The queue runner in `+layout.svelte` still drains anything left in it.
+  - The "Thought saved" first-capture nudge (`first-capture-nudge.svelte` + its lib); its trigger, typing into Capture, is gone.
+  - Server untouched: `/api/capture/*` (interpret, confirm, submit, edit, transcribe) and the enrichment pipeline stay as they were. Stale awaiting-confirmation drafts are still auto-confirmed by the server sweep.
+- **Decisions:**
+  - Routes stay: `/m/memory/capture` (check-in pushes and the welcome link point there) and `/m/memory/notes`.
+  - The tab ids are `documents` and `knows` (test ids `memory-tab-documents`, `memory-tab-knows`).
+  - The list shows the newest 30 and says so. Older thoughts are found by asking the brain (`memory.list_thoughts` takes up to 50).
+  - German: "Was die Brain weiß", "Dokumente", "Frage-Leiste" for the Ask bar.
+- **Gaps:**
+  - Ask bar attachments are read into the chat turn, not stored. The assistant can save their content (`memory.capture_thought` / `memory.create_text_file`) and link a document to a thought (`memory.link_text_file`), but there is no click-to-attach a document to a thought any more.
+  - The data can't tell typed from spoken (both are `ui`), and no call import writes thoughts, so neither shows as its own source.
+  - The Ask bar itself takes text and voice; files go in through its panel's composer.
+- **e2e updated, not run:** memory-page, capture (now the read-only list), release + helpers (thoughts go in through the capture API, the deviation-modal steps are gone), projects-assign-task, voice-capture (API only), graph-scale-spend (API capture, so it no longer measures the interpret call).
+- **Next:** M1 (Jev routing in the Ask bar, waits for CB2). M3 status pages.
+
 ## 2026-11-23 — Drive previews: image thumbnails in the list, text glances in the grid (owner: "include previews of the images in the drive? png, jpg, webp" · "even in list always include a small preview … text previews should also be visible in the small panes"; committed, not pushed, not on the box)
 
 - List view: raster images (png, jpg, jpeg, gif, webp, avif, bmp) show the image itself in the row's kind tile (`drive-list-thumb`); the grid already did. `hasThumbnail` (src/lib/drive/display.ts) is the one rule for both views; SVG keeps its icon (the content endpoint serves SVG as text, never active content).

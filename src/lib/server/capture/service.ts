@@ -672,6 +672,7 @@ export async function listThoughts(
         author: thought.author,
         authorLabel: thought.authorLabel,
         authorKeyId: thought.authorKeyId,
+        captureSource: thought.captureSource,
         lifecycleStatus: thought.lifecycleStatus,
         createdAt: thought.createdAt,
       })
@@ -696,6 +697,7 @@ export async function listThoughts(
       author: thought.author,
       authorLabel: thought.authorLabel,
       authorKeyId: thought.authorKeyId,
+      captureSource: thought.captureSource,
       lifecycleStatus: thought.lifecycleStatus,
       createdAt: thought.createdAt,
       updatedAt: thought.updatedAt,

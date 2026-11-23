@@ -199,7 +199,6 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/contacts/sharing POST': tool('contacts.share_many'),
 
   // ─── Memory ───────────────────────────────────────────────────────────────
-  '/(nucleus)/m/memory ?/deleteTask': tool('memory.delete_task'),
   '/(nucleus)/m/memory/capture ?/completeOnboarding': noEffect(VIEW_STATE),
   '/(nucleus)/m/memory/capture ?/skipOnboarding': noEffect(VIEW_STATE),
   '/(nucleus)/m/memory/projects/roadmap ?/add': tool('roadmap.add_item'),

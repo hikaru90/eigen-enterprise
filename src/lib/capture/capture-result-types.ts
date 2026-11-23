@@ -27,6 +27,9 @@ export type CaptureAttachedFile = {
 
 export type CaptureMemoryAuthor = 'user' | 'agent'
 
+/** The surface that queued a thought (thought.capture_source; the server's CaptureSource). */
+export type CaptureThoughtSource = 'mcp' | 'ui' | 'api' | 'eval' | 'agent'
+
 export type CaptureRecentThoughtSnippet = {
   id: string
   normalizedText: string
@@ -34,7 +37,9 @@ export type CaptureRecentThoughtSnippet = {
   createdAt: string
   author?: CaptureMemoryAuthor
   authorLabel?: string | null
-  /** Lifecycle state — capture page uses it for the done/reopen toggle. */
+  /** The surface that queued it (null on rows from before it was recorded). */
+  source?: CaptureThoughtSource | null
+  /** Lifecycle state (open | completed | archived). */
   lifecycleStatus?: 'open' | 'completed' | 'archived'
 }
 

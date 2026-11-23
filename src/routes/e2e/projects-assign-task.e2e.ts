@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  captureThoughtViaUi,
+  captureThoughtAndSeeItKnown,
   completeOnboardingOverlay,
   registerUser,
 } from './release-helpers'
@@ -35,7 +35,7 @@ test.describe('Projects: unassigned task assignment @qa', () => {
     })
 
     await test.step('capture an unassigned thought', async () => {
-      await captureThoughtViaUi(page, UNASSIGNED_THOUGHT)
+      await captureThoughtAndSeeItKnown(page, UNASSIGNED_THOUGHT)
     })
 
     await test.step('navigate to Projects view', async () => {

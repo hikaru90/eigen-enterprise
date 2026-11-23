@@ -28,6 +28,7 @@ describe('loadRecentCaptureThoughts', () => {
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         author: 'user',
         authorLabel: null,
+        captureSource: 'agent',
       },
     ])
     loadResultMock.mockResolvedValue({ thoughtId: 't1', ok: true })
@@ -54,8 +55,18 @@ describe('loadRecentCaptureThoughts', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         author: 'user',
         authorLabel: null,
+        source: 'agent',
       },
     ])
     expect(payload.recentThoughtDetails).toEqual([{ thoughtId: 't1', ok: true }])
+  })
+
+  it('says the source was not recorded (null) on rows from before capture_source existed', async () => {
+    listMock.mockResolvedValue([
+      { id: 't2', normalizedText: 'old', category: 'idea', createdAt: new Date('2025-01-01T00:00:00.000Z'), author: 'user', authorLabel: null, captureSource: null },
+    ])
+    loadResultMock.mockResolvedValue({ thoughtId: 't2', ok: true })
+    const payload = await loadRecentCaptureThoughts('u1')
+    expect(payload.recentThoughts[0]?.source).toBeNull()
   })
 })

@@ -47,6 +47,12 @@ describe('upsertRecentThoughtList', () => {
     expect(next[1]?.createdAt).toBe('2026-01-02T00:00:00.000Z')
   })
 
+  it('keeps the listed row’s capture source (the detail does not carry it)', () => {
+    const listed = [{ ...existing[0]!, source: 'agent' as const }]
+    const next = upsertRecentThoughtList(listed, thought('a', 'fact'), { limit: 8 })
+    expect(next[0]?.source).toBe('agent')
+  })
+
   it('prepends by default for unseen thoughts', () => {
     const next = upsertRecentThoughtList(existing, thought('c'), { limit: 8 })
     expect(next.map((row) => row.id)).toEqual(['c', 'a', 'b'])

@@ -10,7 +10,7 @@ import { extractChatContent } from '$lib/server/ontology/llm-json'
  * Public website content or an internal document? (Contribute: internal
  * documents — pitch decks, project descriptions, funding documents — are
  * never created as website pages; they belong in Drive (Markdown) or
- * Memory › Notes.) The model judges, never keywords (AGENTS.md: LLM + JSON
+ * Memory › Documents.) The model judges, never keywords (AGENTS.md: LLM + JSON
  * schema): one call through the gateway, on the company's AI provider, cost
  * tracked (`website_page_audience`). Post-LLM code only validates the JSON
  * against the schema. A failure fails loud — never a guessed verdict.
@@ -68,7 +68,7 @@ export const NO_PROVIDER_MESSAGE =
 export function buildAudienceMessages(page: PageDraft): ChatMessage[] {
   const system = [
     'You check content an AI assistant is about to put on a company’s website. The website is the company’s PUBLIC site: everything on it is meant for visitors — customers, prospects, the press, applicants. A private website page is only an unpublished draft of such a public page.',
-    'Internal documents never belong on the website, not even as a private page: pitch decks, investor or funding documents (fundraising, grants, cap tables, financials), project descriptions and briefs, plans and roadmaps, meeting notes, strategy, internal processes and handbooks, drafts of anything for internal use. Those are saved in Drive (Markdown) or in Memory › Notes instead.',
+    'Internal documents never belong on the website, not even as a private page: pitch decks, investor or funding documents (fundraising, grants, cap tables, financials), project descriptions and briefs, plans and roadmaps, meeting notes, strategy, internal processes and handbooks, drafts of anything for internal use. Those are saved in Drive (Markdown) or in Memory › Documents instead.',
     'Judge what the content is FOR and WHO it addresses: public website content (e.g. home, about, product, pricing, careers, blog post, public docs or FAQ for customers, contact, legal pages), or an internal document.',
     'Return JSON only, exactly this JSON Schema:',
     JSON.stringify(AUDIENCE_JSON_SCHEMA),

@@ -313,7 +313,7 @@
   })
 </script>
 
-<svelte:head><title>{docTitle('Notes', 'Memory')}</title></svelte:head>
+<svelte:head><title>{docTitle(m.notes_title(), 'Memory')}</title></svelte:head>
 
 <div
   class="flex min-h-[70dvh] w-full flex-1 flex-col overflow-hidden overscroll-none px-4 pt-6 pb-4 sm:px-8"

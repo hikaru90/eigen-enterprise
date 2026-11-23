@@ -37,6 +37,18 @@ function fakeService(): ThoughtToolService {
     })),
     getThought: vi.fn(async (_u, id) => (id === 't1' ? { id, rawText: 'Call Bea' } : null)),
     listArchivedThoughtIds: vi.fn(async () => ['t1']),
+    listRecentThoughts: vi.fn(async () => ({
+      recentThoughts: [
+        { id: 't1', normalizedText: 'Call Bea', category: 'task', createdAt: '2026-11-20T09:00:00.000Z', author: 'user', authorLabel: null, source: 'agent' },
+        { id: 't2', normalizedText: 'Acme likes blue', category: 'preference', createdAt: '2026-11-19T09:00:00.000Z', author: 'agent', authorLabel: 'Coder', source: 'mcp' },
+        { id: 't3', normalizedText: 'Old one', category: 'idea', createdAt: '2025-01-01T09:00:00.000Z', author: 'user', authorLabel: null, source: null },
+      ],
+      recentThoughtDetails: [
+        { id: 't1', enrichmentComplete: true, queueStatus: 'complete', queueError: null },
+        { id: 't2', enrichmentComplete: false, queueStatus: 'failed', queueError: 'LLM HTTP 500' },
+        { id: 't3', enrichmentComplete: false, queueStatus: 'pending', queueError: null },
+      ],
+    })),
     listThoughtNotes: vi.fn(async () => [{ id: 'n1', title: 'Note' }]),
     linkNote: vi.fn(async (_u, t, n) =>
       t !== 't1' ? { linked: false, reason: 'thought_not_found' as const } : n === 'n1' ? { linked: true } : { linked: false, reason: 'text_file_not_found' as const },
@@ -96,7 +108,7 @@ describe('memory thought / graph / note tools', () => {
     for (const n of ['memory.delete_thought', 'memory.delete_archived_thoughts', 'memory.delete_entity', 'memory.delete_text_file']) {
       expect(by(n).approvalRisk).toBe('destructive')
     }
-    for (const n of ['memory.get_thought', 'memory.list_archived_thoughts', 'memory.list_thought_notes', 'memory.get_entity', 'memory.list_connected_agents', 'memory.list_agent_projects']) {
+    for (const n of ['memory.list_thoughts', 'memory.get_thought', 'memory.list_archived_thoughts', 'memory.list_thought_notes', 'memory.get_entity', 'memory.list_connected_agents', 'memory.list_agent_projects']) {
       expect(by(n).auditClass).toBe('read')
     }
   })
@@ -204,5 +216,19 @@ describe('memory thought / graph / note tools', () => {
     await expect(run('memory.get_thought', { thought_id: 'x' })).rejects.toThrow(/not in your Memory/)
     await expect(run('memory.list_archived_thoughts', { limit: 10 })).resolves.toEqual({ thoughts: [{ id: 't1', rawText: 'Call Bea' }] })
     expect(svc.listArchivedThoughtIds).toHaveBeenCalledWith('bea', 10)
+  })
+  it('lists what the brain took in, newest first: source, category, date and whether it is indexed (Memory › What the brain knows)', async () => {
+    const { run, svc } = setup({ kind: 'assistant', userId: 'bea' })
+    await expect(run('memory.list_thoughts', { limit: 3, category: 'task' })).resolves.toEqual({
+      thoughts: [
+        { id: 't1', text: 'Call Bea', category: 'task', createdAt: '2026-11-20T09:00:00.000Z', source: { kind: 'assistant' }, status: 'indexed', error: null },
+        { id: 't2', text: 'Acme likes blue', category: 'preference', createdAt: '2026-11-19T09:00:00.000Z', source: { kind: 'connected_agent', name: 'Coder' }, status: 'failed', error: 'LLM HTTP 500' },
+        { id: 't3', text: 'Old one', category: 'idea', createdAt: '2025-01-01T09:00:00.000Z', source: { kind: 'unrecorded' }, status: 'pending', error: null },
+      ],
+    })
+    expect(svc.listRecentThoughts).toHaveBeenCalledWith('bea', 3, 'task')
+    await run('memory.list_thoughts', {})
+    expect(svc.listRecentThoughts).toHaveBeenLastCalledWith('bea', 30, undefined)
+    await expect(run('memory.list_thoughts', { limit: 51 })).rejects.toThrow()
   })
 })
