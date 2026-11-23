@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderCaddyConfig } from './caddy.ts'
-import { certificatePath,CADDY_LOG_LINES, observeCaddyLog, readCertificates, servedHosts } from './certificates.ts'
+import { certificatePath, CADDY_LOG_LINES, observeCaddyLog, readCertificates, servedHosts } from './certificates.ts'
 import { PATHS } from './paths.ts'
 import type { RunResult, System } from './system.ts'
 
