@@ -18,7 +18,13 @@ export type EngineToolListing = {
  * projection of the tool input — never full arguments, never secrets.
  */
 export type EngineSurfaceEvent =
-  | { type: 'tool.preview'; tool: string; inputSummary: string | null }
+  /**
+   * A tool starts. `stepId` pairs it with its `tool.finished`; `tool` is the tool that
+   * really runs (an `ee tool run <name>` names <name>).
+   */
+  | { type: 'tool.preview'; stepId: string; tool: string; inputSummary: string | null }
+  /** That tool ended: failed (a structured tool error) or not, and a short result summary. */
+  | { type: 'tool.finished'; stepId: string; tool: string; failed: boolean; resultSummary: string | null }
   | { type: 'approval.required'; tool: string; approvalId: string }
 
 /**

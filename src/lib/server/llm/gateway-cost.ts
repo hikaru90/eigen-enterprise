@@ -4,6 +4,18 @@ export type TokenUsage = {
   total_tokens?: number
 }
 
+const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0
+
+/**
+ * The tokens a gateway response reports (total_tokens, else prompt + completion); 0 when it
+ * reports none — a count of what was reported, never an estimate from the text.
+ */
+export function reportedTokenCount(usage: TokenUsage | undefined): number {
+  if (!usage) return 0
+  if (isCount(usage.total_tokens)) return usage.total_tokens
+  return (isCount(usage.prompt_tokens) ? usage.prompt_tokens : 0) + (isCount(usage.completion_tokens) ? usage.completion_tokens : 0)
+}
+
 export function parseUsdCost(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value
   if (typeof value === 'string') {

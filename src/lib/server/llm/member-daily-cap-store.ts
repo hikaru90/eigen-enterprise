@@ -1,8 +1,9 @@
 import { and, eq, gte, sql } from 'drizzle-orm'
+import { replyCostSchema, type ReplyCost } from '$lib/ai-usage/usage'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { getDb } from '$lib/server/db'
 import { companyAi } from '$lib/server/db/company.schema'
-import { activityCallLog } from '$lib/server/db/schema'
+import { activityCallLog, chatMessage } from '$lib/server/db/schema'
 import { parseStoredCapUsd } from './member-daily-cap'
 
 /**
@@ -19,6 +20,7 @@ export type MemberDailyCapStore = {
   setCapUsd(value: number | null, by: string): Promise<void>
   roleOf(userId: string): Promise<MemberRole | null>
   spentUsdSince(userId: string, since: Date): Promise<number>
+  replyCost(userId: string, messageId: string): Promise<{ usage: ReplyCost | null } | null>
 }
 
 export const memberDailyCapStore: MemberDailyCapStore = {
@@ -46,6 +48,23 @@ export const memberDailyCapStore: MemberDailyCapStore = {
 
   // Loaded on first use: the auth database opens on import (no DB for callers that never cap).
   roleOf: async (userId) => (await import('$lib/server/auth/user-role')).getUserRole(userId),
+
+  // What one of the person's assistant replies cost (handle-agent-chat-post keeps it as metadata.usage).
+  async replyCost(userId, messageId) {
+    const [row] = await getDb()
+      .select({ metadata: chatMessage.metadata })
+      .from(chatMessage)
+      .where(and(eq(chatMessage.id, messageId), eq(chatMessage.userId, userId), eq(chatMessage.role, 'assistant')))
+      .limit(1)
+    if (!row) return null
+    const stored = (row.metadata as { usage?: unknown } | null)?.usage
+    if (stored === undefined) return { usage: null }
+    const parsed = replyCostSchema.safeParse(stored)
+    if (!parsed.success) {
+      throw new Error(`chat_message ${messageId} holds a malformed reply cost: ${parsed.error.message}`)
+    }
+    return { usage: parsed.data }
+  },
 
   async spentUsdSince(userId, since) {
     const [row] = await getDb()

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms'
+  import AiUsageMeter from '$lib/components/ai-usage-meter.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { Label } from '$lib/components/ui/label'
@@ -54,14 +55,9 @@
       </p>
     {/if}
 
-    <p class="text-sm text-muted-foreground" data-testid="member-ai-usage">
-      You today: {dollars(usage.spentUsd)}
-      {#if usage.capApplies && usage.capUsd !== null && usage.remainingUsd !== null}
-        of {dollars(usage.capUsd)} ({dollars(usage.remainingUsd)} left; resets at midnight UTC).
-      {:else if usage.capUsd !== null}
-        (the cap does not apply to you).
-      {/if}
-    </p>
+    <div class="rounded-xl bg-muted/50 px-3 py-2.5" data-testid="member-ai-usage">
+      <AiUsageMeter {usage} testid="member-ai-usage-meter" />
+    </div>
 
     {#if message}
       <p class="text-sm text-muted-foreground" role="status">{message}</p>

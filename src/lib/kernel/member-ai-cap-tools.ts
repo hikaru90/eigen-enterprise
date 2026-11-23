@@ -1,5 +1,6 @@
 import type { ToolContext, ToolDescriptor } from './types'
 import { z } from 'zod'
+import { replyCostSchema, type ReplyCost } from '../ai-usage/usage'
 import { KernelError } from './errors'
 
 /**
@@ -34,6 +35,19 @@ export const memberAiUsageSchema = z.object({
 })
 export type MemberAiUsageView = z.infer<typeof memberAiUsageSchema>
 
+/** One reply's cost (settings.my_ai_usage with reply_message_id); null = none recorded for it. */
+export const myAiUsageOutputSchema = memberAiUsageSchema.extend({
+  reply: replyCostSchema.nullable().optional(),
+})
+export type MyAiUsageOutput = z.infer<typeof myAiUsageOutputSchema>
+
+const usageInputSchema = z
+  .object({
+    /** An assistant reply of yours (its chat message id): also return what that reply cost. */
+    reply_message_id: z.string().uuid().optional(),
+  })
+  .strict()
+
 const capSchema = z.object({ capUsd: z.number().positive().nullable() })
 
 const setInputSchema = z
@@ -49,6 +63,11 @@ export type MemberAiCapPort = {
   readCapUsd(): Promise<number | null>
   setCapUsd(value: number | null, actorUserId: string): Promise<void>
   usageToday(userId: string): Promise<MemberAiUsageView>
+  /**
+   * What one of the person's assistant replies cost: null when no such reply of theirs
+   * exists; `usage: null` when the reply has no recorded cost (replies from before costs were kept).
+   */
+  replyCost(userId: string, messageId: string): Promise<{ usage: ReplyCost | null } | null>
 }
 
 export type MemberAiCapToolDeps = { port: MemberAiCapPort }
@@ -103,13 +122,23 @@ export function createMemberAiCapTools(deps: MemberAiCapToolDeps): ToolDescripto
       name: 'settings.my_ai_usage',
       module: KERNEL_MEMBER_AI_CAP_MODULE_ID,
       summary:
-        'Your own AI usage today (UTC): what your model calls cost so far, the company’s daily cap per member, whether it applies to you, what is left and when it resets.',
+        'Your own AI usage today (UTC): what your model calls cost so far, the company’s daily cap per member, whether it applies to you, what is left and when it resets. With {reply_message_id: an assistant reply of yours} also what that reply cost (reply: {costUsd, tokens, modelCalls}, null when none was recorded).',
       auditClass: 'read',
-      inputSchema: z.object({}).strict(),
-      outputSchema: memberAiUsageSchema,
+      inputSchema: usageInputSchema,
+      outputSchema: myAiUsageOutputSchema,
       // Every person reads their own usage (admins hold 'member' too); an agent that is no person has none.
       permission: { roles: ['member'] },
-      handler: async (ctx) => deps.port.usageToday(personOf(ctx)),
+      handler: async (ctx, input) => {
+        const { reply_message_id } = usageInputSchema.parse(input ?? {})
+        const person = personOf(ctx)
+        const today = await deps.port.usageToday(person)
+        if (reply_message_id === undefined) return today
+        const reply = await deps.port.replyCost(person, reply_message_id)
+        if (!reply) {
+          throw new KernelError('invalid_input', `No assistant reply ${reply_message_id} of yours.`)
+        }
+        return { ...today, reply: reply.usage }
+      },
     },
   ]
 }

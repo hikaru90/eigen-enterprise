@@ -58,6 +58,14 @@ vi.mock('$lib/server/db', () => ({
 vi.mock('$lib/server/activity/trace-context', () => ({
   runWithTrace: (_id: string, fn: () => unknown) => fn(),
 }))
+// What a reply cost (the trace's cost-log rows): a fixed answer, recorded per call.
+const { readReplyCostMock } = vi.hoisted(() => ({
+  readReplyCostMock: vi.fn(async (..._args: unknown[]) => ({ costUsd: 0.0042, tokens: 1234, modelCalls: 2 })),
+}))
+vi.mock('$lib/server/chat/reply-cost', () => ({
+  runMeasuredTurn: async (fn: () => Promise<unknown>) => ({ value: await fn(), traceId: 'trace-1', tokens: 1234 }),
+  readReplyCost: readReplyCostMock,
+}))
 
 const SESSION_ID = 'sess-1'
 const ASSISTANT_MSG_ID = 'asst-1'
@@ -401,8 +409,16 @@ describe('POST /api/chat — harness dispatch', () => {
       ) => {
         sinks.surfaceEvent({
           type: 'tool.preview',
+          stepId: 'step-1',
           tool: 'email.send_mail',
-          inputSummary: '{"to":"a@b.c"}',
+          inputSummary: 'to: a@b.c',
+        })
+        sinks.surfaceEvent({
+          type: 'tool.finished',
+          stepId: 'step-1',
+          tool: 'email.send_mail',
+          failed: false,
+          resultSummary: 'status: sent',
         })
         sinks.stream('Hello ')
         sinks.stream('there.')
@@ -422,17 +438,36 @@ describe('POST /api/chat — harness dispatch', () => {
     const lines = await readNdjsonLines(res)
     expect(lines).toContainEqual({
       type: 'tool.preview',
+      stepId: 'step-1',
       tool: 'email.send_mail',
-      inputSummary: '{"to":"a@b.c"}',
+      inputSummary: 'to: a@b.c',
     })
+    expect(lines).toContainEqual(expect.objectContaining({ type: 'tool.finished', stepId: 'step-1', failed: false }))
     expect(lines).toContainEqual({ type: 'message_delta', content: 'Hello ' })
     expect(lines).toContainEqual({ type: 'message_delta', content: 'there.' })
     const last = lines[lines.length - 1]
     expect(last.type).toBe('done')
     expect(last.response).toBe('Hello there.')
     expect(last.sessionId).toBe(SESSION_ID)
-    // Preview step + final assistant message persisted.
-    expect(insertMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+    // What the reply cost: read from the reply's own trace, sent with done.
+    expect(readReplyCostMock).toHaveBeenCalledWith(streamDb, 'u1', { value: 'Hello there.', traceId: 'trace-1', tokens: 1234 })
+    expect(last.usage).toEqual({ costUsd: 0.0042, tokens: 1234, modelCalls: 2 })
+    // One row per tool step (its end folded in) + the final reply carrying its cost.
+    const rows = (insertMock.mock.results[0]!.value as { values: ReturnType<typeof vi.fn> }).values.mock.calls.map(
+      (call) => call[0] as { content: string; metadata?: Record<string, unknown> },
+    )
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        content: 'to: a@b.c',
+        metadata: expect.objectContaining({ variant: 'tool_preview', tool: 'email.send_mail', stepId: 'step-1', status: 'done', resultSummary: 'status: sent' }),
+      }),
+    )
+    expect(rows).toContainEqual(
+      expect.objectContaining({
+        content: 'Hello there.',
+        metadata: expect.objectContaining({ usage: { costUsd: 0.0042, tokens: 1234, modelCalls: 2 } }),
+      }),
+    )
   })
 
   it('passes approval.required through as a stream event', async () => {
@@ -795,7 +830,7 @@ describe('POST /api/chat — harness dispatch', () => {
       expect(runtimeDispatchMock.mock.calls[0]![4]).toMatchObject({ turnId: userRow.id })
       const values = (streamDb.insert.mock.results[0]!.value as { values: ReturnType<typeof vi.fn> }).values
       const answer = values.mock.calls.at(-1)![0] as { metadata?: unknown }
-      expect(answer.metadata).toEqual({ turnOf: userRow.id })
+      expect(answer.metadata).toEqual({ turnOf: userRow.id, usage: { costUsd: 0.0042, tokens: 1234, modelCalls: 2 } })
     })
 
     it('replaces the latest turn: the model side first, then the transcript, then the edited request runs', async () => {

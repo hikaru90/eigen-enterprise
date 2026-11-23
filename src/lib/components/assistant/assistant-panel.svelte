@@ -3,6 +3,8 @@
   import type { AssistantTab } from './types'
   import SquarePen from '@lucide/svelte/icons/square-pen'
   import X from '@lucide/svelte/icons/x'
+  import { resolve } from '$app/paths'
+  import AiUsageMeter from '$lib/components/ai-usage-meter.svelte'
   import AssistantActivity from './assistant-activity.svelte'
   import AssistantChatView from './assistant-chat-view.svelte'
   import AssistantHistory from './assistant-history.svelte'
@@ -98,7 +100,7 @@
     aria-label="Assistant"
     data-testid="assistant-panel"
     style="--assistant-panel-w: {assistant.width}px"
-    class="fixed inset-0 z-50 flex min-h-0 flex-col bg-background md:relative md:inset-auto md:z-auto md:w-[var(--assistant-panel-w)] md:shrink-0 md:border-l md:border-border"
+    class="@container fixed inset-0 z-50 flex min-h-0 flex-col bg-background md:relative md:inset-auto md:z-auto md:w-[var(--assistant-panel-w)] md:shrink-0 md:border-l md:border-border"
   >
     <!-- The resize edge (desktop only): a focusable window splitter (WAI-ARIA), so the
          keyboard can resize too. -->
@@ -146,6 +148,16 @@
           </button>
         {/each}
       </div>
+      {#if assistant.chat.usage}
+        <!-- The person's AI use today (settings.my_ai_usage); the chat tab shows it when the panel is narrow. -->
+        <a
+          href={resolve('/settings/llm')}
+          class="hidden shrink-0 rounded-full @sm:inline-flex"
+          data-testid="assistant-usage-link"
+        >
+          <AiUsageMeter usage={assistant.chat.usage} variant="compact" testid="assistant-usage" />
+        </a>
+      {/if}
       <button
         type="button"
         class="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] text-foreground/70 outline-none hover:bg-primary/[0.06] hover:text-foreground focus-visible:ring-2 -ring"

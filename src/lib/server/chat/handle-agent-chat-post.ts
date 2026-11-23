@@ -1,12 +1,12 @@
 import type { RequestEvent } from '@sveltejs/kit'
 import { error, json } from '@sveltejs/kit'
 import { and, eq, sql } from 'drizzle-orm'
+import type { ReplyCost } from '$lib/ai-usage/usage'
 import { formatToolResultForDisplay, sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
 import { compactChatIntermediateSteps } from '$lib/chat/normalize-messages'
 import type { EngineSurfaceEvent } from '$lib/kernel/engine'
 import { DurableRunError } from '$lib/kernel/engines/durable'
 import { KernelError } from '$lib/kernel/errors'
-import { runWithTrace } from '$lib/server/activity/trace-context'
 import {
   AssistantAttachmentError,
   attachmentMetadata,
@@ -25,6 +25,7 @@ import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/b
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import { isLlmDailyCapError, isLlmNotConfiguredError, LLM_DAILY_CAP_MESSAGE } from '$lib/server/llm/errors'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
+import { readReplyCost, runMeasuredTurn } from './reply-cost'
 import {
   findEditableTurn,
   replaceChatTurn,
@@ -218,9 +219,12 @@ export async function persistStreamedAssistantTurn(input: {
   intermediateSteps: Array<{ content: string; metadata: Record<string, unknown> }>
   /** The member message this reply answers (turn-edit.ts `turnOf`); absent for app-made turns. */
   turnOf?: string
+  /** What the reply cost (its model calls), kept on the reply's row (metadata.usage). */
+  usage?: ReplyCost
 }): Promise<{ messageId: string; storedStepCount: number }> {
   const storedSteps = compactChatIntermediateSteps(input.intermediateSteps)
   const turnOf = input.turnOf ? { turnOf: input.turnOf } : null
+  const replyMetadata = turnOf || input.usage ? { ...turnOf, ...(input.usage ? { usage: input.usage } : {}) } : null
   for (const step of storedSteps) {
     await input.db.insert(chatMessage).values({
       sessionId: input.sessionId,
@@ -235,7 +239,7 @@ export async function persistStreamedAssistantTurn(input: {
     input.sessionId,
     input.userId,
     input.responseText,
-    turnOf,
+    replyMetadata,
   )
   return { messageId, storedStepCount: storedSteps.length }
 }
@@ -459,6 +463,8 @@ export async function handleAgentChatPost(
       label?: string
       inputSummary?: string | null
       approvalId?: string
+      stepId?: string
+      resultSummary?: string | null
     }) => {
       if (evt.type === 'thinking' && evt.content) {
         intermediateSteps.push({
@@ -468,8 +474,27 @@ export async function handleAgentChatPost(
       } else if (evt.type === 'tool.preview') {
         intermediateSteps.push({
           content: evt.inputSummary ?? '',
-          metadata: { variant: 'tool_preview', tool: evt.tool },
+          metadata: {
+            variant: 'tool_preview',
+            tool: evt.tool,
+            ...(evt.stepId ? { stepId: evt.stepId, status: 'running' } : {}),
+          },
         })
+      } else if (evt.type === 'tool.finished') {
+        // One stored row per tool step: the finish lands on its preview's row.
+        const step = intermediateSteps.find(
+          (s) => s.metadata.variant === 'tool_preview' && s.metadata.stepId === evt.stepId,
+        )
+        if (!step) {
+          // The engine's sinks swallow throws (best-effort channel), so say it in the log.
+          console.error(`[${options.logTag ?? 'api/chat'}] tool.finished without its tool.preview`, {
+            stepId: evt.stepId,
+            tool: evt.tool,
+          })
+          return
+        }
+        step.metadata.status = evt.failed ? 'failed' : 'done'
+        step.metadata.resultSummary = evt.resultSummary ?? null
       } else if (evt.type === 'approval.required') {
         intermediateSteps.push({
           content: '',
@@ -520,9 +545,9 @@ export async function handleAgentChatPost(
 
         // One path: the kernel harness. The reply text comes back from the
         // runtime; stream/surface events flow out through the sinks below.
-        const reply = await tenantUserAsyncLocal.run(user.id, () =>
+        const measured = await tenantUserAsyncLocal.run(user.id, () =>
           appDbAsyncLocal.run(scopedDb, () =>
-            runWithTrace(crypto.randomUUID(), () =>
+            runMeasuredTurn(() =>
               options.dispatch(sessionId, agentUserMessage, {
                 stream: (delta) => {
                   if (!streamClosed) {
@@ -539,6 +564,8 @@ export async function handleAgentChatPost(
             ),
           ),
         )
+        const reply = measured.value
+        const usage = await readReplyCost(scopedDb, user.id, measured)
 
         const responseText = sanitizeFinalAnswerText(
           reply.trim().length > 0 ? reply : 'The assistant did not produce a response.',
@@ -550,12 +577,14 @@ export async function handleAgentChatPost(
           responseText,
           intermediateSteps,
           ...(userMessageId ? { turnOf: userMessageId } : {}),
+          usage,
         })
         sendTerminal({
           type: 'done',
           response: responseText,
           sessionId,
           messageId,
+          usage,
         })
 
         if (isFirstMessage && !bootstrap && message.length > 0) {
@@ -598,23 +627,22 @@ export async function handleAgentChatPost(
   }
 
   try {
-    const reply = await runWithTrace(crypto.randomUUID(), () =>
+    const measured = await runMeasuredTurn(() =>
       options.dispatch(sessionId, agentUserMessage, {
         stream: () => {},
         surfaceEvent: () => {},
       }, user.id, turn),
     )
+    const reply = measured.value
+    const usage = await readReplyCost(db, user.id, measured)
 
     const responseText = sanitizeFinalAnswerText(
       reply.trim().length > 0 ? reply : 'The assistant did not produce a response.',
     )
-    const messageId = await persistAssistantMessage(
-      db,
-      sessionId,
-      user.id,
-      responseText,
-      userMessageId ? { turnOf: userMessageId } : null,
-    )
+    const messageId = await persistAssistantMessage(db, sessionId, user.id, responseText, {
+      ...(userMessageId ? { turnOf: userMessageId } : {}),
+      usage,
+    })
 
     if (isFirstMessage && !bootstrap && message.length > 0) {
       const title = message.length > 80 ? message.slice(0, 77) + '...' : message
@@ -626,6 +654,7 @@ export async function handleAgentChatPost(
       history: [],
       sessionId,
       messageId,
+      usage,
     })
   } catch (err) {
     await reportTurnFailure(options, { err, sessionId, userId: user.id })

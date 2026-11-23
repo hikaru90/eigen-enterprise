@@ -291,7 +291,18 @@ describe('the brain’s ee tool — runs as the person, never more', () => {
     runtime.registerAgent({ ...f.agent, loopEngine: 'durable' })
     await runtime.dispatch(f.agent.id, 's-1', 'write it', { surfaceEvent: (e) => surface.push(e) }, { person: member })
     expect(result).toMatchObject({ status: 'approval_pending', tool: 'drive.write_text' })
-    expect(surface).toEqual([{ type: 'approval.required', tool: 'drive.write_text', approvalId: expect.any(String) }])
+    // The step names the real tool (not `ee`), secret-free input; it ends waiting for approval.
+    expect(surface).toEqual([
+      { type: 'tool.preview', stepId: expect.any(String), tool: 'drive.write_text', inputSummary: 'q: hello' },
+      { type: 'approval.required', tool: 'drive.write_text', approvalId: expect.any(String) },
+      {
+        type: 'tool.finished',
+        stepId: expect.any(String),
+        tool: 'drive.write_text',
+        failed: false,
+        resultSummary: 'Waiting for approval; it has not run yet.',
+      },
+    ])
     const pending = await f.registry.getApprovalStore().latestFor('drive.write_text', 'm-1')
     expect(pending?.status).toBe('pending')
     expect(f.seen).toEqual([])

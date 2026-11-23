@@ -1,7 +1,9 @@
+import { replyCostSchema, type ReplyCost } from '$lib/ai-usage/usage'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { toolLabel } from '$lib/chat/chat-stream-types'
 import type { ChatProgressEvent } from '$lib/chat/consume-chat-ndjson'
 import type { PersistedChatMessage } from '$lib/chat/normalize-messages'
+import type { ToolStepStatus } from '$lib/tool-steps/summary'
 import { storedAttachmentMetas, type AssistantAttachmentMeta } from './attachments'
 
 /**
@@ -19,13 +21,23 @@ export type NucleusConversationTurn = {
   attachments?: AssistantAttachmentMeta[]
   /** A member turn's stored message id (chat_message) — what Edit names; absent until the server accepted it. */
   messageId?: string
+  /** An assistant reply's cost (its model calls), shown as a quiet line under it. */
+  usage?: ReplyCost
 }
 
+/** One tool the assistant ran (a step in the transcript). */
 export type NucleusToolPreviewTurn = {
   role: 'tool_preview'
+  /** The tool that ran (an `ee tool run <name>` names <name>). */
   tool: string
-  /** Short, truncated, metadata-only input summary from the harness (may be null). */
+  /** Short, truncated, secret-free input summary from the harness (may be null). */
   inputSummary: string | null
+  /** Pairs the step with its end event (null: a step stored before steps carried one). */
+  stepId: string | null
+  /** running → done | failed; stopped: the reply ended before the tool did; null: not recorded. */
+  status: ToolStepStatus | null
+  /** Short, secret-free summary of what came back (null: none, or not finished). */
+  resultSummary: string | null
 }
 
 /**
@@ -66,10 +78,13 @@ export function userTurn(
  * inside its fetch try/catch so FinalAnswerFormatError surfaces as a failed
  * turn). Returns null when empty so a blank bubble is never rendered.
  */
-export function assistantTurnFromResponse(sanitizedText: string): NucleusConversationTurn | null {
+export function assistantTurnFromResponse(
+  sanitizedText: string,
+  usage?: ReplyCost,
+): NucleusConversationTurn | null {
   const content = sanitizedText.trim()
   if (!content) return null
-  return { role: 'assistant', content }
+  return { role: 'assistant', content, ...(usage ? { usage } : {}) }
 }
 
 export function failedTurn(
@@ -84,9 +99,37 @@ export function failedTurn(
   }
 }
 
-/** Subtle inline line before a tool runs — tool name plus bounded input summary. */
-export function toolPreviewTurn(tool: string, inputSummary: string | null): NucleusToolPreviewTurn {
-  return { role: 'tool_preview', tool, inputSummary }
+/** A tool step: the tool, its bounded input summary, and how it went once it ended. */
+export function toolPreviewTurn(
+  tool: string,
+  inputSummary: string | null,
+  step: { stepId?: string | null; status?: ToolStepStatus | null; resultSummary?: string | null } = {},
+): NucleusToolPreviewTurn {
+  return {
+    role: 'tool_preview',
+    tool,
+    inputSummary,
+    stepId: step.stepId ?? null,
+    status: step.status ?? null,
+    resultSummary: step.resultSummary ?? null,
+  }
+}
+
+/** The entries with the step `stepId` ended (failed or done, with its result summary). */
+export function withToolStepFinished<T extends NucleusChatEntry>(
+  entries: T[],
+  finished: { stepId: string; failed: boolean; resultSummary: string | null },
+): T[] {
+  return entries.map((e) =>
+    e.role === 'tool_preview' && e.stepId === finished.stepId
+      ? { ...e, status: finished.failed ? 'failed' : 'done', resultSummary: finished.resultSummary }
+      : e,
+  )
+}
+
+/** Steps still running when the reply ended (stopped, failed) ended with it. */
+export function withRunningStepsStopped<T extends NucleusChatEntry>(entries: T[]): T[] {
+  return entries.map((e) => (e.role === 'tool_preview' && e.status === 'running' ? { ...e, status: 'stopped' } : e))
 }
 
 export { approvalActionLabel }
@@ -139,7 +182,12 @@ export function persistedApprovalIds(messages: PersistedChatMessage[]): string[]
  * and final-response handling own those.
  */
 export function nucleusTurnForProgressEvent(event: ChatProgressEvent): NucleusTurn | null {
-  if (event.type === 'tool.preview') return toolPreviewTurn(event.tool, event.inputSummary)
+  if (event.type === 'tool.preview') {
+    return toolPreviewTurn(event.tool, event.inputSummary, {
+      stepId: event.stepId ?? null,
+      status: event.stepId ? 'running' : null,
+    })
+  }
   if (event.type === 'approval.required') {
     return approvalRequiredTurn({
       tool: event.tool,
@@ -148,6 +196,26 @@ export function nucleusTurnForProgressEvent(event: ChatProgressEvent): NucleusTu
     })
   }
   return null
+}
+
+/** A stored reply's cost (metadata.usage); a malformed one is a broken row and fails loud. */
+function storedReplyCost(m: PersistedChatMessage): ReplyCost | undefined {
+  const raw = m.metadata?.usage
+  if (raw === undefined || raw === null) return undefined
+  const parsed = replyCostSchema.safeParse(raw)
+  if (!parsed.success) throw new Error(`chat message ${m.id} holds a malformed reply cost`)
+  return parsed.data
+}
+
+/** A stored step's end: done/failed as recorded; a step stored as running never ended (stopped). */
+function storedToolStep(m: PersistedChatMessage): Parameters<typeof toolPreviewTurn>[2] {
+  const meta = m.metadata ?? {}
+  const stepId = typeof meta.stepId === 'string' ? meta.stepId : null
+  const recorded = meta.status
+  const status: ToolStepStatus | null =
+    recorded === 'done' || recorded === 'failed' ? recorded : recorded === 'running' ? 'stopped' : null
+  const resultSummary = typeof meta.resultSummary === 'string' ? meta.resultSummary : null
+  return { stepId, status, resultSummary }
 }
 
 /**
@@ -172,10 +240,10 @@ export function nucleusTurnsFromPersisted(
     const variant = m.metadata?.variant
     const tool = typeof m.metadata?.tool === 'string' ? m.metadata.tool : null
     if (variant === undefined || variant === null) {
-      const turn = assistantTurnFromResponse(m.content)
+      const turn = assistantTurnFromResponse(m.content, storedReplyCost(m))
       if (turn) out.push(turn)
     } else if (variant === 'tool_preview' && tool) {
-      out.push(toolPreviewTurn(tool, m.content || null))
+      out.push(toolPreviewTurn(tool, m.content || null, storedToolStep(m)))
     } else if (variant === 'approval_required' && tool) {
       const savedId = persistedApprovalId(m)
       if (savedId) {
@@ -208,6 +276,8 @@ export function statusLabelForProgressEvent(event: ChatProgressEvent): string | 
     case 'message_delta':
       return null
     case 'tool.preview':
+      return null
+    case 'tool.finished':
       return null
     case 'approval.required':
       return null

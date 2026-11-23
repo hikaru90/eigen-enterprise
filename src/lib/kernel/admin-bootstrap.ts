@@ -11,13 +11,13 @@ import {
   KERNEL_ADMIN_TOOL_NAMES,
   KERNEL_MODULE_ID,
 } from './admin-tools'
+import { createExportTools, KERNEL_EXPORT_TOOL_NAMES, type ExportPort } from './export-tools'
 import {
   createMemberAiCapTools,
   KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
   type MemberAiCapPort,
 } from './member-ai-cap-tools'
 import { createNotificationTools, KERNEL_NOTIFICATION_TOOL_NAMES, type NotificationsPort } from './notification-tools'
-import { createExportTools, KERNEL_EXPORT_TOOL_NAMES, type ExportPort } from './export-tools'
 import { createOperationsTools, KERNEL_OPERATIONS_TOOL_NAMES, type OperationsPort } from './operations-tools'
 import { createSettingsTools, KERNEL_SETTINGS_TOOL_NAMES, type SettingsPort } from './settings-tools'
 import { registerModuleTools } from './wiring'
@@ -133,6 +133,7 @@ function liveMemberAiCapPort(): MemberAiCapPort {
     readCapUsd: async () => (await store()).readCapUsd(),
     setCapUsd: async (value, actor) => (await store()).setCapUsd(value, actor),
     usageToday: async (userId) => (await cap()).memberAiUsageToday(userId),
+    replyCost: async (userId, messageId) => (await store()).replyCost(userId, messageId),
   }
 }
 

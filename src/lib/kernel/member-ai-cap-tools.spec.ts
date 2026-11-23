@@ -19,10 +19,15 @@ const brainAsMember: ToolContext = {
 }
 const bareAgent: ToolContext = { principal: { id: 'orchestrator', kind: 'agent', roles: ['admin', 'agent'] }, requestId: 'r4' }
 
+const REPLY_WITH_COST = '0b6f3c1e-8f55-4c2a-9d0e-6a1b2c3d4e5f'
+const REPLY_OLD = '1c7f4d2f-9a66-4d3b-8e1f-7b2c3d4e5f60'
+const NOT_MINE = '2d8a5e3a-ab77-4e4c-9f2a-8c3d4e5f6071'
+
 function makePort() {
   const sets: Array<{ value: number | null; actor: string }> = []
   let cap: number | null = null
   const usageCalls: string[] = []
+  const replyCalls: string[] = []
   const port: MemberAiCapPort = {
     readCapUsd: async () => cap,
     setCapUsd: async (value, actor) => {
@@ -40,8 +45,16 @@ function makePort() {
         resetsAt: '2026-11-24T00:00:00.000Z',
       }
     },
+    // u-mia's replies: one with a recorded cost, one from before costs were kept.
+    replyCost: async (userId, messageId) => {
+      replyCalls.push(`${userId}:${messageId}`)
+      if (userId !== 'u-mia') return null
+      if (messageId === REPLY_WITH_COST) return { usage: { costUsd: 0.0042, tokens: 1234, modelCalls: 2 } }
+      if (messageId === REPLY_OLD) return { usage: null }
+      return null
+    },
   }
-  return { port, sets, usageCalls }
+  return { port, sets, usageCalls, replyCalls }
 }
 
 function makeRegistry(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
@@ -151,6 +164,24 @@ describe('settings.my_ai_usage', () => {
     })
     await fx.registry.execute('settings.my_ai_usage', {}, brainAsMember)
     expect(fx.usageCalls).toEqual(['u-mia', 'u-mia'])
+  })
+
+  it('with reply_message_id it also says what that reply of yours cost (null when none was recorded)', async () => {
+    const fx = makeRegistry()
+    expect(await fx.registry.execute('settings.my_ai_usage', { reply_message_id: REPLY_WITH_COST }, member)).toMatchObject({
+      spentUsd: 0.25,
+      reply: { costUsd: 0.0042, tokens: 1234, modelCalls: 2 },
+    })
+    expect(await fx.registry.execute('settings.my_ai_usage', { reply_message_id: REPLY_OLD }, brainAsMember)).toMatchObject({
+      reply: null,
+    })
+    await expect(
+      fx.registry.execute('settings.my_ai_usage', { reply_message_id: NOT_MINE }, member),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+    await expect(
+      fx.registry.execute('settings.my_ai_usage', { reply_message_id: 'not-an-id' }, member),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+    expect(fx.replyCalls.every((call) => call.startsWith('u-mia:'))).toBe(true)
   })
 
   it('takes no user: it always answers for the caller', async () => {

@@ -17,6 +17,7 @@ import {
 import { KernelError } from '$lib/kernel/errors'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
+import { projectSnapshot } from '$lib/server/agent-runs/project'
 import { InMemoryDurableConversationIndex } from './conversation-index'
 import {
   acquireAgentStateLock,
@@ -27,7 +28,6 @@ import {
   type ResumedChatTurn,
 } from './durable-harness'
 import { BACKGROUND_CONTEXT } from './pi-durable'
-import { projectSnapshot } from '$lib/server/agent-runs/project'
 import { FileIndex } from './test-fixtures/file-index'
 
 /**
@@ -199,6 +199,35 @@ describe('durable engine over real pi-durable', () => {
     const second = JSON.stringify(seen[1]?.messages)
     expect(second).toContain('"role":"tool"')
     expect(second).toContain('ping')
+  })
+
+  it('each tool call reaches the surface as a step: started, then ended with a secret-free result summary', async () => {
+    const { complete } = scriptedGateway({
+      alice: [
+        { call: { name: 'memory.echo', args: { text: 'ping' } } },
+        { call: { name: 'memory.echo', args: { text: 'boom' } } },
+        { text: 'done' },
+      ],
+    })
+    const { engine } = engineFor(complete)
+    const surface: unknown[] = []
+    const ctx = {
+      ...engineCtx('alice', 'alice', []),
+      executeTool: async (_name: string, args: unknown) => {
+        if ((args as { text: string }).text === 'boom') throw new KernelError('invalid_input', 'text must not be boom')
+        return { echoed: 'ping', token: 'sk-secret' }
+      },
+      surfaceEvent: (e: unknown) => surface.push(e),
+    } as unknown as EngineContext
+    expect(await engine.run('s1', 'echo twice', ctx)).toBe('done')
+    expect(surface).toEqual([
+      { type: 'tool.preview', stepId: expect.any(String), tool: 'memory.echo', inputSummary: 'text: ping' },
+      { type: 'tool.finished', stepId: expect.any(String), tool: 'memory.echo', failed: false, resultSummary: 'echoed: ping · token: [hidden]' },
+      { type: 'tool.preview', stepId: expect.any(String), tool: 'memory.echo', inputSummary: 'text: boom' },
+      { type: 'tool.finished', stepId: expect.any(String), tool: 'memory.echo', failed: true, resultSummary: 'text must not be boom' },
+    ])
+    const [start, end] = surface as Array<{ stepId: string }>
+    expect(start!.stepId).toBe(end!.stepId)
   })
 
   it('two users at once: each tool call runs as its own dispatch, never the other one', async () => {
