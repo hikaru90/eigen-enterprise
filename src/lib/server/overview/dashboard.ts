@@ -1,10 +1,12 @@
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
 import { backupNotice, type BackupNotice } from '$lib/server/backups/health'
+import type { DecisionQuestionView } from '$lib/kernel/decision-tools'
 import { appKernel } from '$lib/server/boot'
 import { needsYouNotices, type CoworkerNotice } from '$lib/server/coworkers/notices'
 import { liveNoticeDeps } from '$lib/server/coworkers/rhythm-live'
 import { getDb } from '$lib/server/db'
+import { needsYouDecisionQuestions } from '$lib/server/decisions/live'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { assignedTaskDeps } from '$lib/server/memory/assigned-tasks/live'
@@ -27,6 +29,8 @@ export type Dashboard = {
   reminders: ReminderView[]
   /** AI co-workers' finished or stopped rhythm and assignment runs this person answers for or asked for, until acknowledged (C6). */
   coworkerNotices: CoworkerNotice[]
+  /** Decision questions asked of this person: Jev was unsure, the person answers from the closed set (CB2, decisions.questions). */
+  decisionQuestions: DecisionQuestionView[]
 }
 
 /**
@@ -72,6 +76,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     tasks: await needsYouTasks(await assignedTaskDeps(), userId),
     reminders: await needsYouReminders(await reminderDeps(), userId),
     coworkerNotices: await needsYouNotices(await liveNoticeDeps(), userId),
+    decisionQuestions: await needsYouDecisionQuestions(userId),
   }
 }
 

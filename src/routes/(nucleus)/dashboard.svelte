@@ -97,7 +97,11 @@
   const reminders = $derived(dashboard.reminders)
   // AI co-workers' finished proactive work (rhythms, assignments) for this person (C6).
   const coworkerNotices = $derived(dashboard.coworkerNotices)
-  const taskCount = $derived(tasks.assignedToMe.length + tasks.updates.length + reminders.length + coworkerNotices.length)
+  // Decision questions asked of this person: Jev was unsure, the person answers from the closed set (CB2, decisions.answer).
+  const decisionQuestions = $derived(dashboard.decisionQuestions)
+  const taskCount = $derived(
+    tasks.assignedToMe.length + tasks.updates.length + reminders.length + coworkerNotices.length + decisionQuestions.length,
+  )
   const needsYou = $derived(overview.approvals.length + taskCount + (dashboard.backup ? 1 : 0))
   // Assigned tasks live in Memory › Tasks, reminders in Memory › Reminders; the dashboard's buttons post to those pages' actions.
   const tasksPage = resolve('/m/memory/tasks')
@@ -590,6 +594,32 @@
                       <button type="submit" class={inkPill} data-testid="dashboard-coworker-notice-seen">{m.coworkers_notice_seen()}</button>
                     </form>
                   </span>
+                </li>
+              {/each}
+              {#each decisionQuestions as question (question.id)}
+                <li class={taskRow} data-testid="dashboard-decision-question" data-kind={question.kind}>
+                  <span class="flex min-w-0 items-center gap-3">
+                    <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                      ><span class="size-2 rounded-full bg-coral"></span></span
+                    >
+                    <span class="flex min-w-0 flex-col">
+                      <span class="truncate">{question.question}</span>
+                      <span class="truncate text-muted-foreground">{question.title} · {when(question.askedAt)}</span>
+                    </span>
+                  </span>
+                  <!-- One answer from the closed set: decisions.answer, logged as the human label. -->
+                  <form method="POST" action="{resolve('/')}?/decisionAnswer" use:enhance class="flex shrink-0 items-center gap-1.5">
+                    <input type="hidden" name="decision_id" value={question.id} />
+                    {#each question.choices as option, i (option.choice)}
+                      <button
+                        type="submit"
+                        name="choice"
+                        value={option.choice}
+                        class={i === 0 ? inkPill : softPill}
+                        data-testid="dashboard-decision-answer">{option.label}</button
+                      >
+                    {/each}
+                  </form>
                 </li>
               {/each}
             </ul>

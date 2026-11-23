@@ -392,6 +392,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/org/[id] ?/noticeSeen': tool('coworkers.notice_seen'),
   '/(nucleus)/settings/coworkers ?/update': tool('coworkers.update'),
   '/(nucleus)/settings/org ?/setPosition': tool('org.set_position'),
+  // CB2: a decision question's answer buttons in the dashboard's Needs you.
+  '/(nucleus) ?/decisionAnswer': tool('decisions.answer'),
   '/(nucleus)/settings/members ?/createGroup': tool('members.group_create'),
   '/(nucleus)/settings/members ?/deleteGroup': tool('members.group_delete'),
   '/(nucleus)/settings/members ?/invite': tool('members.invite'),

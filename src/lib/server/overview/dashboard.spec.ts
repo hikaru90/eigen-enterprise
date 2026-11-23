@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks, reminders, notices } = vi.hoisted(() => ({
+const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks, reminders, notices, decisions } = vi.hoisted(() => ({
   assignedTasks: { deps: null as unknown },
+  decisions: { questions: null as unknown as (userId: string) => Promise<unknown[]> },
   notices: { deps: null as unknown },
   reminders: { deps: null as unknown },
   kernelHolder: { kernel: null as unknown },
@@ -61,13 +62,35 @@ vi.mock('$lib/server/db', () => {
 vi.mock('$lib/server/memory/assigned-tasks/live', () => ({ assignedTaskDeps: async () => assignedTasks.deps }))
 vi.mock('$lib/server/memory/reminders/live', () => ({ reminderDeps: async () => reminders.deps }))
 vi.mock('$lib/server/coworkers/rhythm-live', () => ({ liveNoticeDeps: async () => notices.deps }))
+vi.mock('$lib/server/decisions/live', () => ({ needsYouDecisionQuestions: (userId: string) => decisions.questions(userId) }))
 
 import { MemoryCoworkerRunStore } from '$lib/server/coworkers/run-store'
 import { memoryAssignedTaskStore } from '$lib/server/memory/assigned-tasks/memory-store'
 import { assignTask, completeTask, type AssignedTaskDeps } from '$lib/server/memory/assigned-tasks/service'
 import { memoryReminderStore } from '$lib/server/memory/reminders/memory-store'
 import { createReminder, type ReminderDeps } from '$lib/server/memory/reminders/service'
+import { decide } from '$lib/server/decisions/decide'
+import { decisionKindCatalog, defineDecisionKind } from '$lib/server/decisions/kind'
+import { decisionsPort } from '$lib/server/decisions/service'
+import { inMemoryDecisionStore } from '$lib/server/decisions/store'
 import { loadDashboard } from './dashboard'
+
+const shareKind = defineDecisionKind<{ title: string }, 'share' | 'keep'>({
+  id: 'drive.share_file',
+  module: 'drive',
+  title: 'Share it?',
+  instructions: 'Should this file be shared with the team?',
+  choices: ['share', 'keep'],
+  criteria: { share: 'It is team work.', keep: 'It is private.' },
+  status: 'enforced',
+  lowConfidence: 0.7,
+  state: (i) => i.title,
+  logInput: (i) => ({ title: i.title }),
+  ask: { who: () => 'owner', question: (i) => `This looks shareable — share “${i.title}”?`, labels: { share: 'Share it', keep: 'Keep it private' } },
+})
+const decisionStore = inMemoryDecisionStore()
+const decisionPort = decisionsPort(decisionStore, decisionKindCatalog([shareKind]))
+decisions.questions = (userId) => decisionPort.questions(userId)
 
 function taskDeps(): AssignedTaskDeps {
   const people = [
@@ -254,5 +277,32 @@ describe('the dashboard at / (loadDashboard)', () => {
     expect((await loadDashboard('ony')).coworkerNotices).toEqual([])
     await noticeRuns.markNoticeSeen(run!.id, 'owner', new Date())
     expect((await loadDashboard('owner')).coworkerNotices).toEqual([])
+  })
+
+  it('Needs you holds a decision question Jev was unsure about, for the person asked, until they answer it (CB2)', async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    const unsure = vi.fn(async () => ({
+      model: 'jev',
+      answers: { decision: { choice: 'share', confidence: 0.55, distribution: { share: 0.55, keep: 0.45 } } },
+      costUsd: 0.00001,
+      durationMs: 1,
+    }))
+    const q = await decide(shareKind, { title: 'Q4 plan' }, { requestedBy: 'ony', judge: { none: true } }, { ask: unsure, store: decisionStore })
+    expect((await loadDashboard('owner')).decisionQuestions).toEqual([
+      {
+        id: q.decisionId,
+        kind: 'drive.share_file',
+        title: 'Share it?',
+        question: 'This looks shareable — share “Q4 plan”?',
+        choices: [
+          { choice: 'share', label: 'Share it' },
+          { choice: 'keep', label: 'Keep it private' },
+        ],
+        askedAt: expect.any(String),
+      },
+    ])
+    expect((await loadDashboard('ony')).decisionQuestions).toEqual([])
+    await decisionPort.answer('owner', q.decisionId, 'keep')
+    expect((await loadDashboard('owner')).decisionQuestions).toEqual([])
   })
 })

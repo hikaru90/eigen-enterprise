@@ -237,6 +237,11 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'coworkers.rhythm_list',
   'coworkers.runs',
   'coworkers.templates',
+  // CB2: the decision kinds and the rows about them; their own Needs you questions and answers.
+  'decisions.answer',
+  'decisions.kinds',
+  'decisions.log',
+  'decisions.questions',
   'org.chart',
   'org.set_position',
   'assistant.conversation_rename',

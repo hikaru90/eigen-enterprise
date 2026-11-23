@@ -25,6 +25,7 @@ const dashboard: Dashboard = {
   tasks: { assignedToMe: [], updates: [] },
   reminders: [],
   coworkerNotices: [],
+  decisionQuestions: [],
   overview: {
     modules: [
       {
@@ -66,7 +67,13 @@ const controller = () =>
 function renderDashboard(
   assistant: AssistantController | null,
   tiles: { hiddenTiles?: TileId[]; saveHiddenTiles?: (hidden: TileId[]) => Promise<void> } = {},
-  notices: { mailMissing?: boolean; tasks?: Dashboard['tasks']; reminders?: Dashboard['reminders']; coworkerNotices?: Dashboard['coworkerNotices'] } = {},
+  notices: {
+    mailMissing?: boolean
+    tasks?: Dashboard['tasks']
+    reminders?: Dashboard['reminders']
+    coworkerNotices?: Dashboard['coworkerNotices']
+    decisionQuestions?: Dashboard['decisionQuestions']
+  } = {},
 ) {
   return render(Harness, {
     assistant,
@@ -77,6 +84,7 @@ function renderDashboard(
       ...(notices.tasks ? { tasks: notices.tasks } : {}),
       ...(notices.reminders ? { reminders: notices.reminders } : {}),
       ...(notices.coworkerNotices ? { coworkerNotices: notices.coworkerNotices } : {}),
+      ...(notices.decisionQuestions ? { decisionQuestions: notices.decisionQuestions } : {}),
     },
     greetingName: 'Alex',
     companyName: 'Kindred',
@@ -257,6 +265,38 @@ describe('dashboard.svelte', () => {
     await expect.element(row.getByTestId('dashboard-coworker-notice-open')).toHaveAttribute('href', '/settings/org/cw1')
     await expect.element(row.getByTestId('dashboard-coworker-notice-seen')).toHaveTextContent('Got it')
     // 1 approval + 1 co-worker result waiting.
+    await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
+  })
+
+  it('Needs you holds a decision question Jev was unsure about: the question, its kind, and one button per choice posting decisions.answer — CB2', async () => {
+    renderDashboard(controller(), {}, {
+      decisionQuestions: [
+        {
+          id: 'q-1',
+          kind: 'drive.share_file',
+          title: 'Share it?',
+          question: 'This looks shareable — share “Q4 plan”?',
+          choices: [
+            { choice: 'share', label: 'Share it' },
+            { choice: 'keep', label: 'Keep it private' },
+          ],
+          askedAt: '2026-11-23T08:00:00.000Z',
+        },
+      ],
+    })
+    const row = page.getByTestId('dashboard-decision-question')
+    await expect.element(row).toHaveAttribute('data-kind', 'drive.share_file')
+    await expect.element(row).toHaveTextContent(/This looks shareable — share “Q4 plan”\?/)
+    await expect.element(row).toHaveTextContent(/Share it\?/)
+    const answers = row.getByTestId('dashboard-decision-answer')
+    await expect.element(answers.nth(0)).toHaveTextContent('Share it')
+    await expect.element(answers.nth(0)).toHaveAttribute('value', 'share')
+    await expect.element(answers.nth(1)).toHaveTextContent('Keep it private')
+    await expect.element(answers.nth(1)).toHaveAttribute('value', 'keep')
+    const form = row.element().querySelector('form')!
+    expect(form.getAttribute('action')).toBe('/?/decisionAnswer')
+    expect(form.querySelector<HTMLInputElement>('input[name=decision_id]')!.value).toBe('q-1')
+    // 1 approval + 1 question waiting.
     await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
   })
 })

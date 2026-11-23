@@ -57,7 +57,8 @@ function modeFetch(res: { ok: boolean; body?: unknown }) {
   return vi.fn(async () => ({ ok: res.ok, status: res.ok ? 200 : 404, json: async () => res.body }))
 }
 
-import { load } from './+page.server'
+import { KernelError } from '$lib/kernel/errors'
+import { _dashboardDeps, actions, load } from './+page.server'
 
 /** The owner/admin load also asks /api/approvals/mode: a default answer unless a test brings its own. */
 function withFetch<T>(event: T): T {
@@ -352,5 +353,34 @@ describe('nucleus page server load', () => {
     const data = await load(withFetch({ locals: { user: { id: 'u1' } }, url: new URL('https://os.test/') } as never))
     expect(data).not.toHaveProperty('chatHistory')
     expect(data).not.toHaveProperty('chatSessionId')
+  })
+})
+
+describe('nucleus page actions', () => {
+  const QUESTION = '3e9b6f4b-bc88-4f5d-a03b-9d4e5f607182'
+  const post = (fields: Record<string, string>) => {
+    const form = new FormData()
+    for (const [k, v] of Object.entries(fields)) form.set(k, v)
+    return { locals: { user: { id: 'u1' } }, request: new Request('https://os.test/?/decisionAnswer', { method: 'POST', body: form }) } as never
+  }
+
+  it('decisionAnswer: a Needs you answer is decisions.answer as the signed-in person (CB2)', async () => {
+    const run = vi.fn(async () => ({ decisionId: QUESTION, kind: 'demo.k', choice: 'yes' }))
+    _dashboardDeps.run = run as never
+    await expect(actions.decisionAnswer(post({ decision_id: QUESTION, choice: 'yes' }))).resolves.toEqual({
+      action: 'decisionAnswer',
+      ok: true,
+      decisionId: QUESTION,
+    })
+    expect(run).toHaveBeenCalledWith({ id: 'u1' }, 'decisions.answer', { decision_id: QUESTION, choice: 'yes' })
+  })
+
+  it('decisionAnswer: a refusal comes back as the tool’s sentence (400)', async () => {
+    _dashboardDeps.run = (async () => {
+      throw new KernelError('invalid_input', 'This question was already answered.')
+    }) as never
+    const out = (await actions.decisionAnswer(post({ decision_id: QUESTION, choice: 'yes' }))) as unknown as { status: number; data: { error: string } }
+    expect(out.status).toBe(400)
+    expect(out.data.error).toBe('This question was already answered.')
   })
 })

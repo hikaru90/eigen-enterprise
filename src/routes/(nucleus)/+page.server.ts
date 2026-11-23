@@ -1,5 +1,6 @@
-import type { PageServerLoad } from './$types'
-import { redirect } from '@sveltejs/kit'
+import type { Actions, PageServerLoad } from './$types'
+import { fail, redirect } from '@sveltejs/kit'
+import { KernelError } from '$lib/kernel/errors'
 import { eq } from 'drizzle-orm'
 import { splitDisplayName } from '$lib/server/auth-user-name'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
@@ -9,12 +10,14 @@ import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { userPreference } from '$lib/server/db/schema'
 import { domainsFromEnv } from '$lib/server/domains/env'
+import { errorReport } from '$lib/server/errors/report'
 import { registrantDefaults } from '$lib/server/domains/registrant-defaults'
 import { isCompanyProviderReady } from '$lib/server/llm/provider-ready'
 import { companyMail } from '$lib/server/mail'
 import { managedMailFromEnv } from '$lib/server/mail/managed-env'
 import { companyOnboardingFor, joinedTheCompany } from '$lib/server/members/joined'
 import { onboardingFactsFor } from '$lib/server/onboarding/assisted'
+import { personRun, type PersonRunner } from '$lib/server/org/person-run'
 import { completeWelcomeOnboarding, setAccountName } from '$lib/server/onboarding/welcome'
 import { loadDashboard } from '$lib/server/overview/dashboard'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'
@@ -107,6 +110,40 @@ export const load: PageServerLoad = async (event) => {
         }
       : null,
   }
+}
+
+/** Overridable in tests. */
+export const _dashboardDeps: { run: PersonRunner } = { run: personRun }
+
+export const actions: Actions = {
+  /**
+   * A person answers a decision question in Needs you (CB2): decisions.answer as them, through
+   * the kernel registry (the same tool the CLI and the brain use).
+   */
+  decisionAnswer: async ({ locals, request }) => {
+    const user = locals.user
+    if (!user) throw redirect(302, '/login')
+    const form = await request.formData()
+    const input = { decision_id: form.get('decision_id')?.toString() ?? '', choice: form.get('choice')?.toString() ?? '' }
+    try {
+      await _dashboardDeps.run(user, 'decisions.answer', input)
+      return { action: 'decisionAnswer' as const, ok: true as const, decisionId: input.decision_id }
+    } catch (err) {
+      const refused = err instanceof KernelError
+      if (!refused) console.error('[dashboard] decisions.answer failed', err)
+      return fail(refused ? 400 : 500, {
+        action: 'decisionAnswer' as const,
+        decisionId: input.decision_id,
+        ...errorReport(err, {
+          attempted: 'Answering a decision question (Needs you)',
+          tool: 'decisions.answer',
+          input,
+          plain: (e) => (e instanceof KernelError ? e.message : 'Your answer could not be saved. Try again.'),
+          nextSteps: ['decisions.answer (src/lib/kernel/decision-tools.ts → src/lib/server/decisions/service.ts answerQuestion) refused or failed.'],
+        }),
+      })
+    }
+  },
 }
 
 /** The dashboard greets by first name: the account's, else split from its name or the onboarding name. */
