@@ -150,6 +150,8 @@ export default defineConfig({
       'src/lib/components/drive/app-preview.svelte.spec.ts',
       // Office viewers (plan/phase-office-files.md): every format's component specs.
       'src/lib/office/**/*.svelte.spec.ts',
+      // Stale-build reload notice (bug 593f7e08).
+      'src/lib/components/app-updated-banner.svelte.spec.ts',
       'src/routes/\\(nucleus\\)/drive/file/\\[id\\]/file-page.svelte.spec.ts',
       'src/routes/(nucleus)/drive/github/github-page.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/memory-privacy-note.svelte.spec.ts',

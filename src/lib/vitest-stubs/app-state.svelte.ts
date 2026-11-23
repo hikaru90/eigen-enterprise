@@ -3,3 +3,6 @@
  * (for example `page.data.shell`) before rendering. Only what components under test read.
  */
 export const page = $state<{ data: Record<string, unknown> }>({ data: {} })
+
+/** SvelteKit's `updated`: no new build in component specs (specs pass their own `check`). */
+export const updated = { current: false, check: async (): Promise<boolean> => false }

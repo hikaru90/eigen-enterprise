@@ -12,6 +12,10 @@ const config = {
       register: false,
     },
     adapter: adapter(),
+    // Each release is its own build (name: build time). Tabs poll
+    // /_app/version.json so `updated.current` flips after an install and the
+    // root layout turns the next navigation into a full page load (bug 593f7e08).
+    version: { pollInterval: 60_000 },
     // The cross-site form check runs in src/hooks.server.ts (handleCsrf) — the
     // same rule, plus the one exemption Amazon SNS needs (src/lib/server/csrf.ts).
     csrf: { trustedOrigins: ['*'] },
