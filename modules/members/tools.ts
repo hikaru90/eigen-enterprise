@@ -100,6 +100,8 @@ async function liveDeps(): Promise<MemberDeps> {
 }
 
 async function liveActor(ctx: ToolContext): Promise<Actor> {
+  // An AI co-worker is always a member (plan/phase-ai-coworkers.md §3), never the agent's admin rights.
+  if (ctx.principal.kind === 'coworker') return { id: ctx.principal.id, role: 'member' }
   if (ctx.principal.kind !== 'human') return { id: ctx.principal.id, role: 'admin' }
   const { humanActor } = await import('$lib/server/members')
   return humanActor(ctx.principal.id)

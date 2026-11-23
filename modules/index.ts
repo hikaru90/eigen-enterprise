@@ -64,6 +64,8 @@ import { createOwleryTools } from './email/owlery/tools'
 import { EMAIL_PLATFORM_WRITE_TOOLS } from './email/platform/tool-names'
 import { createEmailPlatformTools } from './email/platform/tools'
 import { createEmailTools } from './email/tools'
+import { COWORKERS_GATED_TOOLS, COWORKERS_MODULE_ID, coworkersManifest } from './coworkers/manifest'
+import { createCoworkersTools } from './coworkers/tools'
 import { MEMBERS_MODULE_ID, membersManifest } from './members/manifest'
 import { createMembersTools } from './members/tools'
 import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
@@ -109,6 +111,7 @@ export const moduleManifests = [
   brandManifest,
   orchestratorManifest,
   membersManifest,
+  coworkersManifest,
   messagesManifest,
   driveManifest,
   contributeManifest,
@@ -162,6 +165,8 @@ export const SYSTEM_MODULE_IDS = [
   ASSISTANT_MODULE_ID,
   // Domains (plan/domains-one-claim.md D2): a global setting, core like Members.
   DOMAINS_MODULE_ID,
+  // AI co-workers and the org chart (plan/phase-ai-coworkers.md C1): core like Members.
+  COWORKERS_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -213,6 +218,9 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'members.remove',
   // Open join lets anyone with a verified email in as a member (public).
   'members.set_open_join',
+  // AI co-workers: changing one, switching it on or off, and a seat in the org chart (internal).
+  // Creating and removing one always ask (approvalAlways), whatever the mode.
+  ...COWORKERS_GATED_TOOLS,
   'members.set_my_called',
   'members.set_my_name',
   'members.set_my_picture',
@@ -416,6 +424,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createEmailPlatformTools(),
     ...createInboxTools(),
     ...createMembersTools(),
+    ...createCoworkersTools(),
     ...createAssistantTools(),
     ...createMessagesTools(),
     ...createDriveTools(),

@@ -1,4 +1,5 @@
 export * from './auth.schema'
 export * from './brain.schema'
 export * from './team.schema'
+export * from './coworkers.schema'
 export * from './gitstore.schema'

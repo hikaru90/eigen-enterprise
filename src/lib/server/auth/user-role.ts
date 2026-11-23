@@ -19,11 +19,14 @@ export async function isUserAdmin(userId: string): Promise<boolean> {
 /**
  * The member as a person the company brain acts for: their id and kernel
  * roles (kernelRolesFor), read now — or null when there is no such member.
+ * An AI co-worker is no person (plan/phase-ai-coworkers.md §3): it acts as
+ * itself (coworkerPrincipal), never through the brain, so it is null here.
  */
 export async function personFor(userId: string): Promise<PersonRef | null> {
   if (!userId) return null
-  const role = await getUserRole(userId)
-  return role ? { id: userId, roles: kernelRolesFor(role) } : null
+  const [row] = await authDb.select({ role: user.role, kind: user.kind }).from(user).where(eq(user.id, userId)).limit(1)
+  if (!row || row.kind === 'coworker') return null
+  return { id: userId, roles: kernelRolesFor(row.role) }
 }
 
 /** The live member directory the kernel resolves people through (background runs, Telegram). */

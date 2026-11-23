@@ -37,10 +37,10 @@ export async function assignedTaskDeps(): Promise<AssignedTaskDeps> {
     directory: {
       async get(id) {
         const m = await dbMemberStore.getMember(id)
-        return m ? { id: m.id, name: m.name, email: m.email } : null
+        return m ? { id: m.id, name: m.name, email: m.email, kind: m.kind } : null
       },
       async list() {
-        return (await dbMemberStore.listMembers()).map((m) => ({ id: m.id, name: m.name, email: m.email }))
+        return (await dbMemberStore.listMembers()).map((m) => ({ id: m.id, name: m.name, email: m.email, kind: m.kind }))
       },
     },
     notify: liveNotify,

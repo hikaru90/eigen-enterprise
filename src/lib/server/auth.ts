@@ -12,6 +12,7 @@ import { buildSocialProvidersConfig, listEnabledSocialProviderIds } from '$lib/s
 import { normalizeUserNameFields } from '$lib/server/auth-user-name'
 import { deliverSignInCode, recordDeliveryFailure } from '$lib/server/auth/deliver-code'
 import { freshSessionHook } from '$lib/server/auth/fresh-session'
+import { refuseCoworkerSession } from '$lib/server/auth/coworker-sign-in'
 import { claimScope, inviteScope, NotAMemberError, openJoinScope, ownerPolicyForNewUser } from '$lib/server/auth/owner-policy'
 import { authDb } from '$lib/server/db/auth-db'
 import { user as userTable } from '$lib/server/db/auth.schema'
@@ -182,6 +183,15 @@ export const auth = betterAuth({
     },
   },
   databaseHooks: {
+    // AI co-workers never sign in (plan/phase-ai-coworkers.md §3): every sign-in path makes a
+    // session, and none is made for a co-worker (fail loud).
+    session: {
+      create: {
+        before: async (session) => {
+          await refuseCoworkerSession(String(session.userId))
+        },
+      },
+    },
     user: {
       create: {
         before: async (user) => {

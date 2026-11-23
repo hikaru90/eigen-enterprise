@@ -137,7 +137,7 @@ const getOutputSchema = settingsViewSchema.extend({
 const whoamiOutputSchema = z.object({
   you: z.object({
     principalId: z.string(),
-    kind: z.enum(['human', 'agent', 'service']),
+    kind: z.enum(['human', 'coworker', 'agent', 'service']),
     via: z.literal('brain').optional(),
     agentId: z.string().optional(),
   }),

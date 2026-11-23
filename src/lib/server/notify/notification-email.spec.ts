@@ -27,13 +27,13 @@ vi.mock('$lib/server/db/auth-db', () => ({
 }))
 
 vi.mock('$lib/server/db/auth.schema', () => ({
-  user: { id: 'id', email: 'email' },
+  user: { id: 'id', email: 'email', kind: 'kind' },
 }))
 
 
 const { queueNotificationEmail } = await import('./notification-email')
 
-function selectReturning(rows: { email?: string }[]) {
+function selectReturning(rows: { email?: string; kind?: string }[]) {
   const limit = vi.fn(async () => rows)
   const where = vi.fn(() => ({ limit }))
   const from = vi.fn(() => ({ where }))
@@ -66,6 +66,12 @@ describe('queueNotificationEmail', () => {
     await queueNotificationEmail('u1', PAYLOAD)
 
     expect(authDbSelectMock).not.toHaveBeenCalled()
+    expect(sendTransactionalEmailMock).not.toHaveBeenCalled()
+  })
+
+  it('never mails an AI co-worker (its address is a reserved .invalid one)', async () => {
+    selectReturning([{ email: 'mara.ab12cd34@coworker.invalid', kind: 'coworker' }])
+    await queueNotificationEmail('cw_1', PAYLOAD)
     expect(sendTransactionalEmailMock).not.toHaveBeenCalled()
   })
 

@@ -8,8 +8,9 @@ const at = new Date('2026-10-21T10:00:00Z')
 
 function setup() {
   const store = memoryStore([
-    { id: 'o', email: 'owner@k.co', name: 'O', role: 'owner', createdAt: at },
-    { id: 'm', email: 'm@k.co', name: 'M', role: 'member', createdAt: at },
+    { id: 'o', email: 'owner@k.co', name: 'O', role: 'owner', kind: 'human', createdAt: at },
+    { id: 'm', email: 'm@k.co', name: 'M', role: 'member', kind: 'human', createdAt: at },
+    { id: 'cw', email: 'mara.cw000000@coworker.invalid', name: 'Mara', role: 'member', kind: 'coworker', createdAt: at },
   ])
   const mail = { send: vi.fn(async () => ({})), isConfigured: vi.fn(async () => true) }
   const groups = memoryGroupStore(['o', 'm'])
@@ -36,8 +37,8 @@ describe('members.* tools', () => {
 
   it('the agent lists, invites and changes roles, but never the owner', async () => {
     const { tool, agent, mail, store } = setup()
-    const list = (await tool('members.list').handler(agent, {})) as { members: Array<{ role: string }> }
-    expect(list.members.map((m) => m.role)).toEqual(['owner', 'member'])
+    const list = (await tool('members.list').handler(agent, {})) as { members: Array<{ role: string; kind: string }> }
+    expect(list.members.map((m) => `${m.role}:${m.kind}`)).toEqual(['owner:human', 'member:human', 'member:coworker'])
     const out = await tool('members.invite').handler(agent, { email: 'n@k.co', role: 'member' })
     expect(out).toMatchObject({ email: 'n@k.co', role: 'member' })
     expect(JSON.stringify(out)).not.toMatch(/token/)
@@ -45,6 +46,13 @@ describe('members.* tools', () => {
     await tool('members.set_role').handler(agent, { user_id: 'm', role: 'admin' })
     expect((await store.getMember('m'))!.role).toBe('admin')
     await expect(tool('members.set_role').handler(agent, { user_id: 'o', role: 'member' })).rejects.toThrow(/owner's role/)
+  })
+
+  it('an AI co-worker keeps its member role and is removed through coworkers.remove', async () => {
+    const { tool, agent, store } = setup()
+    await expect(tool('members.set_role').handler(agent, { user_id: 'cw', role: 'admin' })).rejects.toMatchObject({ code: 'coworker_protected' })
+    await expect(tool('members.remove').handler(agent, { user_id: 'cw' })).rejects.toThrow(/coworkers\.remove/)
+    expect(await store.getMember('cw')).toMatchObject({ role: 'member', kind: 'coworker' })
   })
 
   it('a person acts with their own role: a member cannot invite', async () => {
