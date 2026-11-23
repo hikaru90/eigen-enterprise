@@ -88,7 +88,7 @@ export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): Coworker
 }
 
 /** What one turn cost: the cost log's rows of the run's trace for the co-worker, read in its own session. */
-async function liveTurnCost(coworkerId: string, runId: string): Promise<number> {
+export async function liveTurnCost(coworkerId: string, runId: string): Promise<number> {
   const [{ withDbUser }, { aggregateActivityCostByGroupId }] = await Promise.all([
     import('$lib/server/db'),
     import('$lib/server/activity/trace-cost'),

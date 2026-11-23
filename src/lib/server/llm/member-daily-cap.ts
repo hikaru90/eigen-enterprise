@@ -1,4 +1,5 @@
 import type { MemberRole } from '$lib/server/auth/roles'
+import type { UserKind } from '$lib/server/db/auth.schema'
 import { resolveTenantUserId } from '$lib/server/db/tenant-context'
 import { LlmDailyCapError } from './errors'
 
@@ -16,6 +17,12 @@ import { LlmDailyCapError } from './errors'
 export type MemberDailyCapDeps = {
   readCapUsd(): Promise<number | null>
   roleOf(userId: string): Promise<MemberRole | null>
+  /**
+   * A person or an AI co-worker. A co-worker holds role member but is no person's seat
+   * (plan/phase-ai-coworkers.md §3): its own daily_cap_usd caps it (AgentRuntime, on the same
+   * cost ledger), never the company's per-member cap.
+   */
+  kindOf(userId: string): Promise<UserKind | null>
   spentUsdSince(userId: string, since: Date): Promise<number>
   now(): Date
 }
@@ -41,6 +48,7 @@ const store = async () => (await import('./member-daily-cap-store')).memberDaily
 export const liveMemberDailyCapDeps: MemberDailyCapDeps = {
   readCapUsd: async () => (await store()).readCapUsd(),
   roleOf: async (userId) => (await store()).roleOf(userId),
+  kindOf: async (userId) => (await store()).kindOf(userId),
   spentUsdSince: async (userId, since) => (await store()).spentUsdSince(userId, since),
   now: () => new Date(),
 }
@@ -70,12 +78,13 @@ export async function memberAiUsageToday(
   deps: MemberDailyCapDeps = liveMemberDailyCapDeps,
 ): Promise<MemberAiUsage> {
   const now = deps.now()
-  const [capUsd, role, spentUsd] = await Promise.all([
+  const [capUsd, role, kind, spentUsd] = await Promise.all([
     deps.readCapUsd(),
     deps.roleOf(userId),
+    deps.kindOf(userId),
     deps.spentUsdSince(userId, utcDayStart(now)),
   ])
-  const capApplies = capUsd !== null && role === 'member'
+  const capApplies = capUsd !== null && role === 'member' && kind === 'human'
   return {
     role,
     capUsd,
@@ -97,6 +106,8 @@ export async function assertWithinMemberDailyCap(
   const capUsd = await deps.readCapUsd()
   if (capUsd === null) return
   if ((await deps.roleOf(userId)) !== 'member') return
+  // An AI co-worker is capped by its own daily cap only (see kindOf).
+  if ((await deps.kindOf(userId)) !== 'human') return
   const spentUsd = await deps.spentUsdSince(userId, utcDayStart(deps.now()))
   if (spentUsd >= capUsd) throw new LlmDailyCapError({ capUsd, spentUsd })
 }

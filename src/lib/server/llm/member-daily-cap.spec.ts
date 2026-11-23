@@ -14,6 +14,7 @@ type Spend = { userId: string; at: Date; usd: number }
 function deps(input: {
   cap: number | null
   roles: Record<string, MemberRole>
+  coworkers?: string[]
   spends?: Spend[]
   now: Date
 }): MemberDailyCapDeps & { spentQueries: Array<{ userId: string; since: Date }> } {
@@ -22,6 +23,7 @@ function deps(input: {
     spentQueries,
     readCapUsd: async () => input.cap,
     roleOf: async (userId) => input.roles[userId] ?? null,
+    kindOf: async (userId) => (input.roles[userId] ? ((input.coworkers ?? []).includes(userId) ? 'coworker' : 'human') : null),
     spentUsdSince: async (userId, since) => {
       spentQueries.push({ userId, since })
       return (input.spends ?? [])
@@ -49,6 +51,14 @@ describe('member daily AI cap: enforcement', () => {
     expect(err.message).toBe(LLM_DAILY_CAP_MESSAGE)
     expect(err.message).toBe("You've used today's AI allowance for this company. It resets at midnight UTC.")
     expect(err).toMatchObject({ capUsd: 1, spentUsd: 1 })
+  })
+
+  it('never caps an AI co-worker (role member): its own daily cap limits it, not the per-person cap', async () => {
+    const d = deps({ cap: 1, roles: { ...roles, 'cw-mkt': 'member' }, coworkers: ['cw-mkt'], now: NOON, spends: [{ userId: 'cw-mkt', at: NOON, usd: 3 }] })
+    await expect(assertWithinMemberDailyCap('cw-mkt', d)).resolves.toBeUndefined()
+    expect(await memberAiUsageToday('cw-mkt', d)).toMatchObject({ role: 'member', capApplies: false, remainingUsd: null, spentUsd: 3 })
+    // A person with the same role and spend is refused.
+    await expect(assertWithinMemberDailyCap('mia', deps({ cap: 1, roles, now: NOON, spends: [{ userId: 'mia', at: NOON, usd: 3 }] }))).rejects.toBeInstanceOf(LlmDailyCapError)
   })
 
   it('never caps the owner or an admin, whatever they spent', async () => {
