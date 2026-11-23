@@ -1,7 +1,7 @@
-import type { AgentConfig, CoworkerSource } from '$lib/kernel/agent'
 import type { StreamFrame } from '../../../../modules/messages/hub'
 import type { CoworkerView } from './service'
 import type { CoworkerTurns, TurnPrompts } from './turns'
+import type { AgentConfig, CoworkerSource } from '$lib/kernel/agent'
 import { coworkerPrincipal } from '$lib/kernel/principals'
 
 /**

@@ -1,7 +1,7 @@
 import type { MessageDto, MessagesDeps } from '../../../../modules/messages/service'
 import type { Conversation, Person } from '../../../../modules/messages/store'
-import type { CoworkerView, OrgChartEntry } from './service'
 import type { CoworkerRunPatch, CoworkerRunRow, CoworkerRunStore, ThreadKey } from './run-store'
+import type { CoworkerView, OrgChartEntry } from './service'
 import { KernelError } from '$lib/kernel/errors'
 import type { CoworkerStopReason } from '$lib/server/db/coworkers.schema'
 import { primaryHandle } from '../../../../modules/messages/notify'

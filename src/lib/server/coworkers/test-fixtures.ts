@@ -1,6 +1,6 @@
+import type { CoworkerView, OrgChartEntry } from './service'
 import type { AgentConfig, CoworkerSource } from '$lib/kernel/agent'
 import type { AgentRuntime } from '$lib/kernel/agent-runtime'
-import type { CoworkerView, OrgChartEntry } from './service'
 import { KernelRegistry } from '$lib/kernel/registry'
 import { MessagesHub } from '../../../../modules/messages/hub'
 import { addCoworker, fixture } from '../../../../modules/messages/test-fixtures'

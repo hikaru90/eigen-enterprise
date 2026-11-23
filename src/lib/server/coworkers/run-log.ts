@@ -1,6 +1,6 @@
-import type { ToolPrincipal } from '$lib/kernel/types'
 import type { CoworkerRunRow } from './run-store'
 import { actsAsMember } from '$lib/kernel/principals'
+import type { ToolPrincipal } from '$lib/kernel/types'
 
 /**
  * A co-worker's run log as a reader sees it (coworkers.runs, C3): every run's

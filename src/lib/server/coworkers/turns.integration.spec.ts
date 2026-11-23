@@ -1,4 +1,3 @@
-import type { GatewayCompleteFn } from '$lib/server/agent/gateway-model'
 import type { CoworkerTurnsHandle } from './live-turns'
 import type { CoworkerView } from './service'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -10,6 +9,7 @@ import { AgentRuntime } from '$lib/kernel/agent-runtime'
 import { DurableLoopEngine } from '$lib/kernel/engines/durable'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { KernelRegistry } from '$lib/kernel/registry'
+import type { GatewayCompleteFn } from '$lib/server/agent/gateway-model'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 
 /**

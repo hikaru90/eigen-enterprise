@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import type { Person } from '../../../../modules/messages/store'
+import { describe, expect, it } from 'vitest'
 import { createChannel, openDm, postMessage } from '../../../../modules/messages/service'
 import { composeCoworkerTurns } from './live-turns'
 import { coworkerEmail } from './service'
