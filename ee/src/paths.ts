@@ -33,6 +33,8 @@ export const PATHS = {
   upgradeState: '/var/lib/ee/upgrade.json',
   /** Managed boxes: the company's domain claims as the control plane last sent them (fleet/claims.ts). */
   fleetClaims: '/var/lib/ee/fleet-claims.json',
+  /** Managed boxes: the free hosted address the control plane last sent + the public host the fleet added (fleet/hosted-address.ts). */
+  fleetHostedAddress: '/var/lib/ee/fleet-hosted-address.json',
   /** Root-only scratch for one backup/restore run (emptied after). */
   backupTmp: '/var/lib/ee/backup-tmp',
   /**
