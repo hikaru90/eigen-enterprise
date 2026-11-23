@@ -349,6 +349,11 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
     ['seq', 'call_id', 'speaker_id', 'speaker_kind', 'started_at', 'ended_at', 'created_at'],
     ['speaker_name', 'text'],
   ),
+  call_chat_message: meta(
+    dmCall('t.call_id'),
+    ['seq', 'call_id', 'author_id', 'author_kind', 'created_at'],
+    ['author_name', 'body'],
+  ),
   call_brain_answer: meta('t.shared_at IS NULL', ['id', 'call_id', 'asked_by', 'asked_at', 'shared_at'], ['question', 'answer']),
   call_brain_listen: full,
 

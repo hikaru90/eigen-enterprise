@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { GuestPageView } from '../../../modules/calls/service'
   import type { ActiveCall } from './active-call.svelte'
+  import type { CallChat } from './call-chat.svelte'
   import type { CallTranscription } from './call-transcription.svelte'
   import type { CallDto } from './client'
   import Mic from '@lucide/svelte/icons/mic'
@@ -27,6 +28,11 @@
    * guest can turn theirs off in the call (on by default, like everyone's).
    * A guest has no call feed, so the call's view is refreshed every
    * REFRESH_MS while in the call (its clock, who is transcribed).
+   *
+   * The call's chat (proposal bb05b451): with `makeChat`, the guest writes and
+   * reads it as their guest name. No feed here either: while in the call the
+   * chat is read on from its cursor every CHAT_REFRESH_MS (a small GET; a
+   * chat needs to feel quicker than the call view's refresh).
    */
   let {
     view,
@@ -34,6 +40,7 @@
     makeActive,
     makeTranscription,
     getMedia,
+    makeChat = null,
   }: {
     /** null: the link is not known. */
     view: GuestPageView | null
@@ -43,6 +50,8 @@
     /** The transcription of the guest's own microphone in this call (`me` = their identity). */
     makeTranscription: (active: ActiveCall, me: string) => CallTranscription
     getMedia: (c: MediaStreamConstraints) => Promise<MediaStream>
+    /** The call's chat for this guest (`me` = their identity); null: no chat on this page. */
+    makeChat?: ((me: string, callId: string) => CallChat) | null
   } = $props()
 
   let step = $state<'name' | 'preview' | 'call'>('name')
@@ -56,8 +65,11 @@
   let camOn = $state(true)
   let active = $state<ActiveCall | null>(null)
   let transcription = $state<CallTranscription | null>(null)
+  let chat = $state<CallChat | null>(null)
   const REFRESH_MS = 10_000
+  const CHAT_REFRESH_MS = 3_000
   let refresher: ReturnType<typeof setInterval> | undefined
+  let chatRefresher: ReturnType<typeof setInterval> | undefined
 
   const dayFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' })
   const timeFmt = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })
@@ -128,11 +140,15 @@
           console.error('[calls] refreshing the guest call failed', err),
         )
     }, REFRESH_MS)
+    const c = makeChat && call ? makeChat(view.identity, call.id) : null
+    chat = c
+    if (c) chatRefresher = setInterval(() => a.inCall && void c.catchUp(), CHAT_REFRESH_MS)
     step = 'call'
   }
 
   function leaveCall() {
     clearInterval(refresher)
+    clearInterval(chatRefresher)
     active?.close()
     transcription?.close()
   }
@@ -141,6 +157,7 @@
     leaveCall()
     active = null
     transcription = null
+    chat = null
     step = 'name'
   }
 
@@ -172,6 +189,8 @@
         onopen={() => {}}
         startWith={{ microphone: micOn, camera: camOn }}
         {transcription}
+        {chat}
+        chatDictation={false}
       />
     </div>
   {:else}

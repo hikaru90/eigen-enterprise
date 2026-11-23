@@ -91,3 +91,13 @@ export function startInputOf(body: Record<string, unknown>): StartInput {
     title: title ?? null,
   }
 }
+
+/** `?since=<seq>` of a chat read → the cursor (absent: from the start). */
+export function chatSinceOf(url: URL): number | undefined {
+  const raw = url.searchParams.get('since')
+  if (raw === null || raw === '') return undefined
+  const seq = Number(raw)
+  if (!/^[0-9]+$/.test(raw) || !Number.isSafeInteger(seq))
+    throw new CallsError('invalid', 'since is a message seq (a whole number, 0 or more)')
+  return seq
+}

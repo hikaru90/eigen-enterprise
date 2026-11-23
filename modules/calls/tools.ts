@@ -1,6 +1,7 @@
 import type { Actor, CallDto, CallsService, ScheduleResult } from './service'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { MAX_CHAT_BODY } from './chat'
 import { CallsError } from './errors'
 import { CALLS_MODULE_ID } from './manifest'
 
@@ -13,8 +14,8 @@ import { CALLS_MODULE_ID } from './manifest'
  * The rest are a person's own acts in their calls, the same service calls as
  * the New call dialog and the call screen (book a meeting with guests, invite
  * or remove a guest, the Company Brain's switch, sharing one's Brain answer,
- * the recap): a person (or the brain acting as them) only; an agent on its
- * own is refused.
+ * the recap, the call's chat): a person (or the brain acting as them) only;
+ * an agent on its own is refused.
  */
 
 export type CallsToolDeps = { service: () => Promise<CallsService> }
@@ -70,6 +71,23 @@ const removeGuestInput = z
   .strict()
 const brainInput = z.object({ call_id: z.string().min(1), on: z.boolean() }).strict()
 const shareInput = z.object({ call_id: z.string().min(1), answer_id: z.string().min(1) }).strict()
+const chatPostInput = z
+  .object({
+    call_id: z.string().min(1),
+    body: z.string().min(1).max(MAX_CHAT_BODY).describe('the line to write (plain text)'),
+  })
+  .strict()
+const chatReadInput = z
+  .object({
+    call_id: z.string().min(1),
+    since: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('read on after this message seq (the last one you have); leave out for the start'),
+  })
+  .strict()
 
 export function actorOf(ctx: ToolContext): Actor {
   return ctx.principal.kind === 'human'
@@ -257,6 +275,34 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
       permission: { roles: ['admin', 'member', 'agent'] },
       handler: async (ctx, input) =>
         (await service()).brainRecap(personOf(ctx), callInput.parse(input).call_id),
+    },
+    {
+      name: 'calls.chat_post',
+      module: CALLS_MODULE_ID,
+      summary:
+        'Write a line in the chat of a live call you are in (members and guests in the call read it; it stays with the call’s transcript).',
+      auditClass: 'mutate',
+      activity: (input: z.infer<typeof chatPostInput>) =>
+        `Wrote in the chat of call ${input.call_id}`,
+      inputSchema: chatPostInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = chatPostInput.parse(input)
+        return { message: await (await service()).postChat(personOf(ctx), i.call_id, i.body) }
+      },
+    },
+    {
+      name: 'calls.chat_read',
+      module: CALLS_MODULE_ID,
+      summary:
+        'Read the chat of a call you are in or were in, in order (guests marked); since = the last seq you have, to read on. hasMore: read again from the last seq.',
+      auditClass: 'read',
+      inputSchema: chatReadInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = chatReadInput.parse(input)
+        return (await service()).chat(personOf(ctx), i.call_id, i.since)
+      },
     },
   ]
 }

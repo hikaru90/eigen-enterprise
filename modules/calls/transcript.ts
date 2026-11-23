@@ -58,7 +58,19 @@ export function mergeTranscript(segments: readonly TranscriptSegment[]): Transcr
   return [...segments].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime() || a.seq - b.seq)
 }
 
-export type TranscriptTurn = { speakerId: string; speakerKind: SpeakerKind; speakerName: string; startedAt: Date; endedAt: Date; text: string }
+/**
+ * One turn of the call as a reader takes it: something said (`speech`, from
+ * the transcript) or written in the call's chat (`chat`, ./chat.ts).
+ */
+export type TranscriptTurn = {
+  speakerId: string
+  speakerKind: SpeakerKind
+  speakerName: string
+  startedAt: Date
+  endedAt: Date
+  text: string
+  source: 'speech' | 'chat'
+}
 
 /** For reading: one speaker's consecutive segments (in merged order) as one turn. */
 export function transcriptTurns(segments: readonly TranscriptSegment[]): TranscriptTurn[] {
@@ -70,9 +82,14 @@ export function transcriptTurns(segments: readonly TranscriptSegment[]): Transcr
       if (s.endedAt > last.endedAt) last.endedAt = s.endedAt
       continue
     }
-    turns.push({ speakerId: s.speakerId, speakerKind: s.speakerKind, speakerName: s.speakerName, startedAt: s.startedAt, endedAt: s.endedAt, text: s.text })
+    turns.push({ speakerId: s.speakerId, speakerKind: s.speakerKind, speakerName: s.speakerName, startedAt: s.startedAt, endedAt: s.endedAt, text: s.text, source: 'speech' })
   }
   return turns
+}
+
+/** Spoken turns and chat turns as one call, by start time (speech first on a tie: it began before it was written about). */
+export function mergeTurns(speech: readonly TranscriptTurn[], chat: readonly TranscriptTurn[]): TranscriptTurn[] {
+  return [...speech, ...chat].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
 }
 
 /** The store for specs: the Postgres store's semantics (seq in arrival order, merged reads). */

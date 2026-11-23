@@ -1,11 +1,13 @@
 <script lang="ts">
   import type { ActiveCall, StartWith } from './active-call.svelte'
   import type { CallBrain } from './call-brain.svelte'
+  import type { CallChat } from './call-chat.svelte'
   import type { CallTranscription } from './call-transcription.svelte'
   import type { BrainClient, CallDto } from './client'
   import Brain from '@lucide/svelte/icons/brain'
   import Captions from '@lucide/svelte/icons/captions'
   import CaptionsOff from '@lucide/svelte/icons/captions-off'
+  import MessageSquare from '@lucide/svelte/icons/message-square'
   import Mic from '@lucide/svelte/icons/mic'
   import MicOff from '@lucide/svelte/icons/mic-off'
   import PhoneOff from '@lucide/svelte/icons/phone-off'
@@ -20,6 +22,7 @@
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import BrainRecap from './brain-recap.svelte'
   import CallBrainPanel from './call-brain-panel.svelte'
+  import CallChatPanel from './call-chat-panel.svelte'
   import CallTile from './call-tile.svelte'
   import DevicePicker from './device-picker.svelte'
   import { callClock } from './format'
@@ -47,6 +50,11 @@
    * `brain` (people of the company) the controls open its panel: the switch,
    * "Ask the Brain", my private answers and what was shared. With
    * `brainRecap`, the ended screen offers whoever switched it on a recap.
+   *
+   * The chat (proposal bb05b451): with `chat`, the controls carry its toggle —
+   * a badge counts lines from others while the panel is closed — and the panel
+   * sits beside the stage (over it on a phone), one side panel at a time.
+   * `chatDictation`: the chat line takes dictation (people of the company).
    */
   let {
     active,
@@ -62,6 +70,8 @@
     brain = null,
     brainRecap = null,
     recapImportHref = null,
+    chat = null,
+    chatDictation = true,
   }: {
     active: ActiveCall
     call: CallDto
@@ -86,14 +96,29 @@
     brainRecap?: Pick<BrainClient, 'brainRecap'> | null
     /** Where "Import into the brain" drafts the recap into the assistant chat (recap-import.ts); null: no offer. */
     recapImportHref?: string | null
+    /** The call's chat (members and guests); null: this view has none. */
+    chat?: CallChat | null
+    /** The chat line takes dictation (false for a guest: no account to transcribe for). */
+    chatDictation?: boolean
   } = $props()
 
   let brainOpen = $state(false)
 
   function toggleBrainPanel() {
     brainOpen = !brainOpen
-    if (brainOpen) void brain?.load()
+    if (brainOpen) {
+      chat?.hide()
+      void brain?.load()
+    }
   }
+
+  function toggleChat() {
+    if (!chat) return
+    if (!chat.open) brainOpen = false
+    chat.toggle()
+  }
+
+  const unread = $derived(chat ? chat.unread : 0)
 
   const GAP = 8
   let stageW = $state(0)
@@ -213,7 +238,7 @@
   <button
     type="button"
     class={[
-      'grid size-12 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50',
+      'grid size-11 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50 sm:size-12',
       pressed
         ? 'bg-white text-neutral-900 hover:bg-white/90'
         : 'bg-white/15 text-white hover:bg-white/25',
@@ -534,6 +559,12 @@
         >
           <CallBrainPanel {brain} onclose={() => (brainOpen = false)} />
         </div>
+      {:else if chat && chat.open && active.inCall}
+        <div
+          class="absolute inset-0 z-20 sm:static sm:z-auto sm:w-80 sm:shrink-0 sm:border-l sm:border-white/10"
+        >
+          <CallChatPanel {chat} dictation={chatDictation} onclose={() => chat?.hide()} />
+        </div>
       {/if}
     </div>
   {/if}
@@ -548,7 +579,7 @@
         </div>
       {/if}
       <footer
-        class="flex items-center justify-center gap-2 border-t border-white/10 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:gap-3"
+        class="flex flex-wrap items-center justify-center gap-1.5 border-t border-white/10 px-2 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:gap-3 sm:px-3"
         data-testid="call-controls"
       >
         {@render control(s.mic ? 'Mute' : 'Unmute', !s.mic, 'call-mic', s.mic, () =>
@@ -574,7 +605,7 @@
           <button
             type="button"
             class={[
-              'grid size-12 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50',
+              'grid size-11 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50 sm:size-12',
               transcription.on
                 ? 'bg-white/15 text-white hover:bg-white/25'
                 : 'bg-white text-neutral-900 hover:bg-white/90',
@@ -598,7 +629,7 @@
           <button
             type="button"
             class={[
-              'relative grid size-12 shrink-0 place-items-center rounded-full transition-colors',
+              'relative grid size-11 shrink-0 place-items-center rounded-full transition-colors sm:size-12',
               brainOpen
                 ? 'bg-white text-neutral-900 hover:bg-white/90'
                 : 'bg-white/15 text-white hover:bg-white/25',
@@ -616,10 +647,31 @@
               ></span>{/if}</button
           >
         {/if}
+        {#if chat}
+          <button
+            type="button"
+            class={[
+              'relative grid size-11 shrink-0 place-items-center rounded-full transition-colors sm:size-12',
+              chat.open
+                ? 'bg-white text-neutral-900 hover:bg-white/90'
+                : 'bg-white/15 text-white hover:bg-white/25',
+            ]}
+            aria-label={unread > 0 ? `Chat, ${unread} unread` : 'Chat'}
+            title={unread > 0 ? `Chat: ${unread} new` : 'Chat with everyone in the call'}
+            aria-expanded={chat.open}
+            data-testid="call-chat-button"
+            onclick={toggleChat}
+            ><MessageSquare class="size-5" />{#if unread > 0}<span
+                class="absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-xs leading-none font-semibold text-white tabular-nums"
+                aria-hidden="true"
+                data-testid="call-chat-unread">{unread > 99 ? '99+' : unread}</span
+              >{/if}</button
+          >
+        {/if}
         <button
           type="button"
           class={[
-            'grid size-12 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50',
+            'grid size-11 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-50 sm:size-12',
             devicesOpen
               ? 'bg-white text-neutral-900 hover:bg-white/90'
               : 'bg-white/15 text-white hover:bg-white/25',
@@ -633,7 +685,7 @@
         >
         <button
           type="button"
-          class="grid h-12 w-16 shrink-0 place-items-center rounded-full bg-red-600 text-white hover:bg-red-700"
+          class="grid h-11 w-14 shrink-0 place-items-center rounded-full bg-red-600 text-white hover:bg-red-700 sm:h-12 sm:w-16"
           aria-label="Hang up"
           title="Hang up"
           data-testid="call-hangup"

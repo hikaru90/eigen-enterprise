@@ -1163,6 +1163,13 @@
       "when": 1795200000168,
       "tag": "0168_company_export",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1795200000169,
+      "tag": "0169_call_chat",
+      "breakpoints": true
     }
   ]
 }

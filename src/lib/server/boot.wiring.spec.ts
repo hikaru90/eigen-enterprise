@@ -245,6 +245,8 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'calls.brain_recap',
   'calls.brain_set',
   'calls.brain_share_answer',
+  'calls.chat_post',
+  'calls.chat_read',
   'calls.end',
   'calls.invite_guests',
   'calls.list',

@@ -1,4 +1,4 @@
-import type { CallDto } from './client'
+import type { CallChatMessageDto, CallDto } from './client'
 import { getContext, setContext } from 'svelte'
 
 /**
@@ -9,7 +9,9 @@ import { getContext, setContext } from 'svelte'
  * is live in that conversation).
  *
  * Frames carry the whole call: `call.ringing` = it rings for me now,
- * `call.state` = anything else. A call that is over leaves the feed. Every
+ * `call.state` = anything else. A call that is over leaves the feed.
+ * `call.chat` = a new line in the chat of a call I may read it in: handed to
+ * the chat listeners (onChat — the call tab's CallChat), never stored here. Every
  * (re)connect opens with a snapshot of my live calls, so on `open` the feed
  * starts empty and the snapshot refills it — a call that ended while the
  * stream was down cannot linger. A ring stops by itself at `ringUntil`.
@@ -36,6 +38,8 @@ export class LiveCalls {
   #timers = new Map<string, ReturnType<typeof setTimeout>>()
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- subscriber callbacks are never rendered
   #listeners = new Set<() => void>()
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- subscriber callbacks are never rendered
+  #chatListeners = new Set<(callId: string, message: CallChatMessageDto) => void>()
   #open: (() => CallStreamSource) | null = null
   #source: CallStreamSource | null = null
   #retry: ReturnType<typeof setTimeout> | undefined
@@ -77,6 +81,12 @@ export class LiveCalls {
     return () => this.#listeners.delete(fn)
   }
 
+  /** Called with each chat line the stream brings (any call; the listener picks its own). */
+  onChat(fn: (callId: string, message: CallChatMessageDto) => void): () => void {
+    this.#chatListeners.add(fn)
+    return () => this.#chatListeners.delete(fn)
+  }
+
   connect(open: () => CallStreamSource): void {
     this.#open = open
     this.#stopped = false
@@ -98,6 +108,7 @@ export class LiveCalls {
     for (const t of this.#timers.values()) clearTimeout(t)
     this.#timers.clear()
     this.#listeners.clear()
+    this.#chatListeners.clear()
   }
 
   /** Stop ringing for this call here and now (I accepted or declined it). */
@@ -171,6 +182,11 @@ export class LiveCalls {
         this.apply(type, call)
       })
     }
+    source.addEventListener('call.chat', (e) => {
+      if (this.#source !== source || this.#stopped) return
+      const { callId, message } = JSON.parse((e as MessageEvent).data as string) as { callId: string; message: CallChatMessageDto }
+      for (const fn of [...this.#chatListeners]) fn(callId, message)
+    })
   }
 
   #restart(): void {

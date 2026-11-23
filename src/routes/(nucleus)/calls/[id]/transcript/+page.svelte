@@ -13,12 +13,13 @@
   /**
    * A call's transcript (call transcripts, option A): what each person said,
    * merged by time; one speaker in a row is one turn, timed on the call clock
-   * (from when someone answered). Only people who were in the call get here.
+   * (from when someone answered) — with what was written in the call's chat,
+   * each line marked "Chat". Only people who were in the call get here.
    */
   let { data }: { data: PageData } = $props()
 
   const since = $derived(data.call.answeredAt ?? data.segments[0]?.startedAt ?? data.call.startedAt)
-  const turns = $derived(readingTurns(data.segments, since))
+  const turns = $derived(readingTurns(data.segments, since, data.chat))
   const when = $derived(new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(data.call.answeredAt ?? data.call.startedAt)))
   const live = $derived(data.call.state === 'scheduled' || data.call.state === 'ringing' || data.call.state === 'active')
   /** Over, and I switched the Company Brain on in it: the recap is offered (generated only on my click). */
@@ -36,7 +37,7 @@
     >
     {#if live}
       <p class="text-sm text-muted-foreground" role="status" data-testid="call-transcript-live">
-        The call is still going: what is said now appears here when you reload.
+        The call is still going: what is said and written now appears here when you reload.
       </p>
     {/if}
     {#if recapOffered}
@@ -48,16 +49,19 @@
     {/if}
     {#if turns.length === 0}
       <p class="rounded-xl bg-white p-6 text-center text-sm text-muted-foreground" data-testid="call-transcript-empty">
-        Nothing was transcribed in this call.
+        Nothing was transcribed or written in the chat in this call.
       </p>
     {:else}
       <ol class="flex flex-col gap-3 rounded-xl bg-white p-4 sm:p-6" data-testid="call-transcript-turns">
         {#each turns as t (t.key)}
-          <li class="grid grid-cols-[3.5rem_1fr] gap-3" data-testid="call-transcript-turn">
+          <li class="grid grid-cols-[3.5rem_1fr] gap-3" data-testid="call-transcript-turn" data-source={t.chat ? 'chat' : 'speech'}>
             <span class="pt-0.5 font-mono text-xs tabular-nums text-muted-foreground">{t.at}</span>
             <div class="min-w-0">
               <p class="text-sm font-semibold">
-                {t.speakerName}{#if t.guest}<span class="ml-1.5 text-xs font-normal text-muted-foreground">Guest</span>{/if}
+                {t.speakerName}{#if t.guest}<span class="ml-1.5 text-xs font-normal text-muted-foreground">Guest</span>{/if}{#if t.chat}<span
+                    class="ml-1.5 text-xs font-normal text-muted-foreground"
+                    data-testid="call-transcript-chat">Chat</span
+                  >{/if}
               </p>
               <p class="text-sm whitespace-pre-wrap">{t.text}</p>
             </div>

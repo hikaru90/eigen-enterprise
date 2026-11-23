@@ -1,3 +1,4 @@
+import type { ChatMessage } from './chat'
 import type { BrainListen, CallRecord, SharedBrainAnswer } from './store'
 import type { TranscriptSegment, TranscriptTurn } from './transcript'
 import { CallsError } from './errors'
@@ -77,9 +78,18 @@ export function heardSegments(rec: CallRecord, segments: readonly TranscriptSegm
   return segments.filter((s) => stretches.some((w) => s.startedAt.getTime() >= w.from && s.endedAt.getTime() <= w.to))
 }
 
-/** The heard transcript as the Brain reads it: one line per turn, the newest MAX_HEARD_CHARS. */
+/** The call's chat lines written while the Brain listened (the same stretches as heardSegments). */
+export function heardChat(rec: CallRecord, messages: readonly ChatMessage[], now: Date): ChatMessage[] {
+  const stretches = rec.brainListens.map((l) => ({ from: l.onAt.getTime(), to: (l.offAt ?? now).getTime() }))
+  return messages.filter((m) => stretches.some((w) => m.createdAt.getTime() >= w.from && m.createdAt.getTime() <= w.to))
+}
+
+/** The heard call as the Brain reads it: one line per turn (chat lines marked "(chat)"), the newest MAX_HEARD_CHARS. */
 export function heardTranscriptText(turns: readonly TranscriptTurn[], since: Date): string {
-  const lines = turns.map((t) => `[${clock(t.startedAt.getTime() - since.getTime())}] ${t.speakerName}${t.speakerKind === 'guest' ? ' (guest)' : ''}: ${t.text}`)
+  const lines = turns.map(
+    (t) =>
+      `[${clock(t.startedAt.getTime() - since.getTime())}] ${t.speakerName}${t.speakerKind === 'guest' ? ' (guest)' : ''}${t.source === 'chat' ? ' (chat)' : ''}: ${t.text}`,
+  )
   const kept: string[] = []
   let size = 0
   for (let i = lines.length - 1; i >= 0; i--) {

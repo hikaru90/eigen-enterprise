@@ -128,6 +128,7 @@ export default defineConfig({
       'src/lib/messages/presence-nav.svelte.spec.ts',
       'src/lib/calls/call-view.svelte.spec.ts',
       'src/lib/calls/call-brain.svelte.spec.ts',
+      'src/lib/calls/call-chat.svelte.spec.ts',
       'src/lib/calls/incoming-call-toast.svelte.spec.ts',
       'src/lib/calls/call-button.svelte.spec.ts',
       'src/lib/calls/call-presence.svelte.spec.ts',

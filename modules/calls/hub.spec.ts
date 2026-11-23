@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CallsHub, callsStreamResponse, type CallFrame } from './hub'
+import { CallsHub, callsStreamResponse, type CallFrame, type ChatFrame } from './hub'
+import { guestIdentity } from './state'
 import { fixture } from './test-fixtures'
 
 /** A hub wired the way the live listener does it: every stored change is "NOTIFY"-ed into dispatch. */
@@ -8,6 +9,7 @@ function liveFixture() {
   const hub = new CallsHub(f.service)
   const pending: Promise<void>[] = []
   f.store.onChange = (id) => pending.push(hub.dispatch(id))
+  f.chat.onAdd = (seq) => pending.push(hub.dispatchChat(seq))
   const settle = async () => {
     while (pending.length) await pending.shift()
   }
@@ -16,7 +18,12 @@ function liveFixture() {
     hub.subscribe(userId, (fr) => frames.push(fr))
     return frames
   }
-  return { ...f, hub, settle, inbox }
+  const chatInbox = (userId: string) => {
+    const frames: ChatFrame[] = []
+    hub.subscribe(userId, () => {}, (fr) => frames.push(fr))
+    return frames
+  }
+  return { ...f, hub, settle, inbox, chatInbox }
 }
 
 describe('CallsHub fan-out', () => {
@@ -106,5 +113,57 @@ describe('CallsHub fan-out', () => {
     // Nothing but the connect comment was ever queued for the stranger.
     const rest = await Promise.race([stranger.read(), new Promise((r) => setTimeout(() => r('idle'), 20))])
     expect(rest).toBe('idle')
+  })
+})
+
+describe('CallsHub chat frames (call.chat)', () => {
+  it('a line goes to everyone who may read the chat — the writer too — and to nobody else', async () => {
+    const { service, user, settle, chatInbox } = liveFixture()
+    const ann = chatInbox('ann')
+    const ben = chatInbox('ben')
+    const cat = chatInbox('cat')
+    const call = await service.start(user('ann'), { contextKind: 'channel', contextId: 'ch-general' })
+    await service.accept('ben', call.id)
+    const line = await service.postChat('ben', call.id, 'Bin drin')
+    await settle()
+    expect(ann).toEqual([{ event: 'call.chat', data: { callId: call.id, message: line } }])
+    expect(ben).toEqual(ann)
+    expect(cat).toEqual([]) // rung, never in the call
+  })
+
+  it('a guest’s line reaches the members; guests are never stream subscribers', async () => {
+    const { service, user, settle, chatInbox, hub } = liveFixture()
+    const out = await service.schedule(user('ann'), { guests: ['kunde@example.org'], timeZone: 'UTC' })
+    const token = decodeURIComponent(out.invitations[0]!.url.split('/join/')[1]!)
+    const guestId = out.call.guests[0]!.id
+    await service.guestJoin(token, 'Kim')
+    await service.applyWebhook({ kind: 'participant_joined', room: `ee-call-${out.call.id}`, identity: guestIdentity(guestId) })
+    const ann = chatInbox('ann')
+    const ghost = chatInbox(guestIdentity(guestId))
+    await service.guestPostChat(token, 'Hallo aus dem Browser')
+    await settle()
+    expect(ann.map((f) => [f.data.message.authorName, f.data.message.body])).toEqual([['Kim', 'Hallo aus dem Browser']])
+    expect(ghost).toEqual([])
+    await expect(hub.dispatchChat(999_999)).rejects.toThrow(/999999/)
+  })
+
+  it('the SSE response carries call.chat frames', async () => {
+    const { service, user, settle, hub } = liveFixture()
+    const call = await service.start(user('ann'), { contextKind: 'dm', contextId: 'dm-ann-ben' })
+    await service.accept('ben', call.id)
+    await settle()
+    const ac = new AbortController()
+    const reader = callsStreamResponse(hub, 'ann', ac.signal).body!.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    const readUntil = async (needle: string) => {
+      while (!text.includes(needle)) text += decoder.decode((await reader.read()).value)
+    }
+    await readUntil(': connected')
+    await service.postChat('ben', call.id, 'Siehst du das?')
+    await settle()
+    await readUntil('event: call.chat')
+    expect(text).toContain('"body":"Siehst du das?"')
+    ac.abort()
   })
 })

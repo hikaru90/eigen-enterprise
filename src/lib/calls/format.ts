@@ -1,4 +1,4 @@
-import type { CallDto, TranscriptSegmentDto } from './client'
+import type { CallChatMessageDto, CallDto, TranscriptSegmentDto } from './client'
 
 /** How a call line in a DM/channel reads (structured data from Messages, never parsed text). */
 export type CallLine = { callId: string; outcome: 'ended' | 'missed' | 'declined'; durationSeconds: number | null }
@@ -28,22 +28,41 @@ export function callClock(since: string, nowMs: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
-export type ReadingTurn = { key: number; speakerName: string; guest: boolean; at: string; text: string }
+export type ReadingTurn = { key: string; speakerName: string; guest: boolean; chat: boolean; at: string; text: string }
 
 /**
  * The transcript page's turns: the segments (already merged by time on the
- * server), one speaker in a row joined into one turn, each with its time
- * since the call started (`since`, the call's answer time) on the call clock.
+ * server) and the call's chat lines, by time; one speaker's spoken segments in
+ * a row joined into one turn, each chat line its own turn (marked chat); each
+ * with its time since the call started (`since`, the call's answer time) on
+ * the call clock.
  */
-export function readingTurns(segments: readonly TranscriptSegmentDto[], since: string): ReadingTurn[] {
+export function readingTurns(
+  segments: readonly TranscriptSegmentDto[],
+  since: string,
+  chat: readonly CallChatMessageDto[],
+): ReadingTurn[] {
+  type Item = { at: number; turn: ReadingTurn & { speakerId: string } }
+  const items: Item[] = [
+    ...segments.map((s) => ({
+      at: Date.parse(s.startedAt),
+      turn: { key: `s${s.seq}`, speakerId: s.speakerId, speakerName: s.speakerName, guest: s.speakerKind === 'guest', chat: false, at: callClock(since, Date.parse(s.startedAt)), text: s.text },
+    })),
+    ...chat.map((m) => ({
+      at: Date.parse(m.createdAt),
+      turn: { key: `c${m.seq}`, speakerId: m.authorId, speakerName: m.authorName, guest: m.authorKind === 'guest', chat: true, at: callClock(since, Date.parse(m.createdAt)), text: m.body },
+    })),
+  ]
+  // Stable: segments keep the server's order among themselves, and come before a chat line at the same moment.
+  items.sort((a, b) => a.at - b.at)
   const turns: (ReadingTurn & { speakerId: string })[] = []
-  for (const s of segments) {
+  for (const { turn } of items) {
     const last = turns.at(-1)
-    if (last && last.speakerId === s.speakerId) {
-      last.text = `${last.text} ${s.text}`
+    if (!turn.chat && last && !last.chat && last.speakerId === turn.speakerId) {
+      last.text = `${last.text} ${turn.text}`
       continue
     }
-    turns.push({ key: s.seq, speakerId: s.speakerId, speakerName: s.speakerName, guest: s.speakerKind === 'guest', at: callClock(since, Date.parse(s.startedAt)), text: s.text })
+    turns.push({ ...turn })
   }
   return turns.map(({ speakerId: _speakerId, ...t }) => t)
 }

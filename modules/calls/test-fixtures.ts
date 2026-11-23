@@ -1,6 +1,7 @@
 import type { BrainAskInput, BrainRecapInput } from './brain'
 import type { CallContext, CallContextPort, CallEnded, CallLogPort, ConversationKind } from './context-port'
 import { MemoryBrainAnswerStore } from './brain'
+import { MemoryChatStore } from './chat'
 import { livekitConfig, type RoomControl } from './livekit'
 import { MemoryCallsDirectory, MemoryCallsStore } from './memory-store'
 import { createCallsService, type CallsDeps, type CallSpeech } from './service'
@@ -90,6 +91,7 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
     },
   }
   const brainAnswers = new MemoryBrainAnswerStore()
+  const chat = new MemoryChatStore()
   const brainOut = () => {
     const text = brain.queue.shift()
     if (text === undefined) throw new Error('fixture: no Brain answer queued (call f.brain.next first)')
@@ -130,10 +132,11 @@ export function fixture(opts: { env?: Record<string, string | undefined> } = {})
       },
     },
     brainAnswers,
+    chat,
     now: clock.now,
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
   }
   const service = createCallsService(deps)
   const user = (userId: string) => ({ kind: 'user' as const, userId })
-  return { store, directory, contexts, closed, removed, mail, logged, clock, deps, service, user, speech, transcripts, brain, brainAnswers }
+  return { store, directory, contexts, closed, removed, mail, logged, clock, deps, service, user, speech, transcripts, brain, brainAnswers, chat }
 }

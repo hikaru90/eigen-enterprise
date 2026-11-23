@@ -44,6 +44,9 @@ class FakeSource implements CallStreamSource {
     if (closed) this.readyState = 2
     for (const fn of this.listeners.get('error') ?? []) fn(new Event('error'))
   }
+  chat(data: unknown) {
+    for (const fn of this.listeners.get('call.chat') ?? []) fn(new MessageEvent('call.chat', { data: JSON.stringify(data) }))
+  }
   serverError(message: string) {
     for (const fn of this.listeners.get('error') ?? []) fn(new MessageEvent('error', { data: JSON.stringify({ error: message }) }))
   }
@@ -141,5 +144,18 @@ describe('LiveCalls (the one call feed of a nucleus page)', () => {
     expect(live.liveFor('dm', 'dm2')).toBeNull()
     vi.advanceTimersByTime(60_000)
     expect(sources).toHaveLength(1)
+  })
+
+  it('call.chat frames go to the chat listeners (not the call list); unsubscribing stops them', () => {
+    const { live, sources } = connected()
+    const got: [string, string][] = []
+    const off = live.onChat((callId, m) => got.push([callId, m.body]))
+    const message = { seq: 7, authorId: 'ben', authorKind: 'member', authorName: 'Ben', body: 'Hallo', createdAt: iso(1_000) }
+    sources[0].chat({ callId: 'c1', message })
+    expect(got).toEqual([['c1', 'Hallo']])
+    expect(live.calls).toEqual([])
+    off()
+    sources[0].chat({ callId: 'c1', message: { ...message, seq: 8 } })
+    expect(got).toHaveLength(1)
   })
 })

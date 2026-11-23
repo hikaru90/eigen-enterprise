@@ -2,6 +2,30 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Chat in a call (member proposal bb05b451: "we still need a chat function in the call"; committed on branch `calls-chat`, not pushed, not merged, not on the box)
+
+- **Shipped:** people in a call write to each other in a chat side panel of the call view, members and guests invited by link alike. A badge on the chat toggle counts lines from others while the panel is closed. On a phone the panel covers the stage, and a member's controls, chat included, fit one 375 px row (buttons 44 px below `sm`).
+- **Tools:** `calls.chat_post` (mutate, no approval, like `messages.post`) and `calls.chat_read` (read, from a `since` seq cursor, `hasMore` paging). Both are a person's own acts; the agent on its own is refused.
+- **Routes:** `GET`/`POST /api/calls/[id]/chat` map to `calls.chat_post` in `ui-parity.ts`. The guest routes `GET`/`POST /api/calls/guest/[token]/chat` are human-only (`CALL_GUEST`, no principal). Parity count 347 entry points, debt 0.
+- **Who may write:**
+  - a member: in the live call (accepted);
+  - a guest: through a usable link (window open, not withdrawn), after joining with a name, and only while in the room (webhook `joinedAt`, no `leftAt`).
+  - No chat for a call on another provider (`externalUrl`).
+- **Who may read:** members who are in the call now or were in it (also after it ends); guests only while their link works.
+- **Realtime:**
+  - members get a `call.chat` frame on the existing calls SSE stream (`pg_notify('ee_calls_chat', seq)` → `CallsHub.dispatchChat`, with a read check per person);
+  - the call tab reads on from its cursor on every feed change for its call, so a line the stream missed (reconnect, LISTEN gap) still arrives;
+  - guests read on from the cursor every 3 s while in the call.
+- **Transcript and Brain:** the transcript page shows chat lines merged by time and marked "Chat". `CallTranscriptDto.chat` is new. The calls list's transcript link counts chat lines too, so a call with only chat gets the link. The Company Brain reads chat written while it listened, marked `(chat)` (`heardChat`, `TranscriptTurn.source`), so answers and the recap include it.
+- **Decisions:**
+  - one Calls-owned table, `call_chat_message` (migration **0169**, self-contained, renumber at merge if AI Co-workers lands 0169 first), for every call, DM and channel calls included: no cross-posting into Messages, because a guest has no account and Messages' authors are accounts;
+  - LiveKit data messages are not used;
+  - guests refresh the chat every 3 s, separate from the 10 s call-view refresh: chat at 10 s felt too slow, and the extra GET is tiny;
+  - the chat line takes dictation for members only (guests have no account to transcribe for).
+  - Company export: `call_chat_message` is metadata-only for DM calls, full otherwise, like the transcript.
+- **Tests:** `modules/calls/chat.spec.ts` (service, guests, Brain, pure), `chat-db-store.pg.spec.ts` (run against a throwaway DB with the call migrations, green), `hub.spec.ts`, `tools.spec.ts`, `src/routes/api/calls/chat-routes.spec.ts`, `src/lib/calls/call-chat.spec.ts` (model), `format.spec.ts`, `live-calls.spec.ts`, and the component spec `src/lib/calls/call-chat.svelte.spec.ts` (badge, Enter to send, refusal, Brain/chat panel swap, phone width). Not run: e2e (no browser journey for chat yet).
+- **Next:** an e2e journey (member and guest exchange lines, transcript shows them), then merge and release.
+
 ## 2026-11-23 — Assistant chat: tool steps, rounder style, AI cost per reply and a usage meter (proposals 6b91931f owner, 30a8d920 member; branch, not merged, not on the box)
 
 - **Tool steps reach the chat (they did not before):** the durable engine emitted only `approval.required`, so no tool call was visible. Now every bridged tool call emits `tool.preview` (with `stepId`) before it runs and `tool.finished` (failed or not, short result) after (`src/lib/kernel/engines/durable.ts`). An `ee tool run <name>` shows as `<name>`. Summaries are structural and secret-free (`src/lib/tool-steps/summary.ts`: values under keys ending key/token/secret/password/credentials show as `[hidden]`). `handle-agent-chat-post` folds the end into the step's stored row (`status`, `resultSummary`), so a reload shows the same steps; a step stored as running comes back as "stopped".
