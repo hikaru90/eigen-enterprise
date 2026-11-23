@@ -12,6 +12,7 @@ import {
 } from './assistant-writes'
 import { MEMORY_TOOL_NAMES } from './manifest'
 import { createOwnTaskTools, type OwnTaskToolDeps } from './own-task-tools'
+import { createProjectScheduleTools, type ProjectScheduleToolDeps } from './project-schedule-tools'
 import { createReminderTools, type ReminderToolDeps } from './reminder-tools'
 import { createTaskTools, type TaskToolDeps } from './task-tools'
 import { createThoughtTools, type ThoughtToolDeps } from './thought-tools'
@@ -43,6 +44,8 @@ export type MemoryToolDeps = {
   reminders?: ReminderToolDeps
   /** Thoughts / entities / graph / connected-agent tools (thought-tools.ts). */
   thoughts?: ThoughtToolDeps
+  /** Projects, scheduled tasks, timeline items (project-schedule-tools.ts); they share writerOf unless given their own. */
+  projectSchedule?: ProjectScheduleToolDeps
 }
 
 /** Every member's own Memory: members, admins, and agent principals that are a person (MCP keys). */
@@ -288,5 +291,6 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ...createThoughtTools({ writerOf: opts.writerOf, ...opts.thoughts }),
     ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
     ...createReminderTools({ writerOf: opts.writerOf, ...opts.reminders }),
+    ...createProjectScheduleTools({ writerOf: opts.writerOf, ...opts.projectSchedule }),
   ]
 }

@@ -9,33 +9,16 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **340** — tool 189, human-only 46, transport 48, no effect 16, **debt 41**.
+Mutating entry points: **340** — tool 202, human-only 46, transport 48, no effect 16, **debt 28**.
 
 | Module | Debt |
 |---|---|
-| memory | 13 |
 | kernel | 9 |
 | calendar | 7 |
 | calls | 6 |
 | members | 4 |
 | assistant | 1 |
 | website | 1 |
-
-## memory (13)
-
-- `/(nucleus)/m/memory/tasks ?/seen` — Mark an assigned task seen.
-- `/api/scheduled-tasks/[taskId] DELETE` — Delete a scheduled task.
-- `/api/scheduled-tasks/[taskId] PATCH` — Pause or resume a scheduled task.
-- `/api/scheduled-tasks/[taskId] POST` — Run a scheduled task now.
-- `/api/scheduled-tasks/[taskId]/retry POST` — Retry a failed scheduled task.
-- `/api/temporal-events/[id]/action POST` — Reschedule, snooze or complete a timeline item.
-- `/api/timeline/projects POST` — Create a project.
-- `/api/timeline/projects/[entityId]/deadline POST` — Set a project deadline.
-- `/api/timeline/projects/[entityId]/dismiss POST` — Dismiss a project.
-- `/api/timeline/projects/[entityId]/milestones POST` — Set a project milestone.
-- `/api/timeline/projects/[entityId]/order POST` — Reorder a project’s tasks.
-- `/api/timeline/projects/[entityId]/review/apply POST` — Apply a project review (task statuses, new tasks).
-- `/api/timeline/projects/[entityId]/update PUT` — Rename a project.
 
 ## kernel (9)
 
