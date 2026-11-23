@@ -43,6 +43,9 @@ const isSharedTask = (thoughtIdExpr: string) =>
   `EXISTS (SELECT 1 FROM thought th JOIN thought_entity te ON te.thought_id = th.id AND te.user_id = th.user_id ` +
   `JOIN canonical_entity ce ON ce.id = te.entity_id AND ce.user_id = th.user_id ` +
   `WHERE th.id = ${thoughtIdExpr} AND th.category = 'task' AND ${companyProject('ce')})`
+/** An AI co-worker's thought: readable by every member (enable_rls.sql: thought_coworker_read, 0171). */
+const isCoworkerThought = (thoughtIdExpr: string) =>
+  `EXISTS (SELECT 1 FROM thought th JOIN "user" cw ON cw.id = th.user_id WHERE th.id = ${thoughtIdExpr} AND cw.kind = 'coworker')`
 const inDm = (conversationIdExpr: string) =>
   `EXISTS (SELECT 1 FROM message_conversations c WHERE c.id = ${conversationIdExpr} AND c.kind = 'dm')`
 const dmMessage = (messageIdExpr: string) =>
@@ -122,9 +125,9 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   wallet_ledger_entry: full,
   payment_order: full,
 
-  // --- Memory (private to its member unless on a company project) ------------
+  // --- Memory (private to its member unless on a company project or an AI co-worker's) ---
   thought: meta(
-    `NOT ${isSharedTask('t.id')}`,
+    `NOT ${isSharedTask('t.id')} AND NOT ${isCoworkerThought('t.id')}`,
     [
       'id', 'user_id', 'category', 'created_at', 'updated_at', 'ontology_entity_kind_id', 'salience_score',
       'access_count', 'last_accessed_at', 'enriched_at', 'enrichment_version', 'primary_community_ids',
@@ -161,7 +164,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
     ['title', 'body_text', 'body_text_encrypted', 'lexical_text', 'lexical_tsv'],
   ),
   temporal_event: meta(
-    `NOT ${isSharedTask('t.thought_id')}`,
+    `NOT ${isSharedTask('t.thought_id')} AND NOT ${isCoworkerThought('t.thought_id')}`,
     [
       'id', 'user_id', 'thought_id', 'graph_node_id', 'kind', 'active_period', 'time_precision', 'timezone',
       'is_all_day', 'recurrence_rule', 'confidence', 'start_at', 'end_at', 'graph_sync_status', 'created_at',

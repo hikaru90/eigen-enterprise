@@ -150,3 +150,60 @@ describe('createMemoryTools', () => {
     expect(runMock).toHaveBeenCalledWith({ userId: 'principal-1' }, { query: 'hello' })
   })
 })
+
+describe('an AI co-worker in Memory (plan/phase-ai-coworkers.md §7)', () => {
+  const cwCtx: ToolContext = {
+    principal: { id: 'cw-1', kind: 'coworker', roles: ['member'], agentId: 'coworker-cw-1' },
+    requestId: 'req-cw',
+  }
+  const asCoworker = createMemoryTools({ writerOf: async () => ({ kind: 'coworker', userId: 'cw-1', name: 'Mara' }) })
+  const byName = new Map(asCoworker.map((t) => [t.name, t]))
+  const call = (name: string, input: unknown) => byName.get(name)!.handler(cwCtx, input)
+
+  it('reads and writes as itself, with its name, in its own Memory', async () => {
+    runMock.mockClear()
+    await call('memory.capture_thought', { raw: 'Campaign idea' })
+    expect(runMock).toHaveBeenCalledWith({ userId: 'cw-1', coworker: { name: 'Mara' } }, { raw: 'Campaign idea' })
+    await call('memory.retrieve_thoughts', { query: 'campaign' })
+    expect(runMock).toHaveBeenLastCalledWith({ userId: 'cw-1', coworker: { name: 'Mara' } }, { query: 'campaign' })
+    await call('memory.create_text_file', { title: 'Plan' })
+    expect(runMock).toHaveBeenLastCalledWith({ userId: 'cw-1', coworker: { name: 'Mara' } }, { title: 'Plan' })
+  })
+
+  it('a person’s own clicks stay theirs: sharing, check-ins, connected agents and reminders refuse it', async () => {
+    for (const [name, input] of [
+      ['memory.set_project_visibility', { project_entity_id: 'p1', private: true }],
+      ['memory.set_text_file_visibility', { text_file_id: 'n1', private: false }],
+      ['memory.answer_check_in', { kind: 'dismiss' }],
+      ['memory.list_connected_agents', {}],
+      ['memory.assign_thought_to_agent', { agent_id: 'a1', thought_id: 't1' }],
+      ['reminders.create', { title: 'x' }],
+      ['reminders.list', {}],
+    ] as const) {
+      await expect(call(name, input)).rejects.toMatchObject({ code: 'permission_denied' })
+    }
+  })
+
+  it('works in the open under its own name: no private notes or projects, no author or as_user', async () => {
+    runMock.mockClear()
+    await expect(call('memory.create_text_file', { title: 'Hidden', private: true })).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(call('memory.create_project', { label: 'Hidden', private: true })).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(call('memory.capture_thought', { raw: 'x', as_user: true })).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(call('memory.capture_thought', { raw: 'x', author: 'ee_abc' })).rejects.toMatchObject({ code: 'permission_denied' })
+    expect(runMock).not.toHaveBeenCalled()
+  })
+
+  it('the refusals are for co-workers only: a person still shares their own note', async () => {
+    runMock.mockClear()
+    const asPerson = createMemoryTools({ writerOf: async () => ({ kind: 'self', userId: 'person-1' }) })
+    await asPerson.find((t) => t.name === 'memory.set_text_file_visibility')!.handler(ctx, { text_file_id: 'n1', private: false })
+    expect(runMock).toHaveBeenCalledWith({ userId: 'person-1' }, { text_file_id: 'n1', private: false })
+  })
+
+  it('a co-worker principal never runs as a person or the assistant', async () => {
+    const confused = createMemoryTools({ writerOf: async () => ({ kind: 'self', userId: 'cw-1' }) })
+    await expect(confused.find((t) => t.name === 'memory.retrieve_thoughts')!.handler(cwCtx, { query: 'x' })).rejects.toThrow(
+      /co-worker principal resolved to a self writer/,
+    )
+  })
+})

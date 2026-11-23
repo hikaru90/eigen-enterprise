@@ -1,6 +1,7 @@
 import { getOrCreateCompanyDek } from '$lib/server/crypto/company-keys'
 import { decryptEnvelope, encryptEnvelope, envelopeKeyId } from '$lib/server/crypto/envelope'
 import { getOrCreateTenantDek } from '$lib/server/crypto/tenant-keys'
+import { thoughtSealScopeOf } from '$lib/server/crypto/thought-seal-scope'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 
 /**
@@ -27,7 +28,11 @@ export async function encryptTenantValue(input: {
   plaintext: string
   scope?: EncryptionScope
 }): Promise<string> {
-  if (input.scope === 'company') {
+  // A thought whose writer names no key: an AI co-worker's are company-sealed (thought-seal-scope.ts).
+  const scope =
+    input.scope ??
+    (input.table === 'thought' ? await thoughtSealScopeOf(input.userId) : 'person')
+  if (scope === 'company') {
     const key = await getOrCreateCompanyDek()
     return encryptEnvelope(input.plaintext, key, companyAadFor(input.userId, input.table, input.column), 'company')
   }

@@ -11,7 +11,7 @@ import {
 } from '$lib/server/memory/authorship'
 import { generateProjectPlan } from '$lib/server/memory/generate-project-plan'
 import { archiveThoughtForUser } from '$lib/server/memory/lifecycle'
-import { ownerNameOf, withOwners } from '$lib/server/memory/memory-owners'
+import { ownerNameOf, thoughtOwnersOf, withOwners, type ThoughtOwner } from '$lib/server/memory/memory-owners'
 import { resolveProjectAccess, setProjectVisibility } from '$lib/server/memory/memory-visibility'
 import {
   listProjectsForUser,
@@ -37,6 +37,7 @@ import { sanitizeMcpToolResult } from '$lib/server/observability/strip-embedding
 import { composeAnswer } from '$lib/server/qa/compose-answer'
 import { CONTEXT_WEIGHTS } from '$lib/server/retrieval'
 import { tryRecordRetrievalQualityEvent } from '$lib/server/retrieval/quality-telemetry'
+import { THOUGHT_REACHES, type ThoughtReach } from '$lib/server/retrieval/reach'
 import { normalizeRetrievalScore } from '$lib/server/retrieval/rrf-scoring'
 import { searchThoughts } from '$lib/server/retrieval/service'
 import {
@@ -65,6 +66,12 @@ export type McpToolContext = {
   /** Present when MCP authenticated via Bearer API key — default capture authorship. */
   authenticatedApiKey?: AuthenticatedApiKey
   onToolProgress?: (event: McpToolProgress) => void
+  /**
+   * The caller is an AI co-worker acting as itself (plan/phase-ai-coworkers.md §7):
+   * everything it captures is its own and recorded as written by it (author
+   * 'agent', its name), so reads do not narrow its own thoughts to author 'user'.
+   */
+  coworker?: { name: string }
 }
 
 function asObject(input: unknown): Record<string, unknown> {
@@ -88,6 +95,36 @@ function parseAuthorScope(body: Record<string, unknown>): MemoryAuthor | undefin
   return 'user'
 }
 
+/**
+ * The author filter of a thought read. A co-worker's own thoughts are all
+ * written by it (author 'agent'), so for a co-worker the default is no filter.
+ */
+function parseThoughtAuthorScope(context: McpToolContext, body: Record<string, unknown>): MemoryAuthor | undefined {
+  if (context.coworker && body.author === undefined && body.include_agent === undefined) return undefined
+  return parseAuthorScope(body)
+}
+
+/**
+ * Whose thoughts a read reaches (retrieval/reach.ts): mine | team (the AI
+ * co-workers' company-visible thoughts) | all (default). A person's thoughts are
+ * never in reach of anyone else.
+ */
+function parseThoughtReach(body: Record<string, unknown>): ThoughtReach {
+  const scope = body.scope
+  if (scope === undefined) return 'all'
+  if (typeof scope === 'string' && (THOUGHT_REACHES as readonly string[]).includes(scope)) return scope as ThoughtReach
+  throw new Error(`scope must be one of ${THOUGHT_REACHES.join(', ')}`)
+}
+
+/** Every thought result names its owner (name, kind) and whether the reader may change it (only their own). */
+async function markThoughtOwners<T extends { ownerId: string }>(
+  readerId: string,
+  rows: T[],
+): Promise<Array<Omit<T, 'ownerId'> & { owner: ThoughtOwner; editable: boolean }>> {
+  const owners = await thoughtOwnersOf(rows.map((row) => row.ownerId))
+  return rows.map(({ ownerId, ...row }) => ({ ...row, owner: owners.get(ownerId)!, editable: ownerId === readerId }))
+}
+
 async function listRecentThoughtsForMcp(
   context: McpToolContext,
   input: {
@@ -96,6 +133,7 @@ async function listRecentThoughtsForMcp(
     cursor?: { createdAt: Date; id: string }
     weights: { vector: number; graph: number }
     authorFilter?: MemoryAuthor
+    reach: ThoughtReach
   },
 ) {
   const thoughts = await listThoughts(context.userId, {
@@ -103,10 +141,14 @@ async function listRecentThoughtsForMcp(
     fields: input.detail === 'full' ? 'full' : 'snippet',
     cursor: input.cursor,
     ...(input.authorFilter ? { authorFilter: input.authorFilter } : {}),
+    reach: input.reach,
   })
 
   if (input.detail === 'full') {
-    return sanitizeMcpToolResult({ count: thoughts.length, results: thoughts })
+    return sanitizeMcpToolResult({
+      count: thoughts.length,
+      results: await markThoughtOwners(context.userId, thoughts),
+    })
   }
 
   const now = new Date()
@@ -114,6 +156,7 @@ async function listRecentThoughtsForMcp(
     context.userId,
     thoughts.map((row) => ({
       id: row.id,
+      ownerId: row.ownerId,
       category: row.category,
       createdAt: row.createdAt,
       normalizedText: row.normalizedText,
@@ -132,6 +175,7 @@ async function listRecentThoughtsForMcp(
 
 type McpThoughtSnippetRow = {
   id: string
+  ownerId: string
   category: string
   createdAt: Date
   normalizedText: string
@@ -152,17 +196,22 @@ async function buildMcpThoughtSnippetRows(
     createdAt: string
     author?: 'user' | 'agent'
     authorLabel?: string | null
+    owner: ThoughtOwner
+    editable: boolean
     snippet: string
     temporalStatus: 'none' | 'active' | 'expired'
     temporalSummary?: string
     scoreNormalized?: number
   }>
 > {
-  const contextByThoughtId = await loadTemporalContextByThoughtIds({
-    userId,
-    thoughtIds: rows.map((row) => row.id),
-    now,
-  })
+  // Temporal context lives with each thought's owner (a co-worker's events follow its thoughts, 0164/0171).
+  const idsByOwner = new Map<string, string[]>()
+  for (const row of rows) idsByOwner.set(row.ownerId, [...(idsByOwner.get(row.ownerId) ?? []), row.id])
+  const contextMaps = await Promise.all(
+    [...idsByOwner].map(([ownerId, thoughtIds]) => loadTemporalContextByThoughtIds({ userId: ownerId, thoughtIds, now })),
+  )
+  const contextByThoughtId = new Map(contextMaps.flatMap((map) => [...map]))
+  const owners = await thoughtOwnersOf([...idsByOwner.keys()])
 
   return rows.map((row) => {
     const ctx = contextByThoughtId.get(row.id)
@@ -174,6 +223,8 @@ async function buildMcpThoughtSnippetRows(
       createdAt: row.createdAt.toISOString(),
       ...(row.author ? { author: row.author } : {}),
       ...(row.authorLabel ? { authorLabel: row.authorLabel } : {}),
+      owner: owners.get(row.ownerId)!,
+      editable: row.ownerId === userId,
       temporalStatus,
       ...(temporalSummary ? { temporalSummary } : {}),
       ...(typeof row.score === 'number'
@@ -202,6 +253,7 @@ export async function runCaptureThoughtTool(context: McpToolContext, args: unkno
     authorPrefix,
     asUser,
     authenticatedApiKey: context.authenticatedApiKey,
+    coworker: context.coworker,
   })
   const stored = await captureThought(context.userId, raw, {
     source: authorship.author === 'agent' ? 'agent' : 'mcp',
@@ -224,7 +276,8 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
   const topK = typeof body.top_k === 'number' ? body.top_k : undefined
   const threshold = typeof body.threshold === 'number' ? body.threshold : undefined
   const detail = parseDetailLevel(body)
-  const authorFilter = parseAuthorScope(body)
+  const authorFilter = parseThoughtAuthorScope(context, body)
+  const reach = parseThoughtReach(body)
   validateSearchParams({ topK, threshold })
   const weights = CONTEXT_WEIGHTS.default
   const effectiveTopK = topK ?? 10
@@ -251,6 +304,7 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
           : undefined,
       weights,
       ...(authorFilter ? { authorFilter } : {}),
+      reach,
     })
   }
 
@@ -260,6 +314,7 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
     topK: effectiveTopK,
     threshold: threshold ?? null,
     authorFilter: authorFilter ?? 'all',
+    reach,
   })
 
   context.onToolProgress?.({
@@ -273,6 +328,7 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
       query,
       topK: effectiveTopK,
       ...(authorFilter ? { authorFilter } : {}),
+      reach,
     }),
     // Notes: the person's and colleagues' shared ones, each with its owner.
     searchTextFiles(context.userId, {
@@ -296,7 +352,7 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
   if (detail === 'full') {
     const out = sanitizeMcpToolResult({
       count: filtered.length,
-      results: filtered,
+      results: await markThoughtOwners(context.userId, filtered),
       textFiles,
     })
     console.info('[mcp.tool:retrieve_thoughts] done', {
@@ -311,6 +367,7 @@ export async function runRetrieveThoughtsTool(context: McpToolContext, args: unk
     context.userId,
     filtered.map((row) => ({
       id: row.id,
+      ownerId: row.ownerId,
       category: row.category,
       createdAt: row.createdAt,
       normalizedText: row.normalizedText,

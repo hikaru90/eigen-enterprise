@@ -1,5 +1,6 @@
 import type { CaptureSource, LifecycleStatus } from '$lib/server/db/schema'
 import type { AssignThoughtProjectInput } from '$lib/server/memory/assign-thought-project'
+import type { MemoryAuthorship } from '$lib/server/memory/authorship'
 import type { DeleteThoughtResult } from '$lib/server/memory/delete-thought'
 import type { TemporalEventListItem } from '$lib/server/memory/temporal-event-list'
 
@@ -32,7 +33,11 @@ export type OwnTaskView = {
 export type OwnTaskService = {
   list(userId: string, status: OwnTaskStatusFilter): Promise<OwnTaskView[]>
   get(userId: string, taskId: string): Promise<OwnTaskView | null>
-  create(userId: string, input: { text: string; source: CaptureSource }): Promise<{ taskId: string }>
+  /** `authorship`: who wrote it when that is not the owner themself (an AI co-worker writes under its name). */
+  create(
+    userId: string,
+    input: { text: string; source: CaptureSource; authorship?: MemoryAuthorship },
+  ): Promise<{ taskId: string }>
   edit(userId: string, taskId: string, change: string): Promise<void>
   reschedule(userId: string, taskId: string, dueAt: string): Promise<void>
   setProject(userId: string, taskId: string, target: AssignThoughtProjectInput): Promise<void>
@@ -81,7 +86,17 @@ export function liveOwnTaskService(): OwnTaskService {
         import('$lib/server/capture/queue-capture'),
         import('$lib/server/memory/temporal-event-list'),
       ])
-      const queued = await queueCapture(userId, input.text, { source: input.source, category: 'task' })
+      const queued = await queueCapture(userId, input.text, {
+        source: input.source,
+        category: 'task',
+        ...(input.authorship
+          ? {
+              author: input.authorship.author,
+              authorLabel: input.authorship.authorLabel,
+              authorKeyId: input.authorship.authorKeyId,
+            }
+          : {}),
+      })
       return { taskId: taskItemId(queued.thoughtId) }
     },
     async edit(userId, taskId, change) {

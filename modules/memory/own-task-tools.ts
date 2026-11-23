@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { coworkerAuthorship } from '$lib/server/memory/coworker-authorship'
 import type { OwnTaskService, OwnTaskView } from '$lib/server/memory/own-tasks'
 import { liveMemoryWriterOf, requireWriter, type MemoryWriter } from './assistant-writes'
 import { OWN_TASK_TOOL_NAMES } from './manifest'
@@ -120,7 +121,12 @@ export function createOwnTaskTools(opts: OwnTaskToolDeps = {}): ToolDescriptor[]
         const i = createInput.parse(input)
         const w = await writer(ctx)
         const svc = await service()
-        const { taskId: id } = await svc.create(w.userId, { text: i.title, source: w.kind === 'assistant' ? 'agent' : 'api' })
+        const { taskId: id } = await svc.create(
+          w.userId,
+          w.kind === 'coworker'
+            ? { text: i.title, source: 'agent', authorship: coworkerAuthorship(w.name) }
+            : { text: i.title, source: w.kind === 'assistant' ? 'agent' : 'api' },
+        )
         const target = projectTarget(i)
         if (target) await svc.setProject(w.userId, id, target)
         return reread(svc, w.userId, id)

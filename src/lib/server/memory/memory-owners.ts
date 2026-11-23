@@ -20,6 +20,23 @@ export async function ownerNamesOf(userIds: string[]): Promise<Map<string, strin
   return names
 }
 
+/** Whose thought it is, as a reader sees it: name and kind (a person, or an AI co-worker; plan/phase-ai-coworkers.md §7). */
+export type ThoughtOwner = { id: string; name: string; kind: 'human' | 'coworker' }
+
+export async function thoughtOwnersOf(userIds: string[]): Promise<Map<string, ThoughtOwner>> {
+  const ids = [...new Set(userIds)]
+  if (ids.length === 0) return new Map()
+  const rows = await getDb()
+    .select({ id: user.id, name: user.name, kind: user.kind })
+    .from(user)
+    .where(inArray(user.id, ids))
+  const owners = new Map(rows.map((row) => [row.id, { id: row.id, name: row.name, kind: row.kind }]))
+  for (const id of ids) {
+    if (!owners.has(id)) throw new Error(`memory owner ${id} is no user`)
+  }
+  return owners
+}
+
 export async function ownerNameOf(userId: string): Promise<string> {
   return (await ownerNamesOf([userId])).get(userId)!
 }

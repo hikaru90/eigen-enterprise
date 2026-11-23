@@ -14,7 +14,8 @@ import { textFile, thought, thoughtEntity } from '$lib/server/db/schema'
  * a row every member may read is sealed with the company key, every other row
  * with its owner's key. Shared rows are exactly what the read policies of
  * drizzle/0164 let colleagues see:
- * - a thought: a task linked to a live project of its owner marked 'company';
+ * - a thought: a task linked to a live project of its owner marked 'company',
+ *   or any thought of an AI co-worker (company-visible, drizzle/0171);
  * - a note: marked 'company'.
  * Everything here runs in the OWNER's session (their key opens their private
  * envelopes), is idempotent, and only rewrites a ciphertext whose key is wrong.
@@ -29,9 +30,13 @@ const THOUGHT_SEALED_COLUMNS = [
 
 type SealedField = (typeof THOUGHT_SEALED_COLUMNS)[number]['field']
 
-/** SQL: this thought row is a task of a shared project of its owner (the thought_shared_read policy). */
+/**
+ * SQL: every member may read this thought row, so it is company-sealed — a task of
+ * a shared project of its owner (the thought_shared_read policy, 0164), or any
+ * thought of an AI co-worker (the thought_coworker_read policy, 0171).
+ */
 export function thoughtIsSharedSql(): SQL<boolean> {
-  return sql<boolean>`("thought"."category" = 'task' AND EXISTS (
+  return sql<boolean>`(("thought"."category" = 'task' AND EXISTS (
     SELECT 1 FROM thought_entity te
     JOIN canonical_entity ce ON ce.id = te.entity_id
     WHERE te.thought_id = "thought"."id"
@@ -39,7 +44,8 @@ export function thoughtIsSharedSql(): SQL<boolean> {
       AND ce.user_id = "thought"."user_id"
       AND ce.visibility = 'company'
       AND ce.project_status IS NOT NULL
-      AND ce.project_status <> 'dismissed'))`
+      AND ce.project_status <> 'dismissed'))
+    OR EXISTS (SELECT 1 FROM "user" cw WHERE cw.id = "thought"."user_id" AND cw.kind = 'coworker'))`
 }
 
 async function reseal(

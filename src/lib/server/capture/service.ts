@@ -29,6 +29,7 @@ import { decryptTenantValue, encryptTenantValue } from '$lib/server/crypto/tenan
 import type { CaptureSource, MemoryAuthor } from '$lib/server/db/schema'
 import { resolveAuthorSqlCondition } from '$lib/server/memory/authorship'
 import { reconcileThoughtKeys } from '$lib/server/memory/shared-memory-keys'
+import { thoughtReachCondition, type ThoughtReach } from '$lib/server/retrieval/reach'
 
 /** Deterministic text shaping only; kind key + FK come from `resolveThoughtCategory`. */
 export function normalizeThoughtText(raw: string): {
@@ -627,6 +628,11 @@ export async function listThoughts(
     categoryFilter?: string
     dateFrom?: Date
     dateTo?: Date
+    /**
+     * Whose thoughts (retrieval/reach.ts): default 'mine'. 'all' adds the AI
+     * co-workers' company-visible thoughts; the author filter narrows the reader's own.
+     */
+    reach?: ThoughtReach
   },
 ) {
   const limit = Math.max(1, Math.min(options?.limit ?? 20, 100))
@@ -647,10 +653,12 @@ export async function listThoughts(
     { author: authorFilter, authorLayerKey },
   )
 
+  const reach = options?.reach ?? 'mine'
   const conditions = [
-    eq(thought.userId, userId),
+    reach === 'mine'
+      ? and(eq(thought.userId, userId), authorSql)
+      : or(and(eq(thought.userId, userId), authorSql), thoughtReachCondition(userId, 'team')),
     activeThoughtLifecycleCondition(),
-    authorSql,
     categoryFilter ? eq(thought.category, categoryFilter) : undefined,
     dateFrom ? gte(thought.createdAt, dateFrom) : undefined,
     dateTo ? lte(thought.createdAt, dateTo) : undefined,
@@ -666,6 +674,7 @@ export async function listThoughts(
     const rows = await getDb()
       .select({
         id: thought.id,
+        ownerId: thought.userId,
         normalizedText: thought.normalizedText,
         normalizedTextEncrypted: thought.normalizedTextEncrypted,
         category: thought.category,
@@ -679,13 +688,15 @@ export async function listThoughts(
       .where(and(...conditions))
       .orderBy(desc(thought.createdAt), desc(thought.id))
       .limit(limit)
-    return Promise.all(rows.map((row) => decryptThoughtSnippetRow(userId, row)))
+    // Each row opens with its owner's binding (a co-worker's is company-sealed).
+    return Promise.all(rows.map((row) => decryptThoughtSnippetRow(row.ownerId, row)))
   }
 
   const rows = await getDb()
     .select({
       id: thought.id,
       userId: thought.userId,
+      ownerId: thought.userId,
       rawText: thought.rawText,
       rawTextEncrypted: thought.rawTextEncrypted,
       normalizedText: thought.normalizedText,
@@ -704,5 +715,5 @@ export async function listThoughts(
     .where(and(...conditions))
     .orderBy(desc(thought.createdAt), desc(thought.id))
     .limit(limit)
-  return Promise.all(rows.map((row) => decryptThoughtRow(userId, row)))
+  return Promise.all(rows.map((row) => decryptThoughtRow(row.userId, row)))
 }

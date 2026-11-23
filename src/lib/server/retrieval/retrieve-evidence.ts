@@ -23,6 +23,7 @@ import { activeThoughtLifecycleCondition } from '$lib/server/memory/thought-life
 import type { RelevantCommunitySummary } from '$lib/server/retrieval/global'
 import { lexicalSearch } from '$lib/server/retrieval/lexical'
 import { createPhaseTimer, logRetrievalPhaseTiming } from '$lib/server/retrieval/phase-timing'
+import { thoughtReachCondition, type ThoughtReach } from '$lib/server/retrieval/reach'
 import {
   rerankCandidates,
   shouldSkipRerank,
@@ -269,8 +270,13 @@ export async function retrieveEvidence(params: {
   topK?: number
   queryEmbedding?: number[]
   temporalIntent?: TemporalQueryIntent | null
-  /** Optional filter — omit to include both user and agent-authored thoughts. */
+  /** Optional filter — omit to include both user and agent-authored thoughts (the reader's own only). */
   authorFilter?: MemoryAuthor
+  /**
+   * Whose thoughts are candidates (reach.ts): default 'mine'. 'all' adds the AI
+   * co-workers' company-visible thoughts, filtered in SQL before ranking.
+   */
+  reach?: ThoughtReach
   /**
    * When provided, filled with community ANN summaries and temporal seeds so
    * composeAnswer (and similar) can reuse them without a second HNSW round-trip.
@@ -280,6 +286,7 @@ export async function retrieveEvidence(params: {
   const timer = createPhaseTimer()
   const limit = Math.max(1, Math.min(params.topK ?? 12, 100))
   const authorFilter = params.authorFilter
+  const reachSql = () => thoughtReachCondition(params.userId, params.reach ?? 'mine', authorFilter)
 
   timer.mark('embed')
   const queryEmbedding =
@@ -298,14 +305,7 @@ export async function retrieveEvidence(params: {
       distance: vectorDistance,
     })
     .from(thought)
-    .where(
-      and(
-        eq(thought.userId, params.userId),
-        activeThoughtLifecycleCondition(),
-        isNotNull(thought.embedding),
-        authorFilter ? eq(thought.author, authorFilter) : undefined,
-      ),
-    )
+    .where(and(reachSql(), activeThoughtLifecycleCondition(), isNotNull(thought.embedding)))
     .orderBy(vectorDistance)
     .limit(THOUGHT_ANN_LIMIT)
 
@@ -314,6 +314,7 @@ export async function retrieveEvidence(params: {
     query: params.query,
     limit: THOUGHT_ANN_LIMIT,
     authorFilter,
+    reach: params.reach ?? 'mine',
   })
 
   const entityQuery = matchCanonicalEntitiesByEmbedding({
@@ -512,6 +513,7 @@ export async function retrieveEvidence(params: {
   const rows = await db
     .select({
       id: thought.id,
+      ownerId: thought.userId,
       normalizedText: thought.normalizedText,
       normalizedTextEncrypted: thought.normalizedTextEncrypted,
       rerankSnippet: thought.rerankSnippet,
@@ -528,13 +530,7 @@ export async function retrieveEvidence(params: {
       authorLabel: thought.authorLabel,
     })
     .from(thought)
-    .where(
-      and(
-        eq(thought.userId, params.userId),
-        activeThoughtLifecycleCondition(),
-        inArray(thought.id, candidateIds),
-      ),
-    )
+    .where(and(reachSql(), activeThoughtLifecycleCondition(), inArray(thought.id, candidateIds)))
 
   const rowById = new Map(rows.map((r) => [r.id, r]))
 
@@ -583,9 +579,10 @@ export async function retrieveEvidence(params: {
   const decrypted = await Promise.all(
     rerankPool.map(async ({ row, score, vectorScore, graphScore, candidate }) => {
       const [normalizedText, metadataJson] = await Promise.all([
+        // Sealed for its owner (a co-worker's with the company key): the owner's id binds the envelope.
         row.normalizedTextEncrypted
           ? decryptTenantValue({
-              userId: params.userId,
+              userId: row.ownerId,
               table: 'thought',
               column: 'normalized_text',
               ciphertext: row.normalizedTextEncrypted,
@@ -593,7 +590,7 @@ export async function retrieveEvidence(params: {
           : Promise.resolve(row.normalizedText),
         row.metadataEncrypted
           ? decryptTenantValue({
-              userId: params.userId,
+              userId: row.ownerId,
               table: 'thought',
               column: 'metadata',
               ciphertext: row.metadataEncrypted,
@@ -613,6 +610,7 @@ export async function retrieveEvidence(params: {
 
       return {
         id: row.id,
+        ownerId: row.ownerId,
         normalizedText,
         category: row.category,
         author: row.author,
@@ -655,8 +653,10 @@ export async function retrieveEvidence(params: {
   const decryptedById = new Map(decrypted.map((d) => [d.id, d]))
   const final = reranked.slice(0, limit).map((r) => {
     const d = decryptedById.get(r.id)
+    if (!d) throw new Error(`reranker returned thought ${r.id}, which was not in its pool`)
     return {
       id: r.id,
+      ownerId: d.ownerId,
       normalizedText: d?.normalizedText ?? r.normalizedText,
       category: r.category as string,
       author: d?.author ?? 'user',
@@ -671,7 +671,7 @@ export async function retrieveEvidence(params: {
 
   void bumpAccessAsync(
     params.userId,
-    final.map((r) => r.id),
+    final.filter((r) => r.ownerId === params.userId).map((r) => r.id),
   )
 
   logRetrievalPhaseTiming({
@@ -683,5 +683,8 @@ export async function retrieveEvidence(params: {
     tag: '[retrieval.retrieveEvidence]',
   })
 
-  return authorFilter ? final.filter((r) => r.author === authorFilter) : final
+  // The author filter narrows the reader's own thoughts; co-workers' stay in reach.
+  return authorFilter
+    ? final.filter((r) => r.ownerId !== params.userId || r.author === authorFilter)
+    : final
 }
