@@ -2,6 +2,20 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Brand website capture works on servers: headless Chromium ships as ee's first capability (`ffa2aa98`, owner: "ship Chromium")
+
+- **Cause:** `brand.extract_start` answered `BrowserUnavailableError` on every install. Releases install node_modules with `--ignore-scripts` and never shipped a browser. Reproduced on the box: no `chrome-headless-shell` anywhere.
+- **Shipped:** `247f1cbc`, `ef710636`.
+  - `scripts/release.sh` packs `chromium-headless-shell-1217-linux-<arch>.tar.gz`. It holds Playwright's own build for the playwright-core in package-lock (1.59.1 → r1217, Chrome 147.0.7727.15), fetched from Playwright's CDN and checked against a pinned sha256 per CPU, plus that playwright-core. The pack is listed in the signed SHA256SUMS and published by the release workflow.
+  - `ee/install.sh` installs it at `/opt/ee/capabilities/chromium` (replaced whole when the revision changes). It runs the packed playwright-core's `install-deps` for the system libraries (apt), then fails loud if `ldd` still finds a missing library. `ee upgrade` re-runs install.sh, so updates from Settings get it too.
+  - ee: `chromium` is now in the catalog (`ee/src/capabilities.ts`). The os `ee.json` declares it. A declaring unit gets `EE_CAP_CHROMIUM`, and reconcile refuses to deploy it when the browser is missing.
+  - `capture.ts` launches `EE_CAP_CHROMIUM`. The Playwright registry lookup and its `.d.ts` are gone.
+- **Hardening (decision):** under the unit's seccomp filter, chrome-headless-shell died with SIGSYS on the box. A workload that declares `chromium` gets exactly `landlock_create_ruleset`, `capset` and `setpriority` back, after the deny list. None of them can raise privileges: the capability bounding set is empty, and raising priority needs CAP_SYS_NICE. Everything else in HARDENING is unchanged.
+- **Decisions:** the browser is a separate pinned pack rather than part of the os tarball, so it isn't re-downloaded when the revision doesn't change. Releases grow by about 115 MB per CPU. The browser is launched per capture, not shared: a long-running browser shared across workloads would need a remote-control port that lets any app drive any other app's sessions. Each capture gets a fresh browser context.
+- **Changed (announced):** a local run only captures when `EE_CAP_CHROMIUM` in `.env` points at a browser. It no longer finds Playwright's cache by itself.
+- **Verified on the box** (arm64, Ubuntu 24.04, release `ef710636`): signed in with `ee owner-link`, then `POST /api/brand/extract/start {"url":"https://eigenenterprise.app/"}` returned 200 in 4.5 s with the title and colour facts. ee specs 502 passed; brand module and route specs 679 passed.
+- **Not verified:** amd64 (no x64 box here; the pin, URL and layout are the same code path); production (`os.cerberusblue.com`) until the next release; the propose → judge → accept steps after the capture.
+
 ## 2026-11-23 — Blocked notifications: a bar pinned at the top of every page (owner: "when notifications are not allowed, it should be displayed at the top sticky for users"; not committed)
 
 - **Shipped (working tree):** `NotificationsBanner variant="top"` in the nucleus layout, rendered through a new `notice` snippet of `AppShell` as the first child of the page's scroll container (`sticky top-0`). It shows only while the permission is `denied` — in browser tabs and the installed app — says where to allow it (browser settings vs. phone settings), and re-reads the permission on focus / tab visible, so it disappears once allowed again.
