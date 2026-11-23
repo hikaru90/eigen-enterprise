@@ -95,6 +95,8 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Removed, announced:** the assistant's "→ using tool…" line, replaced by step cards; the raw tool JSON on the conversation page, replaced by a secret-free summary.
 - **Board:** ee-one 54c4b1d2 is `shipped` (v0.5.37), and this round's items are `in_progress` with notes. They become `shipped` once released to ee-one.
 - **Owner's call:** `plan/concept-memory-one-door.md` (draft) — one door in, Memory shows what the brain holds, Status pages out.
+- **E2E on main (after `[e2e]` watcher fix):** 54 passed, 27 failed, 6 skipped. Failing specs: agent-runs-live.e2e.ts brand-picker.e2e.ts brand-system.e2e.ts brand-wide.e2e.ts capture.e2e.ts drive-html.e2e.ts email-platform.e2e.ts github-repos.e2e.ts memory-page.e2e.ts onboarding-provider.e2e.ts onboarding-welcome.e2e.ts page-frame.e2e.ts profile.e2e.ts projects-assign-task.e2e.ts release.e2e.ts shell-walk.e2e.ts tenant-isolation.e2e.ts website-apps.e2e.ts qa-project-assignment.e2e.ts. Seen so far: `agent-runs-live` expects the old tool line text ("done"), so the e2e specs need updating to the assistant stream's step cards. **Not triaged yet; not pushed or released.**
+- **Memory M2** (owner approved decision 1 of `plan/concept-memory-one-door.md`): built on branch `worktree-agent-a6a073628d4696eca` (`92ae9c93`), **not merged**. Merge it after the e2e failures are triaged. Open follow-up: the "Your Brain knows N decisions" link should point at What the brain knows.
 
 ## 2026-11-23 — Chat in a call (member proposal bb05b451: "we still need a chat function in the call"; committed on branch `calls-chat`, not pushed, not merged, not on the box)
 
