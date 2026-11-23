@@ -1,4 +1,4 @@
-import type { CompanyFixture, MemberKey } from '../types'
+import type { CompanyFixture, MemberKey, SeatKey } from '../types'
 import { listSources, sourceTexts } from './audience'
 
 /**
@@ -13,6 +13,10 @@ export function validateFixture(f: CompanyFixture): string[] {
   const known = (where: string, k: MemberKey) => {
     if (!keys.has(k)) errors.push(`${where}: unknown member ${k}`)
   }
+  const seats = new Set<SeatKey>([...keys, ...f.coworkers.map((c) => c.key)])
+  const knownSeat = (where: string, k: SeatKey) => {
+    if (!seats.has(k)) errors.push(`${where}: unknown member or co-worker ${k}`)
+  }
 
   const owners = f.members.filter((m) => m.role === 'owner').length
   if (owners !== 1) errors.push(`exactly one owner is required, found ${owners}`)
@@ -21,6 +25,29 @@ export function validateFixture(f: CompanyFixture): string[] {
     for (const m of f.members) {
       if (seen.has(m[field])) errors.push(`duplicate member ${field} ${m[field]}`)
       seen.add(m[field])
+    }
+  }
+
+  // Co-workers: own ids and keys, a different pool model each (§1), a reports-to chain that ends at a person.
+  for (const field of ['id', 'key', 'name', 'modelId', 'templateId'] as const) {
+    const seen = new Set<string>()
+    for (const c of f.coworkers) {
+      if (seen.has(c[field])) errors.push(`duplicate co-worker ${field} ${c[field]}`)
+      seen.add(c[field])
+    }
+  }
+  for (const c of f.coworkers) {
+    if (f.members.some((m) => m.id === c.id)) errors.push(`co-worker ${c.key}: id ${c.id} is a member's`)
+    knownSeat(`co-worker ${c.key}`, c.reportsTo)
+    const chain = new Set<SeatKey>([c.key])
+    let up: SeatKey | undefined = c.reportsTo
+    while (up && !keys.has(up as MemberKey)) {
+      if (chain.has(up)) {
+        errors.push(`co-worker ${c.key}: the reports-to chain loops`)
+        break
+      }
+      chain.add(up)
+      up = f.coworkers.find((x) => x.key === up)?.reportsTo
     }
   }
 
@@ -56,7 +83,8 @@ export function validateFixture(f: CompanyFixture): string[] {
   for (const ch of f.channels) {
     if (ch.private && (!ch.members || ch.members.length === 0)) errors.push(`${ch.id}: a private channel needs members`)
     if (!ch.private && ch.members) errors.push(`${ch.id}: a public channel lists no members`)
-    for (const k of ch.members ?? []) known(ch.id, k)
+    for (const k of ch.members ?? []) knownSeat(ch.id, k)
+    if (ch.private && ch.members?.[0] && !keys.has(ch.members[0] as MemberKey)) errors.push(`${ch.id}: a private channel is created by a person`)
     for (const m of ch.messages) {
       known(m.id, m.author)
       if (ch.private && !ch.members?.includes(m.author)) errors.push(`${ch.id}: author ${m.author} is not in the channel`)
@@ -67,7 +95,10 @@ export function validateFixture(f: CompanyFixture): string[] {
     for (const k of dm.members) known(dm.id, k)
     for (const m of dm.messages) if (!dm.members.includes(m.author)) errors.push(`${dm.id}: author ${m.author} is not in the DM`)
   }
-  for (const b of f.mailboxes) if (!f.groups.some((g) => g.id === b.groupId)) errors.push(`${b.id}: unknown group ${b.groupId}`)
+  for (const b of f.mailboxes) {
+    if ('owner' in b) known(b.id, b.owner)
+    else if (!f.groups.some((g) => g.id === b.groupId)) errors.push(`${b.id}: unknown group ${b.groupId}`)
+  }
   for (const mail of f.mail) if (!f.mailboxes.some((b) => b.id === mail.mailboxId)) errors.push(`${mail.id}: unknown mailbox ${mail.mailboxId}`)
   for (const call of f.calls) {
     for (const k of call.participants) known(call.id, k)
@@ -86,6 +117,6 @@ export function validateFixture(f: CompanyFixture): string[] {
     }
   }
   for (const c of f.contacts) known(c.id, c.owner)
-  for (const t of f.thoughts) known(t.id, t.owner)
+  for (const t of f.thoughts) knownSeat(t.id, t.owner)
   return errors
 }

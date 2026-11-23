@@ -1,8 +1,11 @@
-import type { CompanyFixture, MemberKey } from '../types'
+import type { CompanyFixture, CoworkerKey, MemberKey, SeatKey } from '../types'
 import { createHash, randomUUID } from 'node:crypto'
+import { coworkerPrincipal } from '$lib/kernel/principals'
+import type { KernelRegistry } from '$lib/kernel/registry'
 import { OFFICE_MIME } from '$lib/office/kinds'
 import { enrichQueuedThought } from '$lib/server/capture/enrich-queued-thought'
 import { queueCapture } from '$lib/server/capture/queue-capture'
+import { coworkerAgentId, coworkerDeps, createCoworker } from '$lib/server/coworkers'
 import { appSql, createScopedDrizzle } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
@@ -19,7 +22,7 @@ import { createContact } from '../../../modules/contacts/service'
 import { driveService } from '../../../modules/drive'
 import { dbInboxStore } from '../../../modules/email/inbox/db-store'
 import { inboxDeps } from '../../../modules/email/inbox/live'
-import { createSharedMailbox } from '../../../modules/email/inbox/service'
+import { assignPersonalMailbox, createSharedMailbox } from '../../../modules/email/inbox/service'
 import { messagesDeps } from '../../../modules/messages/live'
 import { createChannel, openDm, postMessage } from '../../../modules/messages/service'
 import { withEvalDb } from '../../harness/eval-context'
@@ -39,13 +42,18 @@ import { localDateOf } from './time'
  *   speech-to-text, so they are written through the calls and transcript
  *   stores the service itself uses.
  *
- * Everything else — groups, channels, DMs, messages, the mailbox, Drive
- * files and their sharing, calendar events, contacts, thoughts — goes
- * through the module services (thoughts through Memory's capture queue).
+ * Everything else — the AI co-workers (the coworkers service), groups,
+ * channels, DMs, messages, the mailboxes, Drive files and their sharing,
+ * calendar events, contacts, thoughts — goes through the module services
+ * (a person's thoughts through Memory's capture queue; a co-worker's through
+ * memory.capture_thought as the co-worker, the way it captures in a turn).
  */
 
 export type SeededIds = {
   member: Record<MemberKey, string>
+  coworker: Record<CoworkerKey, string>
+  /** Every seat's user id: people and co-workers. */
+  seat: Record<SeatKey, string>
   /** fixture id → product id (conversations, mailboxes, groups, messages, mail, calls, files, events, contacts, thoughts). */
   ids: Map<string, string>
 }
@@ -54,6 +62,8 @@ export type SeedOptions = {
   anchor: Date
   /** Run Memory's enrichment (embeddings + extraction; needs a model) so retrieval by meaning works. */
   enrichThoughts: boolean
+  /** The booted kernel's registry: co-workers capture their thoughts through it, as themselves. */
+  registry: Pick<KernelRegistry, 'execute'>
 }
 
 const minutesBefore = (anchor: Date, minutes: number) => new Date(anchor.getTime() - minutes * 60_000)
@@ -61,6 +71,8 @@ const minutesBefore = (anchor: Date, minutes: number) => new Date(anchor.getTime
 export async function seedCompany(f: CompanyFixture, opts: SeedOptions): Promise<SeededIds> {
   const { anchor } = opts
   const member = Object.fromEntries(f.members.map((m) => [m.key, m.id])) as Record<MemberKey, string>
+  const coworker = Object.fromEntries(f.coworkers.map((c) => [c.key, c.id])) as Record<CoworkerKey, string>
+  const seat: Record<SeatKey, string> = { ...member, ...coworker }
   const ids = new Map<string, string>()
   const put = (fixtureId: string, productId: string) => {
     if (ids.has(fixtureId)) throw new Error(`seed: ${fixtureId} seeded twice`)
@@ -85,6 +97,17 @@ export async function seedCompany(f: CompanyFixture, opts: SeedOptions): Promise
     })),
   )
 
+  // ── AI co-workers (service: user row kind coworker + role card + seat in the org chart), managers first ──
+  const cw = { ...coworkerDeps(), now: () => minutesBefore(anchor, 60 * 24 * 60) }
+  for (const c of f.coworkers) {
+    const view = await createCoworker(
+      { id: owner.id, role: 'owner', kind: 'person' },
+      { templateId: c.templateId, name: c.name, modelId: c.modelId, reportsToUserId: seat[c.reportsTo] },
+      { ...cw, newId: () => c.id },
+    )
+    if (view.id !== c.id) throw new Error(`seed: co-worker ${c.key} was created as ${view.id}, not ${c.id}`)
+  }
+
   // ── groups (service; the company data repo) ──
   const groups = await groupDeps()
   for (const g of f.groups) {
@@ -98,9 +121,9 @@ export async function seedCompany(f: CompanyFixture, opts: SeedOptions): Promise
   const msgs = { ...live, now: () => clock }
   for (const ch of f.channels) {
     const creator = ch.private ? ch.members![0]! : 'martin'
-    const others = ch.private ? ch.members!.slice(1).map((k) => member[k]) : undefined
+    const others = ch.private ? ch.members!.slice(1).map((k) => seat[k]) : undefined
     clock = minutesBefore(anchor, 30 * 24 * 60)
-    const conv = await createChannel(msgs, member[creator], { name: ch.name, topic: ch.topic, private: ch.private, ...(others ? { userIds: others } : {}) })
+    const conv = await createChannel(msgs, seat[creator], { name: ch.name, topic: ch.topic, private: ch.private, ...(others ? { userIds: others } : {}) })
     put(ch.id, conv.id)
     for (const m of ch.messages) {
       clock = minutesBefore(anchor, m.minutesAgo)
@@ -126,6 +149,11 @@ export async function seedCompany(f: CompanyFixture, opts: SeedOptions): Promise
   if (!domain) throw new Error('seed: mail domain insert returned nothing')
   const inbox = { ...(await inboxDeps()), domains: async () => [{ id: domain.id, name: f.company.domain }] }
   for (const box of f.mailboxes) {
+    if ('owner' in box) {
+      const view = await assignPersonalMailbox(inbox, owner.id, { memberId: member[box.owner], localPart: box.localPart, domainId: domain.id, displayName: box.displayName })
+      put(box.id, view.id)
+      continue
+    }
     const groupId = ids.get(box.groupId)
     if (!groupId) throw new Error(`seed: mailbox ${box.id} names unseeded group ${box.groupId}`)
     const view = await createSharedMailbox(inbox, owner.id, { groupId, localPart: box.localPart, domainId: domain.id, displayName: box.displayName })
@@ -260,9 +288,21 @@ export async function seedCompany(f: CompanyFixture, opts: SeedOptions): Promise
     put(c.id, dto.id)
   }
 
-  // ── thoughts (Memory's capture queue, under the owner's row-level security) ──
+  // ── thoughts (a person's: Memory's capture queue, under their row-level security; a co-worker's: its own capture tool) ──
   for (const [i, t] of f.thoughts.entries()) {
-    const ownerId = member[t.owner]
+    const ownerId = seat[t.owner]
+    const cwKey = f.coworkers.find((c) => c.key === t.owner)?.key
+    if (cwKey) {
+      const out = (await opts.registry.execute('memory.capture_thought', { raw: t.text }, {
+        principal: coworkerPrincipal(ownerId, coworkerAgentId(ownerId)),
+        requestId: randomUUID(),
+      })) as { thoughtId?: unknown }
+      if (typeof out.thoughtId !== 'string') throw new Error(`seed: ${t.id} was captured without a thought id`)
+      const thoughtId = out.thoughtId
+      if (opts.enrichThoughts) await withEvalDb(ownerId, () => enrichQueuedThought(ownerId, thoughtId, {}))
+      put(t.id, thoughtId)
+      continue
+    }
     const thoughtId = await withEvalDb(ownerId, async () => {
       const queued = await queueCapture(ownerId, t.text, { source: 'eval', skipWorker: true, capturedAt: minutesBefore(anchor, (i + 1) * 6 * 60) })
       if (opts.enrichThoughts) await enrichQueuedThought(ownerId, queued.thoughtId, {})
@@ -271,5 +311,5 @@ export async function seedCompany(f: CompanyFixture, opts: SeedOptions): Promise
     put(t.id, thoughtId)
   }
 
-  return { member, ids }
+  return { member, coworker, seat, ids }
 }

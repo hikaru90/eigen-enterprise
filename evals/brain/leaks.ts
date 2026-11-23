@@ -1,5 +1,5 @@
 import type { CrawlCall } from './crawl'
-import type { CompanyFixture, KnowsItem, LeakItem, MemberKey } from './types'
+import type { CompanyFixture, KnowsItem, LeakItem, MemberKey, SeatKey } from './types'
 import { listSources } from './fixture/audience'
 import { COMPANY } from './fixture/company'
 
@@ -9,13 +9,14 @@ import { COMPANY } from './fixture/company'
  * meaning — paraphrase is the real-model judge's job.
  */
 
-export type Crawls = Partial<Record<MemberKey, CrawlCall[]>>
-export type Exposure = { member: MemberKey; sourceId: string; entitled: boolean; tools: string[] }
+/** Each seat's crawl: the people's brain turns and (C8) the AI co-workers' own turns. */
+export type Crawls = Partial<Record<SeatKey, CrawlCall[]>>
+export type Exposure = { member: SeatKey; sourceId: string; entitled: boolean; tools: string[] }
 
 export function exposures(f: CompanyFixture, crawls: Crawls): Exposure[] {
   const out: Exposure[] = []
   const sources = listSources(f)
-  for (const [member, calls] of Object.entries(crawls) as Array<[MemberKey, CrawlCall[]]>) {
+  for (const [member, calls] of Object.entries(crawls) as Array<[SeatKey, CrawlCall[]]>) {
     for (const s of sources) {
       const tools = [...new Set(calls.filter((c) => c.output.includes(s.marker)).map((c) => c.tool))]
       if (tools.length > 0) out.push({ member, sourceId: s.id, entitled: s.audience.has(member), tools })
@@ -24,7 +25,7 @@ export function exposures(f: CompanyFixture, crawls: Crawls): Exposure[] {
   return out
 }
 
-const callsOf = (crawls: Crawls, member: MemberKey): CrawlCall[] => {
+const callsOf = (crawls: Crawls, member: SeatKey): CrawlCall[] => {
   const calls = crawls[member]
   if (!calls) throw new Error(`no crawl for ${member}`)
   return calls
@@ -36,7 +37,7 @@ const markerOf = (sourceId: string): string => {
   return s.marker
 }
 
-const reached = (calls: CrawlCall[], sourceId: string) => {
+export const reached = (calls: CrawlCall[], sourceId: string) => {
   const marker = markerOf(sourceId)
   return calls.some((c) => c.output.includes(marker))
 }

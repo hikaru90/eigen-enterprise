@@ -1,5 +1,5 @@
 import type { EvalCompany } from './harness'
-import type { CompanyFixture, MemberKey } from './types'
+import type { CompanyFixture, CoworkerKey, SeatKey } from './types'
 import { CRAWLED_TOOLS, crawlAsMember, type CrawlCall } from './crawl'
 import { localDateOf } from './fixture/time'
 import { exposures, knowsReach, leakChecks, type Crawls, type Exposure, type KnowsReach, type LeakCheck } from './leaks'
@@ -16,7 +16,7 @@ export type StaticResult = {
   leakChecks: LeakCheck[]
   knowsReach: KnowsReach[]
   /** Read calls that failed, per tool (e.g. a format that cannot be read yet). */
-  toolErrors: Array<{ member: MemberKey; tool: string; error: string }>
+  toolErrors: Array<{ member: SeatKey; tool: string; error: string }>
 }
 
 export async function crawlCompany(company: EvalCompany, f: CompanyFixture): Promise<Crawls> {
@@ -30,6 +30,15 @@ export async function crawlCompany(company: EvalCompany, f: CompanyFixture): Pro
   for (const m of f.members) {
     // Each member's own surface: the brain is offered only what their roles reach (CB3).
     crawls[m.key] = await crawlAsMember((tool, input) => company.exec(m.key, tool, input), company.surfaces[m.key], range)
+  }
+  // C8: each AI co-worker as itself, through both hands its turn has — the tools it is offered
+  // directly and the `ee` tool (tool run). One crawl per co-worker; the ee calls are named `ee:<tool>`.
+  for (const c of f.coworkers) {
+    const key: CoworkerKey = c.key
+    const surface = company.coworkerSurfaces[key]
+    const direct = await crawlAsMember((tool, input) => company.execAsCoworker(key, tool, input), surface, range)
+    const viaEe = await crawlAsMember((tool, input) => company.execAsCoworkerViaEe(key, tool, input), surface, range)
+    crawls[key] = [...direct, ...viaEe.map((call) => ({ ...call, tool: `ee:${call.tool}` }))]
   }
   return crawls
 }
@@ -46,7 +55,7 @@ export function surfaceOf(company: EvalCompany): StaticResult['surface'] {
 export function staticResult(f: CompanyFixture, surface: StaticResult['surface'], crawls: Crawls): StaticResult {
   const exp = exposures(f, crawls)
   const toolErrors: StaticResult['toolErrors'] = []
-  for (const [member, calls] of Object.entries(crawls) as Array<[MemberKey, CrawlCall[]]>) {
+  for (const [member, calls] of Object.entries(crawls) as Array<[SeatKey, CrawlCall[]]>) {
     for (const c of calls) if (!c.ok) toolErrors.push({ member, tool: c.tool, error: c.output.slice(0, 200) })
   }
   return {

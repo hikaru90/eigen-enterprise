@@ -22,6 +22,9 @@ export const CRAWLED_TOOLS = [
   'members.group_list',
   'messages.list_channels',
   'messages.read',
+  'email.mailbox_list',
+  'email.mail_list',
+  'email.mail_read',
   'drive.list',
   'drive.shared_with_me',
   'drive.read',
@@ -70,6 +73,18 @@ export async function crawlAsMember(exec: ToolExec, surface: readonly string[], 
   for (const c of rowsOf(convs, 'conversations')) {
     const id = idOf(c)
     if (id) await call('messages.read', { conversation_id: id, limit: 200 })
+  }
+
+  // Mail (C8): every mailbox the caller reads — their personal one, their groups' shared ones.
+  const boxes = await call('email.mailbox_list', {})
+  for (const b of rowsOf(boxes, 'mailboxes')) {
+    const id = idOf(b)
+    if (!id) continue
+    const listing = await call('email.mail_list', { mailboxId: id, folder: 'inbox' })
+    for (const m of rowsOf(listing, 'messages')) {
+      const mailId = idOf(m)
+      if (mailId) await call('email.mail_read', { messageId: mailId })
+    }
   }
 
   const seenFolders = new Set<string>()

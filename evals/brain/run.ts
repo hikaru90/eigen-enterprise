@@ -11,6 +11,7 @@ import { COMPANY } from './fixture/company'
 import { factsFor, fillPlaceholders, localDateOf } from './fixture/time'
 import { validateFixture } from './fixture/validate'
 import { ALL_ITEMS, validateSuites } from './suites'
+import { validateCoworkerSuite } from './suites/coworkers'
 
 /**
  * North-star eval runner (plan/phase-company-brain.md §9, CB0).
@@ -18,6 +19,12 @@ import { ALL_ITEMS, validateSuites } from './suites'
  *   npm run eval:brain                                   # static, no model
  *   npm run eval:brain -- --mode chat --provider mock      # chat path vs the mock gateway
  *   npm run eval:brain -- --mode chat --provider platform  # real model, per release
+ *   … --suite coworkers                                    # the AI co-workers suite alone (C8)
+ *
+ * The co-workers suite (C8) runs in every mode: Keeps from the crawl (no
+ * model); Does against the scripted model (mock: a scripted gateway in front
+ * of the mock gateway); Different with real models (platform). What a mode
+ * cannot run is printed as skipped.
  *
  * Writes evals/reports/brain/<date>-<sha>-<mode>.json + .md. App modules are
  * imported only after harness.ts pointed the env at the eval database.
@@ -55,40 +62,48 @@ async function startMockGateway(): Promise<{ origin: string; child: ChildProcess
   throw new Error('the mock gateway did not start within 5 s')
 }
 
-async function costSince(since: Date, memberIds: string[]): Promise<Cost> {
+async function costSince(since: Date, memberIds: string[], coworkerIds: string[]): Promise<Cost> {
   const { appSql } = await import('$lib/server/db')
   const rows = await appSql<{ user_id: string; usd: string | null; calls: number }[]>`
     select user_id, sum(total_cost_usd::numeric)::text as usd, count(*)::int as calls
     from activity_call_log where created_at >= ${since.toISOString()}::timestamptz group by user_id`
   let brainUsd = 0
   let judgeUsd = 0
+  let coworkersUsd = 0
   let calls = 0
   for (const r of rows) {
     const usd = Number(r.usd ?? 0)
     calls += r.calls
     if (r.user_id === JUDGE_USER_ID) judgeUsd += usd
     else if (memberIds.includes(r.user_id)) brainUsd += usd
+    else if (coworkerIds.includes(r.user_id)) coworkersUsd += usd
     else throw new Error(`gateway cost logged for an unexpected user ${r.user_id}`)
   }
-  return { brainUsd, judgeUsd, totalUsd: brainUsd + judgeUsd, calls }
+  return { brainUsd, judgeUsd, coworkersUsd, totalUsd: brainUsd + judgeUsd + coworkersUsd, calls }
 }
 
 async function main(): Promise<void> {
   const args = parseBrainEvalArgs(process.argv.slice(2))
-  const problems = [...validateFixture(COMPANY), ...validateSuites(COMPANY, ALL_ITEMS)]
+  const problems = [...validateFixture(COMPANY), ...validateSuites(COMPANY, ALL_ITEMS), ...validateCoworkerSuite(COMPANY)]
   if (problems.length > 0) throw new Error(`the fixture or suites are invalid:\n${problems.join('\n')}`)
 
   const anchor = new Date()
   let mock: { origin: string; child: ChildProcess } | null = null
+  let scripted: import('./coworkers/gateway').ScriptedGateway | null = null
   try {
-    if (args.provider === 'mock') mock = await startMockGateway()
-    const providerEnv = args.provider ? providerEnvFor(args.provider, process.env, mock?.origin ?? null) : {}
+    if (args.provider === 'mock') {
+      mock = await startMockGateway()
+      // The co-workers' scripted model in front of the mock gateway: the brain's requests pass through unchanged.
+      scripted = await (await import('./coworkers/gateway')).startScriptedGateway({ upstream: mock.origin })
+    }
+    const providerEnv = args.provider ? providerEnvFor(args.provider, process.env, scripted?.origin ?? null) : {}
 
     const { setUpEvalCompany } = await import('./harness')
     const company = await setUpEvalCompany(COMPANY, { anchor, enrichThoughts: args.provider === 'platform', env: providerEnv })
     const runStart = await (await import('./state')).dbNow()
     const { crawlCompany, staticResult, surfaceOf } = await import('./static')
-    const stat = staticResult(COMPANY, surfaceOf(company), await crawlCompany(company, COMPANY))
+    const crawls = await crawlCompany(company, COMPANY)
+    const stat = staticResult(COMPANY, surfaceOf(company), crawls)
 
     const items: ItemResult[] = []
     const notes: string[] = []
@@ -106,7 +121,7 @@ async function main(): Promise<void> {
       const judge = args.provider === 'platform' ? gatewayJudge(JUDGE_USER_ID) : null
       const tap = tapToolCalls(company.boot.kernel.registry as unknown as Parameters<typeof tapToolCalls>[0])
       const facts = factsFor(COMPANY, anchor)
-      const chosen = orderForChat(ALL_ITEMS.filter((i) => !args.only || args.only.includes(i.id)))
+      const chosen = args.suite === 'coworkers' ? [] : orderForChat(ALL_ITEMS.filter((i) => !args.only || args.only.includes(i.id)))
       for (const item of chosen) {
         const m = COMPANY.members.find((x) => x.key === item.asker)!
         const since = await dbNow()
@@ -129,7 +144,16 @@ async function main(): Promise<void> {
       notes.push(`static mode: no model was called. Chat scores need: ${BRAIN_EVAL_USAGE.split('\n')[2]!.trim()}`)
     }
 
-    const cost = args.mode === 'chat' ? await costSince(runStart, COMPANY.members.map((m) => m.id)) : null
+    // Last: the co-workers act in the company (#launch, DMs).
+    const { runCoworkersSuite } = await import('./coworkers/suite')
+    const coworkers = await runCoworkersSuite(
+      company,
+      COMPANY,
+      crawls,
+      args.provider === 'mock' && scripted ? { kind: 'mock', gateway: scripted } : args.provider === 'platform' ? { kind: 'platform', embedAs: JUDGE_USER_ID } : { kind: 'static' },
+    )
+
+    const cost = args.mode === 'chat' ? await costSince(runStart, COMPANY.members.map((m) => m.id), COMPANY.coworkers.map((c) => c.id)) : null
     const { buildReport, reportFileStem, toMarkdown } = await import('./report')
     const sha = execSync('git rev-parse --short HEAD', { cwd: root, encoding: 'utf8' }).trim()
     const report = buildReport({
@@ -142,6 +166,7 @@ async function main(): Promise<void> {
       static: stat,
       cost,
       notes,
+      coworkers,
     })
     const dir = join(root, 'evals/reports/brain')
     await mkdir(dir, { recursive: true })
@@ -150,10 +175,13 @@ async function main(): Promise<void> {
     await writeFile(join(dir, `${stem}.md`), toMarkdown(report))
     console.log(toMarkdown(report).split('\n## Chat')[0])
     if (args.mode === 'chat') console.log(toMarkdown(report).split('| item |')[0].split('## Chat')[1] ?? '')
+    const { coworkersMarkdown } = await import('./report')
+    if (args.mode === 'chat') console.log(coworkersMarkdown(coworkers).join('\n'))
     console.log(`[eval:brain] wrote evals/reports/brain/${stem}.json and .md`)
     // The database stays for inspection (ee_eval_brain); the temp state dir goes.
     await company.tearDown({ dropDatabase: false })
   } finally {
+    await scripted?.close()
     mock?.child.kill()
   }
 }

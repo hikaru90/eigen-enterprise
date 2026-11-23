@@ -14,12 +14,20 @@ export type SuiteName = (typeof SUITES)[number]
 export type MemberKey = 'martin' | 'ony' | 'priya' | 'jonas'
 export const MEMBER_KEYS: readonly MemberKey[] = ['martin', 'ony', 'priya', 'jonas']
 
+/** The fixture's AI co-workers (plan/phase-ai-coworkers.md, C8): seats of their own, never a person. */
+export type CoworkerKey = 'marketing' | 'gtm' | 'designer'
+export const COWORKER_KEYS: readonly CoworkerKey[] = ['marketing', 'gtm', 'designer']
+
+/** Anyone with a seat who reads the company: a person or an AI co-worker. */
+export type SeatKey = MemberKey | CoworkerKey
+export const isCoworkerKey = (k: SeatKey): k is CoworkerKey => (COWORKER_KEYS as readonly string[]).includes(k)
+
 /**
  * Who may see a source's CONTENT (axis A of §4). `everyone` = all members;
  * `members` = exactly these. Activity about the source (axis B) is not
  * governed here — the eval only protects content, through its marker.
  */
-export type Audience = { kind: 'everyone' } | { kind: 'members'; members: MemberKey[] }
+export type Audience = { kind: 'everyone' } | { kind: 'members'; members: SeatKey[] }
 
 /**
  * Every piece of seeded content carries one `marker`: a unique, unguessable
@@ -49,8 +57,8 @@ export type FixtureChannel = {
   name: string
   topic: string
   private: boolean
-  /** Private channels only: who is in it (the creator first). */
-  members?: MemberKey[]
+  /** Private channels only: who is in it (the creator first, a person). Co-workers may be members. */
+  members?: SeatKey[]
   messages: ChannelMessage[]
 }
 
@@ -58,7 +66,8 @@ export type FixtureDm = { id: string; members: [MemberKey, MemberKey]; messages:
 
 export type FixtureGroup = { id: string; name: string; members: MemberKey[] }
 
-export type FixtureMailbox = { id: string; localPart: string; groupId: string; displayName: string }
+/** A shared mailbox (read by one group) or a person's personal one (read by them alone). */
+export type FixtureMailbox = { id: string; localPart: string; displayName: string } & ({ groupId: string } | { owner: MemberKey })
 
 export type FixtureMail = SourceBase & {
   mailboxId: string
@@ -114,11 +123,29 @@ export type FixtureContact = SourceBase & {
   shared: boolean
 }
 
-export type FixtureThought = SourceBase & { owner: MemberKey; text: string; sensitive: boolean }
+/** A person's thought is theirs alone; a co-worker's is company-visible (read-only to the others). */
+export type FixtureThought = SourceBase & { owner: SeatKey; text: string; sensitive: boolean }
+
+/**
+ * An AI co-worker of the seeded company, created from a COWORKER_TEMPLATES role
+ * card ($lib/server/coworkers/templates.ts) with its own pool model. `name`
+ * makes its @handle (the service derives the slug from it).
+ */
+export type FixtureCoworker = {
+  key: CoworkerKey
+  /** The user id it is created with (fixed, so the seeded company is reproducible). */
+  id: string
+  name: string
+  templateId: 'marketing-manager' | 'go-to-market-manager' | 'designer'
+  /** A chat model of the curated pool; the three differ on purpose (§1). */
+  modelId: string
+  reportsTo: SeatKey
+}
 
 export type CompanyFixture = {
   company: { name: string; domain: string; timeZone: string }
   members: FixtureMember[]
+  coworkers: FixtureCoworker[]
   groups: FixtureGroup[]
   channels: FixtureChannel[]
   dms: FixtureDm[]
@@ -133,7 +160,7 @@ export type CompanyFixture = {
 
 /** Any seeded content, with who may read it (derived, see fixture/audience.ts). */
 export type SourceKind = 'channel_message' | 'dm_message' | 'mail' | 'call' | 'drive_file' | 'event' | 'contact' | 'thought'
-export type SourceRef = { id: string; kind: SourceKind; marker: string; audience: Set<MemberKey>; label: string }
+export type SourceRef = { id: string; kind: SourceKind; marker: string; audience: Set<SeatKey>; label: string }
 
 // ── Suites ────────────────────────────────────────────────────────────────
 

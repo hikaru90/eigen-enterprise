@@ -20,6 +20,10 @@ function fakeExec(log: Array<{ tool: string; input: unknown }>): ToolExec {
         return { text: 'doc' }
       case 'contacts.list':
         return { contacts: [{ id: 'c1', name: 'Dana' }] }
+      case 'email.mailbox_list':
+        return { mailboxes: [{ id: 'mb1', kind: 'personal' }] }
+      case 'email.mail_list':
+        return { messages: [{ id: 'ml1', subject: 'hi' }] }
       default:
         return { ok: true }
     }
@@ -44,6 +48,16 @@ describe('the tool-level crawl: everything a member’s brain turn could read', 
     expect(failed.ok).toBe(false)
     expect(failed.output).toContain('not supported yet')
     expect(calls.find((c) => c.tool === 'messages.read')!.output).toContain('FJ-2207')
+  })
+
+  it('reads every mailbox it lists: its inbox, then each mail (personal and shared mailboxes alike)', async () => {
+    const log: Array<{ tool: string; input: unknown }> = []
+    await crawlAsMember(fakeExec(log), ['email.mailbox_list', 'email.mail_list', 'email.mail_read'], { from: 'x', to: 'y', memberIds: [] })
+    expect(log).toEqual([
+      { tool: 'email.mailbox_list', input: {} },
+      { tool: 'email.mail_list', input: { mailboxId: 'mb1', folder: 'inbox' } },
+      { tool: 'email.mail_read', input: { messageId: 'ml1' } },
+    ])
   })
 
   it('calls only tools that are on the surface', async () => {
