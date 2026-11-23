@@ -26,6 +26,8 @@ vi.mock('$lib/server/members', () => ({
   listMembers: async () => ({ members: [], invites: [] }),
   groupDeps: async () => ({}),
   listGroups: async () => [],
+  openJoinDeps: async () => ({}),
+  readOpenJoin: async () => ({ openJoin: false }),
 }))
 vi.mock('$lib/server/overview/sources', () => ({ companyIdentity: async () => ({ name: 'Kindred', logo: null }) }))
 vi.mock('$lib/server/website/owner-run', () => ({
