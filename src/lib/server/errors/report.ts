@@ -70,6 +70,21 @@ const KERNEL_STEPS: Record<KernelErrorCode, string[]> = {
     'The company brain acts only as a person; the run named none. Pass the person the run acts for.',
   ],
   turn_not_editable: ['The message is no longer in the conversation; reload the chat.'],
+  invalid_agent: [
+    'The agent config cannot run (no declared instructions or identity, a ":" in its id, or two spend caps): fix the config where it is built (e.g. the co-worker profile mapping).',
+  ],
+  invalid_instructions: [
+    'The agent assembled no instructions for this turn: a bug in the prompt assembly that built them.',
+  ],
+  no_spend_ledger: [
+    'A self-acting agent (AI co-worker) needs the cost ledger: wire AgentRuntimeOptions.spentUsdToday (src/lib/server/agent/ledger-spend.ts) at boot.',
+  ],
+  agent_acts_as_itself: [
+    'This agent acts as itself (an AI co-worker): dispatch it with dispatchAsAgent, not as a person.',
+  ],
+  agent_acts_as_person: [
+    'This agent acts as the person it works for (the company brain): dispatch it with dispatch and that person.',
+  ],
 }
 
 function causeChain(err: unknown): string | undefined {

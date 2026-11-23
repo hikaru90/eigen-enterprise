@@ -8,11 +8,14 @@ import type {
   DurableBridgeToolSpec,
   DurableEngineConversation,
   DurableEngineHarness,
+  DurableInstructions,
+  DurableModelChoice,
   DurableToolSurfaceEntry,
   SettledDurableTurn,
 } from '$lib/kernel/engines/durable'
 import { DurableRunError } from '$lib/kernel/engines/durable'
 import { KernelError } from '$lib/kernel/errors'
+import { assertPoolModel } from '$lib/server/llm/model-pool'
 import { dbScopedGatewayComplete } from './db-scoped-complete'
 import {
   OWNER_INPUT_ENTRY_KIND,
@@ -401,9 +404,13 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     conversationKey: string
     agentId: string
     llmUserId: string
-    instructions: string
+    instructions: DurableInstructions
+    model: DurableModelChoice
     tools: DurableBridgeToolSpec[]
   }): Promise<DurableEngineConversation> {
+    // A model outside the pool is refused here, before anything is created or submitted
+    // (the gateway refuses it too — this keeps a bad id from becoming a retried, failed turn).
+    const model = modelRef(input.model)
     // The bridge is refreshed per dispatch: the extension is replaced in place
     // (registry.install), then the conversation is configured with exactly
     // these tools — the model only ever sees the current fail-closed surface.
@@ -428,7 +435,19 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
           `durable conversation ${existing.piConversationId} (key ${input.conversationKey}) is indexed but missing from storage at ${stateDir} — the agent state directory was replaced without resetting the conversation index`,
         )
       }
-      await conversation.configure({ tools: registrations }, BACKGROUND_CONTEXT)
+      // The engine's prompt and the chat slot were written at creation and stay (the brain's
+      // conversations are reconfigured with their tools only, as always). A run that brings
+      // its own prompt (assembled per turn) or a pool model writes both on every turn, so a
+      // changed lens or model takes effect on the next turn.
+      const ownConfig = input.instructions.source === 'run' || input.model.kind === 'pool'
+      await conversation.configure(
+        {
+          tools: registrations,
+          ...(ownConfig ? { model } : {}),
+          ...(input.instructions.source === 'run' ? { instructions: input.instructions.text } : {}),
+        },
+        BACKGROUND_CONTEXT,
+      )
       return engineConversation(conversation, existing.id, input.tools)
     }
 
@@ -436,10 +455,17 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       conversationKey: input.conversationKey,
       agentId: input.agentId,
       llmUserId: input.llmUserId,
-      instructions: input.instructions,
+      instructions: input.instructions.text,
+      model,
       registrations,
     })
     return engineConversation(conversation, row.id, input.tools)
+  }
+
+  /** The pi-ai model a conversation runs on: the gateway's chat-slot model, or a vetted pool chat model. */
+  function modelRef(choice: DurableModelChoice): { provider: string; modelId: string } {
+    if (choice.kind === 'chat-slot') return { provider: GATEWAY_PROVIDER_ID, modelId: GATEWAY_MODEL_ID }
+    return { provider: GATEWAY_PROVIDER_ID, modelId: assertPoolModel('chat', choice.modelId) }
   }
 
   /**
@@ -453,6 +479,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     agentId: string
     llmUserId: string
     instructions: string
+    model: { provider: string; modelId: string }
     registrations: ToolRegistration[]
     background?: { personId: string; tools: DurableToolSurfaceEntry[] }
   }) {
@@ -460,7 +487,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       {
         ownership: { kind: 'ownerless' },
         agent: {
-          model: { provider: GATEWAY_PROVIDER_ID, modelId: GATEWAY_MODEL_ID },
+          model: input.model,
           instructions: input.instructions,
           tools: input.registrations,
         },
@@ -516,6 +543,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       // The person the run acts as pays for it (CB3: the run's one identity).
       llmUserId: input.personId,
       instructions: input.instructions,
+      model: modelRef({ kind: 'chat-slot' }),
       registrations,
       background: { personId: input.personId, tools: input.tools },
     })

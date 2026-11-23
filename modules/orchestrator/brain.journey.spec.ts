@@ -619,6 +619,8 @@ describe('journey lifecycle (website founding, fake-engine end to end)', () => {
       toolScope: 'all',
       memoryScope: 'company',
       verificationPolicy: 'none',
+      instructions: 'engine-default',
+      actsAs: 'person',
       enabled: true,
     })
     fx.script.push('plain answer')

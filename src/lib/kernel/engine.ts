@@ -40,6 +40,9 @@ export type EngineStreamSinks = {
   surfaceEvent?: (event: EngineSurfaceEvent) => void
 }
 
+/** A run's system prompt: the engine's own, or the text the runtime assembled for this turn. */
+export type RunInstructions = { kind: 'engine-default' } | { kind: 'own'; text: string }
+
 /**
  * Everything the harness hands a loop engine for one run — the parts an agent
  * must never rebuild: its config, its principal, the kernel execution path,
@@ -48,10 +51,16 @@ export type EngineStreamSinks = {
 export type EngineContext = EngineStreamSinks & {
   agent: AgentConfig
   /**
-   * The person this run acts as, via the agent (principals.ts
-   * delegatedPrincipal): permissions, approvals and audit see the person.
+   * Who this run acts as: the person via the agent (principals.ts delegatedPrincipal) for an
+   * agent with `actsAs: 'person'`, or the agent's own principal (AgentActsAsSelf.principalFor).
+   * Permissions, approvals and audit see exactly this principal.
    */
   principal: ToolContext['principal']
+  /**
+   * This run's system prompt, resolved by the runtime from AgentConfig.instructions:
+   * 'engine-default' = the engine's own prompt; 'own' = the text assembled for this turn.
+   */
+  instructions: RunInstructions
   /** Execute a kernel tool; throws KernelError on any failure (loud, never swallowed). */
   executeTool(name: string, input: unknown): Promise<unknown>
   /**
@@ -61,11 +70,14 @@ export type EngineContext = EngineStreamSinks & {
   listTools(): EngineToolListing[]
   /** Emit a harness event; `id`/`ts`/`principalId`/`source` are defaulted by the runtime. */
   emit(event: Partial<KernelEvent> & { type: string; payload?: unknown }): Promise<void>
-  /** Accumulated USD spend for this agent (injected accumulator; gateway-cost wiring is a follow-up). */
+  /**
+   * USD spend for this agent: the in-memory accumulator for a person-acting agent; for a
+   * self-acting agent, the cost ledger's sum for its principal today (UTC), read at dispatch.
+   */
   spendUsd(): number
   /**
-   * The person in whose name this run's LLM calls resolve (their provider
-   * config, their spend) — always the person the run acts as (principal.id).
+   * The identity this run's LLM calls are billed and attributed to — always the principal
+   * the run acts as (principal.id): the person, or the self-acting agent.
    */
   llmUserId: string
   /**

@@ -45,7 +45,7 @@ export function createAgentAdminTools(deps: AgentAdminToolDeps): ToolDescriptor[
       auditClass: 'read',
       inputSchema: agentListInput,
       permission: { roles: ['admin', 'agent'] },
-      handler: async () => deps.runtime.listAgents(),
+      handler: async () => deps.runtime.describeAgents(),
     },
     {
       name: 'agent.enable',

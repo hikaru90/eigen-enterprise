@@ -62,6 +62,7 @@ function scriptedGateway(scripts: Record<string, Turn[]>) {
 function engineCtx(principalId: string, llmUserId: string, executed: string[]): EngineContext {
   return {
     agent: { id: 'orchestrator' },
+    instructions: { kind: 'engine-default' },
     llmUserId,
     listTools: () => [
       {
@@ -279,6 +280,7 @@ describe('durable engine over real pi-durable', () => {
     const principal = { id: 'orchestrator', kind: 'agent' as const, roles: ['admin', 'agent'] }
     const ctx = {
       agent: { id: 'orchestrator' },
+      instructions: { kind: 'engine-default' },
       llmUserId: 'alice',
       listTools: () =>
         ['website.list_pages', 'kernel.module_activate'].map((name) => ({

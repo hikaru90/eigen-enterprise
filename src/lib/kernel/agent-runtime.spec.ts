@@ -24,6 +24,8 @@ function agentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     toolScope: 'all',
     memoryScope: 'company',
     verificationPolicy: 'none',
+    instructions: 'engine-default',
+    actsAs: 'person',
     enabled: true,
     ...overrides,
   }

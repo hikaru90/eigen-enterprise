@@ -64,6 +64,8 @@ async function fixture(options: { approvalGated?: string[] } = {}) {
     toolScope: 'all',
     memoryScope: 'company',
     verificationPolicy: 'none',
+    instructions: 'engine-default',
+    actsAs: 'person',
     enabled: true,
   }
   return { seen, activations, registry, isToolActive, ee, agent }

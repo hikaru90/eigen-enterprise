@@ -278,6 +278,8 @@ describe('bootstrapOrchestrator — extra engine injection (composition-root sea
       toolScope: 'all',
       memoryScope: 'company',
       verificationPolicy: 'none',
+      instructions: 'engine-default',
+      actsAs: 'person',
       enabled: true,
     })
     const reply = await boot.runtime.dispatch('pi-test-agent', 'session-1', 'hello', undefined, { person: P1 })

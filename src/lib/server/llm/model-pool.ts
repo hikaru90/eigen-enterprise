@@ -41,6 +41,33 @@ export const MODEL_POOL: readonly PoolModel[] = [
     vettedOn: '2026-11-20',
     note: 'The hosted platform AI chat model the control plane provisions today.',
   },
+  // AI Co-workers (plan/phase-ai-coworkers.md §5): different model families, so co-workers in
+  // different seats do not all think alike. Pinned ids (no moving `~…-latest` aliases). Vetted on
+  // OpenRouter's model list: chat, `tools` in supported_parameters, live tool-capable endpoints.
+  {
+    id: 'anthropic/claude-sonnet-5.5',
+    slot: 'chat',
+    vettedOn: '2026-11-23',
+    note: 'Anthropic family for co-workers: strong at long instructions and careful tool use; reads images and PDFs.',
+  },
+  {
+    id: 'google/gemini-3.8-flash',
+    slot: 'chat',
+    vettedOn: '2026-11-23',
+    note: 'Google family for co-workers: fast and mid-priced, 1M context; reads images, PDFs, audio and video.',
+  },
+  {
+    id: 'qwen/qwen3.8-flash',
+    slot: 'chat',
+    vettedOn: '2026-11-23',
+    note: 'Qwen family for co-workers: the cheap seat (about $0.15 / $0.47 per million tokens), tool calls on Alibaba endpoints.',
+  },
+  {
+    id: 'mistralai/mistral-large-4-0',
+    slot: 'chat',
+    vettedOn: '2026-11-23',
+    note: 'Mistral family for co-workers: a European model, tool calls on Mistral endpoints.',
+  },
   {
     id: 'qwen/qwen3-asr-1.7b',
     slot: 'stt',

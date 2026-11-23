@@ -67,6 +67,8 @@ describe('agent.list', () => {
       toolScope: 'all',
       memoryScope: 'company',
       verificationPolicy: 'none',
+      instructions: 'engine-default',
+      actsAs: 'person',
       enabled: true,
     })
 
@@ -87,6 +89,8 @@ describe('agent.list', () => {
       toolScope: 'all',
       memoryScope: 'company',
       verificationPolicy: 'none',
+      instructions: 'engine-default',
+      actsAs: 'person',
       enabled: true,
     })
 
@@ -107,6 +111,8 @@ describe('agent.enable / agent.disable', () => {
     toolScope: 'all' as const,
     memoryScope: 'company' as const,
     verificationPolicy: 'none' as const,
+    instructions: 'engine-default' as const,
+    actsAs: 'person' as const,
     enabled: true,
   }
 

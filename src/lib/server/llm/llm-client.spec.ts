@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtendedPrivateEnv } from '$lib/server/env/private-env'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
 import { LlmDailyCapError, LlmNotConfiguredError } from './errors'
+import { ModelNotInPoolError } from './model-pool'
 import {
   DEFAULT_CHAT_MAX_TOKENS,
   describeChatModel,
@@ -755,6 +756,105 @@ describe('llm client retries', () => {
     )
     const { llmCreateEmbeddings: embed } = await import('./llm-client')
     await expect(embed({ userId: 'u1', input: 'hi' })).rejects.toThrow(/missing a model/)
+  })
+})
+
+describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool models)', () => {
+  const platformEnv = mockEnv as Record<string, string | undefined>
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnv.LLM_BASE_URL = 'https://example.test'
+    mockEnv.LLM_RULE_CHAT = 'rule-chat'
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
+    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
+    mockEnv.LLM_API_KEY = 'key-1'
+    companyPicks.chat = null
+    Object.assign(platformEnv, {
+      PLATFORM_LLM_BASE_URL: 'https://openrouter.example/api/v1',
+      PLATFORM_LLM_API_KEY: 'service-openrouter-key',
+      PLATFORM_LLM_MODEL_CHAT: 'openai/gpt-5-mini',
+      PLATFORM_LLM_MODEL_EMBEDDING: 'qwen/qwen3-embedding-8b',
+    })
+  })
+
+  afterEach(async () => {
+    for (const name of ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING']) {
+      delete platformEnv[name]
+    }
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(true)
+  })
+
+  function okFetch() {
+    const fetchMock = vi.fn(async () =>
+      response(true, 200, {
+        usage: { prompt_tokens: 3, completion_tokens: 2 },
+        choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('on eigenInference a pool chat model wins over the company chat slot, and the call is logged to its caller', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+    const fetchMock = okFetch()
+    await llmChatCompletion({
+      userId: 'coworker-1',
+      messages: [{ role: 'user', content: 'hi' }],
+      modelOverride: 'anthropic/claude-sonnet-5.5',
+    })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }
+    expect(body.model).toBe('anthropic/claude-sonnet-5.5')
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'coworker-1',
+      expect.objectContaining({ operation: 'llm.chat.chat.success(attempt=1)' }),
+    )
+  })
+
+  it('a model outside the pool fails loud before any request (eigenInference)', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+    const fetchMock = okFetch()
+    const call = llmChatCompletion({
+      userId: 'coworker-1',
+      messages: [{ role: 'user', content: 'hi' }],
+      modelOverride: 'vendor/unvetted-model',
+    })
+    await expect(call).rejects.toBeInstanceOf(ModelNotInPoolError)
+    await expect(call).rejects.toThrow(/"vendor\/unvetted-model" is not in the model pool for the chat slot/)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(logActivityCallMock).not.toHaveBeenCalled()
+  })
+
+  it('a pool model of another slot is no chat override either', async () => {
+    const fetchMock = okFetch()
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'qwen/qwen3-asr-1.7b' }),
+    ).rejects.toBeInstanceOf(ModelNotInPoolError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('the same check holds on a bring-your-own-key provider outside the pool namespace (EUrouter)', async () => {
+    const fetchMock = okFetch()
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'vendor/unvetted-model' }),
+    ).rejects.toBeInstanceOf(ModelNotInPoolError)
+    expect(fetchMock).not.toHaveBeenCalled()
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'qwen/qwen3.8-flash' })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }
+    expect(body.model).toBe('qwen/qwen3.8-flash')
+  })
+
+  it('a blank override is refused, never read as "no override"', async () => {
+    const fetchMock = okFetch()
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: '  ' }),
+    ).rejects.toBeInstanceOf(ModelNotInPoolError)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

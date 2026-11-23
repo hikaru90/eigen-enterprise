@@ -1,4 +1,5 @@
 import type { ChatMessage } from '$lib/server/llm/llm-client'
+import { poolFor } from '$lib/server/llm/model-pool'
 import {
   createAssistantMessageEventStream,
   createModels,
@@ -28,7 +29,11 @@ import {
 
 /** The provider id recorded in every durable conversation's pi.agent doc. */
 export const GATEWAY_PROVIDER_ID = 'ee-gateway'
-/** The single model this provider exposes (routed by the gateway, not here). */
+/**
+ * The company's chat slot (routed by the gateway, not here): what the brain runs on. Every chat
+ * model of the vetted pool is exposed too, under its pool id, for agents with their own model
+ * (AI co-workers); a call on one of those carries it to the gateway as `modelOverride`.
+ */
 export const GATEWAY_MODEL_ID = 'orchestrator'
 const GATEWAY_API_ID = 'ee-gateway'
 
@@ -42,6 +47,11 @@ export type GatewayCompleteFn = (input: {
   /** The durable conversation's provider session id — PostHog session grouping. */
   aiSessionId?: string
   logContext?: string
+  /**
+   * A pool chat model for this call (the conversation's own model); absent = the company's
+   * chat slot. The gateway refuses a model outside the pool (llm-client chatModelOverride).
+   */
+  modelOverride?: string
 }) => Promise<unknown>
 
 export type GatewayModelDeps = {
@@ -342,6 +352,7 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
           maxTokens: model.maxTokens,
           aiSessionId: providerSessionId,
           logContext: GATEWAY_LOG_CONTEXT,
+          ...(model.id === GATEWAY_MODEL_ID ? {} : { modelOverride: model.id }),
         })
         if (ended) return
         const message = assistantMessageFromGatewayResponse(raw, model, providerSessionId)
@@ -372,11 +383,14 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
   }
 }
 
-/** The ee-gateway model descriptor as it appears in the Models catalog. */
-export function gatewayModelDescriptor(): Model<string> {
+/**
+ * An ee-gateway model descriptor as it appears in the Models catalog: the chat slot
+ * (GATEWAY_MODEL_ID, default) or one pool chat model by its pool id.
+ */
+export function gatewayModelDescriptor(id: string = GATEWAY_MODEL_ID): Model<string> {
   return {
-    id: GATEWAY_MODEL_ID,
-    name: 'Orchestrator (EE LLM gateway)',
+    id,
+    name: id === GATEWAY_MODEL_ID ? 'Orchestrator (EE LLM gateway)' : `${id} (EE LLM gateway)`,
     api: GATEWAY_API_ID,
     provider: GATEWAY_PROVIDER_ID,
     // The gateway owns the upstream URL; this field is never dialed.
@@ -400,7 +414,7 @@ export function createGatewayModelCatalog(deps: GatewayModelDeps): Models {
       id: GATEWAY_PROVIDER_ID,
       name: 'eigenEnterprise LLM gateway',
       auth: { apiKey: { name: 'EE gateway', resolve: async () => ({ auth: {} }) } },
-      models: [gatewayModelDescriptor()],
+      models: [gatewayModelDescriptor(), ...poolFor('chat').map((m) => gatewayModelDescriptor(m.id))],
       api: createGatewayProviderApi(deps),
     }),
   )
