@@ -35,7 +35,7 @@
   <title>{docTitle(label, 'AI provider', 'Settings')}</title>
 </svelte:head>
 
-<div class="space-y-4">
+<div class="max-w-2xl space-y-4">
   <a
     href={resolve('/settings/llm')}
     class="text-muted-foreground inline-flex items-center gap-1 text-xs hover:text-foreground"

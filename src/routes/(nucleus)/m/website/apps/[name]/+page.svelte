@@ -81,7 +81,7 @@
 
 <svelte:head><title>{docTitle(data.app.name, 'Website')}</title></svelte:head>
 
-<div class="max-w-3xl">
+<div class="min-w-0">
   <a
     href={resolve('/m/website')}
     class="mt-6 inline-block text-xs text-muted-foreground hover:underline"

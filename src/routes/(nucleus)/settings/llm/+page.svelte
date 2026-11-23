@@ -48,7 +48,7 @@
   and the assistant's voice. They are the company's, whoever uses them.
 </p>
 
-<div class="mt-8 space-y-8">
+<div class="mt-8 max-w-2xl space-y-8">
   <section class="space-y-3" data-testid="eigen-inference">
     <form
       method="post"

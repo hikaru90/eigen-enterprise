@@ -19,7 +19,7 @@
 
 <svelte:head><title>{docTitle('Company site', 'Website')}</title></svelte:head>
 
-<div class="max-w-3xl">
+<div class="min-w-0">
   <SectionHeader title="Company site" description="Your company's public address." />
 
   <div class="mt-6 space-y-6">

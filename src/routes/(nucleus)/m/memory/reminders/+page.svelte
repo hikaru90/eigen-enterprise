@@ -16,6 +16,6 @@
 
 <svelte:head><title>{docTitle('Reminders', 'Memory')}</title></svelte:head>
 
-<div class="w-full max-w-3xl px-4 pt-4 pb-10 sm:px-8">
+<div class="w-full min-w-0 px-4 pt-4 pb-10 sm:px-8">
   <Reminders reminders={data.reminders} timeZone={data.timeZone} {formError} />
 </div>

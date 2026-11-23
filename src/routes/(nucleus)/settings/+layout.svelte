@@ -34,7 +34,7 @@
         <p>What applies to the whole company. Each module keeps its own settings on its page.</p>
       {/snippet}
     </PageHeader>
-    <div class="mt-8 max-w-2xl">
+    <div class="mt-8 min-w-0">
       {@render children()}
     </div>
   </PageFrame>
