@@ -561,8 +561,8 @@
               canRestore={false}
               onrestore={restore}
             />
-          {:else if officeViewer}
-            <!-- Office files: download any version; restore one (it becomes the newest, the viewer reopens it). -->
+          {:else if officeViewer || revisions.length > 0}
+            <!-- Office files, and any file an upload replaced: download any version; restore one (it becomes the newest; the view reopens it). -->
             <RevisionsPanel
               fileId={data.file.id}
               kind="office"

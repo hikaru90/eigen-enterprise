@@ -153,7 +153,9 @@ async function addPdf(
   name: string,
   bytes: Uint8Array,
 ): Promise<ItemView> {
-  return drive.upload(actorOf(ctx), folder, { name: pdfName(name), bytes, mime: 'application/pdf' })
+  // A new PDF next to its source never takes an existing file's place: a taken name gets “ (2)”.
+  const { outcome: _outcome, ...file } = await drive.upload(actorOf(ctx), folder, { name: pdfName(name), bytes, mime: 'application/pdf' }, 'keep_both')
+  return file
 }
 
 const nameOf = (output: unknown, key: 'file' | 'source') =>

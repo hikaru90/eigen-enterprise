@@ -2,7 +2,7 @@ import type { AccessLevel, GrantSubject } from './access-port'
 import { error, json, type RequestEvent } from '@sveltejs/kit'
 import { z } from 'zod'
 import { AppBusyError } from './app-preview'
-import { DriveError, type Actor, type ItemType } from './service'
+import { DriveError, UploadConflictError, type Actor, type ItemType } from './service'
 
 /**
  * The Drive HTTP seam: who is asking (signed-in person only — fail closed),
@@ -15,6 +15,7 @@ export const DRIVE_STATUS: Record<DriveError['code'], number> = {
   invalid: 400,
   too_large: 413,
   locked: 409,
+  conflict: 409,
   unavailable: 503,
   upstream: 502,
   busy: 409,
@@ -22,7 +23,13 @@ export const DRIVE_STATUS: Record<DriveError['code'], number> = {
 
 /** A DriveError as the JSON body the browser client reads: the sentence, the code, and its structured context. */
 export function driveErrorBody(err: DriveError): Record<string, unknown> {
-  return { error: err.message, code: err.code, ...(err.holder ? { holder: err.holder } : {}), ...(err instanceof AppBusyError ? { running: err.running } : {}) }
+  return {
+    error: err.message,
+    code: err.code,
+    ...(err.holder ? { holder: err.holder } : {}),
+    ...(err instanceof AppBusyError ? { running: err.running } : {}),
+    ...(err instanceof UploadConflictError ? { existing: err.existing } : {}),
+  }
 }
 
 export function requestActor(event: Pick<RequestEvent, 'locals'>): Actor {

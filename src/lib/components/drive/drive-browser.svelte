@@ -38,6 +38,8 @@
     entriesFromPicked,
     planUpload,
     runUpload,
+    type ConflictDecision,
+    type UploadConflict,
     type UploadFailure,
     type UploadPlan,
     type UploadProgress,
@@ -46,6 +48,7 @@
   import DriveItemActions from './drive-item-actions.svelte'
   import DriveTextPreview from './drive-text-preview.svelte'
   import NameDialog from './name-dialog.svelte'
+  import UploadConflictDialog from './upload-conflict-dialog.svelte'
 
   /**
    * One Drive listing as a full-width app pane (P-3): a toolbar (path, search,
@@ -122,6 +125,8 @@
   /** The folder row under the current drag, when it takes the drop. */
   let dropFolder = $state<Listed | null>(null)
   let progress = $state<UploadProgress | null>(null)
+  /** An upload's name clash waiting for the person's answer (the upload pauses until then). */
+  let clash = $state<{ conflict: UploadConflict; answer: (d: ConflictDecision) => void } | null>(null)
   let failures = $state<UploadFailure[]>([])
   let search = $state(query)
   let view = $state<View>('list')
@@ -191,6 +196,19 @@
     }
   }
 
+  /** Asks about one name clash; the upload waits for the answer. */
+  function askConflict(conflict: UploadConflict): Promise<ConflictDecision> {
+    return new Promise((done) => {
+      clash = {
+        conflict,
+        answer: (d) => {
+          clash = null
+          done(d)
+        },
+      }
+    })
+  }
+
   /** Uploads a plan into `target` (null: the current view), then says what landed and lists what didn't. */
   async function upload(plan: UploadPlan, target: Listed | null) {
     if (plan.files.length === 0 && plan.folders.length === 0 && plan.failures.length === 0) return
@@ -204,6 +222,7 @@
         plan,
         target ? target.id : folderId,
         driveApi,
+        askConflict,
         (p) => (progress = p),
       )
       failures = out.failures
@@ -214,8 +233,16 @@
         landed.push(
           `${out.uploaded > 0 ? 'in ' : ''}${out.folders} folder${out.folders === 1 ? '' : 's'}`,
         )
-      if (landed.length > 0)
-        notice = `Uploaded ${landed.join(' ')}${target ? ` to ${target.name}` : ''}.`
+      const files = (n: number) => `${n} file${n === 1 ? '' : 's'}`
+      const said: string[] = []
+      if (landed.length > 0) said.push(`Uploaded ${landed.join(' ')}${target ? ` to ${target.name}` : ''}.`)
+      if (out.replaced > 0)
+        said.push(`Replaced ${files(out.replaced)} with a new version (the old one stays in its history).`)
+      if (out.skipped.length > 0)
+        said.push(
+          `Left out ${files(out.skipped.length)} that ${out.skipped.length === 1 ? 'is' : 'are'} already there.`,
+        )
+      if (said.length > 0) notice = said.join(' ')
       await invalidateAll()
     } catch (err) {
       error = driveShownError(err)
@@ -1004,6 +1031,12 @@
     </div>
   {/if}
 </section>
+
+{#if clash}
+  {#key clash.conflict}
+    <UploadConflictDialog conflict={clash.conflict} onanswer={clash.answer} />
+  {/key}
+{/if}
 
 {#if nameDialog}
   <NameDialog {...nameDialog} onclose={() => (nameDialog = null)} />

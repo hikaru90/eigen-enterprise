@@ -8,6 +8,10 @@ export {
   VIEW_TOKEN_TTL_MS,
   type ViewScope,
   DriveError,
+  UploadConflictError,
+  ON_CONFLICT,
+  type OnConflict,
+  type UploadOutcome,
   LOCK_HEARTBEAT_MS,
   LOCK_TTL_MS,
   type LockView,
@@ -71,6 +75,9 @@ const DRIVE_STEPS: Record<DriveFailure['code'], string[]> = {
     'A provider Drive depends on failed or answered unreadably: read the cause and the server journal at the time above.',
   ],
   busy: ['Another app preview is running (`running` in the answer); stop it first, then retry.'],
+  conflict: [
+    'A file of that name is already in the folder (`existing` in the answer). Ask the person whether to replace it (a new revision) or keep both, then upload again with onConflict replace or keep_both.',
+  ],
 }
 
 /** A DriveError as the browser client reads it: { error, code, holder?, running? } plus the agent report. */
