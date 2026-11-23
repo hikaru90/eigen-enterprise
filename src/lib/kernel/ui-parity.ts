@@ -52,7 +52,7 @@ export type UiParity =
   | { transport: string }
 
 /** The number of `debt` entries. Lower it when you clear debt; the spec fails if it is not exact. */
-export const DEBT_CEILING = 129
+export const DEBT_CEILING = 114
 
 const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
@@ -212,7 +212,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/m/memory/reminders ?/update': tool('reminders.update'),
   '/(nucleus)/m/memory/settings ?/deleteAll': human(WIPE),
   '/(nucleus)/m/memory/settings ?/deleteArchived': debt('memory', 'Delete archived thoughts for good.'),
-  '/(nucleus)/m/memory/settings ?/settings': debt('kernel', 'My notification settings.'),
+  '/(nucleus)/m/memory/settings ?/settings': tool('notifications.settings_set'),
   '/(nucleus)/m/memory/tasks ?/comment': tool('tasks.comment'),
   '/(nucleus)/m/memory/tasks ?/complete': tool('tasks.complete'),
   '/(nucleus)/m/memory/tasks ?/seen': debt('memory', 'Mark an assigned task seen.'),
@@ -282,7 +282,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/s/[slug] ?/deletePage': tool('website.delete_page'),
   '/api/github/webhook POST': transport(WEBHOOK),
   '/api/website/contact POST': transport(PUBLIC),
-  '/api/onboarding/founding POST': debt('website', 'The founding interview (tone, name, positioning) as one act; its artifacts already run through website.* tools.'),
+  '/api/onboarding/founding POST': tool('website.found_company'),
 
   // ─── Brand ────────────────────────────────────────────────────────────────
   '/api/brand/corpus POST': tool('brand.corpus_list'),
@@ -372,7 +372,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   // ─── Assistant ────────────────────────────────────────────────────────────
   '/api/chat POST': transport(CHAT),
   '/api/assistant/attachments POST': transport(CHAT),
-  '/api/agent/runs/[id] PATCH': debt('assistant', 'Rename a conversation.'),
+  '/api/agent/runs/[id] PATCH': tool('assistant.conversation_rename'),
   '/api/tts POST': transport(SPEECH),
   '/api/voice/transcribe POST': transport(SPEECH),
 
@@ -380,47 +380,47 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/members ?/createGroup': tool('members.group_create'),
   '/(nucleus)/settings/members ?/deleteGroup': tool('members.group_delete'),
   '/(nucleus)/settings/members ?/invite': tool('members.invite'),
-  '/(nucleus)/settings/members ?/remove': debt('members', 'Remove a member.'),
+  '/(nucleus)/settings/members ?/remove': tool('members.remove'),
   '/(nucleus)/settings/members ?/setRole': tool('members.set_role'),
   '/(nucleus)/settings/members ?/updateGroup': tool('members.group_update'),
-  '/api/onboarding/name POST': debt('members', 'Set what I am called.'),
-  '/api/profile PUT': debt('members', 'Set my first and last name.'),
-  '/api/profile/avatar POST': debt('members', 'Set my profile picture (image bytes, cropped).'),
+  '/api/onboarding/name POST': tool('members.set_my_called'),
+  '/api/profile PUT': tool('members.set_my_name'),
+  '/api/profile/avatar POST': tool('members.set_my_picture'),
 
   // ─── Settings and the kernel ──────────────────────────────────────────────
   '/(nucleus)/settings ?/changeEmail': human(SIGN_IN),
   '/(nucleus)/settings/backups ?/check': noEffect('Verifies one backup end to end (download, decrypt, hash); writes nothing.'),
-  '/(nucleus)/settings/backups ?/run': debt('kernel', 'Run a backup now.'),
+  '/(nucleus)/settings/backups ?/run': tool('kernel.backup_run'),
   '/(nucleus)/settings/backups ?/save': human(BACKUP_STORAGE),
   '/(nucleus)/settings/backups ?/test': human(BACKUP_STORAGE),
   '/(nucleus)/settings/backups/restore/[snapshot] ?/restore': human(RESTORE),
-  '/(nucleus)/settings/company ?/recropLogo': debt('kernel', 'Re-crop the company logo.'),
-  '/(nucleus)/settings/company ?/removeLogo': debt('kernel', 'Remove the company logo.'),
+  '/(nucleus)/settings/company ?/recropLogo': tool('settings.logo_recrop'),
+  '/(nucleus)/settings/company ?/removeLogo': tool('settings.logo_remove'),
   '/(nucleus)/settings/company ?/saveName': tool('settings.update'),
   '/(nucleus)/settings/company ?/setSharing': human(CONSENT_HUB),
-  '/(nucleus)/settings/company ?/uploadLogo': debt('kernel', 'Upload the company logo (image bytes + crop).'),
+  '/(nucleus)/settings/company ?/uploadLogo': tool('settings.logo_set'),
   '/(nucleus)/settings/domains ?/addHost': tool('domains.set_target'),
   '/(nucleus)/settings/domains ?/recheck': tool('domains.recheck'),
   '/(nucleus)/settings/domains ?/remove': tool('domains.remove'),
   '/(nucleus)/settings/domains ?/retryCertificate': tool('domains.retry_certificate'),
   '/(nucleus)/settings/domains ?/setTarget': tool('domains.set_target'),
   '/(nucleus)/settings/llm ?/saveLlmConfig': human(PROVIDER_SECRET),
-  '/(nucleus)/settings/llm ?/saveModelConfig': debt('kernel', 'Chat and embedding model or rule; settings.update covers only the chat model and rule.'),
+  '/(nucleus)/settings/llm ?/saveModelConfig': tool('settings.update'),
   '/(nucleus)/settings/llm ?/setActiveProvider': tool('settings.update'),
   '/(nucleus)/settings/llm ?/setEigenInference': tool('settings.update'),
   '/(nucleus)/settings/llm ?/setSlot': tool('settings.update'),
   '/(nucleus)/settings/llm/byok/[provider] ?/saveLlmConfig': human(PROVIDER_SECRET),
-  '/(nucleus)/settings/llm/byok/[provider] ?/saveModelConfig': debt('kernel', 'Chat and embedding model or rule (same actions as Settings › AI).'),
+  '/(nucleus)/settings/llm/byok/[provider] ?/saveModelConfig': tool('settings.update'),
   '/(nucleus)/settings/llm/byok/[provider] ?/setActiveProvider': tool('settings.update'),
   '/(nucleus)/settings/llm/byok/[provider] ?/setEigenInference': tool('settings.update'),
   '/(nucleus)/settings/llm/byok/[provider] ?/setSlot': tool('settings.update'),
   '/(nucleus)/settings/modules ?/activate': tool('kernel.module_activate'),
   '/(nucleus)/settings/modules ?/deactivate': tool('kernel.module_deactivate'),
-  '/(nucleus)/settings/updates ?/update': debt('kernel', 'Install a new eigenEnterprise release.'),
+  '/(nucleus)/settings/updates ?/update': tool('kernel.release_install'),
   '/api/approvals/[id] POST': tool('kernel.approvals_decide'),
   '/api/approvals/mode PUT': human(APPROVAL_MODE),
   '/api/settings/dashboard-tiles PUT': noEffect(VIEW_STATE),
-  '/api/settings/notifications PUT': debt('kernel', 'My notification settings.'),
+  '/api/settings/notifications PUT': tool('notifications.settings_set'),
   '/api/activity POST': noEffect('A read: the person’s own model-call log and spend.'),
   '/api/keys POST': human(API_KEYS),
   '/api/keys/[id] DELETE': human(API_KEYS),

@@ -1,15 +1,9 @@
 import type { Actions, PageServerLoad } from './$types'
 import { fail } from '@sveltejs/kit'
-import { isCroppableLogoType } from '$lib/company/identity'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import { companyStorage } from '$lib/server/company/live'
-import { checkLogo, cropLogo } from '$lib/server/company/logo'
-import {
-  readCompanyLogoOriginal,
-  removeCompanyLogo,
-  saveCompanyLogo,
-  saveCompanyName,
-} from '$lib/server/company/service'
+import { recropCompanyLogo, uploadCompanyLogo } from '$lib/server/company/logo-actions'
+import { removeCompanyLogo, saveCompanyName } from '$lib/server/company/service'
 import { companyProfileStore } from '$lib/server/company/store'
 import { companyIdentity } from '$lib/server/overview/sources'
 import { errorReport, refusalReport } from '$lib/server/errors/report'
@@ -57,8 +51,8 @@ const ATTEMPTED: Record<CompanyAction, string> = {
 
 const WHERE: Record<CompanyAction, string> = {
   saveName: 'saveCompanyName (src/lib/server/company/service.ts)',
-  uploadLogo: 'checkLogo / cropLogo (src/lib/server/company/logo.ts)',
-  recropLogo: 'readCompanyLogoOriginal / cropLogo (src/lib/server/company/service.ts, logo.ts)',
+  uploadLogo: 'uploadCompanyLogo (src/lib/server/company/logo-actions.ts)',
+  recropLogo: 'recropCompanyLogo (src/lib/server/company/logo-actions.ts)',
   setSharing: 'setSharing (modules/contribute/share/service.ts)',
 }
 
@@ -115,53 +109,21 @@ export const actions: Actions = {
     if (!(file instanceof File) || file.size === 0) {
       return refuse(400, 'uploadLogo', 'Choose an image file to upload.')
     }
-    const check = await checkLogo(new Uint8Array(await file.arrayBuffer()), file.type)
-    const fileInput = { name: file.name, type: file.type, size: file.size }
-    if (!check.ok) return refuse(check.status, 'uploadLogo', check.error, { file: fileInput })
-    if (!isCroppableLogoType(check.mime)) {
-      await saveCompanyLogo({ bytes: check.bytes, mime: check.mime }, user.id, companyStorage())
-      return { action: 'uploadLogo', ok: true }
-    }
     const crop = parseCrop(form.get('crop'))
-    if (crop === undefined)
-      return refuse(400, 'uploadLogo', 'Position the logo in the frame, then save.', {
-        file: fileInput,
-      })
-    const cut = await cropLogo(check.bytes, crop)
-    if (!cut.ok) return refuse(cut.status, 'uploadLogo', cut.error, { file: fileInput, crop })
-    await saveCompanyLogo(
-      {
-        bytes: cut.bytes,
-        mime: cut.mime,
-        original: { bytes: check.bytes, mime: check.mime, crop: cut.crop },
-      },
+    const saved = await uploadCompanyLogo(
+      { bytes: new Uint8Array(await file.arrayBuffer()), mime: file.type, crop },
       user.id,
       companyStorage(),
     )
+    const fileInput = { name: file.name, type: file.type, size: file.size }
+    if (!saved.ok) return refuse(saved.status, 'uploadLogo', saved.error, { file: fileInput, ...(crop === undefined ? {} : { crop }) })
     return { action: 'uploadLogo', ok: true }
   },
   recropLogo: async ({ locals, request }) => {
     const { user } = await requireCapability(locals, 'company.manage', REASON)
     const crop = parseCrop((await request.formData()).get('crop'))
-    if (crop === undefined)
-      return refuse(400, 'recropLogo', 'Position the logo in the frame, then save.')
-    const storage = companyStorage()
-    const original = await readCompanyLogoOriginal(storage)
-    if (!original) {
-      return refuse(
-        400,
-        'recropLogo',
-        'This logo has no kept original to crop again; upload it again.',
-        { crop },
-      )
-    }
-    const cut = await cropLogo(original.bytes, crop)
-    if (!cut.ok) return refuse(cut.status, 'recropLogo', cut.error, { crop })
-    await saveCompanyLogo(
-      { bytes: cut.bytes, mime: cut.mime, original: { ...original, crop: cut.crop } },
-      user.id,
-      storage,
-    )
+    const saved = await recropCompanyLogo(crop, user.id, companyStorage())
+    if (!saved.ok) return refuse(saved.status, 'recropLogo', saved.error, crop === undefined ? undefined : { crop })
     return { action: 'recropLogo', ok: true }
   },
   setSharing: async ({ locals, request }) => {

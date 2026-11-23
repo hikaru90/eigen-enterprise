@@ -1,5 +1,10 @@
 import type { NotificationsPort, TestNotificationResult } from '$lib/kernel/notification-tools'
 import { withDbUser } from '$lib/server/db'
+import {
+  loadNotificationSettings,
+  parseNotificationSettingsBody,
+  saveNotificationSettings,
+} from '$lib/server/settings/notification-settings'
 import { sendPushToUser, type PushNotificationPayload } from './send'
 import { listPushDevicesForUser } from './subscription'
 
@@ -28,4 +33,7 @@ export async function sendTestNotification(userId: string, deviceId?: string): P
 export const liveNotificationsPort: NotificationsPort = {
   devices: (userId) => withDbUser(userId, () => listPushDevicesForUser(userId)),
   sendTest: sendTestNotification,
+  loadSettings: loadNotificationSettings,
+  // The same parse and save as /api/settings/notifications and /m/memory/settings ?/settings.
+  saveSettings: (userId, input) => saveNotificationSettings(userId, parseNotificationSettingsBody(input)),
 }

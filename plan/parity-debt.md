@@ -9,24 +9,20 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **340** — tool 101, human-only 46, transport 48, no effect 16, **debt 129**.
+Mutating entry points: **340** — tool 116, human-only 46, transport 48, no effect 16, **debt 114**.
 
 | Module | Debt |
 |---|---|
 | email | 41 |
 | memory | 31 |
 | drive | 9 |
-| kernel | 9 |
 | messages | 9 |
 | calendar | 7 |
 | calls | 6 |
 | contacts | 6 |
-| members | 4 |
 | brand | 2 |
 | contribute | 2 |
-| assistant | 1 |
 | repos | 1 |
-| website | 1 |
 
 ## email (41)
 
@@ -118,18 +114,6 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 - `/api/drive/items/[type]/[id]/restore POST` — Restore from the trash.
 - `/api/drive/upload POST` — Upload files.
 
-## kernel (9)
-
-- `/(nucleus)/m/memory/settings ?/settings` — My notification settings.
-- `/(nucleus)/settings/backups ?/run` — Run a backup now.
-- `/(nucleus)/settings/company ?/recropLogo` — Re-crop the company logo.
-- `/(nucleus)/settings/company ?/removeLogo` — Remove the company logo.
-- `/(nucleus)/settings/company ?/uploadLogo` — Upload the company logo (image bytes + crop).
-- `/(nucleus)/settings/llm ?/saveModelConfig` — Chat and embedding model or rule; settings.update covers only the chat model and rule.
-- `/(nucleus)/settings/llm/byok/[provider] ?/saveModelConfig` — Chat and embedding model or rule (same actions as Settings › AI).
-- `/(nucleus)/settings/updates ?/update` — Install a new eigenEnterprise release.
-- `/api/settings/notifications PUT` — My notification settings.
-
 ## messages (9)
 
 - `/api/messages/channels POST` — Create a channel.
@@ -170,13 +154,6 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 - `/(nucleus)/m/email/people/settings ?/mine` — My default visibility of new contacts.
 - `/api/contacts/sharing POST` — Share many contacts at once, or make them private.
 
-## members (4)
-
-- `/(nucleus)/settings/members ?/remove` — Remove a member.
-- `/api/onboarding/name POST` — Set what I am called.
-- `/api/profile PUT` — Set my first and last name.
-- `/api/profile/avatar POST` — Set my profile picture (image bytes, cropped).
-
 ## brand (2)
 
 - `/api/brand/social/posts POST` — An uploaded social post (multipart files); the JSON graphic post is brand.social_post_create.
@@ -187,14 +164,6 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 - `/api/contribute POST` — Propose an improvement.
 - `/api/contribute/[id]/vote POST` — Vote on a proposal.
 
-## assistant (1)
-
-- `/api/agent/runs/[id] PATCH` — Rename a conversation.
-
 ## repos (1)
 
 - `/(nucleus)/drive/github ?/setRepo` — Choose a repo to sync into Drive, or stop syncing it.
-
-## website (1)
-
-- `/api/onboarding/founding POST` — The founding interview (tone, name, positioning) as one act; its artifacts already run through website.* tools.

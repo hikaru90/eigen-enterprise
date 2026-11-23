@@ -93,3 +93,50 @@ describe('members group tools', () => {
     expect(out).toMatchObject({ emailed: false, note: expect.stringMatching(/Settings → Members/) })
   })
 })
+
+describe('members.remove and a person’s own profile', () => {
+  function withProfile() {
+    const base = setup()
+    const writes: unknown[] = []
+    const tools = createMembersTools({
+      deps: async () => ({ store: base.store, mail: base.mail, origin: 'https://os.k.co', companyName: 'K', now: () => at }),
+      actor: async (ctx) => ({ id: ctx.principal.id, role: ctx.principal.kind === 'human' ? 'member' : 'admin' }),
+      profile: async () => ({
+        setCalled: async (userId, name) => void writes.push(['called', userId, name]),
+        saveNames: async (userId, names) => void writes.push(['names', userId, names]),
+        savePicture: async (userId, bytes, mime) => {
+          writes.push(['picture', userId, Array.from(bytes), mime])
+          return bytes.length < 3 ? { ok: false, error: 'The picture is not a WebP image.' } : { ok: true }
+        },
+        profile: async (userId) => ({ userId }),
+      }),
+    })
+    const tool = (name: string) => tools.find((t) => t.name === name)!
+    const me = { principal: { id: 'm', kind: 'human' as const, roles: ['member'] }, requestId: 'r' }
+    return { ...base, tool, writes, me }
+  }
+
+  it('removes a member through the same service, never the owner; a member removes no one', async () => {
+    const { tool, agent, store, me } = withProfile()
+    expect(tool('members.remove')).toMatchObject({ auditClass: 'mutate', approvalRisk: 'destructive' })
+    await expect(tool('members.remove').handler(agent, { user_id: 'o' })).rejects.toThrow(/owner can.t be removed/)
+    await expect(tool('members.remove').handler(me, { user_id: 'm' })).rejects.toThrow(/owner or an admin/)
+    expect(await tool('members.remove').handler(agent, { user_id: 'm' })).toEqual({ userId: 'm', email: 'm@k.co' })
+    expect(await store.getMember('m')).toBeNull()
+  })
+
+  it('sets what I am called, my names and my picture — always my own', async () => {
+    const { tool, writes, me, agent } = withProfile()
+    await tool('members.set_my_called').handler(me, { name: '  Ada ' })
+    await tool('members.set_my_name').handler(me, { first_name: 'Ada', last_name: 'Lovelace' })
+    await tool('members.set_my_picture').handler(me, { image_base64: 'AQID', mime: 'image/webp' })
+    expect(writes).toEqual([
+      ['called', 'm', 'Ada'],
+      ['names', 'm', { ok: true, firstName: 'Ada', lastName: 'Lovelace', name: 'Ada Lovelace' }],
+      ['picture', 'm', [1, 2, 3], 'image/webp'],
+    ])
+    await expect(tool('members.set_my_name').handler(me, { first_name: '', last_name: 'L' })).rejects.toThrow(/First name is required/)
+    await expect(tool('members.set_my_picture').handler(me, { image_base64: 'AQ==', mime: 'image/webp' })).rejects.toThrow(/not a WebP/)
+    await expect(tool('members.set_my_called').handler(agent, { name: 'X' })).rejects.toThrow(/no person/)
+  })
+})

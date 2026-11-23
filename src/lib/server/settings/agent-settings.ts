@@ -81,7 +81,7 @@ async function read(): Promise<SettingsView> {
 async function setProviderColumn(
   owner: string,
   provider: string,
-  set: { modelChat: string } | { ruleChat: string },
+  set: { modelChat: string } | { ruleChat: string } | { ruleEmbedding: string },
 ): Promise<void> {
   const updated = await withDbUser(owner, (db) =>
     db
@@ -134,6 +134,9 @@ async function apply(change: SettingChange, actorUserId: string): Promise<void> 
     }
     case 'ai_chat_routing_rule':
       await setProviderColumn(await requireOwner(), 'eurouter', { ruleChat: change.value })
+      return
+    case 'ai_embedding_routing_rule':
+      await setProviderColumn(await requireOwner(), 'eurouter', { ruleEmbedding: change.value })
       return
     case 'ai_use_eigen_inference':
       await withDbUser(actorUserId, () => setCompanyUseEigenInference(change.value, actorUserId))
