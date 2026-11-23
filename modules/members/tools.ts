@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import type { GroupDeps } from '$lib/server/members/groups'
+import type { OpenJoinDeps } from '$lib/server/members/open-join'
 import type { Actor, MemberDeps } from '$lib/server/members/service'
 import { KernelError } from '$lib/kernel/errors'
 import { normalizeProfileNames } from '$lib/profile/profile'
@@ -29,6 +30,7 @@ export type MembersToolDeps = {
   actor?: (ctx: ToolContext) => Promise<Actor>
   groupDeps?: () => Promise<GroupDeps>
   profile?: () => Promise<ProfileDeps>
+  openJoinDeps?: () => Promise<OpenJoinDeps>
 }
 
 const listInput = z.object({}).strict()
@@ -46,6 +48,7 @@ const groupUpdateInput = z
   })
   .strict()
 const groupDeleteInput = z.object({ group_id: z.string().min(1) }).strict()
+const openJoinInput = z.object({ on: z.boolean() }).strict()
 const removeInput = z.object({ user_id: z.string().min(1) }).strict()
 const calledInput = z.object({ name: z.string().trim().min(1, 'Name must not be empty.').max(80, 'Name must be 80 characters or fewer.') }).strict()
 const namesInput = z.object({ first_name: z.string(), last_name: z.string() }).strict()
@@ -86,6 +89,11 @@ async function liveGroupDeps(): Promise<GroupDeps> {
   return groupDeps()
 }
 
+async function liveOpenJoinDeps(): Promise<OpenJoinDeps> {
+  const { openJoinDeps } = await import('$lib/server/members')
+  return openJoinDeps()
+}
+
 async function liveDeps(): Promise<MemberDeps> {
   const { memberDeps } = await import('$lib/server/members')
   return memberDeps()
@@ -102,6 +110,8 @@ export function createMembersTools(opts: MembersToolDeps = {}): ToolDescriptor[]
   const actor = opts.actor ?? liveActor
   const groupDeps = opts.groupDeps ?? liveGroupDeps
   const profile = opts.profile ?? liveProfile
+  const openJoinDeps = opts.openJoinDeps ?? liveOpenJoinDeps
+  const openJoin = () => import('$lib/server/members/open-join')
   const service = () => import('$lib/server/members/service')
   const groups = () => import('$lib/server/members/groups')
   return [
@@ -227,6 +237,35 @@ export function createMembersTools(opts: MembersToolDeps = {}): ToolDescriptor[]
       handler: async (ctx, input) => {
         const i = removeInput.parse(input)
         return (await service()).removeMember(await actor(ctx), { userId: i.user_id }, await deps())
+      },
+    },
+    {
+      name: 'members.get_open_join',
+      module: MEMBERS_MODULE_ID,
+      summary:
+        'Whether the company is open to join (Settings → Members): when on, anyone who verifies their email with a sign-in code on /signup joins as a member. Off by default.',
+      auditClass: 'read',
+      inputSchema: listInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx) => (await openJoin()).readOpenJoin(await actor(ctx), await openJoinDeps()),
+    },
+    {
+      name: 'members.set_open_join',
+      module: MEMBERS_MODULE_ID,
+      summary:
+        'Switch open join (Settings → Members): on = anyone who verifies their email on /signup joins the company as a member; off = people join by invite only.',
+      auditClass: 'mutate',
+      // Open join lets anyone on the internet into the company: public.
+      approvalRisk: 'public',
+      activity: (input: z.infer<typeof openJoinInput>) =>
+        input.on
+          ? 'Opened the company to anyone who verifies their email (open join)'
+          : 'Closed open join: people join by invite only',
+      inputSchema: openJoinInput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = openJoinInput.parse(input)
+        return (await openJoin()).setOpenJoin(await actor(ctx), { on: i.on }, await openJoinDeps())
       },
     },
     {

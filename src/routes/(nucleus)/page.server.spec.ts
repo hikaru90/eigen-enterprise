@@ -26,7 +26,7 @@ vi.mock('$lib/server/auth/user-role', () => ({
 const invitedMock = vi.hoisted(() => vi.fn(async () => true))
 vi.mock('$lib/server/members/joined', async (orig) => ({
   ...(await orig<typeof import('$lib/server/members/joined')>()),
-  joinedByInvite: invitedMock,
+  joinedTheCompany: invitedMock,
 }))
 vi.mock('$lib/server/onboarding/welcome', () => ({
   completeWelcomeOnboarding: completeWelcomeMock,

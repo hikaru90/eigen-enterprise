@@ -43,11 +43,15 @@
   }
 </script>
 
-<svelte:head><title>{docTitle('Sign up')}</title></svelte:head>
+<svelte:head><title>{docTitle(data.openJoin ? 'Join' : 'Sign up')}</title></svelte:head>
 
 <PublicFrame
-  title="Create an account"
-  subtitle={data.plan ? signupPlanSubtitle(data.plan) : null}
+  title={data.openJoin ? `Join ${data.companyName ?? 'the company'}` : 'Create an account'}
+  subtitle={data.openJoin
+    ? 'Verify your email with a sign-in code and you are in, as a member.'
+    : data.plan
+      ? signupPlanSubtitle(data.plan)
+      : null}
   back
 >
   <Card.Root class="border border-border shadow-none">
@@ -60,6 +64,7 @@
           message={'notice' in form ? form.notice : undefined}
           error={'message' in form ? form.message : undefined}
           agent={'agent' in form ? form.agent : null}
+          askName={data.openJoin}
         />
       {:else}
         <form
@@ -156,7 +161,9 @@
             {/if}
           </div>
           <p class="text-muted-foreground text-xs">No password: we email you a 6-digit code.</p>
-          <Button type="submit" class="w-full rounded-[4px]">Create account</Button>
+          <Button type="submit" class="w-full rounded-[4px]" data-testid="signup-submit"
+            >{data.openJoin ? 'Join' : 'Create account'}</Button
+          >
           {#if form && 'message' in form && form.message}
             <ErrorNotice
               class="text-xs"

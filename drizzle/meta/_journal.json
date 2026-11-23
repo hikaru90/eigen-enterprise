@@ -1113,9 +1113,9 @@
       "version": "7",
       "when": 1795200000161,
       "tag": "0161_repo_files",
-        "breakpoints": true
-      },
-      {
+      "breakpoints": true
+    },
+    {
       "idx": 162,
       "version": "7",
       "when": 1795200000162,
@@ -1141,6 +1141,13 @@
       "version": "7",
       "when": 1795200000165,
       "tag": "0165_website_services_drop_host",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1795200000166,
+      "tag": "0166_open_join",
       "breakpoints": true
     }
   ]

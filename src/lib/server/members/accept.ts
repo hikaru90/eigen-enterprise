@@ -22,7 +22,8 @@ export type AcceptDeps = {
 
 export class InviteError extends Error {}
 
-const nameSchema = z.string().trim().min(1, 'Enter your name.').max(80, 'Keep your name under 80 characters.')
+/** The name a person gives when they join (the invite page, open join on /signup). */
+export const joinNameSchema = z.string().trim().min(1, 'Enter your name.').max(80, 'Keep your name under 80 characters.')
 
 async function openInvite(token: string, deps: Pick<AcceptDeps, 'store' | 'now'>): Promise<Invite> {
   const st = await inviteStatus(token, deps)
@@ -31,7 +32,7 @@ async function openInvite(token: string, deps: Pick<AcceptDeps, 'store' | 'now'>
 }
 
 export async function joinWithInvite(token: string, input: { name: string }, deps: AcceptDeps): Promise<{ email: string }> {
-  const name = nameSchema.safeParse(input.name)
+  const name = joinNameSchema.safeParse(input.name)
   if (!name.success) throw new InviteError(name.error.issues[0]!.message)
   const invite = await openInvite(token, deps)
   const code = await deps.createCode(invite.email)

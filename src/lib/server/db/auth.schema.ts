@@ -124,6 +124,30 @@ export const memberInvite = pgTable('member_invite', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+/**
+ * Open join (migration 0166, plan/phase-demo-company.md D1): one row
+ * ('company'); no row = off. When on, /signup on a claimed ee server lets a
+ * verified email join as a member (Settings → Members, members.set_open_join).
+ */
+export const companyJoin = pgTable('company_join', {
+  id: text('id').primaryKey().default('company'),
+  openJoin: boolean('open_join').notNull(),
+  updatedBy: text('updated_by').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * Accounts that joined through open join (migration 0166): like an accepted
+ * invite, it means the person joined an existing company (no company
+ * onboarding, see members/joined.ts) rather than founding one.
+ */
+export const memberOpenJoin = pgTable('member_open_join', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 /** Claim tokens already used (by hash): a claim link works once, even if the owner row later vanished. */
 export const claimConsumed = pgTable('claim_consumed', {
   tokenHash: text('token_hash').primaryKey(),

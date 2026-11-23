@@ -7,7 +7,8 @@ import type { MemberRole } from './user-role'
  * On a server ee manages (public), the first account is created ONLY through
  * the claim link the installer printed — holding it proves you installed the
  * server — and becomes the owner. After that, accounts are created only by
- * accepting an invite (Settings → Members), with the invited role.
+ * accepting an invite (Settings → Members), with the invited role, or — when
+ * the company switched open join on — through /signup's email code, as a member.
  * Dev and test instances (not under ee) keep open signup: first = owner.
  */
 export class AlreadyClaimedError extends Error {
@@ -35,6 +36,12 @@ export class UnclaimedServerError extends Error {
 /** Set while the claim flow creates the owner, so the user-create hook can tell it apart from signup. */
 export const claimScope = new AsyncLocalStorage<true>()
 
+/**
+ * Set while /signup verifies a code with open join on (members.open_join): the
+ * user-create hook re-reads the setting and, when still on, makes a `member`.
+ */
+export const openJoinScope = new AsyncLocalStorage<{ email: string }>()
+
 /** Set while an invite is accepted: the user-create hook consumes the invite and takes its role. */
 export const inviteScope = new AsyncLocalStorage<{ inviteId: string; email: string; role: Exclude<MemberRole, 'owner'> }>()
 
@@ -43,6 +50,8 @@ export function ownerPolicyForNewUser(input: {
   managedByEe: boolean
   viaClaim: boolean
   invite: { role: Exclude<MemberRole, 'owner'> } | null
+  /** Open join is on and this account is being made by /signup's open-join path (openJoinScope). */
+  openJoin: boolean
 }): { role: MemberRole } {
   if (input.existingUsers === 0) {
     if (input.managedByEe && !input.viaClaim) throw new UnclaimedServerError()
@@ -50,6 +59,7 @@ export function ownerPolicyForNewUser(input: {
   }
   if (input.viaClaim) throw new AlreadyClaimedError()
   if (input.invite) return { role: input.invite.role }
+  if (input.openJoin) return { role: 'member' }
   if (input.managedByEe) throw new NotAMemberError()
   return { role: 'member' }
 }

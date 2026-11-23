@@ -11,6 +11,8 @@ export const MEMBERS_TOOL_NAMES = [
   'members.group_update',
   'members.group_delete',
   'members.remove',
+  'members.get_open_join',
+  'members.set_open_join',
   'members.set_my_called',
   'members.set_my_name',
   'members.set_my_picture',

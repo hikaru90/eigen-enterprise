@@ -13,7 +13,7 @@ import { registrantDefaults } from '$lib/server/domains/registrant-defaults'
 import { isCompanyProviderReady } from '$lib/server/llm/provider-ready'
 import { companyMail } from '$lib/server/mail'
 import { managedMailFromEnv } from '$lib/server/mail/managed-env'
-import { companyOnboardingFor, joinedByInvite } from '$lib/server/members/joined'
+import { companyOnboardingFor, joinedTheCompany } from '$lib/server/members/joined'
 import { onboardingFactsFor } from '$lib/server/onboarding/assisted'
 import { completeWelcomeOnboarding, setAccountName } from '$lib/server/onboarding/welcome'
 import { loadDashboard } from '$lib/server/overview/dashboard'
@@ -36,10 +36,10 @@ export const load: PageServerLoad = async (event) => {
   const role = await getUserRole(userId)
   const isAdmin = isAdminRole(role)
   // The company onboarding is the owner's (see companyOnboardingFor): an
-  // invited member already gave their name and goes straight into the app.
+  // invited (or open-join) member already gave their name and goes straight in.
   const companyOnboarding = companyOnboardingFor({
     role,
-    invited: role !== 'owner' && (await joinedByInvite(event.locals.user.email ?? '')),
+    invited: role !== 'owner' && (await joinedTheCompany({ id: userId, email: event.locals.user.email ?? '' })),
     providerReady,
   })
 

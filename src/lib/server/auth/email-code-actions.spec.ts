@@ -160,3 +160,61 @@ describe('verifyCode', () => {
     })
   })
 })
+
+describe('open join (members.open_join) on /signup', () => {
+  it('a new address gets the same code: the members-only gate is not asked, nothing else changes', async () => {
+    sendVerificationOTPMock.mockReset().mockResolvedValue({ success: true })
+    signInRefusalMock.mockClear()
+    const out = await requestCode(event({ email: 'Visitor@X.co', acceptTerms: 'on' }), { requireTerms: true, openJoin: true })
+    expect(signInRefusalMock).not.toHaveBeenCalled()
+    expect(sendVerificationOTPMock).toHaveBeenCalledWith({ body: { email: 'visitor@x.co', type: 'sign-in' } })
+    expect(out).toMatchObject({ step: 'code', email: 'visitor@x.co' })
+  })
+
+  it('still requires the terms', async () => {
+    sendVerificationOTPMock.mockClear()
+    const out = (await requestCode(event({ email: 'v@x.co' }), { requireTerms: true, openJoin: true })) as { status: number }
+    expect(out.status).toBe(400)
+    expect(sendVerificationOTPMock).not.toHaveBeenCalled()
+  })
+
+  it('verifying asks for a name and signs in with it inside the open-join scope', async () => {
+    const { openJoinScope } = await import('./owner-policy')
+    let scope: unknown = null
+    signInEmailOTPMock.mockReset().mockImplementation(async () => {
+      scope = openJoinScope.getStore()
+      return { token: 't' }
+    })
+    await expect(verifyCode(event({ email: 'v@x.co', code: '123456', name: ' Vera ' }), { openJoin: true })).rejects.toMatchObject({
+      status: 302,
+      location: '/',
+    })
+    expect(signInEmailOTPMock).toHaveBeenCalledWith({
+      body: { email: 'v@x.co', otp: '123456', name: 'Vera' },
+      headers: expect.any(Headers),
+    })
+    expect(scope).toEqual({ email: 'v@x.co' })
+  })
+
+  it('without a name nothing is verified', async () => {
+    signInEmailOTPMock.mockClear()
+    const out = (await verifyCode(event({ email: 'v@x.co', code: '123456', name: '  ' }), { openJoin: true })) as {
+      status: number
+      data: { step: string; message: string }
+    }
+    expect(out.status).toBe(400)
+    expect(out.data).toMatchObject({ step: 'code', message: 'Enter your name.' })
+    expect(signInEmailOTPMock).not.toHaveBeenCalled()
+  })
+
+  it('a normal sign-in runs outside the open-join scope', async () => {
+    const { openJoinScope } = await import('./owner-policy')
+    let scope: unknown = 'unset'
+    signInEmailOTPMock.mockReset().mockImplementation(async () => {
+      scope = openJoinScope.getStore()
+      return { token: 't' }
+    })
+    await expect(verifyCode(event({ email: 'a@b.co', code: '123456' }))).rejects.toMatchObject({ status: 302 })
+    expect(scope).toBeUndefined()
+  })
+})

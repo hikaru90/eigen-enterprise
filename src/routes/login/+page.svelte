@@ -137,7 +137,14 @@
           />
         {/if}
 
-        {#if data.signupOpen}
+        {#if data.openJoin}
+          <p class="text-muted-foreground text-center text-xs" data-testid="auth-join-link">
+            Not a member yet?
+            <a href={resolve('/signup')} class="text-foreground underline-offset-2 hover:underline"
+              >Join</a
+            >
+          </p>
+        {:else if data.signupOpen}
           <p class="text-muted-foreground text-center text-xs" data-testid="auth-signup-link">
             Don't have an account?
             <a href={resolve('/signup')} class="text-foreground underline-offset-2 hover:underline"

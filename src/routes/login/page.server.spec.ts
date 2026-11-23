@@ -10,11 +10,12 @@ vi.mock('$lib/server/auth/email-code-actions', () => ({
   requestCode: requestCodeMock,
   verifyCode: verifyCodeMock,
 }))
-const { unclaimedState } = vi.hoisted(() => ({ unclaimedState: { ee: false, unclaimed: null as string | null } }))
+const { unclaimedState } = vi.hoisted(() => ({ unclaimedState: { ee: false, unclaimed: null as string | null, openJoin: false } }))
 vi.mock('$lib/server/auth/unclaimed', () => ({
   unclaimedMessage: async () => unclaimedState.unclaimed,
   managedByEe: () => unclaimedState.ee,
 }))
+vi.mock('$lib/server/members/open-join-db', () => ({ openJoinOn: async () => unclaimedState.openJoin }))
 vi.mock('$lib/server/mail', () => ({
   companyMail: () => ({ isConfigured: async () => isOwleryMailConfiguredMock() }),
 }))
@@ -34,6 +35,34 @@ describe('login page server', () => {
     unclaimedState.unclaimed = null
     const data = await load({ locals: { user: null }, url: new URL('http://localhost/login') } as never)
     expect(data).toMatchObject({ unclaimed: null, signupOpen: false })
+    unclaimedState.ee = false
+  })
+
+  it('on a claimed ee server with open join on, it offers Join (to /signup)', async () => {
+    unclaimedState.ee = true
+    unclaimedState.unclaimed = null
+    unclaimedState.openJoin = true
+    const data = await load({ locals: { user: null }, url: new URL('http://localhost/login') } as never)
+    expect(data).toMatchObject({ signupOpen: false, openJoin: true })
+    unclaimedState.ee = false
+    unclaimedState.openJoin = false
+  })
+
+  it('open join is only offered on a claimed ee server', async () => {
+    unclaimedState.openJoin = true
+    expect(await load({ locals: { user: null }, url: new URL('http://localhost/login') } as never)).toMatchObject({ openJoin: false, signupOpen: true })
+    unclaimedState.ee = true
+    unclaimedState.unclaimed = 'This server has not been claimed yet.'
+    expect(await load({ locals: { user: null }, url: new URL('http://localhost/login') } as never)).toMatchObject({ openJoin: false })
+    unclaimedState.ee = false
+    unclaimedState.unclaimed = null
+    unclaimedState.openJoin = false
+  })
+
+  it('on a claimed ee server with open join off, no Join', async () => {
+    unclaimedState.ee = true
+    const data = await load({ locals: { user: null }, url: new URL('http://localhost/login') } as never)
+    expect(data).toMatchObject({ openJoin: false })
     unclaimedState.ee = false
   })
 

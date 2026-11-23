@@ -206,6 +206,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   // Removing a member takes their access away (destructive); a person's own profile
   // (what they are called, their names and picture) is internal.
   'members.remove',
+  // Open join lets anyone with a verified email in as a member (public).
+  'members.set_open_join',
   'members.set_my_called',
   'members.set_my_name',
   'members.set_my_picture',
