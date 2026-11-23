@@ -53,6 +53,8 @@ import { driveSourceWriter } from './drive'
 import { DRIVE_MODULE_ID, DRIVE_WRITE_TOOLS, driveManifest } from './drive/manifest'
 import { resolveDriveStorageDir } from './drive/storage'
 import { createDriveTools } from './drive/tools'
+import { EMAIL_INBOX_WRITE_TOOLS } from './email/inbox/tool-names'
+import { createInboxTools } from './email/inbox/tools'
 import { EMAIL_MODULE_ID, emailManifest } from './email/manifest'
 import { createOwleryTools } from './email/owlery/tools'
 import { EMAIL_PLATFORM_WRITE_TOOLS } from './email/platform/tool-names'
@@ -161,6 +163,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   'email.send_mail',
   // Email platform changes (domains, senders, suppressions) wait on the approval mode.
   ...EMAIL_PLATFORM_WRITE_TOOLS,
+  // The inbox: working mail and mailboxes as the calling person (parity with Email › Inbox).
+  ...EMAIL_INBOX_WRITE_TOOLS,
   // Phase-2c (G8/D5): guideline-set activation is a strategic brand decision —
   // human-admin principal AND an explicit approval decision.
   'brand.set_activate',
@@ -379,6 +383,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createActivityTools(),
     ...createOwleryTools(),
     ...createEmailPlatformTools(),
+    ...createInboxTools(),
     ...createMembersTools(),
     ...createMessagesTools(),
     ...createDriveTools(),
