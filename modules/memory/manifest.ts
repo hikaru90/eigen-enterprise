@@ -42,6 +42,27 @@ export const REMINDER_TOOL_NAMES = [
   'reminders.snooze',
 ] as const
 
+/** Projects, scheduled tasks, timeline items, assigned-task "seen" (project-schedule-tools.ts). */
+export const PROJECT_SCHEDULE_TOOL_NAMES = [
+  'memory.create_project',
+  'memory.rename_project',
+  'memory.set_project_deadline',
+  'memory.set_project_milestone',
+  'memory.dismiss_project',
+  'memory.order_project_task',
+  'memory.apply_project_review',
+  'memory.list_scheduled_tasks',
+  'memory.pause_scheduled_task',
+  'memory.resume_scheduled_task',
+  'memory.run_scheduled_task',
+  'memory.stop_scheduled_task',
+  'memory.retry_scheduled_task_step',
+  'memory.reschedule_timeline_item',
+  'memory.snooze_timeline_item',
+  'memory.set_timeline_item_status',
+  'tasks.mark_seen',
+] as const
+
 export const memoryManifest: ModuleManifest = {
   id: MEMORY_MODULE_ID,
   name: 'Memory',
@@ -49,6 +70,6 @@ export const memoryManifest: ModuleManifest = {
   description:
     'Thought capture, hybrid retrieval, and GTD project/text-note tools over the eigen memory system.',
   toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders'],
-  tools: [...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES],
+  tools: [...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

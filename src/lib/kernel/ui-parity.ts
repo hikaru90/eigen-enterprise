@@ -52,7 +52,7 @@ export type UiParity =
   | { transport: string }
 
 /** The number of `debt` entries. Lower it when you clear debt; the spec fails if it is not exact. */
-export const DEBT_CEILING = 129
+export const DEBT_CEILING = 116
 
 const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
@@ -215,7 +215,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/m/memory/settings ?/settings': debt('kernel', 'My notification settings.'),
   '/(nucleus)/m/memory/tasks ?/comment': tool('tasks.comment'),
   '/(nucleus)/m/memory/tasks ?/complete': tool('tasks.complete'),
-  '/(nucleus)/m/memory/tasks ?/seen': debt('memory', 'Mark an assigned task seen.'),
+  '/(nucleus)/m/memory/tasks ?/seen': tool('tasks.mark_seen'),
   '/api/capture/confirm POST': tool('memory.capture_thought'),
   '/api/capture/edit POST': debt('memory', 'Edit a stored thought.'),
   '/api/capture/enrich-retry POST': debt('memory', 'Retry the enrichment of a thought.'),
@@ -232,12 +232,12 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/grounding/question POST': debt('memory', 'Answer a check-in question (keep or archive a thought).'),
   '/api/memories DELETE': human(WIPE),
   '/api/retrieval/search POST': tool('memory.retrieve_thoughts'),
-  '/api/scheduled-tasks/[taskId] DELETE': debt('memory', 'Delete a scheduled task.'),
-  '/api/scheduled-tasks/[taskId] PATCH': debt('memory', 'Pause or resume a scheduled task.'),
-  '/api/scheduled-tasks/[taskId] POST': debt('memory', 'Run a scheduled task now.'),
-  '/api/scheduled-tasks/[taskId]/retry POST': debt('memory', 'Retry a failed scheduled task.'),
+  '/api/scheduled-tasks/[taskId] DELETE': tool('memory.stop_scheduled_task'),
+  '/api/scheduled-tasks/[taskId] PATCH': tool('memory.pause_scheduled_task'),
+  '/api/scheduled-tasks/[taskId] POST': tool('memory.run_scheduled_task'),
+  '/api/scheduled-tasks/[taskId]/retry POST': tool('memory.retry_scheduled_task_step'),
   '/api/temporal-events/[id] DELETE': tool('memory.delete_task'),
-  '/api/temporal-events/[id]/action POST': debt('memory', 'Reschedule, snooze or complete a timeline item.'),
+  '/api/temporal-events/[id]/action POST': tool('memory.set_timeline_item_status'),
   '/api/text-files POST': tool('memory.create_text_file'),
   '/api/text-files/[fileId] DELETE': debt('memory', 'Delete a note.'),
   '/api/text-files/[fileId] PATCH': tool('memory.update_text_file'),
@@ -248,14 +248,14 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/thoughts/[thoughtId]/text-files/[fileId] DELETE': debt('memory', 'Unlink a note from a thought.'),
   '/api/timeline/parse-date-range POST': noEffect('A helper: parses a typed date range for the timeline filter.'),
   '/api/timeline/plan-week POST': noEffect(AI_DRAFT),
-  '/api/timeline/projects POST': debt('memory', 'Create a project.'),
-  '/api/timeline/projects/[entityId]/deadline POST': debt('memory', 'Set a project deadline.'),
-  '/api/timeline/projects/[entityId]/dismiss POST': debt('memory', 'Dismiss a project.'),
-  '/api/timeline/projects/[entityId]/milestones POST': debt('memory', 'Set a project milestone.'),
-  '/api/timeline/projects/[entityId]/order POST': debt('memory', 'Reorder a project’s tasks.'),
+  '/api/timeline/projects POST': tool('memory.create_project'),
+  '/api/timeline/projects/[entityId]/deadline POST': tool('memory.set_project_deadline'),
+  '/api/timeline/projects/[entityId]/dismiss POST': tool('memory.dismiss_project'),
+  '/api/timeline/projects/[entityId]/milestones POST': tool('memory.set_project_milestone'),
+  '/api/timeline/projects/[entityId]/order POST': tool('memory.order_project_task'),
   '/api/timeline/projects/[entityId]/review POST': noEffect(AI_DRAFT),
-  '/api/timeline/projects/[entityId]/review/apply POST': debt('memory', 'Apply a project review (task statuses, new tasks).'),
-  '/api/timeline/projects/[entityId]/update PUT': debt('memory', 'Rename a project.'),
+  '/api/timeline/projects/[entityId]/review/apply POST': tool('memory.apply_project_review'),
+  '/api/timeline/projects/[entityId]/update PUT': tool('memory.rename_project'),
   '/api/timeline/projects/[entityId]/visibility POST': tool('memory.set_project_visibility'),
   '/api/timeline/projects/assign POST': debt('memory', 'Assign a thought to a project.'),
   '/api/agents/[id]/assign POST': debt('memory', 'Hand a thought to a connected external agent.'),
