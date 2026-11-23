@@ -75,6 +75,9 @@ function taskDeps(): AssignedTaskDeps {
     store: memoryAssignedTaskStore(),
     directory: { get: async (id) => people.find((p) => p.id === id) ?? null, list: async () => people },
     notify: async () => {},
+    coworkerWork: async () => {
+      throw new Error('no AI co-workers in this spec')
+    },
   }
   assignedTasks.deps = deps
   return deps

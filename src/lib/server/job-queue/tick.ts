@@ -1,6 +1,7 @@
 import { raceWithTimeout } from '$lib/server/async/race-with-timeout'
 import { pluginOn } from '$lib/server/plugins/background'
 import { tickContributeShare } from './contribute-share-tick'
+import { tickCoworkerRhythms } from './coworker-rhythms-tick'
 import { tickManagedDomains } from './domains-tick'
 import { drainUserJobQueue } from './drain'
 import { tickDriveBlobs } from './drive-blobs-tick'
@@ -44,6 +45,8 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   await tickDriveBlobs()
   // Contribute is a system module (always on); sharing has its own owner switch in Settings → Company.
   await tickContributeShare()
+  // AI co-workers are core: their rhythms' due slots run on every tick (plan/phase-ai-coworkers.md C6).
+  await tickCoworkerRhythms()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0
   const shouldHeartbeat = tickCount % HEARTBEAT_EVERY_TICKS === 0
   const shouldInspectBacklog = hasActivity || shouldHeartbeat || drain.claimed === 0

@@ -18,6 +18,13 @@ export const COWORKERS_TOOL_NAMES = [
   'coworkers.disable',
   COWORKERS_REMOVE_TOOL,
   'coworkers.runs',
+  'coworkers.rhythm_list',
+  'coworkers.rhythm_create',
+  'coworkers.rhythm_update',
+  'coworkers.rhythm_delete',
+  'coworkers.rhythm_run_now',
+  'coworkers.needs_you',
+  'coworkers.notice_seen',
   'org.chart',
   'org.set_position',
 ] as const

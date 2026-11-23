@@ -31,6 +31,9 @@ function setup() {
       list: async () => people,
     },
     notify: vi.fn(async () => {}),
+    coworkerWork: async () => {
+      throw new Error('no AI co-workers in this spec')
+    },
   }
   depsHolder.deps = deps
   return deps

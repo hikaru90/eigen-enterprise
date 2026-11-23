@@ -113,7 +113,8 @@ export class CoworkerError extends Error {
       | 'invalid_model'
       | 'org_cycle'
       | 'removed'
-      | 'no_owner',
+      | 'no_owner'
+      | 'not_member',
     message: string,
   ) {
     super(message)

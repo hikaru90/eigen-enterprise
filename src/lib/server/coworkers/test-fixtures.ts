@@ -2,12 +2,17 @@ import type { CoworkerView, OrgChartEntry } from './service'
 import type { AgentConfig, CoworkerSource } from '$lib/kernel/agent'
 import type { AgentRuntime } from '$lib/kernel/agent-runtime'
 import { KernelRegistry } from '$lib/kernel/registry'
+import { memoryAssignedTaskStore } from '$lib/server/memory/assigned-tasks/memory-store'
+import { AssignedTaskError, getTask, type AssignedTaskDeps, type TaskNotification } from '$lib/server/memory/assigned-tasks/service'
+import { createTaskTools } from '../../../../modules/memory/task-tools'
 import { MessagesHub } from '../../../../modules/messages/hub'
 import { addCoworker, fixture } from '../../../../modules/messages/test-fixtures'
 import { createMessagesTools } from '../../../../modules/messages/tools'
 import { composeCoworkerTurns, type ComposeCoworkerTurnsInput } from './live-turns'
+import { MemoryRhythmStore } from './rhythms'
 import { MemoryCoworkerRunStore } from './run-store'
 import { coworkerAgentId, coworkerEmail } from './service'
+import { queueTaskWork } from './task-work'
 
 /**
  * The co-worker turns over in-memory Messages (owner Olga, members Bea and
@@ -15,6 +20,8 @@ import { coworkerAgentId, coworkerEmail } from './service'
  * on a kernel registry (the reply is posted as the co-worker), the real hub
  * (the memory store's onEvent stands in for pg_notify) and a scripted runtime
  * that runs each agent's own instructions and records what every turn carried.
+ * C6: assigned tasks in memory with the real tasks.* tools (a co-worker comments
+ * and completes as itself; assigning to one queues its turn) and the rhythms.
  */
 
 export type DispatchCall = { agentId: string; sessionId: string; input: string; system: string; modelId: string | undefined; requestedBy?: string }
@@ -84,6 +91,37 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
   const registry = new KernelRegistry()
   for (const t of createMessagesTools({ deps: async () => f.deps, push: () => {} })) registry.register(t)
 
+  const runs = new MemoryCoworkerRunStore()
+  const rhythms = new MemoryRhythmStore(runs)
+  const notified: Array<{ userId: string; n: TaskNotification }> = []
+  // The turns' handle, once composed: a task event starts its run there.
+  let startWork: (runId: string) => void = () => {
+    throw new Error('the co-worker turns are not composed yet')
+  }
+  const taskDeps: AssignedTaskDeps = {
+    store: memoryAssignedTaskStore(),
+    directory: {
+      get: async (id) => f.directory.people.find((p) => p.id === id) ?? null,
+      list: async () => f.directory.people,
+    },
+    notify: async (userId, n) => {
+      notified.push({ userId, n })
+    },
+    coworkerWork: async (e) => {
+      await queueTaskWork({ runs, start: (id) => startWork(id) }, e)
+    },
+    now: f.deps.now,
+  }
+  const writerOf = async (ctx: { principal: { id: string; kind: string } }) => {
+    if (ctx.principal.kind === 'coworker') {
+      const c = coworkers.get(ctx.principal.id)
+      if (!c) throw new Error(`no co-worker ${ctx.principal.id}`)
+      return { kind: 'coworker' as const, userId: c.id, name: c.name }
+    }
+    return { kind: 'self' as const, userId: ctx.principal.id }
+  }
+  for (const t of createTaskTools({ deps: async () => taskDeps, writerOf })) registry.register(t)
+
   const calls: DispatchCall[] = []
   const costs = new Map<string, number>()
   let configs: AgentConfig[] = []
@@ -105,7 +143,6 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
     },
   }
 
-  const runs = new MemoryCoworkerRunStore()
   const hub = new MessagesHub(f.deps)
   const handle = composeCoworkerTurns({
     registry,
@@ -125,11 +162,23 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
     company: async () => ({ name: 'Kindred Labs', profile: 'We build calm software.', brandVoice: 'warm, plain, direct' }),
     turnCost: async (_cw, runId) => costs.get(runId) ?? 0,
     inTrace: (_runId, fn) => fn(),
+    rhythms,
+    readTask: async (cw, taskId) => {
+      try {
+        return await getTask(taskDeps, cw, taskId)
+      } catch (err) {
+        if (err instanceof AssignedTaskError && err.code === 'not_found') return null
+        throw err
+      }
+    },
     now: f.deps.now,
     staleAfterMs: opts.staleAfterMs ?? 3_600_000,
     ...(opts.budget === undefined ? {} : { threadTurnBudget: opts.budget }),
     ...opts.extra,
   })
+  startWork = (id) => {
+    void handle.turns.work(id)
+  }
   f.store.onEvent = (id) => {
     hub.dispatch(id).catch((err: unknown) => console.error('[spec] hub dispatch failed', err))
   }
@@ -153,5 +202,5 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
     return [root!, ...(await f.store.listReplies(rootId))].map((m) => ({ authorId: m.authorId, body: m.body }))
   }
 
-  return { ...f, coworkers, registry, runtime, runs, hub, handle, calls, costs, settle, thread, loads: () => loads }
+  return { ...f, coworkers, registry, runtime, runs, rhythms, taskDeps, notified, hub, handle, calls, costs, settle, thread, loads: () => loads }
 }

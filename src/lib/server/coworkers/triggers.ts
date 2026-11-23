@@ -60,3 +60,19 @@ export function threadRootOf(message: Pick<TriggerMessage, 'id' | 'parentId'>, c
 export function coworkerSessionId(coworkerId: string, conversationId: string, threadRootId: string | null): string {
   return `coworker:${coworkerId}:${conversationId}:${threadRootId ?? 'main'}`
 }
+
+/** A rhythm run's own durable conversation (C6): `coworker:<coworkerId>:run:<runId>` — each check-in starts fresh, its channel log is the context. */
+export function coworkerRunSessionId(coworkerId: string, runId: string): string {
+  return `coworker:${coworkerId}:run:${runId}`
+}
+
+/** One durable conversation per co-worker and assigned task (C6): `coworker:<coworkerId>:task:<taskId>` — a follow-up continues it. */
+export function coworkerTaskSessionId(coworkerId: string, taskId: string): string {
+  return `coworker:${coworkerId}:task:${taskId}`
+}
+
+/** The trigger keys of work runs (coworker_run.trigger_key, unique per co-worker): structure the queue writes and reads back. */
+export const TASK_ASSIGNED_KEY = 'task:'
+export const TASK_COMMENT_KEY = 'task-comment:'
+export const taskAssignedKey = (taskId: string) => `${TASK_ASSIGNED_KEY}${taskId}`
+export const taskCommentKey = (commentId: string) => `${TASK_COMMENT_KEY}${commentId}`

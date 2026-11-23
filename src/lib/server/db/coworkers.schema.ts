@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
-import { boolean, check, index, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, index, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { assignedTasks } from './assigned-tasks.schema'
 import { user } from './auth.schema'
 import { messageConversations, messages } from './messages.schema'
 
@@ -65,9 +66,60 @@ export const COWORKER_TRIGGER_KINDS = ['mention', 'dm', 'assignment', 'rhythm', 
 export type CoworkerTriggerKind = (typeof COWORKER_TRIGGER_KINDS)[number]
 export const COWORKER_RUN_STATUSES = ['queued', 'running', 'done', 'failed', 'stopped'] as const
 export type CoworkerRunStatus = (typeof COWORKER_RUN_STATUSES)[number]
-/** Why a turn did not answer (migration 0171); null for a turn that answered. */
-export const COWORKER_STOP_REASONS = ['thread_budget', 'daily_cap', 'model_error', 'post_error', 'turn_error', 'interrupted', 'unavailable'] as const
+/**
+ * Why a turn did not answer (migration 0172; not_member and task_unavailable 0173); null for a turn that answered.
+ * not_member: a rhythm's conversation no longer has the co-worker in it. task_unavailable: the task is done or gone.
+ */
+export const COWORKER_STOP_REASONS = [
+  'thread_budget',
+  'daily_cap',
+  'model_error',
+  'post_error',
+  'turn_error',
+  'interrupted',
+  'unavailable',
+  'not_member',
+  'task_unavailable',
+] as const
 export type CoworkerStopReason = (typeof COWORKER_STOP_REASONS)[number]
+
+/**
+ * A co-worker's rhythm (C6, migration 0173): a scheduled check-in — fixed
+ * weekdays at a wall time in a time zone, like reminders — with what to do and
+ * the conversation it posts in. last_slot_at is the slot it handled last.
+ */
+export const coworkerRhythm = pgTable(
+  'coworker_rhythm',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    coworkerUserId: text('coworker_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    /** RFC 5545 weekday codes, Monday first. */
+    weekdays: text('weekdays').array().notNull(),
+    /** HH:MM, 24 h. */
+    localTime: text('local_time').notNull(),
+    timeZone: text('time_zone').notNull(),
+    instruction: text('instruction').notNull(),
+    targetConversationId: uuid('target_conversation_id')
+      .notNull()
+      .references(() => messageConversations.id, { onDelete: 'cascade' }),
+    enabled: boolean('enabled').default(true).notNull(),
+    lastSlotAt: timestamp('last_slot_at', { withTimezone: true }).notNull(),
+    createdBy: text('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('coworker_rhythm_coworker_idx').on(t.coworkerUserId, t.createdAt),
+    check(
+      'coworker_rhythm_weekdays_check',
+      sql`cardinality(${t.weekdays}) BETWEEN 1 AND 7 AND ${t.weekdays} <@ ARRAY['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']::text[]`,
+    ),
+    check('coworker_rhythm_time_check', sql`${t.localTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+    check('coworker_rhythm_instruction_check', sql`length(btrim(${t.instruction})) BETWEEN 1 AND 2000`),
+  ],
+)
 
 /**
  * One co-worker turn: the turn queue and the visible run log (C3, migration 0171).
@@ -99,16 +151,47 @@ export const coworkerRun = pgTable(
     heartbeatAt: timestamp('heartbeat_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     error: text('error'),
+    /** The rhythm a 'rhythm' run is a slot of (C6). */
+    rhythmId: uuid('rhythm_id').references(() => coworkerRhythm.id, { onDelete: 'set null' }),
+    /** The assigned task an 'assignment' run works on (C6). */
+    taskId: uuid('task_id').references(() => assignedTasks.id, { onDelete: 'set null' }),
+    /** What queued a proactive run, unique per co-worker: rhythm:<id>:<slot>, task:<id>, task-comment:<id> (C6). */
+    triggerKey: text('trigger_key'),
   },
   (t) => [
     index('coworker_run_coworker_started_idx').on(t.coworkerUserId, t.startedAt.desc()),
     uniqueIndex('coworker_run_trigger_message_unique').on(t.coworkerUserId, t.triggerMessageId),
     index('coworker_run_thread_idx').on(t.conversationId, t.threadRootId, t.triggeredAt),
+    uniqueIndex('coworker_run_trigger_key_unique').on(t.coworkerUserId, t.triggerKey),
+    index('coworker_run_task_idx').on(t.taskId, t.triggeredAt),
     check('coworker_run_trigger_kind_check', sql`${t.triggerKind} IN ('mention', 'dm', 'assignment', 'rhythm', 'event')`),
     check('coworker_run_status_check', sql`${t.status} IN ('queued', 'running', 'done', 'failed', 'stopped')`),
     check(
       'coworker_run_stop_reason_check',
-      sql`${t.stopReason} IS NULL OR ${t.stopReason} IN ('thread_budget', 'daily_cap', 'model_error', 'post_error', 'turn_error', 'interrupted', 'unavailable')`,
+      sql`${t.stopReason} IS NULL OR ${t.stopReason} IN ('thread_budget', 'daily_cap', 'model_error', 'post_error', 'turn_error', 'interrupted', 'unavailable', 'not_member', 'task_unavailable')`,
     ),
+  ],
+)
+
+/**
+ * A finished or stopped rhythm/assignment run in a person's "Needs you" (C6,
+ * migration 0173): the accountable human's, and for an assignment the
+ * assigner's, until they acknowledge it.
+ */
+export const coworkerRunNotice = pgTable(
+  'coworker_run_notice',
+  {
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => coworkerRun.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    seenAt: timestamp('seen_at', { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ name: 'coworker_run_notice_pk', columns: [t.runId, t.userId] }),
+    index('coworker_run_notice_open_idx').on(t.userId, t.createdAt).where(sql`${t.seenAt} IS NULL`),
   ],
 )
