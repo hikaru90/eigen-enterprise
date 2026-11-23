@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Scrolling sideways opens the side panels, phone and desktop (owner: "open the left and right sidebar when scrolling horizontally on mobile and on desktop"; not committed)
+
+- **Shipped (working tree):** `use:sideSwipe` on the shell frame (`src/lib/gestures/side-swipe-action.ts`, pure logic in `side-swipe.ts`). Phones: a one-finger flick anywhere — right opens the nav drawer, left opens the assistant; toward an open side it puts that side away first. Desktop: a horizontal trackpad scroll (or Shift+wheel) does the same — left opens the assistant panel, right closes it or brings back a collapsed sidebar. The docked desktop sidebar is never swiped away.
+- **Replaced (announced):** the 16 px left-edge strip (`shell-edge-swipe`) and the drawer's own swipe-to-close; the new gesture covers both and starts anywhere, not only at the edge.
+- **Decisions:** touch goes through touch events (they keep arriving while a nested container scrolls, so the page needs no `touch-action`); one wheel burst fires at most once (momentum doesn't open then close); sideways wheel events the shell takes are `preventDefault`ed so the browser's back/forward swipe doesn't fire too. Left alone: a container that can still scroll that way, `touch-action: none`/`pan-x`, range sliders, and elements with their own `use:swipe` (marked `data-own-swipe`: the calendar keeps paging by swipe on touch; a trackpad scroll over it still opens the panels).
+- **Tests:** `side-swipe.spec.ts` (9), app-shell component tests (4 new, replacing the edge-strip one), check 0 errors, lint clean. Not tried on a real phone or trackpad.
+
 ## 2026-11-23 — v0.5.36 released: the CLI and the agent reach everything (parity debt 129 → 0)
 
 - **Released:** `[release] v0.5.36` `712183c2` and tag `v0.5.36`, pushed through the local gate (components 821/821; unit 8,830 green, one flaky `modules/repos/service.spec.ts` run that passes 3/3 alone).

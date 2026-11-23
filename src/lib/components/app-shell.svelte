@@ -14,7 +14,9 @@
   import { provideAssistant } from '$lib/components/assistant/context'
   import ContributeButton from '$lib/components/contribute/contribute-button.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
-  import { swipe } from '$lib/gestures/swipe-action'
+  import { sideMove } from '$lib/gestures/side-swipe'
+  import { sideSwipe } from '$lib/gestures/side-swipe-action'
+  import type { SwipeDirection } from '$lib/gestures/swipe'
   import { presenceLabel } from '$lib/messages/presence'
   import PresenceDot from '$lib/messages/presence-dot.svelte'
   import PresenceNav from '$lib/messages/presence-nav.svelte'
@@ -49,6 +51,12 @@
    *
    * The desktop sidebar collapses (Contribute ff714496) from the top bar or
    * ⌘\ / Ctrl+\, remembered per browser; phones keep the drawer.
+   *
+   * Scrolling sideways anywhere in the frame (owner, 2026-11-23) — a finger
+   * flick on touch, a horizontal trackpad scroll on desktop — pulls in the
+   * sides: right brings the nav (the phone drawer, or the collapsed desktop
+   * sidebar), left brings the assistant panel; toward an open side it puts
+   * that side away first (side-swipe.ts).
    */
   let {
     shell,
@@ -139,6 +147,23 @@
   function toggleSidebar(): void {
     sidebarCollapsed = !sidebarCollapsed
     writeSidebarCollapsed(() => localStorage, sidebarCollapsed)
+  }
+  /** Tailwind's `md`: the docked sidebar instead of the drawer. */
+  const DESKTOP = '(min-width: 48rem)'
+  function onSideSwipe(direction: SwipeDirection): void {
+    const desktop = window.matchMedia(DESKTOP).matches
+    const move = sideMove(direction, {
+      leftShown: desktop ? !sidebarCollapsed : drawerOpen,
+      leftOverlays: !desktop,
+      rightShown: assistant?.open ?? false,
+      hasRight: assistant !== null,
+    })
+    if (move === 'open-left') {
+      if (desktop) toggleSidebar()
+      else drawerOpen = true
+    } else if (move === 'close-left') drawerOpen = false
+    else if (move === 'open-right') assistant?.openPanel()
+    else if (move === 'close-right') assistant?.close()
   }
   function onKeydown(event: KeyboardEvent): void {
     if (isSidebarToggleKey(event)) {
@@ -266,6 +291,7 @@
 <div
   class="relative flex h-dvh w-full flex-row overflow-hidden text-foreground {inkFrame ? 'frame-night' : 'bg-sidebar'}"
   data-testid="app-shell"
+  use:sideSwipe={{ onswipe: onSideSwipe }}
 >
   <!-- Desktop sidebar (collapsible; phones use the drawer below) -->
   {#if !sidebarCollapsed}
@@ -278,24 +304,8 @@
     </aside>
   {/if}
 
-  <!-- Phones, touch (Contribute b6625f4c): a swipe in from the left edge opens the drawer,
-       a swipe left closes it. The edge strip starts below the top bar, clear of the menu button. -->
-  {#if !drawerOpen}
-    <div
-      class="fixed bottom-0 left-0 z-30 w-4 md:hidden"
-      style="top: calc(3.5rem + env(safe-area-inset-top)); touch-action: pan-y"
-      aria-hidden="true"
-      data-testid="shell-edge-swipe"
-      use:swipe={{ onswipe: (s) => s.direction === 'right' && (drawerOpen = true) }}
-    ></div>
-  {/if}
-
   {#if drawerOpen}
-    <div
-      class="fixed inset-0 z-40 md:hidden"
-      style="touch-action: pan-y"
-      use:swipe={{ onswipe: (s) => s.direction === 'left' && closeDrawer() }}
-    >
+    <div class="fixed inset-0 z-40 md:hidden">
       <button
         type="button"
         class="absolute inset-0 bg-overlay/30"

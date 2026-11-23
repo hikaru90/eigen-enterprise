@@ -1,6 +1,6 @@
 /**
- * Horizontal swipes on touch screens (Contribute b6625f4c), from pointer events —
- * pure, no DOM: the `swipe` action (swipe-action.ts) feeds it.
+ * Horizontal swipes on touch screens (Contribute b6625f4c), from touch or pointer points —
+ * pure, no DOM: the `swipe` action (swipe-action.ts) and the shell's `sideSwipe` (side-swipe-action.ts) feed it.
  *
  * A swipe is a quick, mostly horizontal flick of one finger (or pen): at least
  * `minDistance` px sideways, at most `maxSlope` px up or down per px sideways,

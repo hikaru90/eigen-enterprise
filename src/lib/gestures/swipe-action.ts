@@ -5,7 +5,9 @@ import { type Swipe, type SwipeOptions, type SwipePoint, SwipeTracker } from './
  * `use:swipe={{ onswipe }}`: horizontal swipes on an element (Contribute b6625f4c),
  * recognised by SwipeTracker. Give the element `touch-action: pan-y` so the
  * browser keeps vertical scrolling and hands sideways movement to the page.
- * The tap a swipe ends on is not also a click.
+ * The tap a swipe ends on is not also a click. The element is marked
+ * `data-own-swipe`, so the shell's sideways gesture (side-swipe-action.ts)
+ * leaves touches on it alone.
  */
 export type SwipeParams = { onswipe: (swipe: Swipe) => void; options?: Partial<SwipeOptions> }
 
@@ -41,6 +43,7 @@ export const swipe: Action<HTMLElement, SwipeParams> = (node, initial) => {
   }
   const cancel = (e: PointerEvent) => tracker.cancel(e.pointerId)
 
+  node.dataset.ownSwipe = ''
   node.addEventListener('pointerdown', down)
   node.addEventListener('pointermove', move)
   node.addEventListener('pointerup', up)
@@ -52,6 +55,7 @@ export const swipe: Action<HTMLElement, SwipeParams> = (node, initial) => {
       params = next
     },
     destroy() {
+      delete node.dataset.ownSwipe
       node.removeEventListener('pointerdown', down)
       node.removeEventListener('pointermove', move)
       node.removeEventListener('pointerup', up)

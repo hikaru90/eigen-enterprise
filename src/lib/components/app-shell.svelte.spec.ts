@@ -156,23 +156,94 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
   })
 
-  it('on touch, a swipe in from the left edge opens the drawer and a swipe left closes it (b6625f4c)', async () => {
-    renderShell()
-    const flick = async (testid: string, from: number, to: number, pointerType = 'touch') => {
+  describe('scrolling sideways pulls in the sides (owner, 2026-11-23)', () => {
+    /** A one-finger flick across the element, as touch events. */
+    const flick = async (testid: string, from: number, to: number) => {
       const el = (await page.getByTestId(testid).elements())[0]
-      for (const [type, x] of [['pointerdown', from], ['pointermove', (from + to) / 2], ['pointerup', to]] as const) {
-        el.dispatchEvent(new PointerEvent(type, { pointerId: 5, pointerType, isPrimary: true, clientX: x, clientY: 400, bubbles: true }))
+      const at = (x: number) => new Touch({ identifier: 7, target: el, clientX: x, clientY: 400 })
+      const steps = [['touchstart', from], ['touchmove', (from + to) / 2], ['touchend', to]] as const
+      for (const [type, x] of steps) {
+        const t = at(x)
+        el.dispatchEvent(
+          new TouchEvent(type, { touches: type === 'touchend' ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true }),
+        )
       }
     }
-    // A swipe the wrong way, or a mouse drag, opens nothing.
-    await flick('shell-edge-swipe', 120, 4)
-    await flick('shell-edge-swipe', 4, 160, 'mouse')
-    await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
-    await flick('shell-edge-swipe', 4, 160)
-    await expect.element(page.getByTestId('shell-drawer')).toBeInTheDocument()
-    await expect.element(page.getByTestId('shell-edge-swipe')).not.toBeInTheDocument()
-    await flick('shell-drawer', 240, 60)
-    await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+    /** A trackpad gesture over the element: a burst of wheel events. */
+    const scroll = async (testid: string, deltaX: number, deltaY = 0) => {
+      const el = (await page.getByTestId(testid).elements())[0]
+      const events = [0, 1, 2, 3].map(() => new WheelEvent('wheel', { deltaX, deltaY, bubbles: true, cancelable: true }))
+      for (const e of events) el.dispatchEvent(e)
+      // A pause ends the gesture.
+      await new Promise((r) => setTimeout(r, 300))
+      return events
+    }
+
+    it('on phones a flick right anywhere opens the drawer, left closes it; left again opens the assistant, right closes it', async () => {
+      renderShell()
+      await flick('shell-content', 60, 300)
+      await expect.element(page.getByTestId('shell-drawer')).toBeInTheDocument()
+      await flick('shell-drawer', 240, 40)
+      await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+      await flick('shell-content', 300, 60)
+      await expect.element(page.getByTestId('assistant-panel')).toBeInTheDocument()
+      await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+      await flick('assistant-panel', 60, 300)
+      await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+    })
+
+    it('leaves vertical flicks and a container that scrolls sideways alone', async () => {
+      renderShell()
+      const content = (await page.getByTestId('shell-content').elements())[0]
+      content.insertAdjacentHTML(
+        'beforeend',
+        '<div data-testid="wide" style="overflow-x:auto;width:200px"><div style="width:800px;height:40px"></div></div>',
+      )
+      await flick('wide', 300, 60)
+      await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+      // Scrolled to its start, it no longer takes a flick right: that one opens the drawer.
+      await flick('wide', 60, 300)
+      await expect.element(page.getByTestId('shell-drawer')).toBeInTheDocument()
+    })
+
+    it('leaves touches on an element with its own swipe alone (the calendar pages by swiping)', async () => {
+      renderShell()
+      const content = (await page.getByTestId('shell-content').elements())[0]
+      content.insertAdjacentHTML('beforeend', '<div data-testid="own" data-own-swipe style="height:40px"></div>')
+      await flick('own', 60, 300)
+      await flick('own', 300, 60)
+      await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+      await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+    })
+
+    it('on desktop a horizontal trackpad scroll opens the assistant and the collapsed sidebar', async () => {
+      await page.viewport(1280, 800)
+      try {
+        renderShell()
+        // Vertical scrolling is never taken (nor prevented).
+        const vertical = await scroll('shell-content', 0, 40)
+        expect(vertical.some((e) => e.defaultPrevented)).toBe(false)
+        await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+
+        // Fingers left (deltaX > 0): the assistant comes in; the browser's back/forward swipe is held off.
+        const left = await scroll('shell-content', 40)
+        expect(left.every((e) => e.defaultPrevented)).toBe(true)
+        await expect.element(page.getByTestId('assistant-panel')).toBeInTheDocument()
+        // Fingers right: the assistant goes away; the docked sidebar stays.
+        await scroll('shell-content', -40)
+        await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+        await scroll('shell-content', -40)
+        await expect.element(page.getByTestId('shell-sidebar')).toBeInTheDocument()
+
+        // Collapsed, a scroll right brings the sidebar back.
+        await page.getByTestId('shell-sidebar-toggle').click()
+        await expect.element(page.getByTestId('shell-sidebar')).not.toBeInTheDocument()
+        await scroll('shell-content', -40)
+        await expect.element(page.getByTestId('shell-sidebar')).toBeInTheDocument()
+      } finally {
+        await page.viewport(414, 896)
+      }
+    })
   })
 
   describe('my status at the foot of the nav (Contribute e4ef6be1)', () => {
