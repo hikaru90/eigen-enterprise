@@ -9,12 +9,12 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **340** — tool 101, human-only 46, transport 48, no effect 16, **debt 129**.
+Mutating entry points: **340** — tool 125, human-only 46, transport 48, no effect 16, **debt 105**.
 
 | Module | Debt |
 |---|---|
-| email | 41 |
 | memory | 31 |
+| email | 17 |
 | drive | 9 |
 | kernel | 9 |
 | messages | 9 |
@@ -27,50 +27,6 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 | assistant | 1 |
 | repos | 1 |
 | website | 1 |
-
-## email (41)
-
-- `/(nucleus)/m/email/domains/[id] ?/delete` — Remove a sender domain.
-- `/(nucleus)/m/email/domains/[id] ?/receiving` — Switch receiving (MX) on or off for a domain.
-- `/(nucleus)/m/email/domains/[id] ?/tracking` — Open/click tracking for a domain.
-- `/(nucleus)/m/email/inbox ?/createLabel` — Create a mailbox label.
-- `/(nucleus)/m/email/inbox ?/createMine` — Create my own mailbox.
-- `/(nucleus)/m/email/inbox ?/deleteLabel` — Delete a mailbox label.
-- `/(nucleus)/m/email/inbox ?/label` — Put a label on a mail or take it off.
-- `/(nucleus)/m/email/inbox ?/move` — Move a mail (archive, trash, a folder).
-- `/(nucleus)/m/email/inbox ?/read` — Mark a mail read.
-- `/(nucleus)/m/email/inbox ?/send` — Write or reply from a mailbox, with attachments (email.send_mail is the transactional sender, not a mailbox).
-- `/(nucleus)/m/email/inbox ?/star` — Star a mail.
-- `/(nucleus)/m/email/inbox ?/unread` — Mark a mail unread.
-- `/(nucleus)/m/email/inbox ?/unstar` — Unstar a mail.
-- `/(nucleus)/m/email/layouts ?/create` — Create a mail layout.
-- `/(nucleus)/m/email/layouts/[id] ?/delete` — Delete a mail layout.
-- `/(nucleus)/m/email/layouts/[id] ?/save` — Edit a mail layout.
-- `/(nucleus)/m/email/logs/[id] ?/cancel` — Cancel a queued mail.
-- `/(nucleus)/m/email/mailboxes ?/alias` — Add an alias address to a mailbox.
-- `/(nucleus)/m/email/mailboxes ?/assign` — Give a member a personal mailbox.
-- `/(nucleus)/m/email/mailboxes ?/disable` — Disable a mailbox.
-- `/(nucleus)/m/email/mailboxes ?/enable` — Enable a mailbox.
-- `/(nucleus)/m/email/mailboxes ?/removeAlias` — Remove an alias address.
-- `/(nucleus)/m/email/mailboxes ?/shared` — Create a shared mailbox.
-- `/(nucleus)/m/email/marketing/flows ?/create` — Create an email flow (email.flow_list only reads).
-- `/(nucleus)/m/email/marketing/flows/[id] ?/delete` — Delete an email flow.
-- `/(nucleus)/m/email/marketing/flows/[id] ?/save` — Edit an email flow.
-- `/(nucleus)/m/email/marketing/flows/[id] ?/status` — Start, pause or stop an email flow.
-- `/(nucleus)/m/email/marketing/lists ?/create` — Create a contact list.
-- `/(nucleus)/m/email/marketing/lists/[id] ?/delete` — Delete a contact list.
-- `/(nucleus)/m/email/marketing/lists/[id] ?/import` — Import people into a list (CSV).
-- `/(nucleus)/m/email/marketing/lists/[id] ?/remove` — Remove a person from a list.
-- `/(nucleus)/m/email/marketing/lists/[id] ?/settings` — List settings (double opt-in, public sign-up).
-- `/(nucleus)/m/email/senders ?/makeDefault` — Make a sender the default.
-- `/(nucleus)/m/email/senders ?/remove` — Remove a sender.
-- `/(nucleus)/m/email/setup ?/events` — Wire SES delivery events (SNS topic, configuration sets) at Amazon.
-- `/(nucleus)/m/email/setup ?/receiving` — Set up receiving at Amazon (bucket, topic, rule set).
-- `/(nucleus)/m/email/templates ?/create` — Create a mail template.
-- `/(nucleus)/m/email/templates/[id] ?/delete` — Delete a mail template.
-- `/(nucleus)/m/email/templates/[id] ?/save` — Edit a mail template.
-- `/(nucleus)/m/email/templates/[id] ?/test` — Save the draft template and send myself a test.
-- `/api/onboarding/sender POST` — Make an address on a company domain the default sender (managed box).
 
 ## memory (31)
 
@@ -105,6 +61,26 @@ Mutating entry points: **340** — tool 101, human-only 46, transport 48, no eff
 - `/api/timeline/projects/[entityId]/review/apply POST` — Apply a project review (task statuses, new tasks).
 - `/api/timeline/projects/[entityId]/update PUT` — Rename a project.
 - `/api/timeline/projects/assign POST` — Assign a thought to a project.
+
+## email (17)
+
+- `/(nucleus)/m/email/inbox ?/createLabel` — Create a mailbox label.
+- `/(nucleus)/m/email/inbox ?/createMine` — Create my own mailbox.
+- `/(nucleus)/m/email/inbox ?/deleteLabel` — Delete a mailbox label.
+- `/(nucleus)/m/email/inbox ?/label` — Put a label on a mail or take it off.
+- `/(nucleus)/m/email/inbox ?/move` — Move a mail (archive, trash, a folder).
+- `/(nucleus)/m/email/inbox ?/read` — Mark a mail read.
+- `/(nucleus)/m/email/inbox ?/send` — Write or reply from a mailbox, with attachments (email.send_mail is the transactional sender, not a mailbox).
+- `/(nucleus)/m/email/inbox ?/star` — Star a mail.
+- `/(nucleus)/m/email/inbox ?/unread` — Mark a mail unread.
+- `/(nucleus)/m/email/inbox ?/unstar` — Unstar a mail.
+- `/(nucleus)/m/email/logs/[id] ?/cancel` — Cancel a queued mail.
+- `/(nucleus)/m/email/mailboxes ?/alias` — Add an alias address to a mailbox.
+- `/(nucleus)/m/email/mailboxes ?/assign` — Give a member a personal mailbox.
+- `/(nucleus)/m/email/mailboxes ?/disable` — Disable a mailbox.
+- `/(nucleus)/m/email/mailboxes ?/enable` — Enable a mailbox.
+- `/(nucleus)/m/email/mailboxes ?/removeAlias` — Remove an alias address.
+- `/(nucleus)/m/email/mailboxes ?/shared` — Create a shared mailbox.
 
 ## drive (9)
 

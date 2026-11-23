@@ -2,7 +2,7 @@ import type { EmailPlatform } from './service'
 import { describe, expect, it } from 'vitest'
 import type { ToolContext } from '$lib/kernel/types'
 import { emailManifest } from '../manifest'
-import { EMAIL_PLATFORM_READ_TOOLS, EMAIL_PLATFORM_WRITE_TOOLS } from './tool-names'
+import { EMAIL_PLATFORM_DESTRUCTIVE_TOOLS, EMAIL_PLATFORM_READ_TOOLS, EMAIL_PLATFORM_WRITE_TOOLS } from './tool-names'
 import { createEmailPlatformTools } from './tools'
 
 const ctx: ToolContext = { principal: { id: 'agent-1', kind: 'agent', roles: ['agent'] }, requestId: 'r' }
@@ -41,7 +41,8 @@ describe('email platform tools', () => {
     for (const name of EMAIL_PLATFORM_WRITE_TOOLS) {
       const sends = name === 'email.send_template'
       expect(tool(name).auditClass).toBe(sends ? 'external' : 'mutate')
-      expect(tool(name).approvalRisk).toBe(sends ? 'external' : 'internal')
+      const removes = (EMAIL_PLATFORM_DESTRUCTIVE_TOOLS as readonly string[]).includes(name)
+      expect(tool(name).approvalRisk).toBe(sends ? 'external' : removes ? 'destructive' : 'internal')
       expect(typeof tool(name).activity).toBe('function')
     }
   })
