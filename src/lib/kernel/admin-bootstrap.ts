@@ -11,6 +11,7 @@ import {
   KERNEL_ADMIN_TOOL_NAMES,
   KERNEL_MODULE_ID,
 } from './admin-tools'
+import { createDecisionTools, KERNEL_DECISION_TOOL_NAMES, type DecisionsPort } from './decision-tools'
 import { createExportTools, KERNEL_EXPORT_TOOL_NAMES, type ExportPort } from './export-tools'
 import {
   createMemberAiCapTools,
@@ -49,6 +50,8 @@ export type RegisterAdminToolsOptions = {
   memberAiCap?: MemberAiCapPort
   /** Overrides the live company-export port (tests inject fakes). */
   exports?: ExportPort
+  /** Overrides the live decision-log port (tests inject fakes). */
+  decisions?: DecisionsPort
 }
 
 /**
@@ -76,6 +79,7 @@ export async function registerAdminTools(
       ...KERNEL_OPERATIONS_TOOL_NAMES,
       ...KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
       ...KERNEL_EXPORT_TOOL_NAMES,
+      ...KERNEL_DECISION_TOOL_NAMES,
     ].every(
       (name) => kernel.registry.get(name) !== undefined,
     )
@@ -99,6 +103,7 @@ export async function registerAdminTools(
     ...createOperationsTools({ port: options.operations ?? liveOperationsPort() }),
     ...createMemberAiCapTools({ port: options.memberAiCap ?? liveMemberAiCapPort() }),
     ...createExportTools({ port: options.exports ?? liveExportPort() }),
+    ...createDecisionTools({ port: options.decisions ?? liveDecisionsPort() }),
   )
   registerModuleTools(kernel.registry, kernel.modules, tools)
 }
@@ -159,6 +164,17 @@ function liveExportPort(): ExportPort {
     get: async (id) => (await live()).get(id),
     list: async () => (await live()).list(),
     remove: async (id) => (await live()).remove(id),
+  }
+}
+
+/** The live decision-log port (CB2), loaded on first use (registering the tools touches no server module). */
+function liveDecisionsPort(): DecisionsPort {
+  const live = async () => (await import('$lib/server/decisions/live')).liveDecisionsPort
+  return {
+    kinds: async () => (await live()).kinds(),
+    log: async (input) => (await live()).log(input),
+    questions: async (userId) => (await live()).questions(userId),
+    answer: async (userId, decisionId, choice) => (await live()).answer(userId, decisionId, choice),
   }
 }
 

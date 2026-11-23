@@ -1,10 +1,12 @@
 import type { WebsiteContentKind, WebsiteVisibility } from './store'
 import { z } from 'zod'
+import type { DecideOptions, DecisionResult } from '$lib/server/decisions/decide'
 import { KernelError } from '$lib/kernel/errors'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
+import { websitePageAudience } from './decision-kinds'
 
 /**
  * Public website content or an internal document? (Contribute: internal
@@ -145,6 +147,46 @@ export function createPageAudienceClassifier(deps: { chat: AudienceChat }): Page
     throw new Error(
       `The website content check’s answer could not be read (${AUDIENCE_MAX_ATTEMPTS} tries: ${lastError}); nothing was changed. Try again.`,
     )
+  }
+}
+
+/** decide() for the page-audience kind (live: $lib/server/decisions/decide, loaded on first use). */
+export type AudienceDecide = (
+  kind: typeof websitePageAudience,
+  input: PageDraft,
+  opts: DecideOptions<PageAudience['audience']>,
+) => Promise<DecisionResult<PageAudience['audience']>>
+
+export const liveAudienceDecide: AudienceDecide = async (kind, input, opts) =>
+  (await import('$lib/server/decisions/decide')).decide(kind, input, opts)
+
+/**
+ * The guard's classifier with the decision kind `website.page_audience` (CB2) around it.
+ * Shadow (today): the chat judge's verdict is what the guard acts on — its reason is the one
+ * the refusal names — and Jev's answer is logged next to it. Enforced (only after the log was
+ * reviewed and the kind's status changed in code): Jev's choice is used and the reason is the
+ * criterion of the chosen answer (Jev decides; it writes no reason).
+ */
+export function shadowedAudienceClassifier(
+  classify: PageAudienceClassifier,
+  decideAudience: AudienceDecide = liveAudienceDecide,
+): PageAudienceClassifier {
+  return async (input) => {
+    let verdict: PageAudience | null = null
+    const result = await decideAudience(websitePageAudience, input.page, {
+      requestedBy: input.userId,
+      judge: {
+        current: async () => {
+          verdict = await classify(input)
+          return verdict.audience
+        },
+      },
+    })
+    if (result.outcome !== 'decided') {
+      throw new Error(`website.page_audience gave no decision (${result.outcome}); nothing was changed.`)
+    }
+    if (result.source === 'current_judge' && verdict) return verdict
+    return { audience: result.choice, reason: websitePageAudience.criteria[result.choice] }
   }
 }
 

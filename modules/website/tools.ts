@@ -6,6 +6,7 @@ import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import {
   createPageAudienceClassifier,
   liveAudienceChat,
+  shadowedAudienceClassifier,
   type PageAudienceClassifier,
   type PageDraft,
 } from './page-audience'
@@ -120,7 +121,8 @@ export function createWebsiteTools(deps: WebsiteToolDeps = {}): ToolDescriptor[]
   const store = deps.store ?? defaultWebsiteStore()
   const origin = deps.origin ?? configuredOrigin
   const siteHost = deps.siteHost ?? eeSiteHost
-  const classify = deps.classify ?? createPageAudienceClassifier({ chat: liveAudienceChat })
+  // The chat judge inside the decision kind website.page_audience, in shadow (CB2): behaviour unchanged, Jev logged.
+  const classify = deps.classify ?? shadowedAudienceClassifier(createPageAudienceClassifier({ chat: liveAudienceChat }))
 
   return [
     {

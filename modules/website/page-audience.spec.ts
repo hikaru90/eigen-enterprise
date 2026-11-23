@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { KernelError } from '$lib/kernel/errors'
+import { decide } from '$lib/server/decisions/decide'
+import { inMemoryDecisionStore } from '$lib/server/decisions/store'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
+import { websitePageAudience } from './decision-kinds'
 import {
   AUDIENCE_JSON_SCHEMA,
   AUDIENCE_LOG_CONTEXT,
@@ -8,7 +11,9 @@ import {
   buildAudienceMessages,
   createPageAudienceClassifier,
   liveAudienceChat,
+  NO_PROVIDER_MESSAGE,
   parseAudienceOutput,
+  shadowedAudienceClassifier,
   type AudienceChat,
   type PageDraft,
 } from './page-audience'
@@ -149,5 +154,60 @@ describe('liveAudienceChat', () => {
       vi.doUnmock('$lib/server/llm/llm-client')
       vi.doUnmock('$lib/server/llm/company-provider')
     }
+  })
+})
+
+describe('shadowedAudienceClassifier (CB2: website.page_audience in shadow)', () => {
+  const jev = (choice: 'public_website' | 'internal_document', confidence: number) =>
+    vi.fn(async () => ({
+      model: 'typesafe/jev-1.13-20260917',
+      answers: { decision: { choice, confidence, distribution: { public_website: 1 - confidence, internal_document: confidence } } },
+      costUsd: 0.000014,
+      durationMs: 300,
+    }))
+
+  it('the guard acts on the chat judge’s verdict (reason included); Jev’s answer is logged next to it', async () => {
+    const store = inMemoryDecisionStore()
+    const judge = vi.fn(async () => ({ audience: 'internal_document' as const, reason: 'Investor terms.' }))
+    const ask = jev('public_website', 0.8)
+    const classify = shadowedAudienceClassifier(judge, (kind, input, opts) => decide(kind, input, opts, { ask, store }))
+    await expect(classify({ userId: 'u1', page: pitchDeck })).resolves.toEqual({ audience: 'internal_document', reason: 'Investor terms.' })
+    expect(judge).toHaveBeenCalledWith({ userId: 'u1', page: pitchDeck })
+    expect(ask).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1', logContext: 'website.page_audience', state: websitePageAudience.state(pitchDeck) }),
+    )
+    expect(store.rows()[0]).toMatchObject({
+      kind: 'website.page_audience',
+      status: 'shadow',
+      judgeChoice: 'internal_document',
+      jevChoice: 'public_website',
+      usedSource: 'current_judge',
+      requestedBy: 'u1',
+      input: { slug: 'pitch-deck', title: 'Seed pitch deck', kind: 'doc', visibility: 'private', bodyChars: pitchDeck.body.length },
+    })
+    // The page body (an internal document) is never kept in the log.
+    expect(JSON.stringify(store.rows())).not.toContain('pre-money')
+  })
+
+  it('a Jev failure leaves the guard exactly as today (the chat judge’s verdict)', async () => {
+    const store = inMemoryDecisionStore()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const classify = shadowedAudienceClassifier(
+      async () => ({ audience: 'public_website' as const, reason: 'A product page.' }),
+      (kind, input, opts) =>
+        decide(kind, input, opts, { ask: vi.fn(async () => Promise.reject(new LlmNotConfiguredError('no decision slot'))), store }),
+    )
+    await expect(classify({ userId: 'u1', page: pitchDeck })).resolves.toEqual({ audience: 'public_website', reason: 'A product page.' })
+    expect(store.rows()[0]).toMatchObject({ jevError: expect.stringContaining('no decision slot'), usedSource: 'current_judge' })
+    error.mockRestore()
+  })
+
+  it('a chat judge failure stays the guard’s failure', async () => {
+    const store = inMemoryDecisionStore()
+    const classify = shadowedAudienceClassifier(
+      async () => Promise.reject(new KernelError('not_configured', NO_PROVIDER_MESSAGE)),
+      (kind, input, opts) => decide(kind, input, opts, { ask: jev('public_website', 1), store }),
+    )
+    await expect(classify({ userId: 'u1', page: pitchDeck })).rejects.toMatchObject({ code: 'not_configured' })
   })
 })

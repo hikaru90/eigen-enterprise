@@ -9,7 +9,8 @@
  *   (`model-pool.ts`, OpenRouter's namespace): `/chat/completions` (chat slot, tool calls),
  *   `/embeddings` (embedding slot, `dimensions: 1536`), OpenRouter's `/audio/transcriptions`
  *   (JSON `input_audio`, speech-to-text slot), `/audio/speech` (text-to-speech slot), and the
- *   decision slot's model (Jev, `typesafe/jev-1.13`; called from CB2 on);
+ *   decision slot's model (Jev, `typesafe/jev-1.13`) on OpenRouter's Decisions API beside the
+ *   base: `<base without /v1>/alpha/decisions` (llm-decide.ts, CB2);
  * - per-call cost in the response (`usage.cost`), shown per call in Activity.
  *
  * What each secret does since CB1:

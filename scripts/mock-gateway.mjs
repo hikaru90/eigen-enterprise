@@ -9,9 +9,12 @@
  * 2. models.dev catalog fixture (/models.dev.json) — MODELS_DEV_CATALOG_URL override.
  * 3. GitHub device-flow + Copilot token stubs (/gh/*, /copilot_internal/*) —
  *    OAUTH_GITHUB_BASE_URL / OAUTH_GITHUB_API_BASE_URL overrides.
+ * 4. The decision model's endpoint (/alpha/decisions, OpenRouter's Decisions API:
+ *    Jev, CB2) — see scripts/mock-gateway-decisions.mjs.
  */
 import http from 'node:http'
 import { mockChatCompletion } from './mock-gateway-chat.mjs'
+import { mockDecision } from './mock-gateway-decisions.mjs'
 
 const port = Number(process.env.MOCK_GATEWAY_PORT ?? 5199)
 
@@ -150,6 +153,22 @@ const server = http.createServer((req, res) => {
       } else {
         send(200, response)
       }
+    })
+    return
+  }
+  if (req.method === 'POST' && url.endsWith('/alpha/decisions')) {
+    let raw = ''
+    req.on('data', (chunk) => (raw += chunk))
+    req.on('end', () => {
+      let body
+      try {
+        body = JSON.parse(raw)
+      } catch {
+        send(400, { error: { message: 'mock gateway: request body is not JSON' } })
+        return
+      }
+      const { status, body: answer } = mockDecision(body)
+      send(status, answer)
     })
     return
   }

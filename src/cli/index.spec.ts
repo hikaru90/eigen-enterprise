@@ -200,7 +200,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
         internal: true,
         version: '0.2.0',
         description:
-          'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person), the daily AI cap per member and a person’s own AI usage today, a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner), and the company export (owner only).',
+          'Module activation, approval decisions, who the agent runs as (whoami), the company settings (read; changes always wait for a person), the daily AI cap per member and a person’s own AI usage today, a person’s own notification devices and settings, the company logo, a backup now and installing a release (each waits for the owner), the company export (owner only), and the decision plane: decision kinds with their agreement, the decision log, and a person’s open decision questions and answers.',
         tools: [
           'kernel.module_list',
           'kernel.module_activate',
@@ -226,6 +226,10 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'kernel.export_status',
           'kernel.export_list',
           'kernel.export_delete',
+          'decisions.kinds',
+          'decisions.log',
+          'decisions.questions',
+          'decisions.answer',
         ],
         active: true,
         core: true,
