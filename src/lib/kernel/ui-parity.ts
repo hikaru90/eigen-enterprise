@@ -326,16 +326,16 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/drive/upload POST': tool('drive.upload'),
 
   // ─── Messages ─────────────────────────────────────────────────────────────
-  '/api/messages/channels POST': debt('messages', 'Create a channel.'),
-  '/api/messages/conversations/[id]/attachments POST': debt('messages', 'Upload files (or voice clips) for a message.'),
-  '/api/messages/conversations/[id]/messages POST': debt('messages', 'Post a message or a thread reply.'),
-  '/api/messages/conversations/[id]/read POST': debt('messages', 'Mark a conversation read.'),
-  '/api/messages/dms POST': debt('messages', 'Open a direct message.'),
-  '/api/messages/messages/[id] DELETE': debt('messages', 'Delete a message (own, or moderation).'),
-  '/api/messages/messages/[id] PATCH': debt('messages', 'Edit my message.'),
-  '/api/messages/messages/[id]/reactions POST': debt('messages', 'React to a message.'),
+  '/api/messages/channels POST': tool('messages.create_channel'),
+  '/api/messages/conversations/[id]/attachments POST': tool('messages.upload_attachments'),
+  '/api/messages/conversations/[id]/messages POST': tool('messages.post'),
+  '/api/messages/conversations/[id]/read POST': tool('messages.mark_read'),
+  '/api/messages/dms POST': tool('messages.open_dm'),
+  '/api/messages/messages/[id] DELETE': tool('messages.delete'),
+  '/api/messages/messages/[id] PATCH': tool('messages.edit'),
+  '/api/messages/messages/[id]/reactions POST': tool('messages.react'),
   '/api/messages/presence POST': transport(HEARTBEAT),
-  '/api/messages/presence PUT': debt('messages', 'Do not disturb on or off.'),
+  '/api/messages/presence PUT': tool('messages.set_do_not_disturb'),
   '/api/messages/viewing POST': transport(HEARTBEAT),
 
   // ─── Calls ────────────────────────────────────────────────────────────────

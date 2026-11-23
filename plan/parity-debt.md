@@ -16,7 +16,6 @@ Mutating entry points: **340** — tool 110, human-only 46, transport 48, no eff
 | email | 41 |
 | memory | 31 |
 | kernel | 9 |
-| messages | 9 |
 | calendar | 7 |
 | calls | 6 |
 | contacts | 6 |
@@ -116,18 +115,6 @@ Mutating entry points: **340** — tool 110, human-only 46, transport 48, no eff
 - `/(nucleus)/settings/llm/byok/[provider] ?/saveModelConfig` — Chat and embedding model or rule (same actions as Settings › AI).
 - `/(nucleus)/settings/updates ?/update` — Install a new eigenEnterprise release.
 - `/api/settings/notifications PUT` — My notification settings.
-
-## messages (9)
-
-- `/api/messages/channels POST` — Create a channel.
-- `/api/messages/conversations/[id]/attachments POST` — Upload files (or voice clips) for a message.
-- `/api/messages/conversations/[id]/messages POST` — Post a message or a thread reply.
-- `/api/messages/conversations/[id]/read POST` — Mark a conversation read.
-- `/api/messages/dms POST` — Open a direct message.
-- `/api/messages/messages/[id] DELETE` — Delete a message (own, or moderation).
-- `/api/messages/messages/[id] PATCH` — Edit my message.
-- `/api/messages/messages/[id]/reactions POST` — React to a message.
-- `/api/messages/presence PUT` — Do not disturb on or off.
 
 ## calendar (7)
 
