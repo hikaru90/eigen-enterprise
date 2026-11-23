@@ -116,7 +116,7 @@ test('sign in → the profile step first → picture + names → Messages shows 
   await b.screenshot({ path: `${SHOTS}/04-member-sees-avatar.png` })
 
   // ── Settings › Account edits the same profile ──
-  await a.goto('/settings')
+  await gotoHydrated(a, '/settings') // a fill before hydration is wiped by it
   await expect(a.getByTestId('settings-profile').getByTestId('profile-avatar')).toHaveAttribute('data-has-image', 'true')
   await expect(a.getByTestId('profile-last-name')).toHaveValue(last)
   await a.getByTestId('profile-last-name').fill(`${last}-Smith`)
