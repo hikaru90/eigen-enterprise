@@ -41,6 +41,24 @@ describe('home-settings-menu.svelte', () => {
     }
   })
 
+  it('offers the theme switch (Light · Dark · System); picking one stores it on this device', async () => {
+    localStorage.removeItem('theme-preference')
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    const theme = page.getByTestId('menu-theme-switch')
+    await expect
+      .element(theme.getByRole('radio', { name: 'System' }))
+      .toHaveAttribute('aria-checked', 'true')
+    await theme.getByRole('radio', { name: 'Light' }).click()
+
+    expect(localStorage.getItem('theme-preference')).toBe('light')
+    await expect
+      .element(theme.getByRole('radio', { name: 'Light' }))
+      .toHaveAttribute('aria-checked', 'true')
+    localStorage.removeItem('theme-preference')
+  })
+
   it('offers Install app, which opens the install dialog and closes the menu', async () => {
     render(HomeSettingsMenu)
 
