@@ -2,6 +2,10 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Decision: AI co-workers don't count as seats (owner: "ai co workers dont count as seats")
+
+- This closes the open seat question in `plan/phase-ai-coworkers.md` §9. It matches what's built: `countSeats` already leaves co-workers out (C1). No code change.
+
 ## 2026-11-23 — AI Co-workers: a limit on co-worker → co-worker task chains (owner: "Yes, add it"; `d0a10268`, on main, not pushed, not on the box)
 
 - **Why:** co-workers can assign tasks to each other (C6), and before this change only their daily caps bounded such a chain.

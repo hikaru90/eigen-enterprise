@@ -43,7 +43,7 @@ Three things make them different, on purpose:
 - **Cost goes to the co-worker's own `user.id`** in `activity_call_log`. Each co-worker has its own daily USD cap. The in-memory harness spend accumulator is replaced, for co-workers, by the real ledger sum.
 - **A co-worker's thoughts are company-visible**, read-only to colleagues and writable by the co-worker. They're sealed with the company key (the 0164 envelope `"k":"company"`). An AI has no privacy interest of its own, and working out loud is the north star. Humans' thoughts stay private.
 - **Mentions are structure, not meaning:** an `@handle` token or a DM membership is parsed, not interpreted. Whether a co-worker should react to an *event* (a mail, a call recap) is a yes/no question, so it's a **Jev** decision (CB2). That's why event reactions depend on CB2. Rhythms and assignments don't.
-- **Seats/pricing:** co-workers don't count as seats for now. Open for the owner (§9).
+- **Seats:** AI co-workers **don't count as seats** (owner decision, 2026-11-23). `countSeats` leaves them out.
 
 ## 4. Data model (migration `0169_ai_coworkers` + journal)
 
@@ -124,7 +124,6 @@ Each workstream is a worktree under `.claude/worktrees/`, test-first, and touche
 
 ## 9. Open (owner)
 
-- **Seats and pricing:** do co-workers count as seats, or are they a paid module? Built as "not seats" until decided.
 - **Telegram / mail identities for co-workers** (a co-worker with its own mailbox): later.
 
 ## Non-goals (this phase)
