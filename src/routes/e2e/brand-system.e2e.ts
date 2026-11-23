@@ -30,7 +30,10 @@ const LIGHT = {
   '--popover': '#fffdf6',
   '--popover-foreground': '#1a1033',
   '--primary': '#ff0080',
-  '--primary-foreground': '#ffffff',
+  // AA on #ff0080 (4.8:1) — the emitter corrects any failing pair at emit
+  // (26acbc26, accessibleTokens), so the fixture uses a passing one to prove
+  // the set's own token reaches the component unchanged.
+  '--primary-foreground': '#1a1033',
   '--secondary': '#ffe0f0',
   '--secondary-foreground': '#1a1033',
   '--muted': '#f3ead6',
@@ -80,6 +83,19 @@ test.afterAll(async () => {
   }
   await _sql?.end()
 })
+
+/** Buttons are pills by design (d89071fa: the app follows the website — pill
+ *  buttons), so their corner radius is at least half their height whatever
+ *  the set's --radius; cards and inputs carry the set's radius. */
+async function isPill(page: Page, selector: string): Promise<boolean> {
+  return page
+    .locator(selector)
+    .first()
+    .evaluate((el) => {
+      const s = getComputedStyle(el)
+      return parseFloat(s.borderTopLeftRadius) >= el.getBoundingClientRect().height / 2
+    })
+}
 
 async function computed(page: Page, selector: string, prop: string): Promise<string> {
   return page
@@ -137,9 +153,9 @@ test('a member sees every component in the active style, light and dark', async 
   // ---- light ----
   await expect(scope).toHaveAttribute('data-system-theme', 'light')
   expect(await computed(page, primary, 'background-color')).toBe('rgb(255, 0, 128)')
-  expect(await computed(page, primary, 'color')).toBe('rgb(255, 255, 255)')
-  // rounded-md = --radius * 0.8 = 1.2rem = 19.2px; card rounded-lg = --radius = 24px.
-  expect(await computed(page, primary, 'border-top-left-radius')).toBe('19.2px')
+  expect(await computed(page, primary, 'color')).toBe('rgb(26, 16, 51)')
+  // Input rounded-md = --radius * 0.8 = 1.2rem = 19.2px; card rounded-lg = --radius = 24px.
+  expect(await isPill(page, primary)).toBe(true)
   expect(
     await computed(
       page,
@@ -187,7 +203,7 @@ test('a member sees every component in the active style, light and dark', async 
   )
   expect(await computed(page, '[data-type-step="h1"]', 'color')).toBe('rgb(245, 240, 255)')
   expect(await computed(page, '[data-type-step="h1"]', 'font-family')).toContain('Playfair Display')
-  expect(await computed(page, primary, 'border-top-left-radius')).toBe('19.2px')
+  expect(await isPill(page, primary)).toBe(true)
   // The page header outside the scope stays on the app theme (switch is page-scoped).
   expect(await computed(page, 'main h1, h1', 'color')).not.toBe('rgb(245, 240, 255)')
   await page.screenshot({ path: `${SHOTS}/dark.png`, fullPage: true })
