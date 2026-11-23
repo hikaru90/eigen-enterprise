@@ -11,13 +11,20 @@ import VoiceOutputToggle from './voice-output-toggle.svelte'
 
 describe('voice-output-toggle.svelte', () => {
   let pause: ReturnType<typeof vi.fn>
+  let played: object[]
 
   beforeEach(() => {
     window.localStorage.removeItem('ee-voice')
+    window.localStorage.removeItem('ee-voice-speed')
+    window.localStorage.removeItem('ee-voice-volume')
     pause = vi.fn()
+    played = []
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(new Blob([new Uint8Array([1])], { type: 'audio/mpeg' }), { status: 200 })),
+      vi.fn(
+        async () =>
+          new Response(new Blob([new Uint8Array([1])], { type: 'audio/mpeg' }), { status: 200 }),
+      ),
     )
     vi.stubGlobal(
       'Audio',
@@ -27,7 +34,12 @@ describe('voice-output-toggle.svelte', () => {
         constructor(src: string) {
           this.src = src
         }
-        play = vi.fn(async () => {})
+        playbackRate = 1
+        preservesPitch = false
+        volume = 1
+        play = vi.fn(async () => {
+          played.push(this)
+        })
         pause = pause
       },
     )
@@ -36,6 +48,8 @@ describe('voice-output-toggle.svelte', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     window.localStorage.removeItem('ee-voice')
+    window.localStorage.removeItem('ee-voice-speed')
+    window.localStorage.removeItem('ee-voice-volume')
   })
 
   const toggle = () => page.getByTestId('assistant-voice-toggle')
@@ -53,13 +67,24 @@ describe('voice-output-toggle.svelte', () => {
 
   it('says what it does and its state — in words, in its tooltip, and to assistive tech (Contribute: clarify the speaker)', async () => {
     render(VoiceOutputToggle)
-    await expect.element(page.getByRole('switch', { name: 'Read replies aloud: on' })).toBeInTheDocument()
+    await expect
+      .element(page.getByRole('switch', { name: 'Read replies aloud: on' }))
+      .toBeInTheDocument()
     await expect.element(toggle()).toHaveTextContent('Read replies aloud: On')
-    await expect.element(toggle()).toHaveAttribute('title', 'Replies are read aloud as they arrive. Click to stop reading them aloud.')
+    await expect
+      .element(toggle())
+      .toHaveAttribute(
+        'title',
+        'Replies are read aloud as they arrive. Click to stop reading them aloud.',
+      )
     await toggle().click()
-    await expect.element(page.getByRole('switch', { name: 'Read replies aloud: off' })).toBeInTheDocument()
+    await expect
+      .element(page.getByRole('switch', { name: 'Read replies aloud: off' }))
+      .toBeInTheDocument()
     await expect.element(toggle()).toHaveTextContent('Read replies aloud: Off')
-    await expect.element(toggle()).toHaveAttribute('title', 'Replies are not read aloud. Click to have them read aloud.')
+    await expect
+      .element(toggle())
+      .toHaveAttribute('title', 'Replies are not read aloud. Click to have them read aloud.')
   })
 
   it('starts as off when it was switched off before (in the settings menu or here)', async () => {
@@ -82,5 +107,34 @@ describe('voice-output-toggle.svelte', () => {
     await expect.element(toggle()).toHaveAttribute('aria-checked', 'true')
     setVoiceEnabled(false)
     await expect.element(toggle()).toHaveAttribute('aria-checked', 'false')
+  })
+  it('opens speed and volume from a small popover beside the switch (owner proposal 74cbc486)', async () => {
+    render(VoiceOutputToggle)
+    const open = page.getByRole('button', { name: 'Voice speed and volume' })
+    await expect.element(open).toBeInTheDocument()
+    await open.click()
+    await expect.element(page.getByRole('slider', { name: 'Speed' })).toHaveValue('1.15')
+    await expect.element(page.getByRole('slider', { name: 'Volume' })).toHaveValue('100')
+  })
+
+  it('a change in the popover applies to the reply being read right now', async () => {
+    render(VoiceOutputToggle)
+    speak('A long answer that is being read aloud.')
+    await vi.waitFor(() => expect(played).toHaveLength(1))
+    const audio = played[0] as { playbackRate: number; volume: number; preservesPitch: boolean }
+    expect(audio.playbackRate).toBe(1.15)
+    expect(audio.preservesPitch).toBe(true)
+    await page.getByRole('button', { name: 'Voice speed and volume' }).click()
+    await expect.element(page.getByTestId('voice-speed')).toBeInTheDocument()
+    for (const [testid, value] of [
+      ['voice-speed', '1.8'],
+      ['voice-volume', '30'],
+    ] as const) {
+      const input = document.querySelector<HTMLInputElement>(`[data-testid="${testid}"]`)!
+      input.value = value
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    expect(audio.playbackRate).toBe(1.8)
+    expect(audio.volume).toBe(0.3)
   })
 })

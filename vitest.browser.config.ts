@@ -174,6 +174,7 @@ export default defineConfig({
       'src/lib/voice/dictation-field.svelte.spec.ts',
       'src/lib/components/voice-input-button.svelte.spec.ts',
       'src/lib/components/assistant/voice-output-toggle.svelte.spec.ts',
+      'src/lib/speech/voice-playback-controls.svelte.spec.ts',
       'src/lib/components/assistant/brain-knows.svelte.spec.ts',
       'modules/brand/water-flow.svelte.spec.ts',
       'modules/contacts/ui/*.svelte.spec.ts',

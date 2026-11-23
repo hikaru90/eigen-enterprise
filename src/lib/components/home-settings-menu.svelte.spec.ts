@@ -157,6 +157,26 @@ describe('home-settings-menu.svelte', () => {
     await expect.element(page.getByTestId('audio-devices')).not.toBeInTheDocument()
   })
 
+  it('Voice speed and volume, after Audio devices, opens the reading voice controls (74cbc486)', async () => {
+    render(HomeSettingsMenu)
+
+    await page.getByRole('button', { name: 'Settings menu' }).click()
+    const toggle = page.getByTestId('voice-playback-toggle')
+    await expect.element(toggle).toHaveTextContent('Voice speed and volume')
+    expect(
+      page.getByTestId('audio-devices-toggle').element().compareDocumentPosition(toggle.element()),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    await expect.element(page.getByTestId('voice-playback')).not.toBeInTheDocument()
+
+    await toggle.click()
+    await expect.element(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect.element(page.getByRole('slider', { name: 'Speed' })).toBeInTheDocument()
+    await expect.element(page.getByRole('slider', { name: 'Volume' })).toBeInTheDocument()
+
+    await toggle.click()
+    await expect.element(page.getByTestId('voice-playback')).not.toBeInTheDocument()
+  })
+
   it('the sound toggle flips the persisted flag — on by default, off stays off', async () => {
     window.localStorage.removeItem('ee-sound')
     render(HomeSettingsMenu)
