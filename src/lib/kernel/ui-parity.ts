@@ -58,7 +58,8 @@ const tool = (name: string): UiParity => ({ tool: name })
 const human = (reason: string): UiParity => ({ humanOnly: reason })
 const transport = (reason: string): UiParity => ({ transport: reason })
 const noEffect = (reason: string): UiParity => ({ noEffect: reason })
-const debt = (module: DebtModule, note: string): UiParity => ({ debt: module, note })
+// No `debt(...)` helper any more (debt is 0, owner 2026-11-23: a UI-only action is a bug).
+// A new entry maps to a tool; `{ debt, note }` written out by hand fails the ceiling spec.
 
 // ─── humanOnly: the short list, each with its reason ────────────────────────
 const SIGN_IN = 'Sign-in, sign-up and account identity: a person proves who they are.'
