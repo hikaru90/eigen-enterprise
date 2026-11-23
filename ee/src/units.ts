@@ -1,4 +1,4 @@
-import { capabilityEnv } from './capabilities.ts'
+import { capabilityEnv, capabilitySyscalls } from './capabilities.ts'
 import { PATHS } from './paths.ts'
 import { EE_API_URL, type AppContract, type Workload } from './spec.ts'
 
@@ -6,6 +6,7 @@ import { EE_API_URL, type AppContract, type Workload } from './spec.ts'
  * Generated systemd units (§3.5, D2, D5). Every unit comes from this template;
  * the hardening block is not configurable. The one spec field that touches it is
  * `ports` (system tier, allow-listed): it adds those binds, AF_NETLINK and ProcSubset=all, nothing else.
+ * `capabilities` (catalog only) add their env path and the few syscalls each one lists (capabilities.ts).
  */
 
 export type Slot = 'a' | 'b'
@@ -186,6 +187,8 @@ export function renderUnit(input: UnitInput): string {
       ? [`SupplementaryGroups=${input.supplementaryGroups.join(' ')}`, `ReadWritePaths=${PATHS.controlSocketDir}`]
       : []),
     ...hardeningFor(w),
+    // After the deny list, so these few are allowed again (systemd applies the lines in order).
+    ...(capabilitySyscalls(c.capabilities).length > 0 ? [`SystemCallFilter=${capabilitySyscalls(c.capabilities).join(' ')}`] : []),
     '',
     '[Install]',
     'WantedBy=multi-user.target',

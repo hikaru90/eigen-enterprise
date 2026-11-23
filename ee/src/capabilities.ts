@@ -12,8 +12,18 @@ export const CAPABILITIES_DIR = '/opt/ee/capabilities'
 export const CHROMIUM_EXECUTABLE = `${CAPABILITIES_DIR}/chromium/chrome-headless-shell`
 
 export const CAPABILITIES = {
-  chromium: { env: 'EE_CAP_CHROMIUM', path: CHROMIUM_EXECUTABLE },
-} as const satisfies Record<string, { env: string; path: string }>
+  chromium: {
+    env: 'EE_CAP_CHROMIUM',
+    path: CHROMIUM_EXECUTABLE,
+    /**
+     * Syscalls the unit hardening denies that chrome-headless-shell needs (SIGSYS without them,
+     * found on the box 2026-11-23): Landlock self-sandboxing, dropping capabilities (capset; the
+     * bounding set is empty, so nothing can be gained) and lowering its own thread priority
+     * (setpriority; raising it needs CAP_SYS_NICE). Nothing else is loosened.
+     */
+    syscalls: ['landlock_create_ruleset', 'capset', 'setpriority'],
+  },
+} as const satisfies Record<string, { env: string; path: string; syscalls: readonly string[] }>
 
 export type CapabilityName = keyof typeof CAPABILITIES
 
@@ -28,6 +38,11 @@ function capability(name: string): (typeof CAPABILITIES)[CapabilityName] {
 /** The environment a unit gets for the capabilities its contract declares. */
 export function capabilityEnv(declared: readonly string[]): Record<string, string> {
   return Object.fromEntries(declared.map((name) => [capability(name).env, capability(name).path]))
+}
+
+/** Syscalls the declared capabilities need back on top of the hardening's filter (empty for none). */
+export function capabilitySyscalls(declared: readonly string[]): string[] {
+  return [...new Set(declared.flatMap((name) => capability(name).syscalls))]
 }
 
 /** Fails loud when a declared capability is missing on this server (never deploy a workload that can't run it). */

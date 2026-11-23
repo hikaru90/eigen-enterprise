@@ -26,6 +26,18 @@ describe('renderUnit', () => {
     expect(withChromium).toContain('Environment="EE_CAP_CHROMIUM=/opt/ee/capabilities/chromium/chrome-headless-shell"')
   })
 
+  it('gives a chromium workload back only the syscalls the browser needs, after the deny list', () => {
+    // Seen on the box 2026-11-23: chrome-headless-shell dies with SIGSYS under the hardening
+    // without these (Landlock self-sandboxing, dropping capabilities, lowering its own priority).
+    expect(unit).not.toContain('landlock_create_ruleset')
+    const lines = renderUnit({ workload, contract: { ...contract, capabilities: ['chromium'] }, slot: 'a', port: 4100, releaseDir: '/r' }).split('\n')
+    const deny = lines.indexOf('SystemCallFilter=~@privileged @resources')
+    const allow = lines.indexOf('SystemCallFilter=landlock_create_ruleset capset setpriority')
+    expect(deny).toBeGreaterThan(-1)
+    expect(allow).toBeGreaterThan(deny)
+    for (const line of HARDENING) expect(lines).toContain(line)
+  })
+
   it('always carries the full hardening block', () => {
     for (const line of HARDENING) expect(unit).toContain(line)
   })
