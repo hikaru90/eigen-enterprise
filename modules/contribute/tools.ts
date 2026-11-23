@@ -109,7 +109,7 @@ export function createContributeTools(
       name: 'contribute.list',
       module: CONTRIBUTE_MODULE_ID,
       summary:
-        'List the improvements people in the company proposed for the app (the Contribute board): id, title, kind (idea|bug|polish), area, status, net votes, author, note. Default: open ones (requested + in progress), most wanted first. On the central board install, for those who manage the board, `allInstalls` also lists what every eigenEnterprise install shared (no names: installId, remoteId, English summary, kind, area, status, score; details via contribute_hub.get).',
+        'List the improvements people in the company proposed for the app (the Make a wish board): id, title, kind (idea|bug|polish), area, status, net votes, author, note. Default: open ones (requested + in progress), most wanted first. On the central board install, for those who manage the board, `allInstalls` also lists what every eigenEnterprise install shared (no names: installId, remoteId, English summary, kind, area, status, score; details via contribute_hub.get).',
       auditClass: 'read',
       inputSchema: listInput,
       permission: { roles: ['admin', 'member', 'agent'] },
@@ -127,7 +127,7 @@ export function createContributeTools(
     {
       name: 'contribute.get',
       module: CONTRIBUTE_MODULE_ID,
-      summary: 'Read one proposal from the Contribute board by id.',
+      summary: 'Read one proposal from the Make a wish board by id.',
       auditClass: 'read',
       inputSchema: getInput,
       permission: { roles: ['admin', 'member', 'agent'] },
@@ -136,7 +136,7 @@ export function createContributeTools(
     {
       name: 'contribute.propose',
       module: CONTRIBUTE_MODULE_ID,
-      summary: `Propose an improvement on the Contribute board, as yourself (with your +1): title, kind (${CONTRIBUTION_KINDS.join('|')}) and area (${CONTRIBUTION_AREAS.join('|')}). Check contribute.list for an existing one first and vote on it instead.`,
+      summary: `Propose an improvement on the Make a wish board, as yourself (with your +1): title, kind (${CONTRIBUTION_KINDS.join('|')}) and area (${CONTRIBUTION_AREAS.join('|')}). Check contribute.list for an existing one first and vote on it instead.`,
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: { title?: string }) => `Proposed “${input.title ?? 'an improvement'}”`,
@@ -150,7 +150,7 @@ export function createContributeTools(
     {
       name: 'contribute.vote',
       module: CONTRIBUTE_MODULE_ID,
-      summary: 'Vote on a proposal on the Contribute board, as yourself: +1, -1, or 0 to take your vote back. Shipped proposals are closed.',
+      summary: 'Vote on a proposal on the Make a wish board, as yourself: +1, -1, or 0 to take your vote back. Shipped proposals are closed.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (_input: unknown, output: ContributionDto | undefined) => `Voted on ${output ? `“${output.title}”` : 'a proposal'}`,

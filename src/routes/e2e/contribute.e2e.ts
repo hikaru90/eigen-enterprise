@@ -70,7 +70,7 @@ async function propose(page: Page, text: string): Promise<void> {
   await page.getByTestId('contribute-send').click()
 }
 
-test('Contribute: propose from the top bar, vote instead on a duplicate, an admin picks it up', async ({ browser }) => {
+test('Make a wish: propose from the top bar, vote instead on a duplicate, an admin picks it up', async ({ browser }) => {
   test.setTimeout(180_000)
   const member = await signIn(browser, 'member')
   const title = `Threads lose my replies e2e-${stamp}`
@@ -83,7 +83,7 @@ test('Contribute: propose from the top bar, vote instead on a duplicate, an admi
     await member.screenshot({ path: `${SHOTS}/1-shared.png` })
     await done.getByRole('link', { name: 'See the board' }).click()
     await expect(member).toHaveURL(/\/contribute$/)
-    await expect(member).toHaveTitle(/^Contribute · /)
+    await expect(member).toHaveTitle(/^Make a wish · /)
     const row = member.getByTestId('contribute-row').filter({ hasText: title })
     await expect(row).toContainText('Bug · Messages · you')
     await expect(row.getByTestId('contribute-score')).toHaveText('1')

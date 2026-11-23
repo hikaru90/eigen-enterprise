@@ -9,8 +9,9 @@ export const CONTRIBUTE_TOOL_NAMES = ['contribute.list', 'contribute.get', 'cont
 export const CONTRIBUTE_WRITE_TOOLS = ['contribute.propose', 'contribute.vote'] as const
 
 /**
- * Contribute (ported from Eigen's Contribute board): everyone in the company
- * proposes improvements to the app from the top bar's "Contribute" button and
+ * Contribute — shown to people as "Make a wish" ("Wünsch dir was"; ported
+ * from Eigen's Contribute board): everyone in the company proposes
+ * improvements to the app from the top bar's "Make a wish" button and
  * votes on the board at /contribute. An agent picks proposals up later
  * through these tools (in-app assistant or `ee` CLI) and moves them along
  * requested → in progress → shipped, with a note people can read.
@@ -19,7 +20,7 @@ export const CONTRIBUTE_WRITE_TOOLS = ['contribute.propose', 'contribute.vote'] 
  */
 export const contributeManifest: ModuleManifest = {
   id: CONTRIBUTE_MODULE_ID,
-  name: 'Contribute',
+  name: 'Make a wish',
   internal: true,
   version: '0.1.0',
   description: 'Ideas, bugs and polish requests from the people in your company, voted on and picked up by an agent.',

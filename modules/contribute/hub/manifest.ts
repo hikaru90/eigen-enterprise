@@ -16,7 +16,7 @@ export const CONTRIBUTE_HUB_TOOL_NAMES = ['contribute_hub.list', 'contribute_hub
  */
 export const contributeHubManifest: ModuleManifest = {
   id: CONTRIBUTE_HUB_MODULE_ID,
-  name: 'Contribute hub',
+  name: 'Make a wish hub',
   internal: true,
   version: '0.1.0',
   description: 'The central board: proposals every eigenEnterprise install shared, without names.',

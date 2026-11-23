@@ -1,8 +1,9 @@
 import type { SentView, ShareItemView } from '../../../../modules/contribute/share/service'
 import type { ContributionDto } from '../../../../modules/contribute/types'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
+import { setLocale } from '$lib/paraglide/runtime'
 import ContributeBoard from './contribute-board.svelte'
 
 const dto = (over: Partial<ContributionDto>): ContributionDto => ({
@@ -108,5 +109,24 @@ describe('contribute-board.svelte', () => {
     render(ContributeBoard, { proposals, canManage: false, sharing: null, client: { vote: vi.fn(), update: vi.fn(), sentPayload: vi.fn(), dontShare: vi.fn() }, onchanged: vi.fn(async () => {}) })
     await expect.element(page.getByTestId('contribute-tab-requested')).toBeInTheDocument()
     expect(page.getByTestId('contribute-sharing').elements()).toHaveLength(0)
+  })
+
+  describe('Make a wish (board bcd930e2, 3786cf54)', () => {
+    afterEach(() => setLocale('en', { reload: false }))
+    const client = { vote: vi.fn(), update: vi.fn(), sentPayload: vi.fn(), dontShare: vi.fn() }
+
+    it('an empty board points to Make a wish at the top right', async () => {
+      render(ContributeBoard, { proposals: [], canManage: false, sharing: null, client, onchanged: vi.fn(async () => {}) })
+      await expect.element(page.getByRole('tablist', { name: 'Wishes' })).toBeInTheDocument()
+      await expect.element(page.getByText('No wishes yet. Use Make a wish at the top right to propose an improvement.')).toBeInTheDocument()
+    })
+
+    it('speaks German: tabs, kind and area, the empty state', async () => {
+      setLocale('de', { reload: false })
+      render(ContributeBoard, { proposals, canManage: false, sharing: null, client, onchanged: vi.fn(async () => {}) })
+      await expect.element(page.getByTestId('contribute-tab-requested')).toHaveTextContent('Gewünscht 2')
+      await expect.element(page.getByTestId('contribute-tab-in_progress')).toHaveTextContent('In Arbeit 1')
+      await expect.element(page.getByText('Feinschliff · Einstellungen · du', { exact: false })).toBeInTheDocument()
+    })
   })
 })

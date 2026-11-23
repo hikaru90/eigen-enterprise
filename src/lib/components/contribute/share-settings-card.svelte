@@ -9,7 +9,7 @@
 
   /**
    * Settings → Company, owner only (plan/contribute-phone-home.md §5): share
-   * proposals from the Contribute board with the eigenEnterprise makers. On by
+   * wishes from the Make a wish board (module `contribute`) with the eigenEnterprise makers. On by
    * default; the exact field list; where sending stands (waiting, last error,
    * not configured, refused, no AI provider). Turning it off can also delete
    * everything already sent from the central board.
@@ -31,9 +31,9 @@
 <section class="space-y-4 rounded-lg border border-border p-4" data-testid="share-settings">
   <div class="flex items-start justify-between gap-3">
     <div>
-      <h3 class="text-sm font-medium">Share proposals with the eigenEnterprise makers</h3>
+      <h3 class="text-sm font-medium">Share wishes with the eigenEnterprise makers</h3>
       <p class="mt-0.5 text-xs text-foreground/60">
-        Each new proposal on the Contribute board is also sent, without names, to the central board
+        Each new wish on the Make a wish board is also sent, without names, to the central board
         the makers read, so they see what every company asks for. Your own board stays as it is.
       </p>
     </div>
@@ -58,7 +58,7 @@
         {#each NEVER_SHARED as line (line)}<li>{line}</li>{/each}
       </ul>
       <p class="mt-2 text-foreground/60">
-        On the <a class="underline" href={resolve('/contribute')}>Contribute board</a> you see each proposal's
+        On the <a class="underline" href={resolve('/contribute')}>Make a wish board</a> you see each wish's
         sharing, what was sent, and can stop one from being shared.
       </p>
     </div>
@@ -77,13 +77,13 @@
     {/if}
     {#if status.enabled && !status.providerReady}
       <p class="text-destructive" data-testid="share-no-provider">
-        No AI provider is connected, so proposals can't be prepared without names. Connect one under
+        No AI provider is connected, so wishes can't be prepared without names. Connect one under
         <a class="underline" href={resolve('/settings/llm')}>Settings → AI provider</a>; waiting
-        proposals are shared then.
+        wishes are shared then.
       </p>
     {/if}
     <p class="text-foreground/70" data-testid="share-counts">
-      {plural(status.waiting, 'proposal', 'proposals')} waiting · {status.sent} shared{#if status.failed > 0}
+      {plural(status.waiting, 'wish', 'wishes')} waiting · {status.sent} shared{#if status.failed > 0}
         · {status.failed} failed{/if}{#if status.withdrawing > 0}
         · {status.withdrawing} being withdrawn{/if}
     </p>
@@ -137,7 +137,7 @@
         class="text-xs"
         error={result.error}
         agent={result.agent ?? null}
-        attempted="Turning sharing of Contribute proposals with the makers on or off"
+        attempted="Turning sharing of Make a wish wishes with the makers on or off"
       />
     {:else if result?.ok}
       <p class="text-xs text-foreground/60" role="status">Saved.</p>

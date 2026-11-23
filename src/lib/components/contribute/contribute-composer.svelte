@@ -5,12 +5,13 @@
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import type { ContributeClient } from '$lib/contribute/client'
   import { AREA_LABEL, KIND_PHRASE, STATUS_LABEL, votesLabel } from '$lib/contribute/labels'
+  import { m } from '$lib/paraglide/messages.js'
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
   import { CONTRIBUTION_MAX_LENGTH } from '../../../../modules/contribute/types'
 
   /**
-   * The Contribute composer (Eigen's share bar, in the top bar's popover):
+   * The Make a wish composer (module `contribute`; Eigen's share bar, in the top bar's popover):
    * Send runs the board's LLM judge first — it reads kind and area and may
    * name the same request already open. Then the chorus card offers "Vote for
    * it instead" or "Mine's different"; with no duplicate the proposal is
@@ -131,13 +132,14 @@
   {#if done}
     <div class="flex flex-col gap-2" role="status" data-testid="contribute-done">
       <p class="text-sm font-medium">
-        {done.kind === 'shared' ? 'Thanks — it’s on the board.' : 'Your vote is in.'}
+        {done.kind === 'shared' ? m.wish_done_shared() : m.wish_done_voted()}
       </p>
       <p class="text-xs text-foreground/60 [overflow-wrap:anywhere]">
         {#if done.kind === 'shared'}
-          Sounds like {KIND_PHRASE[done.proposal.kind]} in {AREA_LABEL[done.proposal.area]}. An
-          agent picks proposals up from the board; you’ll see it move to In progress and Shipped
-          there.
+          {m.wish_done_reading({
+            kind: KIND_PHRASE[done.proposal.kind](),
+            area: AREA_LABEL[done.proposal.area](),
+          })}
         {:else}
           “{done.proposal.title}” · {votesLabel(done.proposal.score)}
         {/if}
@@ -146,24 +148,23 @@
         <a
           href={boardHref}
           class="text-xs font-medium text-primary hover:underline"
-          onclick={() => onnavigate?.()}>See the board</a
+          onclick={() => onnavigate?.()}>{m.wish_composer_see_board()}</a
         >
         <button
           type="button"
           class="cursor-pointer text-xs text-foreground/60 hover:text-foreground"
-          onclick={another}>Propose another</button
+          onclick={another}>{m.wish_composer_another()}</button
         >
       </div>
     </div>
   {:else}
     <div>
-      <p class="text-sm font-medium">Make this app better</p>
+      <p class="text-sm font-medium">{m.wish_composer_heading()}</p>
       <p class="mt-0.5 text-xs text-foreground/60">
-        An idea, a bug, something that feels rough — everyone in the company can see and vote on it.
+        {m.wish_composer_hint()}
       </p>
       <p class="mt-1 text-[13px] text-muted-foreground" data-testid="contribute-shared-note">
-        Proposals are also shared with the eigenEnterprise makers, without names, unless the owner
-        turned this off in Settings → Company.
+        {m.wish_composer_shared_note()}
       </p>
     </div>
 
@@ -172,10 +173,10 @@
         class="rounded-md border border-border bg-primary/[0.04] p-3"
         data-testid="contribute-duplicate"
       >
-        <p class="text-xs text-foreground/60">Someone already asked for this</p>
+        <p class="text-xs text-foreground/60">{m.wish_composer_duplicate()}</p>
         <p class="mt-1 text-sm font-medium [overflow-wrap:anywhere]">{duplicate.title}</p>
         <p class="mt-0.5 text-xs text-foreground/60">
-          {votesLabel(duplicate.score)} · {STATUS_LABEL[duplicate.status]}
+          {votesLabel(duplicate.score)} · {STATUS_LABEL[duplicate.status]()}
         </p>
         <div class="mt-2.5 flex items-center gap-4">
           <button
@@ -185,8 +186,8 @@
             onclick={() => void voteInstead()}
           >
             {duplicate.myVote === 1 || duplicate.own
-              ? 'You already voted for it'
-              : 'Vote for it instead'}
+              ? m.wish_composer_already_voted()
+              : m.wish_composer_vote_instead()}
           </button>
           <button
             type="button"
@@ -194,19 +195,19 @@
             disabled={working !== null}
             onclick={shareAnyway}
           >
-            Mine’s different
+            {m.wish_composer_mine_different()}
           </button>
         </div>
       </div>
     {/if}
 
-    <label class="sr-only" for="contribute-text">Your proposal</label>
+    <label class="sr-only" for="contribute-text">{m.wish_composer_input_label()}</label>
     <textarea
       id="contribute-text"
       bind:value={text}
       onkeydown={onKeydown}
       rows="4"
-      placeholder="What would make this app better for you?"
+      placeholder={m.wish_composer_placeholder()}
       aria-invalid={tooLong}
       disabled={working !== null}
       class="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 -ring disabled:opacity-60 aria-invalid:border-destructive"
@@ -214,14 +215,14 @@
 
     {#if tooLong}
       <p class="text-xs text-destructive">
-        At most {CONTRIBUTION_MAX_LENGTH} characters ({trimmed.length} now).
+        {m.wish_composer_too_long({ max: CONTRIBUTION_MAX_LENGTH, count: trimmed.length })}
       </p>
     {/if}
     {#if error}
       <ErrorNotice
         class="text-xs leading-relaxed"
         {error}
-        attempted="Checking, sharing or voting on a proposal from the Contribute composer"
+        attempted={m.wish_composer_attempted()}
       />
     {/if}
 
@@ -230,7 +231,7 @@
         <a
           href={boardHref}
           class="text-xs text-foreground/60 hover:text-foreground"
-          onclick={() => onnavigate?.()}>See the board</a
+          onclick={() => onnavigate?.()}>{m.wish_composer_see_board()}</a
         >
       {/if}
       <div class={['flex items-center gap-1.5', voiceActive && 'min-w-0 flex-1']}>
@@ -250,9 +251,9 @@
           >
             {#if working === 'checking' || working === 'sharing'}
               <LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />
-              {working === 'checking' ? 'Checking…' : 'Sharing…'}
+              {working === 'checking' ? m.wish_composer_checking() : m.wish_composer_sharing()}
             {:else}
-              Send
+              {m.wish_composer_send()}
             {/if}
           </button>
         {/if}

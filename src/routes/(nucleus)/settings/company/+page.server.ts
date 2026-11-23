@@ -46,7 +46,7 @@ const ATTEMPTED: Record<CompanyAction, string> = {
   uploadLogo: 'Uploading the company logo in Settings → Company',
   recropLogo: 'Cropping the company logo again in Settings → Company',
   setSharing:
-    'Turning sharing of Contribute proposals with the makers on or off (Settings → Company)',
+    'Turning sharing of Make a wish wishes with the makers on or off (Settings → Company)',
 }
 
 const WHERE: Record<CompanyAction, string> = {

@@ -28,11 +28,11 @@
   {:else}
     {#each groups as g, i (g.key)}
       {#if i === 0 || groups[i - 1]!.status !== g.status}
-        <h2 class="-mb-3 text-sm font-medium" data-testid="hub-status-{g.status}">{STATUS_LABEL[g.status]}</h2>
+        <h2 class="-mb-3 text-sm font-medium" data-testid="hub-status-{g.status}">{STATUS_LABEL[g.status]()}</h2>
       {/if}
       <section class="rounded-md border border-border" data-testid="hub-group">
         <header class="flex items-baseline justify-between gap-3 border-b border-border px-3 py-2">
-          <span class="text-sm font-medium">{KIND_LABEL[g.kind]} · {AREA_LABEL[g.area]}</span>
+          <span class="text-sm font-medium">{KIND_LABEL[g.kind]()} · {AREA_LABEL[g.area]()}</span>
           <span class="text-xs text-foreground/60 tabular-nums">{installsLabel(g.installs)} · score {g.score}</span>
         </header>
         <ul class="divide-y divide-border">

@@ -72,7 +72,7 @@ describe('app-shell.svelte', () => {
   describe('with the Assistant switched off (round 5: off means off)', () => {
     afterEach(() => vi.unstubAllGlobals())
 
-    it('has no assistant field, toggle or panel, and ⌘K opens nothing; the menu, Contribute and the page stay', async () => {
+    it('has no assistant field, toggle or panel, and ⌘K opens nothing; the menu, Make a wish and the page stay', async () => {
       const fetchSpy = vi.fn(async () => new Response('{}', { status: 500 }))
       vi.stubGlobal('fetch', fetchSpy)
       renderShell('/m/website', undefined, null, null, false)
@@ -92,18 +92,18 @@ describe('app-shell.svelte', () => {
       expect(
         urls.filter((u) => u.startsWith('/api/assistant') || u.startsWith('/api/chat')),
       ).toEqual([])
-      // The Contribute button still sits at the top right.
+      // The Make a wish button still sits at the top right.
       expect(topbar.element().lastElementChild?.matches('[data-testid="contribute-trigger"]')).toBe(
         true,
       )
     })
   })
 
-  it('has the Contribute button at the top right of the top bar, opening the proposal composer', async () => {
+  it('has the Make a wish button at the top right of the top bar, opening the wish composer', async () => {
     renderShell()
     const topbar = page.getByTestId('shell-topbar')
     const trigger = topbar.getByTestId('contribute-trigger')
-    await expect.element(trigger).toHaveAccessibleName('Contribute: propose an improvement')
+    await expect.element(trigger).toHaveAccessibleName('Make a wish: propose an improvement')
     const bar = topbar.element()
     expect(bar.lastElementChild?.matches('[data-testid="contribute-trigger"]')).toBe(true)
     await trigger.click()
