@@ -9,11 +9,11 @@ action first, so the `ee` CLI, MCP and the agent get it too. Every mutating entr
 fails on an unmapped one, and the debt below can only shrink (`DEBT_CEILING`). Each stage-3
 milestone (CB8–CB13) clears its module’s section.
 
-Mutating entry points: **340** — tool 171, human-only 46, transport 48, no effect 16, **debt 59**.
+Mutating entry points: **340** — tool 189, human-only 46, transport 48, no effect 16, **debt 41**.
 
 | Module | Debt |
 |---|---|
-| memory | 31 |
+| memory | 13 |
 | kernel | 9 |
 | calendar | 7 |
 | calls | 6 |
@@ -21,31 +21,14 @@ Mutating entry points: **340** — tool 171, human-only 46, transport 48, no eff
 | assistant | 1 |
 | website | 1 |
 
-## memory (31)
+## memory (13)
 
-- `/(nucleus)/m/memory/settings ?/deleteArchived` — Delete archived thoughts for good.
 - `/(nucleus)/m/memory/tasks ?/seen` — Mark an assigned task seen.
-- `/api/agents/[id]/assign POST` — Hand a thought to a connected external agent.
-- `/api/agents/[id]/projects POST` — Bind a connected agent to a project.
-- `/api/agents/[id]/projects/[projectId] DELETE` — Unbind a connected agent from a project.
-- `/api/capture/edit POST` — Edit a stored thought.
-- `/api/capture/enrich-retry POST` — Retry the enrichment of a thought.
-- `/api/capture/relink POST` — Re-link a thought in the graph.
-- `/api/entities/[entityId] DELETE` — Delete an entity.
-- `/api/entities/[entityId] PATCH` — Edit an entity.
-- `/api/entities/[entityId]/sync POST` — Re-sync an entity and its relations to the graph.
-- `/api/graph/rearrange POST` — Clean up my graph (prune, repair relations).
-- `/api/grounding/question POST` — Answer a check-in question (keep or archive a thought).
 - `/api/scheduled-tasks/[taskId] DELETE` — Delete a scheduled task.
 - `/api/scheduled-tasks/[taskId] PATCH` — Pause or resume a scheduled task.
 - `/api/scheduled-tasks/[taskId] POST` — Run a scheduled task now.
 - `/api/scheduled-tasks/[taskId]/retry POST` — Retry a failed scheduled task.
 - `/api/temporal-events/[id]/action POST` — Reschedule, snooze or complete a timeline item.
-- `/api/text-files/[fileId] DELETE` — Delete a note.
-- `/api/thoughts/[thoughtId] DELETE` — Delete a thought.
-- `/api/thoughts/[thoughtId] PATCH` — Open, complete or archive a thought.
-- `/api/thoughts/[thoughtId]/text-files POST` — Link a note to a thought.
-- `/api/thoughts/[thoughtId]/text-files/[fileId] DELETE` — Unlink a note from a thought.
 - `/api/timeline/projects POST` — Create a project.
 - `/api/timeline/projects/[entityId]/deadline POST` — Set a project deadline.
 - `/api/timeline/projects/[entityId]/dismiss POST` — Dismiss a project.
@@ -53,7 +36,6 @@ Mutating entry points: **340** — tool 171, human-only 46, transport 48, no eff
 - `/api/timeline/projects/[entityId]/order POST` — Reorder a project’s tasks.
 - `/api/timeline/projects/[entityId]/review/apply POST` — Apply a project review (task statuses, new tasks).
 - `/api/timeline/projects/[entityId]/update PUT` — Rename a project.
-- `/api/timeline/projects/assign POST` — Assign a thought to a project.
 
 ## kernel (9)
 

@@ -18,6 +18,34 @@ export const MEMORY_TOOL_NAMES = [
 /** Memory is a system module (always on): see SYSTEM_MODULE_IDS. */
 export const MEMORY_MODULE_ID = 'memory'
 
+/** Thoughts, entities, the graph, notes-on-thoughts and connected agents (thought-tools.ts). */
+export const THOUGHT_TOOL_NAMES = [
+  'memory.edit_thought',
+  'memory.set_thought_status',
+  'memory.delete_thought',
+  'memory.delete_archived_thoughts',
+  'memory.retry_enrichment',
+  'memory.relink_thought',
+  'memory.answer_check_in',
+  'memory.assign_thought_project',
+  'memory.get_thought',
+  'memory.list_archived_thoughts',
+  'memory.list_thought_notes',
+  'memory.link_text_file',
+  'memory.unlink_text_file',
+  'memory.delete_text_file',
+  'memory.get_entity',
+  'memory.update_entity',
+  'memory.delete_entity',
+  'memory.sync_entity',
+  'memory.clean_up_graph',
+  'memory.list_connected_agents',
+  'memory.list_agent_projects',
+  'memory.assign_thought_to_agent',
+  'memory.bind_agent_project',
+  'memory.unbind_agent_project',
+] as const
+
 /** The person's own Memory › Tasks (own-task-tools.ts): list, add, change, complete, delete. */
 export const OWN_TASK_TOOL_NAMES = [
   'memory.list_tasks',
@@ -49,6 +77,6 @@ export const memoryManifest: ModuleManifest = {
   description:
     'Thought capture, hybrid retrieval, and GTD project/text-note tools over the eigen memory system.',
   toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders'],
-  tools: [...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES],
+  tools: [...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }
