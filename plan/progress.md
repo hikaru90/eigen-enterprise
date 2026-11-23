@@ -13,12 +13,14 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - Gates: lint 0 errors; members/signup/login 69, llm/kernel/settings/cli 822, demo-company 16 tests green; migrations verified on a fresh DB.
 - **Next (DC4, owner):** a server for `demo.eigenenterprise.app` + DNS → install, claim, `members.set_open_join on`, `settings.member_ai_cap_set` (e.g. $0.50), snapshot the empty company, a nightly restore + seed timer, then merge the website branch.
 
-## 2026-11-23 — Call recap → "Import into the brain", approved in the chat first (owner: "the Recap should be importable into the memory brain, tasks, projects … approve the items first by speaking into a chatbox"; not committed)
+## 2026-11-23 — Call recap → "Import into the brain", approved in the chat first (owner: "the Recap should be importable into the memory brain, tasks, projects … approve the items first by speaking into a chatbox"; `cd6d48ec`, pushed, on the box)
 
 - Once the Company Brain recap of a call is written (call tab's ended screen and the transcript page), it offers **Import into the brain**. The link drafts a message into the assistant's composer (`?prefill=`, never sent by itself; `src/lib/calls/recap-import.ts`): "Import the recap of my call … first list notes, tasks and projects, wait for my OK". The person can edit it or dictate more with the mic, sends it, then the assistant lists the items and saves only after their OK in the chat.
 - **Decision: no new write path.** The assistant fetches the recap with `calls.brain_recap` and saves with existing tools (`memory.capture_thought`, `memory.create_task`, `tasks.assign`, `memory.create_project`). The CLI and MCP reach the same tools, so there is no parity debt. `calls.brain_recap`'s summary now says how an import goes: propose first, save on OK. The OK is the person's word in the chat, not a kernel approval card, because those cards only let admins decide and don't show the items.
 - The link carries the call id and title, never the recap text (an address can end up in logs). With the Assistant plugin off there is no offer.
 - Tests: `src/lib/calls/recap-import.spec.ts` (unit), `call-brain.svelte.spec.ts` (offer shown once written, hidden with the Assistant off). check + lint clean, calls tests green.
+- **Also fixed:** `role-aware.spec.ts` broke when open join shipped (`56ce106e`): its fake members code had no `readOpenJoin`, which blocked every push. Fixed in `40c8216e`.
+- Board: ee-one proposal 54c4b1d2 (Ony: check and edit the recap's points before the brain takes them in) is in progress and lands with ee-one's next release.
 - Next: if the assistant ever saves without asking, put a real gate on it. That would be a batch `calls.brain_recap_import` tool behind an approval the member can decide, showing the items.
 
 ## 2026-11-23 — Dashboard pages use the full pane width (owner: "alot of content on the dashboard pages is cut off … can we make this full width?"; `89c7223f`)
