@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
-import { registerUser } from './test-helpers'
+import { registerUser, waitForHydration } from './test-helpers'
 
 /**
  * D8 live run view (plan/phase-durable.md D8, software-factory S0): a chat
@@ -82,6 +82,7 @@ test.describe('agent runs live view', () => {
 
     // The same list as a linkable page.
     await page.goto('/assistant')
+    await waitForHydration(page)
     await expect(page.getByRole('heading', { level: 1, name: 'Assistant' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: 'Conversations' })).toBeVisible()
     // A readable title, not the agent id and its raw conversation key.

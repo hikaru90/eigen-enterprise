@@ -80,11 +80,14 @@ test('Memory is one module page: nav → Tasks → sub-pages → what the brain 
   await test.step('open Settings from the header (right) and save one', async () => {
     await page.getByTestId('memory-settings-link').click()
     await expect(page).toHaveURL(/\/m\/memory\/settings$/)
+    // Typed before hydration, the value is reset by hydration and Save sends the old one.
+    await waitForHydration(page)
     const settings = page.getByTestId('memory-settings')
     await settings.getByLabel('Minutes before').fill('25')
     await settings.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByTestId('memory-settings-message')).toContainText('saved')
     await page.reload()
+    await waitForHydration(page)
     await expect(page.getByTestId('memory-settings').getByLabel('Minutes before')).toHaveValue('25')
   })
 
