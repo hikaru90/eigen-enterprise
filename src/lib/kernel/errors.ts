@@ -24,6 +24,11 @@ export type KernelErrorCode =
   | 'no_person'
   | 'invalid_principal'
   | 'turn_not_editable'
+  | 'invalid_agent'
+  | 'invalid_instructions'
+  | 'no_spend_ledger'
+  | 'agent_acts_as_itself'
+  | 'agent_acts_as_person'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -51,6 +56,11 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'no_person',
   'invalid_principal',
   'turn_not_editable',
+  'invalid_agent',
+  'invalid_instructions',
+  'no_spend_ledger',
+  'agent_acts_as_itself',
+  'agent_acts_as_person',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -80,6 +90,11 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   no_person: 'No person to act as',
   invalid_principal: 'Malformed principal',
   turn_not_editable: 'Message cannot be edited',
+  invalid_agent: 'Malformed agent',
+  invalid_instructions: 'No instructions for this turn',
+  no_spend_ledger: 'No spend ledger',
+  agent_acts_as_itself: 'Agent acts as itself',
+  agent_acts_as_person: 'Agent acts as a person',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
@@ -113,6 +128,14 @@ const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   invalid_principal: 400,
   // Edit-and-resend names a turn the conversation no longer carries (or never tagged).
   turn_not_editable: 409,
+  // An agent config the runtime cannot run (no declared instructions/identity, a colon in its id, two caps).
+  invalid_agent: 400,
+  invalid_instructions: 400,
+  // A self-acting agent (AI co-worker) needs the real cost ledger to be capped; none is wired.
+  no_spend_ledger: 500,
+  // The dispatch entry does not match who the agent acts as (dispatch vs dispatchAsAgent).
+  agent_acts_as_itself: 409,
+  agent_acts_as_person: 409,
 }
 
 /** RFC 9457 problem-details object as produced by `KernelError.toProblemJson`. */

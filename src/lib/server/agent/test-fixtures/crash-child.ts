@@ -55,6 +55,7 @@ if (mode === 'background') {
   })
   await engine.run('s1', 'crash me', {
     agent: { id: 'orchestrator' },
+    instructions: { kind: 'engine-default' },
     llmUserId: 'alice',
     listTools: () =>
       mode === 'chat-tool'

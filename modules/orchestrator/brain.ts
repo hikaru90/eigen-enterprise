@@ -348,6 +348,10 @@ export function orchestratorAgentConfig(options: { spendCapUsd?: number } = {}):
     toolScope: 'all',
     memoryScope: 'company',
     verificationPolicy: 'none',
+    // The brain's single prompt is the durable engine's (ORCHESTRATOR_PERSONA_PROMPT, set at
+    // boot); it runs on the company's chat slot and always acts as the person it works for (CB3).
+    instructions: 'engine-default',
+    actsAs: 'person',
     ...(options.spendCapUsd === undefined ? {} : { spendCapUsd: options.spendCapUsd }),
     enabled: true,
   }

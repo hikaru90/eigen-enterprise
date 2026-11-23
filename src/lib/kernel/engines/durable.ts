@@ -112,10 +112,38 @@ export type BackgroundToolCall = {
  */
 export type BackgroundToolExecutor = (call: BackgroundToolCall) => Promise<unknown>
 
-/** `<agentId>:<sessionId>` — one durable conversation per (agent, session). */
+/**
+ * `<agentId>:<sessionId>` — one durable conversation per (agent, session). A session id may
+ * hold colons (a co-worker's `coworker:<coworkerId>:<conversationId>:<threadRootId>`); an agent
+ * id never does, so a key splits at its first colon and two pairs never share a key.
+ */
 export function durableConversationKey(agentId: string, sessionId: string): string {
+  if (agentId.trim() === '' || agentId.includes(':')) {
+    throw new KernelError(
+      'invalid_input',
+      `durable conversation keys need an agent id without ":" (got ${JSON.stringify(agentId)}) — it could alias another agent's key`,
+    )
+  }
+  if (sessionId === '') {
+    throw new KernelError('invalid_input', `durable conversation of agent ${agentId} needs a session id`)
+  }
   return `${agentId}:${sessionId}`
 }
+
+/**
+ * A run's system prompt as the harness applies it: `engine` = the engine instance's prompt,
+ * written when the conversation is created and never rewritten (the company brain's one
+ * prompt); `run` = this run's own (assembled per turn), written onto the conversation on every
+ * turn before the input.
+ */
+export type DurableInstructions = { source: 'engine' | 'run'; text: string }
+
+/**
+ * The chat model a conversation runs on, written onto it on every turn: `chat-slot` = the
+ * company's chat slot (gateway routing — the brain); `pool` = one chat model of the vetted
+ * pool (an AI co-worker's own model), refused loud when it is not in the pool.
+ */
+export type DurableModelChoice = { kind: 'chat-slot' } | { kind: 'pool'; modelId: string }
 
 /** Inverse of durableConversationKey for a known agent; any other key fails loud. */
 export function sessionIdOfConversationKey(agentId: string, conversationKey: string): string {
@@ -133,8 +161,10 @@ export type DurableEngineHarness = {
     agentId: string
     /** Gateway billing identity this conversation's model calls resolve to. */
     llmUserId: string
-    /** The agent's system prompt (persona + discipline). */
-    instructions: string
+    /** The run's system prompt and how it is applied (see DurableInstructions). */
+    instructions: DurableInstructions
+    /** The run's chat model (see DurableModelChoice). */
+    model: DurableModelChoice
     /** The dispatch's fresh tool bridge — configured onto the conversation. */
     tools: DurableBridgeToolSpec[]
   }): Promise<DurableEngineConversation>
@@ -288,11 +318,23 @@ export class DurableLoopEngine implements LoopEngine {
     return this.harness.conversation({
       conversationKey: durableConversationKey(ctx.agent.id, sessionId),
       agentId: ctx.agent.id,
-      // The person the run acts as pays for it — no agent-identity fallback (CB3).
+      // The principal the run acts as pays for it (the person, or the self-acting agent).
       llmUserId: ctx.llmUserId,
-      instructions: this.instructions,
+      instructions: this.runInstructions(ctx),
+      model: ctx.agent.modelId === undefined ? { kind: 'chat-slot' } : { kind: 'pool', modelId: ctx.agent.modelId },
       tools,
     })
+  }
+
+  /** The engine's own prompt, or the one the runtime assembled for this turn. */
+  private runInstructions(ctx: EngineContext): DurableInstructions {
+    const instructions = ctx.instructions
+    if (instructions?.kind === 'engine-default') return { source: 'engine', text: this.instructions }
+    if (instructions?.kind === 'own' && instructions.text.trim() !== '') return { source: 'run', text: instructions.text }
+    throw new KernelError(
+      'invalid_instructions',
+      `durable run of agent ${ctx.agent.id} names no instructions (expected 'engine-default' or its own text)`,
+    )
   }
 
   async run(sessionId: string, input: string, ctx: EngineContext): Promise<string> {

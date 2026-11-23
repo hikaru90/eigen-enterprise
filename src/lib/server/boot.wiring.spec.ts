@@ -142,6 +142,8 @@ describe('bootApp — the brain reaches every tool of the person through ee', ()
         toolScope: 'all',
         memoryScope: 'company',
         verificationPolicy: 'none',
+        instructions: 'engine-default',
+        actsAs: 'person',
         enabled: true,
       })
     }
