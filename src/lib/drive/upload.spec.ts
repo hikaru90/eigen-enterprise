@@ -5,8 +5,10 @@ import {
   entriesFromPicked,
   planUpload,
   runUpload,
+  type ConflictDecision,
   type DropSource,
   type UploadApi,
+  type UploadConflict,
 } from './upload'
 
 const file = (name: string, relative = '', size = 1) => {
@@ -53,29 +55,52 @@ const folderItem = (id: string, name: string): DriveItem => ({
   trashedAt: null,
 })
 
-function fakeApi(): UploadApi & {
+/** A file item the fake server says landed. */
+const landed = (name: string, outcome: 'created' | 'replaced' | 'kept_both' = 'created') => ({
+  ...folderItem(`u-${name}`, name),
+  type: 'file' as const,
+  outcome,
+})
+
+/** For runs where no name is taken: being asked is a test failure. */
+const noClash = async (c: UploadConflict): Promise<ConflictDecision> => {
+  throw new Error(`unexpected clash on ${c.path}`)
+}
+
+function fakeApi(taken: string[] = []): UploadApi & {
   created: Array<[string | null, string]>
   sent: Array<[string | null, string]>
+  modes: string[]
 } {
   let n = 0
   const created: Array<[string | null, string]> = []
   const sent: Array<[string | null, string]> = []
+  const modes: string[] = []
   return {
     created,
     sent,
+    modes,
     createFolder: async (parentId, name) => {
       created.push([parentId, name])
       return folderItem(`d${++n}`, name)
     },
-    upload: async (folderId, files) => {
-      for (const f of files) sent.push([folderId, f.name])
-      return {
-        uploaded: files.map((f) => ({
-          ...folderItem(`u-${f.name}`, f.name),
-          type: 'file' as const,
-        })),
-        errors: [],
+    upload: async (folderId, files, onConflict) => {
+      const uploaded = []
+      const conflicts = []
+      for (const f of files) {
+        sent.push([folderId, f.name])
+        modes.push(`${f.name}:${onConflict}`)
+        const clash = taken.includes(f.name)
+        if (clash && onConflict === 'fail')
+          conflicts.push({
+            name: f.name,
+            error: `“${f.name}” already exists in Reports.`,
+            existing: { ...folderItem(`old-${f.name}`, f.name), type: 'file' as const },
+          })
+        else if (clash && onConflict === 'keep_both') uploaded.push(landed(`${f.name} (2)`, 'kept_both'))
+        else uploaded.push(landed(f.name, clash ? 'replaced' : 'created'))
       }
+      return { uploaded, errors: [], conflicts }
     },
   }
 }
@@ -137,7 +162,7 @@ describe('runUpload', () => {
     const api = fakeApi()
     const progress = vi.fn()
     const plan = planUpload(entriesFromPicked([file('a', 'T/a'), file('b', 'T/sub/b'), file('c')]))
-    const out = await runUpload(plan, 'target', api, progress)
+    const out = await runUpload(plan, 'target', api, noClash, progress)
     expect(api.created).toEqual([
       ['target', 'T'],
       ['d1', 'sub'],
@@ -147,7 +172,8 @@ describe('runUpload', () => {
       ['d2', 'b'],
       ['target', 'c'],
     ])
-    expect(out).toEqual({ uploaded: 3, folders: 2, failures: [], stopped: null })
+    expect(out).toEqual({ uploaded: 3, replaced: 0, skipped: [], folders: 2, failures: [], stopped: null })
+    expect(api.modes).toEqual(['a:fail', 'b:fail', 'c:fail'])
     expect(progress).toHaveBeenCalledWith({ done: 0, total: 3, current: 'Creating folder T/sub' })
     expect(progress).toHaveBeenCalledWith({ done: 1, total: 3, current: 'T/sub/b' })
     expect(progress).toHaveBeenLastCalledWith({ done: 3, total: 3, current: '' })
@@ -158,10 +184,10 @@ describe('runUpload', () => {
     api.upload = async (folderId, files) => {
       const f = files[0]!
       if (f.name === 'huge.bin')
-        return { uploaded: [], errors: ['“huge.bin” is 120 MB; files can be at most 100 MB.'] }
+        return { uploaded: [], errors: ['“huge.bin” is 120 MB; files can be at most 100 MB.'], conflicts: [] }
       if (f.name === 'giant.bin')
         throw new DriveApiError('Drive request failed (413).', 413, null, null)
-      return { uploaded: [{ ...folderItem('x', f.name), type: 'file' }], errors: [] }
+      return { uploaded: [landed(f.name)], errors: [], conflicts: [] }
     }
     const plan = planUpload(
       entriesFromPicked([
@@ -170,7 +196,7 @@ describe('runUpload', () => {
         file('ok.txt', 'T/ok.txt'),
       ]),
     )
-    const out = await runUpload(plan, null, api)
+    const out = await runUpload(plan, null, api, noClash)
     expect(out.uploaded).toBe(1)
     expect(out.stopped).toBeNull()
     expect(out.failures).toEqual([
@@ -193,7 +219,7 @@ describe('runUpload', () => {
     const plan = planUpload(
       entriesFromPicked([file('a', 'T/bad/a'), file('b', 'T/bad/deep/b'), file('c', 'T/c')]),
     )
-    const out = await runUpload(plan, null, api)
+    const out = await runUpload(plan, null, api, noClash)
     expect(api.sent).toEqual([['d1', 'c']])
     expect(out.failures).toEqual([
       { path: 'T/bad', reason: 'Couldn’t create this folder: A name can’t contain / or \\.' },
@@ -209,11 +235,56 @@ describe('runUpload', () => {
       throw new DriveApiError('You can’t add files here.', 403, 'forbidden', null)
     }
     const plan = planUpload(entriesFromPicked([file('a'), file('b')]))
-    const out = await runUpload(plan, 'f1', api)
+    const out = await runUpload(plan, 'f1', api, noClash)
     expect(out.stopped).toBe('You can’t add files here.')
     expect(out.failures).toEqual([
       { path: 'a', reason: 'You can’t add files here.' },
       { path: 'b', reason: 'not uploaded: the upload stopped' },
     ])
+  })
+
+  it('a name already there asks, with the file that is there; replace and keep both send it again as decided', async () => {
+    const api = fakeApi(['a.txt', 'b.txt'])
+    const asked: UploadConflict[] = []
+    const answers: ConflictDecision[] = [
+      { choice: 'replace', all: false },
+      { choice: 'keep_both', all: false },
+    ]
+    const plan = planUpload(entriesFromPicked([file('a.txt'), file('new.txt'), file('b.txt')]))
+    const out = await runUpload(plan, 'reports', api, async (c) => {
+      asked.push(c)
+      return answers.shift()!
+    })
+    expect(asked.map((c) => [c.path, c.existing.id, c.message, c.more])).toEqual([
+      ['a.txt', 'old-a.txt', '“a.txt” already exists in Reports.', true],
+      ['b.txt', 'old-b.txt', '“b.txt” already exists in Reports.', false],
+    ])
+    expect(api.modes).toEqual(['a.txt:fail', 'a.txt:replace', 'new.txt:fail', 'b.txt:fail', 'b.txt:keep_both'])
+    expect(out).toMatchObject({ uploaded: 2, replaced: 1, skipped: [], failures: [], stopped: null })
+  })
+
+  it('cancel leaves that file out (named, not a failure); the rest still go up', async () => {
+    const api = fakeApi(['a.txt'])
+    const plan = planUpload(entriesFromPicked([file('a.txt'), file('b.txt')]))
+    const out = await runUpload(plan, null, api, async () => ({ choice: 'skip', all: false }))
+    expect(api.modes).toEqual(['a.txt:fail', 'b.txt:fail'])
+    expect(out).toMatchObject({ uploaded: 1, replaced: 0, skipped: ['a.txt'], failures: [] })
+  })
+
+  it('“apply to all” answers every later clash without asking again', async () => {
+    const api = fakeApi(['a.txt', 'b.txt', 'c.txt'])
+    const ask = vi.fn(async (): Promise<ConflictDecision> => ({ choice: 'replace', all: true }))
+    const plan = planUpload(entriesFromPicked([file('a.txt'), file('b.txt'), file('new.txt'), file('c.txt')]))
+    const out = await runUpload(plan, null, api, ask)
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(api.modes).toEqual(['a.txt:fail', 'a.txt:replace', 'b.txt:replace', 'new.txt:replace', 'c.txt:replace'])
+    expect(out).toMatchObject({ uploaded: 1, replaced: 3, skipped: [] })
+
+    const skipping = fakeApi(['a.txt', 'b.txt'])
+    const skipAll = vi.fn(async (): Promise<ConflictDecision> => ({ choice: 'skip', all: true }))
+    const out2 = await runUpload(planUpload(entriesFromPicked([file('a.txt'), file('new.txt'), file('b.txt')])), null, skipping, skipAll)
+    expect(skipAll).toHaveBeenCalledTimes(1)
+    expect(skipping.modes).toEqual(['a.txt:fail', 'new.txt:fail', 'b.txt:fail'])
+    expect(out2).toMatchObject({ uploaded: 1, replaced: 0, skipped: ['a.txt', 'b.txt'] })
   })
 })

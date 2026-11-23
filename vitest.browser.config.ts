@@ -147,6 +147,7 @@ export default defineConfig({
       'src/lib/components/drive/archived-view.svelte.spec.ts',
       'src/lib/components/drive/revisions-panel.svelte.spec.ts',
       'src/lib/components/drive/share-dialog.svelte.spec.ts',
+      'src/lib/components/drive/upload-conflict-dialog.svelte.spec.ts',
       // Drive: run a web app folder (plan/phase-drive-app-preview.md).
       'src/lib/components/drive/app-preview.svelte.spec.ts',
       // Office viewers (plan/phase-office-files.md): every format's component specs.

@@ -50,7 +50,7 @@ describe('drive file-management tools (UI parity)', () => {
     const { tool, human } = await setup()
     const me = human('alice')
     const { folder } = (await tool('drive.create_folder').handler(me, { name: 'Projects' })) as { folder: { id: string } }
-    const up = (await tool('drive.upload').handler(me, { folder_id: folder.id, name: 'a.txt', mime_type: 'text/plain', content_base64: b64('hello') })) as { file: { id: string; name: string } }
+    const up = (await tool('drive.upload').handler(me, { folder_id: folder.id, name: 'a.txt', mime_type: 'text/plain', content_base64: b64('hello'), on_conflict: 'fail' })) as { file: { id: string; name: string } }
     expect(up.file.name).toBe('a.txt')
     expect(await tool('drive.rename').handler(me, { type: 'file', id: up.file.id, name: 'b.txt' })).toMatchObject({ item: { name: 'b.txt' } })
     expect(await tool('drive.move').handler(me, { type: 'file', id: up.file.id, folder_id: null })).toMatchObject({ item: { name: 'b.txt' } })
@@ -67,15 +67,30 @@ describe('drive file-management tools (UI parity)', () => {
   it('upload enforces the same size limit and rejects bad base64', async () => {
     const { tool, human } = await setup()
     await expect(
-      tool('drive.upload').handler(human('alice'), { name: 'big.bin', mime_type: 'application/octet-stream', content_base64: b64('x'.repeat(65)) }),
+      tool('drive.upload').handler(human('alice'), { name: 'big.bin', mime_type: 'application/octet-stream', content_base64: b64('x'.repeat(65)), on_conflict: 'fail' }),
     ).rejects.toMatchObject({ code: 'too_large' })
-    await expect(tool('drive.upload').handler(human('alice'), { name: 'x.bin', mime_type: 'application/octet-stream', content_base64: 'not base64!' })).rejects.toThrow()
+    await expect(tool('drive.upload').handler(human('alice'), { name: 'x.bin', mime_type: 'application/octet-stream', content_base64: 'not base64!', on_conflict: 'fail' })).rejects.toThrow()
+  })
+
+  it('upload takes the name-clash decision explicitly: fail names the existing file, replace makes a revision, keep_both a “(2)” copy', async () => {
+    const { drive, tool, human } = await setup()
+    const me = human('alice')
+    const up = (on_conflict: string | undefined, body: string) =>
+      tool('drive.upload').handler(me, { name: 'a.txt', mime_type: 'text/plain', content_base64: b64(body), ...(on_conflict ? { on_conflict } : {}) })
+    await expect(up(undefined, 'one')).rejects.toThrow(/on_conflict/)
+    const first = (await up('fail', 'one')) as { file: { id: string }; outcome: string }
+    expect(first.outcome).toBe('created')
+    await expect(up('fail', 'two')).rejects.toMatchObject({ code: 'conflict', message: '“a.txt” already exists in My drive.', existing: { id: first.file.id } })
+    expect(await up('replace', 'two')).toMatchObject({ file: { id: first.file.id, name: 'a.txt' }, outcome: 'replaced' })
+    expect(new TextDecoder().decode((await drive.readFile(alice, first.file.id)).bytes)).toBe('two')
+    expect(await tool('drive.list_revisions').handler(me, { file_id: first.file.id })).toMatchObject({ revisions: [{ size: 3 }, { size: 3 }] })
+    expect(await up('keep_both', 'three')).toMatchObject({ file: { name: 'a (2).txt' }, outcome: 'kept_both' })
   })
 
   it('saves bytes as a revision, lists revisions and restores one', async () => {
     const { drive, tool, human } = await setup()
     const me = human('alice')
-    const f = await drive.upload(alice, null, { name: 'deck.pdf', bytes: new TextEncoder().encode('%PDF-1'), mime: 'application/pdf' })
+    const f = await drive.upload(alice, null, { name: 'deck.pdf', bytes: new TextEncoder().encode('%PDF-1'), mime: 'application/pdf' }, 'fail')
     await tool('drive.save_file_bytes').handler(me, { file_id: f.id, content_base64: b64('%PDF-2') })
     const { revisions } = (await tool('drive.list_revisions').handler(me, { file_id: f.id })) as { revisions: Array<{ id: string }> }
     expect(revisions).toHaveLength(2)

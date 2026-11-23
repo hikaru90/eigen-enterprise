@@ -1,4 +1,4 @@
-import { DriveApiError, formatSize, type DriveItem } from './api'
+import { DriveApiError, formatSize, type DriveItem, type OnConflict, type UploadResult } from './api'
 
 /**
  * Uploading into Drive, files or whole folders (from the folder picker or
@@ -7,6 +7,11 @@ import { DriveApiError, formatSize, type DriveItem } from './api'
  * its own request into its folder (so one request never carries more than one
  * file's bytes, and progress moves file by file). Nothing is skipped quietly:
  * every file that doesn't land is named in `failures` with why.
+ *
+ * A file whose name is already in its folder is never doubled or overwritten
+ * unasked: it goes up under `fail`, and a clash asks the person (`resolve`):
+ * replace (a new revision of that file), keep both (“name (2).ext”) or skip
+ * it — for this file, or for every later clash too (`all`).
  */
 
 /** One file and the folders it sits in, relative to where the upload lands (`[]`: right there). */
@@ -16,7 +21,12 @@ export type UploadFailure = { path: string; reason: string }
 export type UploadPlan = { folders: string[][]; files: UploadEntry[]; failures: UploadFailure[] }
 export type UploadProgress = { done: number; total: number; current: string }
 export type UploadOutcome = {
+  /** New files (kept-both copies included). */
   uploaded: number
+  /** Existing files that got the upload as a new revision. */
+  replaced: number
+  /** Paths the person chose to leave out at a clash. */
+  skipped: string[]
   folders: number
   failures: UploadFailure[]
   /** Why the upload stopped early (a refusal that isn't about one file), else null. */
@@ -24,11 +34,13 @@ export type UploadOutcome = {
 }
 export type UploadApi = {
   createFolder: (parentId: string | null, name: string) => Promise<DriveItem>
-  upload: (
-    folderId: string | null,
-    files: File[],
-  ) => Promise<{ uploaded: DriveItem[]; errors: string[] }>
+  upload: (folderId: string | null, files: File[], onConflict: OnConflict) => Promise<UploadResult>
 }
+/** A clash to ask about: the file's path in the upload, the server's sentence, the file that is there, and whether more files follow. */
+export type UploadConflict = { path: string; name: string; message: string; existing: DriveItem; more: boolean }
+/** The person's answer: `skip` is Cancel for this file; `all` answers every later clash the same way. */
+export type ConflictDecision = { choice: 'replace' | 'keep_both' | 'skip'; all: boolean }
+export type ConflictResolver = (conflict: UploadConflict) => Promise<ConflictDecision>
 
 const joined = (dirs: string[], name?: string) =>
   [...dirs, ...(name === undefined ? [] : [name])].join('/')
@@ -152,6 +164,7 @@ export async function runUpload(
   plan: UploadPlan,
   targetId: string | null,
   api: UploadApi,
+  resolve: ConflictResolver,
   onProgress: (p: UploadProgress) => void = () => {},
 ): Promise<UploadOutcome> {
   const failures = [...plan.failures]
@@ -193,8 +206,19 @@ export async function runUpload(
   }
 
   let uploaded = 0
+  let replaced = 0
+  const skipped: string[] = []
+  /** An “apply to all” answer, once given. */
+  let always: ConflictDecision['choice'] | null = null
+  const count = (out: UploadResult, path: string) => {
+    for (const item of out.uploaded) {
+      if (item.outcome === 'replaced') replaced++
+      else uploaded++
+    }
+    for (const reason of out.errors) failures.push({ path, reason })
+  }
   let done = 0
-  for (const entry of plan.files) {
+  for (const [index, entry] of plan.files.entries()) {
     const dir = joined(entry.dirs)
     const path = joined(entry.dirs, entry.file.name)
     if (stopped) {
@@ -209,9 +233,24 @@ export async function runUpload(
     }
     onProgress({ done, total, current: path })
     try {
-      const out = await api.upload(idOf(dir), [entry.file])
-      uploaded += out.uploaded.length
-      for (const reason of out.errors) failures.push({ path, reason })
+      const folder = idOf(dir)
+      const first = await api.upload(folder, [entry.file], always === 'replace' || always === 'keep_both' ? always : 'fail')
+      count(first, path)
+      for (const clash of first.conflicts) {
+        const decision: ConflictDecision =
+          always !== null
+            ? { choice: always, all: true }
+            : await resolve({
+                path,
+                name: clash.name,
+                message: clash.error,
+                existing: clash.existing,
+                more: index < plan.files.length - 1,
+              })
+        if (decision.all) always = decision.choice
+        if (decision.choice === 'skip') skipped.push(path)
+        else count(await api.upload(folder, [entry.file], decision.choice), path)
+      }
     } catch (err) {
       failures.push({
         path,
@@ -222,5 +261,5 @@ export async function runUpload(
     done++
   }
   onProgress({ done, total, current: '' })
-  return { uploaded, folders: created, failures, stopped }
+  return { uploaded, replaced, skipped, folders: created, failures, stopped }
 }

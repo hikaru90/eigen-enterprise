@@ -98,6 +98,19 @@ export type AppStatus = {
   preview: AppPreview | null
 }
 
+/**
+ * When an uploaded file's name is already in its folder: `replace` gives that
+ * file the upload as a new revision, `keep_both` adds it as “name (2).ext”,
+ * `fail` leaves it out and reports the clash in `conflicts`.
+ */
+export type OnConflict = 'replace' | 'keep_both' | 'fail'
+/** What one upload request did: the files that landed (and how), the per-file refusals, and the clashes under `fail`. */
+export type UploadResult = {
+  uploaded: Array<DriveItem & { outcome: 'created' | 'replaced' | 'kept_both' }>
+  errors: string[]
+  conflicts: Array<{ name: string; error: string; existing: DriveItem }>
+}
+
 /** A failed Drive call: the server's sentence, its code, (for `locked`) who holds the edit lock, (for `busy`) the app that is running. */
 export class DriveApiError extends Error {
   constructor(
@@ -151,11 +164,13 @@ export const driveApi = {
       '/api/drive/documents',
       send('POST', { folderId, kind, ...(name ? { name } : {}) }),
     ),
-  upload: (folderId: string | null, files: File[]) => {
+  /** `onConflict`: what happens when a file of that name is already in the folder (see UploadResult). */
+  upload: (folderId: string | null, files: File[], onConflict: OnConflict) => {
     const form = new FormData()
     if (folderId) form.set('folderId', folderId)
+    form.set('onConflict', onConflict)
     for (const f of files) form.append('file', f)
-    return call<{ uploaded: DriveItem[]; errors: string[] }>('/api/drive/upload', {
+    return call<UploadResult>('/api/drive/upload', {
       method: 'POST',
       body: form,
     })

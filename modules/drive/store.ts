@@ -57,7 +57,9 @@ export type DriveRevision = {
 }
 
 export type FolderPatch = Partial<Pick<DriveFolder, 'name' | 'parentId' | 'trashedAt' | 'updatedAt' | 'archivedAt' | 'archivedBy'>>
-export type FilePatch = Partial<Pick<DriveFile, 'name' | 'folderId' | 'trashedAt' | 'updatedAt' | 'mime' | 'size' | 'sha256' | 'archivedAt' | 'archivedBy'>>
+export type FilePatch = Partial<
+  Pick<DriveFile, 'name' | 'folderId' | 'trashedAt' | 'updatedAt' | 'mime' | 'size' | 'sha256' | 'archivedAt' | 'archivedBy' | 'contentDate' | 'contentDateKind'>
+>
 
 export type DriveStore = {
   /** Runs metadata changes atomically; the callback receives the transaction-scoped store. */

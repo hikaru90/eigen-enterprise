@@ -33,6 +33,7 @@ const FILES: Record<string, () => ReturnType<typeof file>> = {
   'huge-csv': () => file(TEXT_PREVIEW_MAX_BYTES + 1, 'data.csv', 'text/csv'),
   'huge-html': () => file(TEXT_PREVIEW_MAX_BYTES + 1, 'site.html', 'text/html'),
   'no-size': () => file(undefined),
+  'replaced-image': () => file(2048, 'logo.png', 'image/png'),
 }
 
 describe('/drive/file/[id] text previews', () => {
@@ -96,5 +97,23 @@ describe('/drive/file/[id] text previews', () => {
   it('fails loud when a previewed file has no size', async () => {
     await expect(load({ locals: { user: { id: 'alice' } }, params: { id: 'no-size' } } as never)).rejects.toThrow(/no size/)
     expect(holder.readText).not.toHaveBeenCalled()
+  })
+
+  it('lists an image’s revisions with their authors once an upload replaced it (the old version stays restorable)', async () => {
+    const d = holder.drive as { listRevisions: ReturnType<typeof vi.fn>; shareTargets: ReturnType<typeof vi.fn> }
+    const revs = [
+      { id: 'r2', fileId: 'source-code', sha256: 'b', size: 2048, authorId: 'alice', createdAt: new Date('2026-11-21T10:00:00Z') },
+      { id: 'r1', fileId: 'source-code', sha256: 'a', size: 1024, authorId: 'bob', createdAt: new Date('2026-11-20T10:00:00Z') },
+    ]
+    d.listRevisions.mockResolvedValue(revs)
+    d.shareTargets.mockResolvedValue({ people: [{ id: 'alice', name: 'Alice', email: 'a@x' }, { id: 'bob', name: '', email: 'bob@x' }], groups: [] })
+    const result = (await load({ locals: { user: { id: 'alice' } }, params: { id: 'replaced-image' } } as never)) as {
+      revisions: unknown[]
+      authors: Record<string, string>
+      editable: boolean
+    }
+    expect(result.revisions).toEqual(revs)
+    expect(result.authors).toEqual({ alice: 'Alice', bob: 'bob@x' })
+    expect(result.editable).toBe(false)
   })
 })

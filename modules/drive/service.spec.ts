@@ -53,7 +53,7 @@ describe('drive: folders, files and the creator', () => {
   it('a member creates folders and files in their own drive and sees only their own top level', async () => {
     const { drive } = await setup()
     const projects = await drive.createFolder(alice, null, 'Projects')
-    await drive.upload(alice, projects.id, { name: 'plan.pdf', bytes: text('%PDF'), mime: 'application/pdf' })
+    await drive.upload(alice, projects.id, { name: 'plan.pdf', bytes: text('%PDF'), mime: 'application/pdf' }, 'fail')
     await drive.createFolder(bob, null, 'Bob stuff')
     expect((await drive.listFolder(alice, null)).items.map((i) => i.name)).toEqual(['Projects'])
     const inside = await drive.listFolder(alice, projects.id)
@@ -66,7 +66,7 @@ describe('drive: folders, files and the creator', () => {
     const { drive } = await setup(10)
     await expectCode(drive.createFolder(alice, null, '  '), 'invalid')
     await expectCode(drive.createFolder(alice, null, 'a/b'), 'invalid')
-    await expect(drive.upload(alice, null, { name: 'big.bin', bytes: new Uint8Array(11), mime: null })).rejects.toThrow(
+    await expect(drive.upload(alice, null, { name: 'big.bin', bytes: new Uint8Array(11), mime: null }, 'fail')).rejects.toThrow(
       /“big.bin” is 11 B; files can be at most 10 B/,
     )
   })
@@ -101,8 +101,8 @@ describe('drive: folders, files and the creator', () => {
 
   it('storage counts each distinct blob once (dedupe)', async () => {
     const { drive } = await setup()
-    await drive.upload(alice, null, { name: 'a.txt', bytes: text('same bytes'), mime: null })
-    await drive.upload(bob, null, { name: 'b.txt', bytes: text('same bytes'), mime: null })
+    await drive.upload(alice, null, { name: 'a.txt', bytes: text('same bytes'), mime: null }, 'fail')
+    await drive.upload(bob, null, { name: 'b.txt', bytes: text('same bytes'), mime: null }, 'fail')
     expect(await drive.storageBytes()).toBe(10)
   })
 })
@@ -122,7 +122,7 @@ describe('drive: access is checked on every read and write (fail closed)', () =>
     await expectCode(drive.moveToTrash(bob, 'folder', f.id), 'not_found')
     await expectCode(drive.getGrants(bob, 'folder', f.id), 'not_found')
     await expectCode(drive.createFolder(bob, f.id, 'inside'), 'not_found')
-    await expectCode(drive.upload(bob, f.id, { name: 'x.txt', bytes: text('x'), mime: null }), 'not_found')
+    await expectCode(drive.upload(bob, f.id, { name: 'x.txt', bytes: text('x'), mime: null }, 'fail'), 'not_found')
     await expectCode(drive.listFolder(stranger, f.id), 'not_found')
     expect(await drive.sharedWithMe(bob)).toEqual([])
     expect(await drive.search(bob, 'notes')).toEqual([])
@@ -235,8 +235,8 @@ describe('drive: trash', () => {
 
   it('a blob still used by another file survives delete forever', async () => {
     const { drive, blobs } = await setup()
-    const a = await drive.upload(alice, null, { name: 'a.txt', bytes: text('shared'), mime: null })
-    const b = await drive.upload(alice, null, { name: 'b.txt', bytes: text('shared'), mime: null })
+    const a = await drive.upload(alice, null, { name: 'a.txt', bytes: text('shared'), mime: null }, 'fail')
+    const b = await drive.upload(alice, null, { name: 'b.txt', bytes: text('shared'), mime: null }, 'fail')
     await drive.moveToTrash(alice, 'file', a.id)
     await drive.deleteForever(alice, 'file', a.id)
     expect((await drive.readText(alice, b.id)).content).toBe('shared')
@@ -260,7 +260,7 @@ describe('drive: paths name whose tree it is', () => {
     const root = await drive.createFolder(messages, null, 'Messages')
     const general = await drive.createFolder(messages, root.id, '#general')
     await drive.setGrants(owner, 'folder', general.id, [{ subject: { kind: 'company' }, level: 'edit' }])
-    const att = await drive.upload(alice, general.id, { name: 'agenda.md', bytes: text('# A'), mime: 'text/markdown' })
+    const att = await drive.upload(alice, general.id, { name: 'agenda.md', bytes: text('# A'), mime: 'text/markdown' }, 'fail')
     for (const who of [bob, owner]) {
       const info = await drive.fileInfo(who, att.id)
       expect(info.root).toEqual({ label: 'Messages', href: '/messages' })
@@ -331,7 +331,7 @@ describe('drive: text revisions', () => {
 
   it('write_text refuses non-revisioned files; restore refuses a revision of another file and view-only people', async () => {
     const { drive } = await setup()
-    const txt = await drive.upload(alice, null, { name: 'a.txt', bytes: text('x'), mime: null })
+    const txt = await drive.upload(alice, null, { name: 'a.txt', bytes: text('x'), mime: null }, 'fail')
     await expectCode(drive.writeText(alice, txt.id, 'y'), 'invalid')
     const a = await drive.createDocument(alice, null, 'md', 'a')
     const b = await drive.createDocument(alice, null, 'md', 'b')
@@ -356,10 +356,10 @@ describe('resolveMaxUploadBytes', () => {
 describe('drive service: when a file is from (Contribute 0c945439)', () => {
   it('dates a PDF by the creation date it records, and anything else by when it was uploaded', async () => {
     const { drive, store } = await setup()
-    const letter = await drive.upload(alice, null, { name: 'letter.pdf', bytes: text('%PDF-1.4\n<< /CreationDate (D:19870512093000Z) >>\n%%EOF'), mime: 'application/pdf' })
+    const letter = await drive.upload(alice, null, { name: 'letter.pdf', bytes: text('%PDF-1.4\n<< /CreationDate (D:19870512093000Z) >>\n%%EOF'), mime: 'application/pdf' }, 'fail')
     expect(letter.dated).toEqual({ at: new Date('1987-05-12T09:30:00.000Z'), kind: 'created' })
     expect(await store.getFile(letter.id)).toMatchObject({ contentDate: new Date('1987-05-12T09:30:00.000Z'), contentDateKind: 'created' })
-    const note = await drive.upload(alice, null, { name: 'note.txt', bytes: text('hello'), mime: null })
+    const note = await drive.upload(alice, null, { name: 'note.txt', bytes: text('hello'), mime: null }, 'fail')
     const stored = await store.getFile(note.id)
     expect(stored).toMatchObject({ contentDate: null, contentDateKind: null })
     expect(note.dated).toEqual({ at: stored!.createdAt, kind: 'uploaded' })
@@ -374,8 +374,8 @@ describe('drive service: reading a file by its path inside a folder (rendered HT
     const s = await setup()
     const root = await s.drive.createFolder(alice, null, 'Site')
     const css = await s.drive.createFolder(alice, root.id, 'css')
-    await s.drive.upload(alice, root.id, { name: 'index.html', bytes: text('<h1>Hi</h1>'), mime: 'text/html' })
-    await s.drive.upload(alice, css.id, { name: 'site.css', bytes: text('h1{color:red}'), mime: 'text/css' })
+    await s.drive.upload(alice, root.id, { name: 'index.html', bytes: text('<h1>Hi</h1>'), mime: 'text/html' }, 'fail')
+    await s.drive.upload(alice, css.id, { name: 'site.css', bytes: text('h1{color:red}'), mime: 'text/css' }, 'fail')
     return { ...s, root, css }
   }
 
@@ -405,8 +405,10 @@ describe('drive service: reading a file by its path inside a folder (rendered HT
 
   it('fails loud when two files share the name the path asks for', async () => {
     const { drive, root } = await site()
-    await drive.upload(alice, root.id, { name: 'dup.js', bytes: text('1'), mime: null })
-    await drive.upload(alice, root.id, { name: 'dup.js', bytes: text('2'), mime: null })
+    await drive.upload(alice, root.id, { name: 'dup.js', bytes: text('1'), mime: null }, 'fail')
+    // An upload can't add a second “dup.js” any more (it asks); a rename still can.
+    const other = await drive.upload(alice, root.id, { name: 'other.js', bytes: text('2'), mime: null }, 'fail')
+    await drive.rename(alice, 'file', other.id, 'dup.js')
     await expect(drive.readAtPath(alice, root.id, ['dup.js'])).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/2 items named "dup.js"/) })
   })
 
@@ -420,8 +422,8 @@ describe('drive: web app folders (plan/phase-drive-app-preview.md)', () => {
   async function app(pkg: string, extra: Array<[string, string]> = []) {
     const s = await setup(1 << 20)
     const root = await s.drive.createFolder(alice, null, 'shop')
-    await s.drive.upload(alice, root.id, { name: 'package.json', bytes: text(pkg), mime: 'application/json' })
-    for (const [name, body] of extra) await s.drive.upload(alice, root.id, { name, bytes: text(body), mime: null })
+    await s.drive.upload(alice, root.id, { name: 'package.json', bytes: text(pkg), mime: 'application/json' }, 'fail')
+    for (const [name, body] of extra) await s.drive.upload(alice, root.id, { name, bytes: text(body), mime: null }, 'fail')
     return { ...s, root }
   }
 
@@ -439,9 +441,9 @@ describe('drive: web app folders (plan/phase-drive-app-preview.md)', () => {
     const s = await setup(1 << 20)
     const root = await s.drive.createFolder(alice, null, 'repo')
     const sub = await s.drive.createFolder(alice, root.id, 'web')
-    await s.drive.upload(alice, sub.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null })
+    await s.drive.upload(alice, sub.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null }, 'fail')
     expect((await s.drive.webApp(alice, root.id)).webApp).toBeNull()
-    const trashed = await s.drive.upload(alice, root.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null })
+    const trashed = await s.drive.upload(alice, root.id, { name: 'package.json', bytes: text('{"scripts":{"dev":"vite"}}'), mime: null }, 'fail')
     await s.drive.moveToTrash(alice, 'file', trashed.id)
     expect((await s.drive.webApp(alice, root.id)).webApp).toBeNull()
     const broken = await app('{"scripts": {"dev": "vite"')
@@ -449,7 +451,9 @@ describe('drive: web app folders (plan/phase-drive-app-preview.md)', () => {
   })
 
   it('two package.json files in the folder fail loud; it needs view access', async () => {
-    const { drive, root } = await app('{"scripts":{"dev":"vite"}}', [['package.json', '{}']])
+    const { drive, root } = await app('{"scripts":{"dev":"vite"}}', [['package (copy).json', '{}']])
+    const copy = (await drive.listFolder(alice, root.id)).items.find((i) => i.name === 'package (copy).json')!
+    await drive.rename(alice, 'file', copy.id, 'package.json')
     await expect(drive.webApp(alice, root.id)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/2 items named "package.json"/) })
     await expectCode(drive.webApp(bob, root.id), 'not_found')
   })
@@ -457,18 +461,18 @@ describe('drive: web app folders (plan/phase-drive-app-preview.md)', () => {
   it('a snapshot lists every live file by its relative path, without node_modules, .git or the trash', async () => {
     const { drive, root } = await app('{"scripts":{"dev":"vite"}}', [['package-lock.json', '{}']])
     const src = await drive.createFolder(alice, root.id, 'src')
-    await drive.upload(alice, src.id, { name: 'main.ts', bytes: text('1'), mime: null })
+    await drive.upload(alice, src.id, { name: 'main.ts', bytes: text('1'), mime: null }, 'fail')
     const lib = await drive.createFolder(alice, src.id, 'lib')
-    await drive.upload(alice, lib.id, { name: 'a.ts', bytes: text('22'), mime: null })
+    await drive.upload(alice, lib.id, { name: 'a.ts', bytes: text('22'), mime: null }, 'fail')
     const nm = await drive.createFolder(alice, root.id, 'node_modules')
-    await drive.upload(alice, nm.id, { name: 'vite.js', bytes: text('x'), mime: null })
+    await drive.upload(alice, nm.id, { name: 'vite.js', bytes: text('x'), mime: null }, 'fail')
     const nested = await drive.createFolder(alice, src.id, 'node_modules')
-    await drive.upload(alice, nested.id, { name: 'x.js', bytes: text('x'), mime: null })
+    await drive.upload(alice, nested.id, { name: 'x.js', bytes: text('x'), mime: null }, 'fail')
     const git = await drive.createFolder(alice, root.id, '.git')
-    await drive.upload(alice, git.id, { name: 'HEAD', bytes: text('ref'), mime: null })
-    const gone = await drive.upload(alice, src.id, { name: 'old.ts', bytes: text('old'), mime: null })
+    await drive.upload(alice, git.id, { name: 'HEAD', bytes: text('ref'), mime: null }, 'fail')
+    const gone = await drive.upload(alice, src.id, { name: 'old.ts', bytes: text('old'), mime: null }, 'fail')
     await drive.moveToTrash(alice, 'file', gone.id)
-    const archived = await drive.upload(alice, src.id, { name: 'kept.ts', bytes: text('k'), mime: null })
+    const archived = await drive.upload(alice, src.id, { name: 'kept.ts', bytes: text('k'), mime: null }, 'fail')
     await drive.archive(alice, 'file', archived.id)
     const snap = await drive.snapshotFiles(alice, root.id)
     expect(snap.folder.name).toBe('shop')
@@ -480,7 +484,7 @@ describe('drive: web app folders (plan/phase-drive-app-preview.md)', () => {
   it('two items with one name at a path fail loud (a file and a folder count too)', async () => {
     const { drive, root } = await app('{}')
     const src = await drive.createFolder(alice, root.id, 'src')
-    await drive.upload(alice, src.id, { name: 'main.ts', bytes: text('1'), mime: null })
+    await drive.upload(alice, src.id, { name: 'main.ts', bytes: text('1'), mime: null }, 'fail')
     await drive.createFolder(alice, src.id, 'main.ts')
     await expect(drive.snapshotFiles(alice, root.id)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/2 items named "main.ts" in “shop\/src”/) })
   })
@@ -511,5 +515,118 @@ describe('drive: web app folders (plan/phase-drive-app-preview.md)', () => {
     for (let i = 0; i < 20_000; i++) await many.store.insertFile(row(many.root.id, `f${i}.txt`, 0))
     await expect(many.drive.snapshotFiles(alice, many.root.id)).rejects.toMatchObject({ code: 'too_large', message: expect.stringMatching(/more than 20,000 files/) })
     await expectCode(many.drive.snapshotFiles(bob, many.root.id), 'not_found')
+  })
+})
+
+describe('drive: uploading a name that is already there (bug f45acdef)', () => {
+  const pdf = (s: string) => text(`%PDF-${s}`)
+  const contentOf = async (drive: Awaited<ReturnType<typeof setup>>['drive'], id: string) => new TextDecoder().decode((await drive.readFile(alice, id)).bytes)
+
+  it('fail refuses with a conflict naming the existing file, and adds nothing', async () => {
+    const { drive } = await setup()
+    const folder = await drive.createFolder(alice, null, 'Reports')
+    const first = await drive.upload(alice, folder.id, { name: 'q3.pdf', bytes: pdf('a'), mime: 'application/pdf' }, 'fail')
+    expect(first.outcome).toBe('created')
+    for (const p of [
+      drive.upload(alice, folder.id, { name: 'q3.pdf', bytes: pdf('b'), mime: 'application/pdf' }, 'fail'),
+      drive.upload(alice, folder.id, { name: 'q3.pdf', bytes: pdf('b'), mime: 'application/pdf' }, 'fail'),
+    ]) {
+      await expect(p).rejects.toMatchObject({ code: 'conflict', message: '“q3.pdf” already exists in Reports.', existing: { id: first.id, name: 'q3.pdf' } })
+    }
+    expect((await drive.listFolder(alice, folder.id)).items.map((i) => i.name)).toEqual(['q3.pdf'])
+    expect(await contentOf(drive, first.id)).toBe('%PDF-a')
+  })
+
+  it('names compare exactly, as paths do: another case, a trashed file or someone else’s My drive is no clash', async () => {
+    const { drive } = await setup()
+    await drive.upload(alice, null, { name: 'Notes.txt', bytes: text('a'), mime: 'text/plain' }, 'fail')
+    expect((await drive.upload(alice, null, { name: 'notes.txt', bytes: text('b'), mime: 'text/plain' }, 'fail')).outcome).toBe('created')
+    expect((await drive.upload(bob, null, { name: 'Notes.txt', bytes: text('c'), mime: 'text/plain' }, 'fail')).outcome).toBe('created')
+    await expect(drive.upload(alice, null, { name: 'Notes.txt', bytes: text('d'), mime: 'text/plain' }, 'fail')).rejects.toMatchObject({
+      code: 'conflict',
+      message: '“Notes.txt” already exists in My drive.',
+    })
+    const old = await drive.upload(alice, null, { name: 'old.txt', bytes: text('x'), mime: 'text/plain' }, 'fail')
+    await drive.moveToTrash(alice, 'file', old.id)
+    expect((await drive.upload(alice, null, { name: 'old.txt', bytes: text('y'), mime: 'text/plain' }, 'fail')).outcome).toBe('created')
+  })
+
+  it('an archived file still sits in its folder, so it clashes too', async () => {
+    const { drive } = await setup()
+    const f = await drive.upload(alice, null, { name: 'a.txt', bytes: text('a'), mime: 'text/plain' }, 'fail')
+    await drive.archive(alice, 'file', f.id)
+    await expect(drive.upload(alice, null, { name: 'a.txt', bytes: text('b'), mime: 'text/plain' }, 'fail')).rejects.toMatchObject({ code: 'conflict', existing: { id: f.id } })
+  })
+
+  it('keep_both names the new file “name (2).ext”, the next free number each time', async () => {
+    const { drive } = await setup()
+    const folder = await drive.createFolder(alice, null, 'F')
+    const up = (name: string) => drive.upload(alice, folder.id, { name, bytes: text(name.slice(0, 10)), mime: 'text/plain' }, 'keep_both')
+    expect(await up('notes.txt')).toMatchObject({ name: 'notes.txt', outcome: 'created' })
+    expect(await up('notes.txt')).toMatchObject({ name: 'notes (2).txt', outcome: 'kept_both' })
+    expect(await up('notes.txt')).toMatchObject({ name: 'notes (3).txt', outcome: 'kept_both' })
+    expect(await up('notes (2).txt')).toMatchObject({ name: 'notes (4).txt', outcome: 'kept_both' })
+    await up('README')
+    expect(await up('README')).toMatchObject({ name: 'README (2)' })
+    await up('.env')
+    expect(await up('.env')).toMatchObject({ name: '.env (2)' })
+    await up('a.tar.gz')
+    expect(await up('a.tar.gz')).toMatchObject({ name: 'a.tar (2).gz' })
+    const long = `${'x'.repeat(251)}.txt`
+    await up(long)
+    const kept = await up(long)
+    expect(kept.name).toHaveLength(255)
+    expect(kept.name.endsWith('x (2).txt')).toBe(true)
+  })
+
+  it('replace gives the existing file the upload as a new revision; the old version stays restorable', async () => {
+    const { drive } = await setup()
+    const folder = await drive.createFolder(alice, null, 'Pics')
+    const first = await drive.upload(alice, folder.id, { name: 'logo.png', bytes: text('old'), mime: 'image/png' }, 'fail')
+    const replaced = await drive.upload(alice, folder.id, { name: 'logo.png', bytes: text('newer'), mime: 'image/png' }, 'replace')
+    expect(replaced).toMatchObject({ id: first.id, name: 'logo.png', outcome: 'replaced', size: 5 })
+    expect((await drive.listFolder(alice, folder.id)).items.map((i) => i.name)).toEqual(['logo.png'])
+    expect(await contentOf(drive, first.id)).toBe('newer')
+    const revs = await drive.listRevisions(alice, first.id)
+    expect(revs.map((r) => r.size)).toEqual([5, 3])
+    await drive.restoreRevision(alice, first.id, revs[1]!.id)
+    expect(await contentOf(drive, first.id)).toBe('old')
+  })
+
+  it('replace on a document that keeps history adds one revision to it', async () => {
+    const { drive } = await setup()
+    const doc = await drive.upload(alice, null, { name: 'plan.md', bytes: text('# v1'), mime: 'text/markdown' }, 'fail')
+    expect(await drive.listRevisions(alice, doc.id)).toHaveLength(1)
+    await drive.upload(alice, null, { name: 'plan.md', bytes: text('# v2!'), mime: 'text/markdown' }, 'replace')
+    expect((await drive.listRevisions(alice, doc.id)).map((r) => r.size)).toEqual([5, 4])
+    expect((await drive.readText(alice, doc.id)).content).toBe('# v2!')
+  })
+
+  it('replace with nothing to replace simply creates the file', async () => {
+    const { drive } = await setup()
+    expect(await drive.upload(alice, null, { name: 'new.txt', bytes: text('a'), mime: 'text/plain' }, 'replace')).toMatchObject({ name: 'new.txt', outcome: 'created' })
+  })
+
+  it('replace is refused while someone edits the file, over the size limit, and when two files already share the name', async () => {
+    const { drive, store } = await setup(16)
+    const doc = await drive.upload(alice, null, { name: 'plan.md', bytes: text('# v1'), mime: 'text/markdown' }, 'fail')
+    await drive.acquireLock(alice, doc.id, 'alice-tab')
+    await expectCode(drive.upload(alice, null, { name: 'plan.md', bytes: text('# v2'), mime: 'text/markdown' }, 'replace'), 'locked')
+    await drive.upload(alice, null, { name: 'big.txt', bytes: text('x'), mime: 'text/plain' }, 'fail')
+    await expectCode(drive.upload(alice, null, { name: 'big.txt', bytes: text('x'.repeat(17)), mime: 'text/plain' }, 'replace'), 'too_large')
+    const a = await drive.upload(alice, null, { name: 'dup.txt', bytes: text('a'), mime: 'text/plain' }, 'fail')
+    await store.insertFile({ ...(await store.getFile(a.id))!, id: 'legacy-dup' })
+    await expect(drive.upload(alice, null, { name: 'dup.txt', bytes: text('b'), mime: 'text/plain' }, 'replace')).rejects.toMatchObject({
+      code: 'invalid',
+      message: 'There are 2 files named “dup.txt” in My drive; rename one so it is clear which to replace.',
+    })
+  })
+
+  it('a viewer of the folder can’t replace a file in it', async () => {
+    const { drive } = await setup()
+    const folder = await drive.createFolder(alice, null, 'Shared')
+    await drive.upload(alice, folder.id, { name: 'a.txt', bytes: text('a'), mime: 'text/plain' }, 'fail')
+    await share(drive, 'folder', folder.id, [{ subject: { kind: 'user', userId: 'bob' }, level: 'view' }])
+    await expectCode(drive.upload(bob, folder.id, { name: 'a.txt', bytes: text('b'), mime: 'text/plain' }, 'replace'), 'forbidden')
   })
 })

@@ -494,7 +494,7 @@
       const upload = new File([out.bytes.slice().buffer as ArrayBuffer], fileName, {
         type: 'application/pdf',
       })
-      const res = await driveApi.upload(folderId, [upload])
+      const res = await driveApi.upload(folderId, [upload], 'keep_both')
       const created = res.uploaded[0]
       if (!created) throw new Error(res.errors.join(' ') || 'The Drive did not take the file.')
       notice = {
@@ -544,7 +544,7 @@
         )
         warningsByPart.push(out.warnings)
       }
-      const res = await driveApi.upload(folderId, parts)
+      const res = await driveApi.upload(folderId, parts, 'keep_both')
       const created = res.uploaded
       if (created.length !== parts.length)
         throw new Error(res.errors.join(' ') || 'The Drive did not take every file.')

@@ -67,8 +67,8 @@ describe('drive.* tools', () => {
     const { drive, tool, agent } = await setup()
     const alice = { kind: 'user' as const, userId: 'alice' }
     const max = 2 * 1024 * 1024
-    const big = await drive.upload(alice, null, { name: 'big.txt', bytes: new Uint8Array(max + 1).fill(97), mime: 'text/plain' })
-    const edge = await drive.upload(alice, null, { name: 'edge.txt', bytes: new Uint8Array(max).fill(97), mime: 'text/plain' })
+    const big = await drive.upload(alice, null, { name: 'big.txt', bytes: new Uint8Array(max + 1).fill(97), mime: 'text/plain' }, 'fail')
+    const edge = await drive.upload(alice, null, { name: 'edge.txt', bytes: new Uint8Array(max).fill(97), mime: 'text/plain' }, 'fail')
     await expect(tool('drive.read').handler(agent, { file_id: big.id })).rejects.toMatchObject({
       code: 'too_large',
       message: expect.stringMatching(/“big\.txt” is too large to read as text \(more than 2(\.0)? MB\); download it instead/),

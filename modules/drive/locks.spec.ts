@@ -126,9 +126,9 @@ describe('drive edit locks', () => {
 
   it('only editable files (Markdown/CSV and the office files) are locked for editing', async () => {
     const { drive } = await setup()
-    const png = await drive.upload(ada, null, { name: 'a.png', bytes: new Uint8Array([0x89, 0x50]), mime: 'image/png' })
+    const png = await drive.upload(ada, null, { name: 'a.png', bytes: new Uint8Array([0x89, 0x50]), mime: 'image/png' }, 'fail')
     await expect(drive.acquireLock(ada, png.id, 'tab-a')).rejects.toMatchObject({ code: 'invalid' })
-    const pdf = await drive.upload(ada, null, { name: 'a.pdf', bytes: new TextEncoder().encode('%PDF-1.7'), mime: 'application/pdf' })
+    const pdf = await drive.upload(ada, null, { name: 'a.pdf', bytes: new TextEncoder().encode('%PDF-1.7'), mime: 'application/pdf' }, 'fail')
     await expect(drive.acquireLock(ada, pdf.id, 'tab-a')).resolves.toMatchObject({ state: 'held' })
   })
 

@@ -75,7 +75,7 @@ export async function performDoesTask(item: DoesItem, company: EvalCompany, f: C
         const { driveService } = await import('../../modules/drive')
         const { OFFICE_MIME } = await import('$lib/office/kinds')
         const { buildPptx } = await import('./fixture/pptx')
-        await (await driveService()).upload({ kind: 'user', userId: member[s.owner] }, null, { name: 'Deck.pptx', bytes: buildPptx([{ title: 'Deck', bullets: ['x'] }]), mime: OFFICE_MIME.pptx })
+        await (await driveService()).upload({ kind: 'user', userId: member[s.owner] }, null, { name: 'Deck.pptx', bytes: buildPptx([{ title: 'Deck', bullets: ['x'] }]), mime: OFFICE_MIME.pptx }, 'fail')
       } else {
         // drive.create_document waits for owner approval when the brain calls it, so: the service.
         const { driveService } = await import('../../modules/drive')

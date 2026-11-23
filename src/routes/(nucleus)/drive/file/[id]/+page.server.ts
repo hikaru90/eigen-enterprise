@@ -25,7 +25,8 @@ const TEXT_PREVIEW_TOO_LARGE = 'This file is too large to preview, download it i
  * table, HTML as the page itself (a sandboxed frame from /api/drive/view,
  * its source text alongside), images and PDF from the content endpoint,
  * else a download.
- * Revisions for Markdown/CSV are listed with their authors.
+ * Revisions are listed with their authors (Markdown/CSV and office files
+ * keep one per save; any file has them once an upload replaced it).
  */
 export const load: PageServerLoad = async (event) => {
   const actor = requestActor(event)
@@ -54,10 +55,10 @@ export const load: PageServerLoad = async (event) => {
         table = { rows: rows.slice(0, CSV_PREVIEW_ROWS), truncated: rows.length > CSV_PREVIEW_ROWS }
       } else text = content.slice(0, TEXT_PREVIEW_CHARS)
     }
-    const revisions = isRevisioned(info.file.name)
-      ? await drive.listRevisions(actor, event.params.id)
-      : []
-    const people = isRevisioned(info.file.name) ? (await drive.shareTargets()).people : []
+    // Any file can have revisions: documents keep one per save, and an upload that replaced a file left its old version.
+    const revisions = await drive.listRevisions(actor, event.params.id)
+    // The editor lists the revisions its saves add, so a document always gets its authors.
+    const people = isRevisioned(info.file.name) || revisions.length > 0 ? (await drive.shareTargets()).people : []
     const authors = Object.fromEntries(people.map((p) => [p.id, p.name || p.email]))
     // Too large to load is too large to edit in place.
     const editable =

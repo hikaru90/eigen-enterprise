@@ -382,7 +382,7 @@ describe('drive-browser: the full-width listing', () => {
     const held = new Promise<void>((ok) => (release = ok))
     api.upload.mockImplementation(async (_folderId: string | null, files: File[]) => {
       if (files[0]!.name === 'b.txt') await held
-      return { uploaded: files.map((f) => ({ ...image, name: f.name })), errors: [] }
+      return { uploaded: files.map((f) => ({ ...image, name: f.name, outcome: 'created' })), errors: [], conflicts: [] }
     })
     render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [], canEdit: true } })
     await expect.element(page.getByTestId('drive-upload-folder')).toBeInTheDocument()
@@ -419,8 +419,8 @@ describe('drive-browser: the full-width listing', () => {
     api.createFolder.mockImplementation(async (_parent: string | null, name: string) => ({ ...folder, id: `d${++n}`, name }))
     api.upload.mockImplementation(async (_folderId: string | null, files: File[]) =>
       files[0]!.name === 'huge.bin'
-        ? { uploaded: [], errors: ['“huge.bin” is 120 MB; files can be at most 100 MB.'] }
-        : { uploaded: [{ ...image, name: files[0]!.name }], errors: [] },
+        ? { uploaded: [], errors: ['“huge.bin” is 120 MB; files can be at most 100 MB.'], conflicts: [] }
+        : { uploaded: [{ ...image, name: files[0]!.name, outcome: 'created' }], errors: [], conflicts: [] },
     )
     const kid = (name: string) =>
       ({ isFile: true, isDirectory: false, name, file: (ok: (f: File) => void) => ok(new File(['x'], name)) }) as unknown as FileSystemEntry
@@ -463,5 +463,38 @@ describe('drive-browser: the full-width listing', () => {
     await expect
       .element(page.getByTestId('drive-upload-failure'))
       .toHaveTextContent('Photos/huge.bin — “huge.bin” is 120 MB; files can be at most 100 MB.')
+  })
+
+  it('uploading a name that is already here asks first: Replace sends it as a new version, Cancel leaves the next one out (bug f45acdef)', async () => {
+    api.upload.mockImplementation(async (_folderId: string | null, files: File[], onConflict: string) => {
+      const f = files[0]!
+      if (onConflict === 'fail' && f.name !== 'new.txt')
+        return {
+          uploaded: [],
+          errors: [],
+          conflicts: [{ name: f.name, error: `“${f.name}” already exists in Top.`, existing: { ...image, id: `old-${f.name}`, name: f.name } }],
+        }
+      return { uploaded: [{ ...image, name: f.name, outcome: onConflict === 'replace' ? 'replaced' : 'created' }], errors: [], conflicts: [] }
+    })
+    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [], canEdit: true } })
+    const input = page.getByTestId('drive-upload-input').element() as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: ['mood.png', 'new.txt', 'plan.md'].map((n) => new File(['x'], n)), configurable: true })
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+
+    const dialog = page.getByTestId('drive-upload-conflict')
+    await expect.element(dialog).toHaveTextContent('“mood.png” already exists in Top.')
+    await page.getByTestId('drive-upload-conflict-replace').click()
+    await expect.element(dialog).toHaveTextContent('“plan.md” already exists in Top.')
+    await page.getByTestId('drive-upload-conflict-cancel').click()
+    await expect
+      .element(page.getByTestId('drive-notice'))
+      .toHaveTextContent('Uploaded 1 file. Replaced 1 file with a new version (the old one stays in its history). Left out 1 file that is already there.')
+    expect(api.upload.mock.calls.map(([id, files, mode]) => [id, files[0].name, mode])).toEqual([
+      ['f0', 'mood.png', 'fail'],
+      ['f0', 'mood.png', 'replace'],
+      ['f0', 'new.txt', 'fail'],
+      ['f0', 'plan.md', 'fail'],
+    ])
+    expect(page.getByTestId('drive-upload-conflict').elements()).toHaveLength(0)
   })
 })

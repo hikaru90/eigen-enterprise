@@ -45,15 +45,37 @@ export class DriveError extends Error {
     /**
      * `unavailable`: no AI provider for the company, or no ee to run an app on;
      * `upstream`: the provider failed or answered unreadably; `busy`: another
-     * app preview is running (app-preview.ts AppBusyError).
+     * app preview is running (app-preview.ts AppBusyError); `conflict`: an
+     * upload's name is already taken in its folder (UploadConflictError).
      */
-    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked' | 'unavailable' | 'upstream' | 'busy',
+    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked' | 'conflict' | 'unavailable' | 'upstream' | 'busy',
     message: string,
     /** For `locked`: who holds the edit lock now. */
     readonly holder?: LockHolder & { name: string },
     options?: { cause?: unknown },
   ) {
     super(message, options)
+  }
+}
+
+/**
+ * What an upload does when its folder already holds a file of that name:
+ * `replace` gives the existing file the upload as a new revision (the old
+ * content stays restorable), `keep_both` adds it as “name (2).ext”, `fail`
+ * refuses with an UploadConflictError naming the existing file.
+ */
+export const ON_CONFLICT = ['replace', 'keep_both', 'fail'] as const
+export type OnConflict = (typeof ON_CONFLICT)[number]
+/** What an upload did: a new file, a new revision of the file of that name, or a new file next to it. */
+export type UploadOutcome = 'created' | 'replaced' | 'kept_both'
+
+/** An upload under `fail` whose name is taken: `existing` is the file there now. */
+export class UploadConflictError extends DriveError {
+  constructor(
+    message: string,
+    readonly existing: ItemView,
+  ) {
+    super('conflict', message)
   }
 }
 
@@ -216,6 +238,26 @@ function datedOf(f: DriveFile): ItemDated {
   return { at: f.createdAt, kind: f.source === null ? 'uploaded' : 'added' }
 }
 const byName = (a: ItemView, b: ItemView) => a.name.localeCompare(b.name)
+
+const NAME_MAX = 255
+
+/**
+ * The first “base (n).ext” (n ≥ 2) not in `taken`: the extension is what
+ * follows the last dot (none for “README” or “.env”), a “ (n)” already at the
+ * end of the base is counted on from, and the base is shortened so the name
+ * stays within NAME_MAX.
+ */
+export function keepBothName(name: string, taken: ReadonlySet<string>): string {
+  const dot = name.lastIndexOf('.')
+  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
+  const numbered = / \((\d+)\)$/.exec(stem)
+  const base = numbered ? stem.slice(0, numbered.index) : stem
+  for (let n = 2; ; n++) {
+    const tail = ` (${n})${ext}`
+    const candidate = `${base.slice(0, Math.max(1, NAME_MAX - tail.length))}${tail}`
+    if (!taken.has(candidate)) return candidate
+  }
+}
 
 export function createDriveService(deps: DriveDeps) {
   const { store, blobs, access, locks } = deps
@@ -452,6 +494,12 @@ export function createDriveService(deps: DriveDeps) {
     return file
   }
 
+  /** The live (not trashed) files directly in a folder; at the top level, the actor's own (each person's My drive). */
+  async function filesIn(actor: Actor, folderId: string | null): Promise<DriveFile[]> {
+    const files = (await store.children(folderId)).files.filter((f) => !f.trashedAt)
+    return folderId === null ? files.filter((f) => f.ownerId === ownerIdOf(actor)) : files
+  }
+
   /** The person who creates an item manages it (the agent's items are managed by the owner and admins). */
   async function grantCreator(actor: Actor, type: ItemType, id: string): Promise<void> {
     if (actor.kind !== 'user') return
@@ -655,8 +703,38 @@ export function createDriveService(deps: DriveDeps) {
       return folderView(folder)
     },
 
-    async upload(actor: Actor, folderId: string | null, file: { name: string; bytes: Uint8Array; mime: string | null }): Promise<ItemView> {
-      return fileView(await addFile(actor, folderId, file.name, file.bytes, file.mime))
+    /**
+     * Adds a file to a folder (null: the actor's My drive). When a file of
+     * that exact name is already there (not trashed; archived ones count, they
+     * are still in the folder) `onConflict` decides; see OnConflict. Names
+     * compare exactly, as Drive paths do (readAtPath, app snapshots).
+     */
+    async upload(
+      actor: Actor,
+      folderId: string | null,
+      file: { name: string; bytes: Uint8Array; mime: string | null },
+      onConflict: OnConflict,
+    ): Promise<ItemView & { outcome: UploadOutcome }> {
+      const name = cleanName(file.name)
+      await requireTarget(actor, folderId)
+      const siblings = await filesIn(actor, folderId)
+      const same = siblings.filter((f) => f.name === name)
+      if (same.length === 0) return { ...fileView(await addFile(actor, folderId, name, file.bytes, file.mime)), outcome: 'created' }
+      const where = folderId === null ? MY_DRIVE.label : (await store.getFolder(folderId))!.name
+      if (onConflict === 'keep_both') {
+        const free = keepBothName(name, new Set(siblings.map((f) => f.name)))
+        return { ...fileView(await addFile(actor, folderId, free, file.bytes, file.mime)), outcome: 'kept_both' }
+      }
+      if (same.length > 1) throw new DriveError('invalid', `There are ${same.length} files named “${name}” in ${where}; rename one so it is clear which to replace.`)
+      const existing = same[0]!
+      if (onConflict === 'fail') throw new UploadConflictError(`“${name}” already exists in ${where}.`, fileView(existing))
+      const target = await requireFile(actor, existing.id, 'edit')
+      await saveContent(actor, target, file.bytes, undefined)
+      // The upload's own type and recorded date now describe the file.
+      const type = mimeFor(name, file.mime)
+      const recorded = await contentDateOf(file.bytes, type)
+      await store.updateFile(target.id, { mime: type, contentDate: recorded?.at ?? null, contentDateKind: recorded?.kind ?? null })
+      return { ...(await view('file', target.id)), outcome: 'replaced' }
     },
 
     /**

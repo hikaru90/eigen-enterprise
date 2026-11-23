@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { grantsBody } from './http'
 import { DRIVE_MODULE_ID } from './manifest'
-import { DriveError } from './service'
+import { DriveError, ON_CONFLICT } from './service'
 import { actorOf } from './tools'
 
 /**
@@ -23,7 +23,13 @@ const folderInput = z.object({ name: z.string().trim().min(1), parent_id: z.stri
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 const base64 = z.string().regex(BASE64, 'content_base64 must be standard base64')
 const uploadInput = z
-  .object({ name: z.string().trim().min(1), mime_type: z.string(), content_base64: base64, folder_id: z.string().min(1).nullable().optional() })
+  .object({
+    name: z.string().trim().min(1),
+    mime_type: z.string(),
+    content_base64: base64,
+    folder_id: z.string().min(1).nullable().optional(),
+    on_conflict: z.enum(ON_CONFLICT, { message: 'on_conflict must be "replace", "keep_both" or "fail"' }),
+  })
   .strict()
 const bytesInput = z.object({ file_id: z.string().min(1), content_base64: base64 }).strict()
 const fileInput = z.object({ file_id: z.string().min(1) }).strict()
@@ -57,14 +63,23 @@ export function createDriveFileTools(deps: { service: () => Promise<DriveService
     {
       name: 'drive.upload',
       module: DRIVE_MODULE_ID,
-      summary: 'Upload a file to Drive: name, mime_type, content_base64 (the bytes, base64), folder_id (omit for the top level). Same size limit as uploading in the app.',
+      summary:
+        'Upload a file to Drive: name, mime_type, content_base64 (the bytes, base64), folder_id (omit for the top level), on_conflict — when a file of that exact name is already in the folder: "replace" (it gets the upload as a new revision; the old version stays restorable), "keep_both" (the upload is added as “name (2).ext”) or "fail" (refused with a conflict naming the existing file). Same size limit as uploading in the app.',
       ...write,
-      activity: (i: z.infer<typeof uploadInput>, o: unknown) => `Uploaded ${named(o, 'file') ?? i.name} to Drive`,
+      activity: (i: z.infer<typeof uploadInput>, o: unknown) =>
+        (o as { outcome?: string } | undefined)?.outcome === 'replaced'
+          ? `Replaced ${named(o, 'file') ?? i.name} in Drive with an upload (a new version)`
+          : `Uploaded ${named(o, 'file') ?? i.name} to Drive`,
       inputSchema: uploadInput,
       handler: async (ctx, input) => {
         const i = uploadInput.parse(input)
-        const file = await (await service()).upload(actorOf(ctx), i.folder_id ?? null, { name: i.name, bytes: decode(i.content_base64), mime: i.mime_type })
-        return { file }
+        const { outcome, ...file } = await (await service()).upload(
+          actorOf(ctx),
+          i.folder_id ?? null,
+          { name: i.name, bytes: decode(i.content_base64), mime: i.mime_type },
+          i.on_conflict,
+        )
+        return { file, outcome }
       },
     },
     {

@@ -63,7 +63,7 @@ async function liveAttachmentPort(): Promise<AttachmentPort> {
     },
     async upload(actorId, folderId, file) {
       try {
-        return { ok: true, file: info(await drive.upload({ kind: 'user', userId: actorId }, folderId, file)) }
+        return { ok: true, file: info(await drive.upload({ kind: 'user', userId: actorId }, folderId, file, 'keep_both')) }
       } catch (err) {
         // Size/name problems are per file, in the Drive's own words; access refusals stay failures.
         if (err instanceof DriveError && (err.code === 'too_large' || err.code === 'invalid')) return { ok: false, error: err.message }
