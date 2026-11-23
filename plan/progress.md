@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — v0.5.35 released (domains D1–D5)
+
+- `main` pushed through the local CI gate (lint, naming, svelte-check, unit, 821 component). The first run failed on lint: an unused import in `ee/src/certificates.spec.ts` from D1. Fixed in `ab1b8bfc`.
+- `[release] v0.5.35` `2bbcadf7`, tag `v0.5.35` → GitHub release workflow. Installed on the local box (`os.ee.localhost`).
+- Next: owner sets v0.5.35 as the /ops release target (ee-one upgrades) and redeploys cloud in Coolify (migration `0009_claims_per_company` + `desired.claims`). Then D6: `eigenenterprise.app` + `www.` green on ee-one's Settings › Domains.
+- No Contribute proposal covers domains, so no board status changed.
+
 ## 2026-11-22 — Domains one claim system, D5 merged: Settings › Domains is the one place
 
 - **Settings › Domains** (`5f3d1db5`) on `domains.list`: per domain (bought/connected, renewal) its hostnames with a "Shows" picker (asks first: "X shows A now. Show B instead?"), email, DNS (all ok / N to fix), claim (managed), certificate (issued until / pending / failing with Caddy's last error + next retry); "Records to add" (only missing/wrong, copyable, with what DNS shows now); Add a hostname, Remove, Check now, Retry certificate — all form actions on the registry tools. Deep links `/settings/domains#<host>`.
