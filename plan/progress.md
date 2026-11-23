@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Assistant chat failed on the demo company: a regex lookahead in the hostname rule made OpenRouter's OpenInference refuse every turn (owner error report from demo.eigenenterprise.app)
+
+- **What broke:** on demo.eigenenterprise.app (incus `ee-demo` on rs500-1, unit `ee-os-b`) the chat answered "Something went wrong on my side …" (`durable agent run ended without an answer: model_error`). OpenRouter routes `~deepseek/deepseek-flash-latest` (→ `deepseek-v4.1-flash`) across many providers. One of them, **OpenInference**, answered `HTTP 400` (OpenRouter wraps it as 502) on every request whose tool list held a schema with `pattern: ^(?=.{1,253}$)…`. That is the kernel hostname rule, offered through 8 tools (substrate.domain_add/remove, website.app_deploy/app_domain_set/app_domain_remove, domains.set_target/remove/recheck/retry_certificate). Grammar-constrained tool decoding (vLLM/xgrammar) refuses lookaheads. A turn failed whenever all 3 gateway retries landed there: 28 such 400s in 6 h on the demo box.
+- **Reproduced:** replayed the stored demo conversation (pi-durable SQLite) with the full registry tool set, pinned to OpenInference: 3/3 × 400. Bisected the tools down to the hostname pattern. Dropping only the lookahead: 3/3 ok (the model calls `settings.get`).
+- **Fix:** `src/lib/domains/hostname.ts`: `HOSTNAME` is the label rule without a lookahead, and the 253-character cap is `HOSTNAME_MAX_LENGTH` (`isHostname` checks the length; `hostnameSchema` uses `.max(253)`, so models see `maxLength`). Same accepted and refused hosts as before. ee keeps its own copy (a separate binary, never sent to a model); the spec now checks that the two agree host by host instead of comparing sources.
+- **Guard:** `src/lib/kernel/tool-schema-portable.spec.ts` builds the production registry and fails on any tool input `pattern` with lookaround or backreferences.
+- **Decision:** tool input schemas must stay inside what grammar-constrained providers accept: no lookaround or backreferences in `pattern`, and length limits go in `maxLength`.
+- **Not done:** not on the demo box (needs a release + install there). The chat failure still reaches the person without an agent report (the chat boundary keeps every error detail server-side by design); giving chat failures a redacted agent report is open.
+
 ## 2026-11-23 — Demo company seed ships in the app: module `demo`, tool `demo.seed_company` (branch, not merged, not on the box)
 
 - **Why:** the seed ran only from a repo checkout (vite-node over `scripts/`); a release ships `build/` + prod node_modules, so no installed box could seed. The demo company is a hosted company, so the seed runs inside the server.
