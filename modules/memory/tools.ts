@@ -14,6 +14,7 @@ import { MEMORY_TOOL_NAMES } from './manifest'
 import { createOwnTaskTools, type OwnTaskToolDeps } from './own-task-tools'
 import { createReminderTools, type ReminderToolDeps } from './reminder-tools'
 import { createTaskTools, type TaskToolDeps } from './task-tools'
+import { createThoughtTools, type ThoughtToolDeps } from './thought-tools'
 
 /**
  * Kernel tool descriptors wrapping the existing MCP memory tool
@@ -40,6 +41,8 @@ export type MemoryToolDeps = {
   ownTasks?: OwnTaskToolDeps
   /** The reminders.* tools (reminder-tools.ts); they share writerOf unless given their own. */
   reminders?: ReminderToolDeps
+  /** Thoughts / entities / graph / connected-agent tools (thought-tools.ts). */
+  thoughts?: ThoughtToolDeps
 }
 
 /** Every member's own Memory: members, admins, and agent principals that are a person (MCP keys). */
@@ -282,6 +285,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
       }),
     ),
     ...createOwnTaskTools({ writerOf: opts.writerOf, ...opts.ownTasks }),
+    ...createThoughtTools({ writerOf: opts.writerOf, ...opts.thoughts }),
     ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
     ...createReminderTools({ writerOf: opts.writerOf, ...opts.reminders }),
   ]
