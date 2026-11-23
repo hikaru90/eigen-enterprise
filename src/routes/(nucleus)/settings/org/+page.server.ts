@@ -1,9 +1,9 @@
 import type { Actions, PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
 import { accountabilityLines } from '$lib/coworkers/org-tree'
+import { loadOrgPeople } from '$lib/server/org/org-people'
 import { field, runAction } from '$lib/server/org/page-actions'
 import { personRun, type PersonRunner } from '$lib/server/org/person-run'
-import { loadOrgPeople } from '$lib/server/org/org-people'
 
 /**
  * Settings → Org chart (plan/phase-ai-coworkers.md C5): every member sees who

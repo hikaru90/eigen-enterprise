@@ -384,6 +384,12 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/coworkers ?/disable': tool('coworkers.disable'),
   '/(nucleus)/settings/coworkers ?/enable': tool('coworkers.enable'),
   '/(nucleus)/settings/coworkers ?/remove': tool('coworkers.remove'),
+  // C6: rhythms (Settings → Co-workers) and the Needs-you Got it (posted from the dashboard to the profile).
+  '/(nucleus)/settings/coworkers ?/rhythmCreate': tool('coworkers.rhythm_create'),
+  '/(nucleus)/settings/coworkers ?/rhythmDelete': tool('coworkers.rhythm_delete'),
+  '/(nucleus)/settings/coworkers ?/rhythmRunNow': tool('coworkers.rhythm_run_now'),
+  '/(nucleus)/settings/coworkers ?/rhythmUpdate': tool('coworkers.rhythm_update'),
+  '/(nucleus)/settings/org/[id] ?/noticeSeen': tool('coworkers.notice_seen'),
   '/(nucleus)/settings/coworkers ?/update': tool('coworkers.update'),
   '/(nucleus)/settings/org ?/setPosition': tool('org.set_position'),
   '/(nucleus)/settings/members ?/createGroup': tool('members.group_create'),

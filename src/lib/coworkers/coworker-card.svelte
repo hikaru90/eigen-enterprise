@@ -2,14 +2,15 @@
   import type { SubmitFunction } from '@sveltejs/kit'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
-  import UserAvatar from '$lib/components/user-avatar.svelte'
   import { Button } from '$lib/components/ui/button'
+  import UserAvatar from '$lib/components/user-avatar.svelte'
   import { m } from '$lib/paraglide/messages.js'
   import ActionFeedback from './action-feedback.svelte'
   import { feedbackFor } from './action-result'
   import AiMark from './ai-mark.svelte'
   import { draftFromCoworker, type CardDraft, type CoworkerLike } from './card-draft'
   import CoworkerFields from './coworker-fields.svelte'
+  import CoworkerRhythms, { type RhythmItem, type RhythmTargetItem } from './coworker-rhythms.svelte'
   import { modelFamily, modelName, type ChatModelOption } from './model-family'
 
   /**
@@ -17,6 +18,7 @@
    * the owner's and admins' controls — edit (coworkers.update), switch on/off
    * (coworkers.enable / disable), remove (coworkers.remove, after a second
    * click that names it; the tool always asks and that click is the approval).
+   * Below it, its rhythms (C6).
    */
   type Coworker = CoworkerLike & {
     id: string
@@ -29,12 +31,18 @@
     models,
     seats,
     form = null,
+    rhythms,
+    timeZone,
   }: {
     coworker: Coworker
     models: ChatModelOption[]
     seats: { id: string; name: string; kind: 'human' | 'coworker' }[]
     /** The page's last action answer, shown when it is about this co-worker. */
     form?: unknown
+    /** Its rhythms and where a new one can post (coworkers.rhythm_list). */
+    rhythms: { rhythms: RhythmItem[]; targets: RhythmTargetItem[] }
+    /** The time zone a new rhythm starts in. */
+    timeZone: string
   } = $props()
 
   let editing = $state(false)
@@ -139,4 +147,5 @@
   {#if feedback}
     <div class="mt-2"><ActionFeedback {feedback} testid="coworker-feedback" /></div>
   {/if}
+  <CoworkerRhythms coworkerId={c.id} coworkerName={c.name} rhythms={rhythms.rhythms} targets={rhythms.targets} {timeZone} {form} />
 </li>

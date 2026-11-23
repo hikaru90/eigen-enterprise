@@ -24,6 +24,7 @@ const dashboard: Dashboard = {
   backup: null,
   tasks: { assignedToMe: [], updates: [] },
   reminders: [],
+  coworkerNotices: [],
   overview: {
     modules: [
       {
@@ -65,13 +66,18 @@ const controller = () =>
 function renderDashboard(
   assistant: AssistantController | null,
   tiles: { hiddenTiles?: TileId[]; saveHiddenTiles?: (hidden: TileId[]) => Promise<void> } = {},
-  notices: { mailMissing?: boolean; tasks?: Dashboard['tasks']; reminders?: Dashboard['reminders'] } = {},
+  notices: { mailMissing?: boolean; tasks?: Dashboard['tasks']; reminders?: Dashboard['reminders']; coworkerNotices?: Dashboard['coworkerNotices'] } = {},
 ) {
   return render(Harness, {
     assistant,
     hiddenTiles: tiles.hiddenTiles ?? [],
     saveHiddenTiles: tiles.saveHiddenTiles ?? (async () => {}),
-    dashboard: { ...dashboard, ...(notices.tasks ? { tasks: notices.tasks } : {}), ...(notices.reminders ? { reminders: notices.reminders } : {}) },
+    dashboard: {
+      ...dashboard,
+      ...(notices.tasks ? { tasks: notices.tasks } : {}),
+      ...(notices.reminders ? { reminders: notices.reminders } : {}),
+      ...(notices.coworkerNotices ? { coworkerNotices: notices.coworkerNotices } : {}),
+    },
     greetingName: 'Alex',
     companyName: 'Kindred',
     navItems,
@@ -222,5 +228,35 @@ describe('dashboard.svelte', () => {
   it('with the Assistant off, a hidden Assistant tile is not offered back', async () => {
     renderDashboard(null, { hiddenTiles: ['ask'] })
     await expect.element(page.getByTestId('dashboard-hidden-tiles')).not.toBeInTheDocument()
+  })
+
+  it("Needs you holds an AI co-worker's finished rhythm with Open (the post) and Got it (coworkers.notice_seen) — C6", async () => {
+    const run = {
+      id: 'run-1',
+      triggerKind: 'rhythm' as const,
+      status: 'stopped' as const,
+      stopReason: 'not_member' as const,
+      costUsd: 0,
+      requestedByUserId: 'u1',
+      conversationId: null,
+      threadRootId: null,
+      triggerMessageId: null,
+      threadUrl: null,
+      taskId: null,
+      taskUrl: null,
+      rhythmId: 'r1',
+      hidden: false,
+      triggeredAt: '2026-11-23T08:00:00.000Z',
+      startedAt: '2026-11-23T08:00:01.000Z',
+      endedAt: '2026-11-23T08:00:01.000Z',
+      error: 'not a member',
+    }
+    renderDashboard(controller(), {}, { coworkerNotices: [{ run, coworker: { id: 'cw1', name: 'Mara' }, at: '2026-11-23T08:00:01.000Z', href: '/settings/org/cw1' }] })
+    const row = page.getByTestId('dashboard-coworker-notice')
+    await expect.element(row).toHaveTextContent(/Mara: Rhythm · Stopped: no longer a member of the conversation/)
+    await expect.element(row.getByTestId('dashboard-coworker-notice-open')).toHaveAttribute('href', '/settings/org/cw1')
+    await expect.element(row.getByTestId('dashboard-coworker-notice-seen')).toHaveTextContent('Got it')
+    // 1 approval + 1 co-worker result waiting.
+    await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
   })
 })

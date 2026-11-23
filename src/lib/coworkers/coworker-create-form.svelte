@@ -1,13 +1,13 @@
 <script lang="ts">
+  import type { ActionFeedback as Feedback } from './action-result'
+  import type { ChatModelOption } from './model-family'
   import type { SubmitFunction } from '@sveltejs/kit'
   import { enhance } from '$app/forms'
   import { Button } from '$lib/components/ui/button'
   import { m } from '$lib/paraglide/messages.js'
   import ActionFeedback from './action-feedback.svelte'
-  import type { ActionFeedback as Feedback } from './action-result'
   import { draftFromTemplate, emptyDraft, type CardDraft, type TemplateLike } from './card-draft'
   import CoworkerFields from './coworker-fields.svelte'
-  import type { ChatModelOption } from './model-family'
 
   /**
    * Create an AI co-worker (coworkers.create, plan/phase-ai-coworkers.md C5):

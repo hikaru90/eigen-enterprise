@@ -2,6 +2,8 @@ import { and, desc, eq, ne, sql } from 'drizzle-orm'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
 import { backupNotice, type BackupNotice } from '$lib/server/backups/health'
 import { appKernel } from '$lib/server/boot'
+import { needsYouNotices, type CoworkerNotice } from '$lib/server/coworkers/notices'
+import { liveNoticeDeps } from '$lib/server/coworkers/rhythm-live'
 import { getDb } from '$lib/server/db'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
@@ -23,6 +25,8 @@ export type Dashboard = {
   tasks: NeedsYouTasks
   /** The person's own reminders with an open occurrence and no running snooze (one item per reminder). */
   reminders: ReminderView[]
+  /** AI co-workers' finished or stopped rhythm and assignment runs this person answers for or asked for, until acknowledged (C6). */
+  coworkerNotices: CoworkerNotice[]
 }
 
 /**
@@ -67,6 +71,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     backup: role === 'owner' ? await ownerBackupNotice() : null,
     tasks: await needsYouTasks(await assignedTaskDeps(), userId),
     reminders: await needsYouReminders(await reminderDeps(), userId),
+    coworkerNotices: await needsYouNotices(await liveNoticeDeps(), userId),
   }
 }
 

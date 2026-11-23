@@ -1,6 +1,6 @@
+import type { PersonRunner } from './person-run'
 import type { OrgPerson } from '$lib/coworkers/org-tree'
 import type { CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
-import type { PersonRunner } from './person-run'
 
 /**
  * Everyone's seat for the org chart pages: org.chart, with each co-worker's

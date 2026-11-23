@@ -1,18 +1,19 @@
 <script lang="ts">
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left'
   import type { PageProps } from './$types'
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left'
   import { resolve } from '$app/paths'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import AiMark from '$lib/coworkers/ai-mark.svelte'
   import MessageButton from '$lib/coworkers/message-button.svelte'
   import { modelFamily, modelName } from '$lib/coworkers/model-family'
+  import RunLog from '$lib/coworkers/run-log.svelte'
   import { m } from '$lib/paraglide/messages.js'
   import { docTitle } from '$lib/shell/title'
 
   /**
    * A seat's profile (plan/phase-ai-coworkers.md C5): the role card, and for an
    * AI co-worker its lens, model and the person it answers to. "Message" opens
-   * the DM. The run log comes with coworkers.runs (C3).
+   * the DM. For a co-worker, its run log (coworkers.runs, C6).
    */
   let { data }: PageProps = $props()
 
@@ -106,6 +107,10 @@
       {/if}
     </dl>
   </section>
+
+  {#if p.kind === 'coworker'}
+    <RunLog runs={data.runs} />
+  {/if}
 
   {#if p.kind === 'coworker' && data.me.canManage}
     <p class="text-sm">

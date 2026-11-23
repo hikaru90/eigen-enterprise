@@ -34,7 +34,7 @@
     {:else}
       <ul class="space-y-2">
         {#each data.coworkers as c (c.id)}
-          <CoworkerCard coworker={c} models={data.models} seats={data.seats} {form} />
+          <CoworkerCard coworker={c} models={data.models} seats={data.seats} {form} rhythms={data.rhythms[c.id]!} timeZone={data.timeZone} />
         {/each}
       </ul>
     {/if}

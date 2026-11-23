@@ -1,9 +1,9 @@
 <script lang="ts">
+  import type { CardDraft } from './card-draft'
+  import type { ChatModelOption } from './model-family'
   import { Input } from '$lib/components/ui/input'
   import { Textarea } from '$lib/components/ui/textarea'
   import { m } from '$lib/paraglide/messages.js'
-  import type { CardDraft } from './card-draft'
-  import type { ChatModelOption } from './model-family'
   import ModelSelect from './model-select.svelte'
 
   /**

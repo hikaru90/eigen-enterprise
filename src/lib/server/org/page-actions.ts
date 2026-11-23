@@ -25,6 +25,12 @@ const FIELD_LABELS: Record<string, string> = {
   daily_cap_usd: 'the daily cap (dollars above 0, at most 1000)',
   template_id: 'the template',
   user_id: 'who this is for',
+  weekdays: 'the days (pick at least one)',
+  time: 'the time (HH:MM)',
+  time_zone: 'the time zone',
+  instruction: 'what to post (1 to 2000 characters)',
+  conversation_id: 'where it posts',
+  rhythm_id: 'which rhythm',
 }
 
 /** The service's own sentence for a refusal (who may, cycles, the pool, …); a field the schema refused, by name. */

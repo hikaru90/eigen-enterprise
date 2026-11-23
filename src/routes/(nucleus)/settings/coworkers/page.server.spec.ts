@@ -46,12 +46,14 @@ beforeEach(() => {
     if (tool === 'coworkers.list') return { coworkers: [coworker, { ...coworker, id: 'gone', removedAt: '2026-11-23T11:00:00.000Z' }] }
     if (tool === 'coworkers.templates') return { templates: [{ id: 'designer', title: 'Designer', accountabilities: ['Look'], lens: 'l', suggestedModelId: 'qwen/qwen3.8-flash', suggestedDailyCapUsd: 1 }] }
     if (tool === 'org.chart') return { people: [{ id: 'owner', name: 'Olga', kind: 'human' }, { id: 'cw1', name: 'Mara', kind: 'coworker' }] }
+    if (tool === 'coworkers.rhythm_list') return { rhythms: [], targets: [{ id: 'c1', title: '#marketing', kind: 'channel' }] }
     return coworker
   }
   _coworkersDeps.run = (async (user: { id: string }, tool: string, input: unknown) => {
     calls.push({ user: user.id, tool, input })
     return answer(tool, input)
   }) as typeof _coworkersDeps.run
+  _coworkersDeps.timeZone = async () => 'Europe/Berlin'
   _coworkersDeps.chatModels = () => [
     { id: 'anthropic/claude-sonnet-5.5', family: 'Anthropic', name: 'claude-sonnet-5.5', note: 'n', recommended: false },
   ]
@@ -71,7 +73,11 @@ describe('load', () => {
       ['admin1', 'coworkers.list'],
       ['admin1', 'coworkers.templates'],
       ['admin1', 'org.chart'],
+      ['admin1', 'coworkers.rhythm_list'],
     ])
+    expect(calls[3]!.input).toEqual({ user_id: 'cw1' })
+    expect(data.rhythms).toEqual({ cw1: { rhythms: [], targets: [{ id: 'c1', title: '#marketing', kind: 'channel' }] } })
+    expect(data.timeZone).toBe('Europe/Berlin')
     expect((data.coworkers as { id: string }[]).map((c) => c.id)).toEqual(['cw1'])
     expect(data.seats).toEqual([
       { id: 'owner', name: 'Olga', kind: 'human' },
@@ -189,5 +195,47 @@ describe('actions', () => {
     roleMock.mockResolvedValue('member')
     await expect(actions.create(ev({ title: 'x' }))).rejects.toMatchObject({ status: 403 })
     expect(calls).toEqual([])
+  })
+
+  it('rhythmCreate → coworkers.rhythm_create with the days, time, zone, where and what', async () => {
+    const body = new URLSearchParams([
+      ['user_id', 'cw1'],
+      ['weekdays_sent', '1'],
+      ['weekdays', 'MO'],
+      ['weekdays', 'FR'],
+      ['time', '09:00'],
+      ['time_zone', 'Europe/Berlin'],
+      ['conversation_id', 'c1'],
+      ['instruction', ' Post the standup. '],
+    ])
+    const out = await actions.rhythmCreate({ locals, request: new Request('http://x/settings/coworkers', { method: 'POST', body }) } as never)
+    expect(calls).toEqual([
+      {
+        user: 'admin1',
+        tool: 'coworkers.rhythm_create',
+        input: { user_id: 'cw1', weekdays: ['MO', 'FR'], time: '09:00', time_zone: 'Europe/Berlin', conversation_id: 'c1', instruction: 'Post the standup.' },
+      },
+    ])
+    expect(out).toEqual({ action: 'rhythmCreate', ok: true, userId: 'cw1' })
+  })
+
+  it('rhythmUpdate sends only what the form sent (pause = enabled false); delete and run now take the rhythm', async () => {
+    await actions.rhythmUpdate(ev({ user_id: 'cw1', rhythm_id: 'r1', enabled: 'false' }))
+    await actions.rhythmDelete(ev({ user_id: 'cw1', rhythm_id: 'r1' }))
+    await actions.rhythmRunNow(ev({ user_id: 'cw1', rhythm_id: 'r1' }))
+    expect(calls.map((c) => [c.tool, c.input])).toEqual([
+      ['coworkers.rhythm_update', { rhythm_id: 'r1', enabled: false }],
+      ['coworkers.rhythm_delete', { rhythm_id: 'r1' }],
+      ['coworkers.rhythm_run_now', { rhythm_id: 'r1' }],
+    ])
+  })
+
+  it('a rhythm the co-worker cannot post in is refused with the service sentence', async () => {
+    _coworkersDeps.run = (async () => {
+      throw new CoworkerError('not_member', 'Mara is not a member of that conversation.')
+    }) as typeof _coworkersDeps.run
+    const out = (await actions.rhythmCreate(ev({ user_id: 'cw1', time: '09:00' }))) as { status: number; data: Record<string, unknown> }
+    expect(out.status).toBe(400)
+    expect(out.data).toMatchObject({ action: 'rhythmCreate', userId: 'cw1', error: 'Mara is not a member of that conversation.' })
   })
 })

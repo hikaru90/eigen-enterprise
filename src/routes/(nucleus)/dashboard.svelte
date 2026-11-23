@@ -1,7 +1,6 @@
 <script lang="ts">
-  import ErrorNotice from '$lib/components/error-notice.svelte'
-  /* eslint-disable svelte/no-navigation-without-resolve -- data-held hrefs go through appHref(), which calls resolve() */
   import Plus from '@lucide/svelte/icons/plus'
+  /* eslint-disable svelte/no-navigation-without-resolve -- data-held hrefs go through appHref(), which calls resolve() */
   import Sparkles from '@lucide/svelte/icons/sparkles'
   import UserPlus from '@lucide/svelte/icons/user-plus'
   import X from '@lucide/svelte/icons/x'
@@ -10,12 +9,15 @@
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { assistantIfOn } from '$lib/components/assistant/context'
   import DotMatrix from '$lib/components/dot-matrix.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import ModuleCard from '$lib/components/module-card.svelte'
   import PageFrame from '$lib/components/page/page-frame.svelte'
   import PageHeader from '$lib/components/page/page-header.svelte'
+  import { statusLabel, triggerLabel } from '$lib/coworkers/run-format'
   import { hideTile, showTile, TILE_LABELS, type TileId } from '$lib/dashboard/tiles'
   import { metaLine, updateLine } from '$lib/memory/assigned-task-format'
   import { dueLine } from '$lib/memory/reminder-format'
+  import { m } from '$lib/paraglide/messages.js'
   import type { Dashboard } from '$lib/server/overview/dashboard'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
@@ -93,7 +95,9 @@
   const tasks = $derived(dashboard.tasks)
   // The person's due reminders: one item each, however many occurrences are open.
   const reminders = $derived(dashboard.reminders)
-  const taskCount = $derived(tasks.assignedToMe.length + tasks.updates.length + reminders.length)
+  // AI co-workers' finished proactive work (rhythms, assignments) for this person (C6).
+  const coworkerNotices = $derived(dashboard.coworkerNotices)
+  const taskCount = $derived(tasks.assignedToMe.length + tasks.updates.length + reminders.length + coworkerNotices.length)
   const needsYou = $derived(overview.approvals.length + taskCount + (dashboard.backup ? 1 : 0))
   // Assigned tasks live in Memory › Tasks, reminders in Memory › Reminders; the dashboard's buttons post to those pages' actions.
   const tasksPage = resolve('/m/memory/tasks')
@@ -557,6 +561,33 @@
                       <button type="submit" class={inkPill} data-testid="dashboard-reminder-done"
                         >Done</button
                       >
+                    </form>
+                  </span>
+                </li>
+              {/each}
+              {#each coworkerNotices as notice (notice.run.id)}
+                <li class={taskRow} data-testid="dashboard-coworker-notice" data-status={notice.run.status}>
+                  <span class="flex min-w-0 items-center gap-3">
+                    <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                      ><span class="size-2 rounded-full {notice.run.status === 'done' ? 'bg-white' : 'bg-coral'}"></span></span
+                    >
+                    <span class="flex min-w-0 flex-col">
+                      <span class="truncate"
+                        >{m.coworkers_notice_line({
+                          name: notice.coworker.name,
+                          trigger: triggerLabel(notice.run.triggerKind),
+                          status: statusLabel(notice.run),
+                        })}</span
+                      >
+                      <span class="truncate text-muted-foreground">{when(notice.at)}</span>
+                    </span>
+                  </span>
+                  <span class="flex shrink-0 items-center gap-1.5">
+                    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a server-built link (the post, the task or the profile) -->
+                    <a href={notice.href} class={softPill} data-testid="dashboard-coworker-notice-open">{m.coworkers_notice_open()}</a>
+                    <form method="POST" action="{resolve('/(nucleus)/settings/org/[id]', { id: notice.coworker.id })}?/noticeSeen" use:enhance>
+                      <input type="hidden" name="run_id" value={notice.run.id} />
+                      <button type="submit" class={inkPill} data-testid="dashboard-coworker-notice-seen">{m.coworkers_notice_seen()}</button>
                     </form>
                   </span>
                 </li>

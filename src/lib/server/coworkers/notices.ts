@@ -1,5 +1,6 @@
 import type { CoworkerRunStore } from './run-store'
 import { runEntry, type CoworkerRunEntry } from './run-log'
+import { CoworkerError } from './service'
 
 /**
  * "Needs you" for proactive work (plan/phase-ai-coworkers.md §3 "proactive
@@ -50,16 +51,10 @@ export async function needsYouNotices(d: NoticeDeps, userId: string): Promise<Co
   })
 }
 
-export class NoticeNotFoundError extends Error {
-  readonly code = 'not_found'
-  constructor(runId: string) {
-    super(`You have no notice for co-worker run ${runId}.`)
-    this.name = 'NoticeNotFoundError'
-  }
-}
-
 /** The person acknowledged a notice ("Got it"). */
 export async function markNoticeSeen(d: NoticeDeps, userId: string, runId: string): Promise<{ runId: string; seen: true }> {
-  if (!(await d.runs.markNoticeSeen(runId, userId, d.now ? d.now() : new Date()))) throw new NoticeNotFoundError(runId)
+  if (!(await d.runs.markNoticeSeen(runId, userId, d.now ? d.now() : new Date()))) {
+    throw new CoworkerError('not_found', `You have nothing from this co-worker run (${runId}) in your Needs you.`)
+  }
   return { runId, seen: true }
 }

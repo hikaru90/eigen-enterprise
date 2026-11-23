@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { m } from '$lib/paraglide/messages.js'
   import type { ChatModelOption } from './model-family'
+  import { m } from '$lib/paraglide/messages.js'
 
   /**
    * The model picker (plan/phase-ai-coworkers.md §5): the pool's chat models,

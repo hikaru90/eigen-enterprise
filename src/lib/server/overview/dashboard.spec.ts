@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks, reminders } = vi.hoisted(() => ({
+const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks, reminders, notices } = vi.hoisted(() => ({
   assignedTasks: { deps: null as unknown },
+  notices: { deps: null as unknown },
   reminders: { deps: null as unknown },
   kernelHolder: { kernel: null as unknown },
   roleMock: vi.fn(async (): Promise<string> => 'admin'),
@@ -59,7 +60,9 @@ vi.mock('$lib/server/db', () => {
 
 vi.mock('$lib/server/memory/assigned-tasks/live', () => ({ assignedTaskDeps: async () => assignedTasks.deps }))
 vi.mock('$lib/server/memory/reminders/live', () => ({ reminderDeps: async () => reminders.deps }))
+vi.mock('$lib/server/coworkers/rhythm-live', () => ({ liveNoticeDeps: async () => notices.deps }))
 
+import { MemoryCoworkerRunStore } from '$lib/server/coworkers/run-store'
 import { memoryAssignedTaskStore } from '$lib/server/memory/assigned-tasks/memory-store'
 import { assignTask, completeTask, type AssignedTaskDeps } from '$lib/server/memory/assigned-tasks/service'
 import { memoryReminderStore } from '$lib/server/memory/reminders/memory-store'
@@ -91,6 +94,9 @@ function reminderDeps(): ReminderDeps {
   return deps
 }
 reminderDeps()
+
+const noticeRuns = new MemoryCoworkerRunStore()
+notices.deps = { runs: noticeRuns, nameOf: async () => 'Mara', visible: async (_reader: string, ids: string[]) => new Set(ids) }
 
 async function kernel(active: string[]) {
   const activations = new InMemoryActivationStore()
@@ -221,5 +227,29 @@ describe('the dashboard at / (loadDashboard)', () => {
     clock.now = new Date('2026-11-27T10:00:00Z')
     expect((await loadDashboard('ony')).reminders).toMatchObject([{ title: 'LinkedIn posts', due: { oldestAt: '2026-11-23T08:00:00.000Z', count: 2 } }])
     expect((await loadDashboard('owner')).reminders).toEqual([])
+  })
+
+  it('Needs you holds an AI co-worker’s finished proactive work for the people it is for, until they acknowledge it (C6)', async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    const run = await noticeRuns.enqueue({
+      coworkerUserId: 'cw-mara',
+      triggerKind: 'rhythm',
+      conversationId: 'conv-marketing',
+      threadRootId: null,
+      triggerMessageId: null,
+      requestedByUserId: 'owner',
+      triggeredAt: new Date('2026-11-23T08:00:00Z'),
+      rhythmId: null,
+      taskId: null,
+      triggerKey: 'rhythm:r1:2026-11-23T08:00:00.000Z',
+    })
+    await noticeRuns.update(run!.id, { status: 'done', threadRootId: 'post-1' })
+    await noticeRuns.addNotices(run!.id, ['owner'], new Date('2026-11-23T08:01:00Z'))
+    expect((await loadDashboard('owner')).coworkerNotices).toMatchObject([
+      { coworker: { id: 'cw-mara', name: 'Mara' }, href: '/messages?c=conv-marketing&t=post-1', run: { triggerKind: 'rhythm', status: 'done' } },
+    ])
+    expect((await loadDashboard('ony')).coworkerNotices).toEqual([])
+    await noticeRuns.markNoticeSeen(run!.id, 'owner', new Date())
+    expect((await loadDashboard('owner')).coworkerNotices).toEqual([])
   })
 })
