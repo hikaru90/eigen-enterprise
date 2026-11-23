@@ -1,4 +1,4 @@
-import type { BrandVoice, DriveDoc, WebsitePage } from './types'
+import type { BrandVoice, DriveDoc, WebsitePage } from '../types'
 
 export const driveFolder = 'Northwind Studio'
 

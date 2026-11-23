@@ -1,4 +1,4 @@
-import type { CalendarEvent } from './types'
+import type { CalendarEvent } from '../types'
 
 /** This week (0) and next week (1), Monday–Friday, Hamburg time. */
 export const events: CalendarEvent[] = [

@@ -1,6 +1,6 @@
 import type { DemoDataset } from './types'
 import { describe, expect, it } from 'vitest'
-import { northwind } from './dataset'
+import { northwind } from './data/dataset'
 import { validateDataset } from './validate'
 
 const clone = (): DemoDataset => structuredClone(northwind)

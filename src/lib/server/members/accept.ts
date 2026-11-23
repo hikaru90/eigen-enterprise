@@ -31,11 +31,45 @@ async function openInvite(token: string, deps: Pick<AcceptDeps, 'store' | 'now'>
   return st.invite
 }
 
-export async function joinWithInvite(token: string, input: { name: string }, deps: AcceptDeps): Promise<{ email: string }> {
+function joinName(input: { name: string }): string {
   const name = joinNameSchema.safeParse(input.name)
   if (!name.success) throw new InviteError(name.error.issues[0]!.message)
+  return name.data
+}
+
+const scopeOf = (invite: Invite) => ({ inviteId: invite.id, email: invite.email, role: invite.role })
+
+export async function joinWithInvite(token: string, input: { name: string }, deps: AcceptDeps): Promise<{ email: string }> {
+  const name = joinName(input)
   const invite = await openInvite(token, deps)
   const code = await deps.createCode(invite.email)
-  await inviteScope.run({ inviteId: invite.id, email: invite.email, role: invite.role }, () => deps.signIn(invite.email, code, name.data))
+  await inviteScope.run(scopeOf(invite), () => deps.signIn(invite.email, code, name))
+  return { email: invite.email }
+}
+
+export type CreateInvitedAccountDeps = Pick<AcceptDeps, 'store' | 'now'> & {
+  /**
+   * Create the account through Better Auth's user-create hooks (the same hook
+   * the sign-in runs: it takes the invited role and consumes the invite) —
+   * without a session or a cookie.
+   */
+  createAccount: (email: string, name: string) => Promise<unknown>
+}
+
+/**
+ * Accept an invite on the server where no person is at a browser (the demo
+ * seed, modules/demo): the same refusals as joinWithInvite and the same
+ * invite scope, but nobody is signed in — a sign-in would hand the new
+ * session cookie to whatever request is running (the owner's own), and there
+ * is no browser to keep it. The person signs in later with a code like anyone.
+ */
+export async function createInvitedAccount(
+  token: string,
+  input: { name: string },
+  deps: CreateInvitedAccountDeps,
+): Promise<{ email: string }> {
+  const name = joinName(input)
+  const invite = await openInvite(token, deps)
+  await inviteScope.run(scopeOf(invite), () => deps.createAccount(invite.email, name))
   return { email: invite.email }
 }

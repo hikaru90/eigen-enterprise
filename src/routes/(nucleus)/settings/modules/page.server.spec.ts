@@ -157,6 +157,13 @@ describe('Settings → Plugins (owner and admins)', () => {
     expect((await loaded()).core.map((c) => c.id)).toContain('contribute-hub')
   })
 
+  it('the demo company seed is in the core line only where the owner switched it on', async () => {
+    roleMock.mockResolvedValue('owner')
+    expect((await loaded()).core.map((c) => c.id)).not.toContain('demo')
+    await activations.set('demo', true)
+    expect((await loaded()).core.map((c) => c.id)).toContain('demo')
+  })
+
   it('describes each plugin: official, on or off, its tools, who needs whom', async () => {
     const data = await loaded()
     expect(plugin(data, 'email')).toMatchObject({

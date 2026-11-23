@@ -2,8 +2,8 @@ import type { Teammate } from './types'
 import { describe, expect, it } from 'vitest'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext } from '$lib/kernel/types'
-import { northwind } from './dataset'
-import { AlreadySeededError, seedDemoCompany, type SeedDeps } from './runner'
+import { northwind } from './data/dataset'
+import { AlreadySeededError, seedDemoCompany, seedState, type SeedDeps } from './runner'
 
 type Call = { tool: string; as: string; input: Record<string, unknown> }
 
@@ -14,6 +14,7 @@ const NOW = new Date('2026-11-25T09:00:00Z') // a Wednesday
 function fakeRegistry(
   opts: {
     members?: { id: string; email: string; role: string }[]
+    invites?: { email: string }[]
     gate?: Set<string>
     inactive?: string[]
   } = {},
@@ -40,7 +41,7 @@ function fakeRegistry(
         case 'members.list':
           return {
             members: opts.members ?? [{ id: OWNER_ID, email: 'founder@box.test', role: 'owner' }],
-            invites: [],
+            invites: opts.invites ?? [],
           }
         case 'kernel.module_list':
           return [
@@ -111,8 +112,9 @@ describe('seedDemoCompany', () => {
     expect(added.map((t) => t.handle)).toEqual(['lena', 'jonas', 'mira', 'tarek', 'sophie'])
     const order = phases(calls)
     const first = (tool: string) => order.indexOf(tool)
-    expect(order[0]).toBe('kernel.module_list')
-    expect(order[1]).toBe('members.list')
+    // The guard reads the roster before anything else (nothing is written before it passes).
+    expect(order[0]).toBe('members.list')
+    expect(order[1]).toBe('kernel.module_list')
     const sequence = [
       'settings.update',
       'members.set_my_name',
@@ -207,14 +209,14 @@ describe('seedDemoCompany', () => {
     const { d, added } = deps(registry)
     await expect(seedDemoCompany(northwind, d)).rejects.toThrow(AlreadySeededError)
     await expect(seedDemoCompany(northwind, d)).rejects.toThrow(/already seeded/)
-    expect(calls.every((c) => c.tool === 'kernel.module_list' || c.tool === 'members.list')).toBe(
-      true,
-    )
+    // Only the roster was read: no module switched on, nothing written.
+    expect(calls.every((c) => c.tool === 'members.list')).toBe(true)
     expect(added).toEqual([])
   })
 
-  it('refuses a company that already has other members', async () => {
+  it('refuses a company that already has other members, before switching any module on', async () => {
     const { registry, calls } = fakeRegistry({
+      inactive: ['calendar'],
       members: [
         { id: OWNER_ID, email: 'founder@box.test', role: 'owner' },
         { id: 'u-x', email: 'someone@else.test', role: 'member' },
@@ -222,9 +224,14 @@ describe('seedDemoCompany', () => {
     })
     const { d } = deps(registry)
     await expect(seedDemoCompany(northwind, d)).rejects.toThrow(/not empty/)
-    expect(calls.every((c) => c.tool === 'kernel.module_list' || c.tool === 'members.list')).toBe(
-      true,
-    )
+    expect(calls.map((c) => c.tool)).toEqual(['members.list'])
+  })
+
+  it('refuses a company with an open invite (not freshly claimed)', async () => {
+    const { registry, calls } = fakeRegistry({ invites: [{ email: 'pending@else.test' }] })
+    const { d } = deps(registry)
+    await expect(seedDemoCompany(northwind, d)).rejects.toThrow(/1 open invites/)
+    expect(calls.map((c) => c.tool)).toEqual(['members.list'])
   })
 
   it('refuses an invalid dataset before calling anything', async () => {
@@ -234,5 +241,25 @@ describe('seedDemoCompany', () => {
     broken.messages[0]!.author = 'ghost'
     await expect(seedDemoCompany(broken, d)).rejects.toThrow(/unknown author "ghost"/)
     expect(calls).toEqual([])
+  })
+})
+
+describe('seedState', () => {
+  const owner = { id: OWNER_ID, email: 'founder@box.test', role: 'owner' }
+  it('a freshly claimed company: the owner alone, nobody invited', () => {
+    expect(seedState(northwind, { members: [owner], invites: [] })).toEqual({
+      seeded: false,
+      seededMembers: [],
+      members: 1,
+      openInvites: 0,
+      fresh: true,
+    })
+  })
+  it('seeded once anyone at the dataset domain is a member or invited (any case)', () => {
+    const s = seedState(northwind, {
+      members: [owner],
+      invites: [{ email: 'Lena.Hoffmann@NORTHWIND-STUDIO.example' }],
+    })
+    expect(s).toMatchObject({ seeded: true, fresh: false, openInvites: 1 })
   })
 })

@@ -1,4 +1,4 @@
-import type { MemoryNote } from './types'
+import type { MemoryNote } from '../types'
 
 /**
  * Shared Memory notes the company brain answers from ("what's the status with
