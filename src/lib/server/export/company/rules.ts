@@ -73,6 +73,11 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   claim_consumed: excluded('used one-time claim links (hashes only)'),
   member_group: full,
   member_group_member: full,
+  // The org chart and the AI co-workers (0170, plan/phase-ai-coworkers.md): every member sees
+  // them in the app (titles, accountabilities, reports-to, role cards, run log), so all in full.
+  org_position: full,
+  coworker_profile: full,
+  coworker_run: full,
   access_grant: full,
   user_api_key: fullWith('key_hash'),
   push_subscription: excluded('device push endpoints; each device subscribes again on the new system'),

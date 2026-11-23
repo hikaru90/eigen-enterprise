@@ -30,10 +30,12 @@ export async function queueNotificationEmail(
   if (!(await mail.isConfigured())) return
 
   const [row] = await authDb
-    .select({ email: user.email })
+    .select({ email: user.email, kind: user.kind })
     .from(user)
     .where(eq(user.id, userId))
     .limit(1)
+  // An AI co-worker's address is a reserved .invalid one, never a mailbox (plan/phase-ai-coworkers.md §3).
+  if (row?.kind === 'coworker') return
   const to = row?.email
   if (!to) return
 

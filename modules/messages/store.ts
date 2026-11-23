@@ -94,6 +94,8 @@ export type Person = {
   email: string
   /** The profile picture route (P-5), or null/absent before the person adds one. */
   image?: string | null
+  /** A person or an AI co-worker (plan/phase-ai-coworkers.md); the live directory always sets it. */
+  kind?: 'human' | 'coworker'
 }
 
 export type MessagesStore = {

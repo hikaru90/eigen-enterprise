@@ -56,6 +56,17 @@ const consumeInviteMock = vi.fn(async (_id: string, _now: Date) => true)
 vi.mock('$lib/server/members/db-store', () => ({ dbMemberStore: { consumeInvite: (id: string, now: Date) => consumeInviteMock(id, now) } }))
 vi.mock('$lib/server/overview/sources', () => ({ foundingCompanyName: async () => 'Kindred' }))
 
+/** Which user ids are AI co-workers (the real guard reads user.kind). */
+const coworkerIds = new Set<string>()
+vi.mock('$lib/server/auth/coworker-sign-in', async (importOriginal) => {
+  const real = await importOriginal<typeof import('$lib/server/auth/coworker-sign-in')>()
+  return {
+    ...real,
+    refuseCoworkerSession: (userId: string) =>
+      real.refuseCoworkerSession(userId, async (id) => (coworkerIds.has(id) ? 'coworker' : 'human')),
+  }
+})
+
 vi.mock('$lib/auth/account-kind', () => ({
   resolveAccountKindForNewUser: (...args: unknown[]) => resolveAccountKindMock(...args),
 }))
@@ -120,6 +131,7 @@ type AuthConfig = {
   >
   account?: { accountLinking: { enabled: boolean; trustedProviders: string[] } }
   databaseHooks: {
+    session: { create: { before: (session: { userId: string }) => Promise<void> } }
     user: {
       create: {
         before: (user: { email?: string }) => Promise<{ data: Record<string, unknown> }>
@@ -237,6 +249,15 @@ describe('auth config', () => {
       required: false,
       input: true,
     })
+  })
+
+  it('makes no session for an AI co-worker, on any sign-in path (plan/phase-ai-coworkers.md §3); a person signs in', async () => {
+    await loadAuth()
+    const config = lastConfig()
+    coworkerIds.add('cw_1')
+    await expect(config.databaseHooks.session.create.before({ userId: 'cw_1' })).rejects.toThrow(/AI co-worker/)
+    await expect(config.databaseHooks.session.create.before({ userId: 'ann' })).resolves.toBeUndefined()
+    coworkerIds.clear()
   })
 
   it('databaseHooks before sets accountKind from resolver', async () => {

@@ -1,6 +1,13 @@
 import type { ZodType } from 'zod'
 
-export type PrincipalKind = 'human' | 'agent' | 'service'
+/**
+ * Who a principal is: a person (human), an AI co-worker (coworker: a `user` row
+ * with kind 'coworker', its own seat in the org chart — plan/phase-ai-coworkers.md
+ * §3), an agent (the brain's machinery) or a service. A co-worker is scoped by row
+ * level security like a person, but it is never a person: every `kind === 'human'`
+ * guard refuses it until its module opts in (actsAsMember, principals.ts).
+ */
+export type PrincipalKind = 'human' | 'coworker' | 'agent' | 'service'
 
 export type AuditClass = 'read' | 'mutate' | 'external'
 
@@ -25,7 +32,10 @@ export type ToolPrincipal = {
   roles: string[]
   /** Set only when the company brain acts as this person (provenance; never a permission). */
   via?: 'brain'
-  /** The brain's agent id; present exactly when `via` is. */
+  /**
+   * The brain's agent id when `via` is set; a co-worker's own agent id (kind
+   * 'coworker', never with `via`). Absent otherwise.
+   */
   agentId?: string
 }
 

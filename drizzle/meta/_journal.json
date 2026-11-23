@@ -1170,6 +1170,13 @@
       "when": 1795200000169,
       "tag": "0169_call_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1795200000170,
+      "tag": "0170_ai_coworkers",
+      "breakpoints": true
     }
   ]
 }

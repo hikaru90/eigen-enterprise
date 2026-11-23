@@ -11,12 +11,13 @@ import {
 } from './service'
 
 const at = new Date('2026-10-21T10:00:00Z')
-const owner: Member = { id: 'o', email: 'owner@k.co', name: 'Owner', role: 'owner', createdAt: at }
-const admin: Member = { id: 'a', email: 'admin@k.co', name: 'Admin', role: 'admin', createdAt: at }
-const member: Member = { id: 'm', email: 'm@k.co', name: 'M', role: 'member', createdAt: at }
+const owner: Member = { id: 'o', email: 'owner@k.co', name: 'Owner', role: 'owner', kind: 'human', createdAt: at }
+const admin: Member = { id: 'a', email: 'admin@k.co', name: 'Admin', role: 'admin', kind: 'human', createdAt: at }
+const member: Member = { id: 'm', email: 'm@k.co', name: 'M', role: 'member', kind: 'human', createdAt: at }
+const coworker: Member = { id: 'cw', email: 'mara.cw000000@coworker.invalid', name: 'Mara', role: 'member', kind: 'coworker', createdAt: at }
 
 function setup() {
-  const store = memoryStore([owner, admin, member])
+  const store = memoryStore([owner, admin, member, coworker])
   const mail = { send: vi.fn(async () => ({ messageId: 'x' })), isConfigured: vi.fn(async () => true) }
   const deps = { store, mail, origin: 'https://os.kindred.co/', companyName: 'Kindred', now: () => at }
   return { store, mail, deps }
@@ -112,6 +113,15 @@ describe('members: role rules', () => {
     await expect(setMemberRole({ id: 'o', role: 'owner' }, { userId: 'a', role: 'owner' as never }, deps)).rejects.toThrow()
   })
 
+  it('an AI co-worker is always a member: set_role refuses it, and members.remove points to coworkers.remove', async () => {
+    const { store, deps } = setup()
+    await expect(setMemberRole({ id: 'o', role: 'owner' }, { userId: 'cw', role: 'admin' }, deps)).rejects.toMatchObject({
+      code: 'coworker_protected',
+    })
+    await expect(removeMember({ id: 'o', role: 'owner' }, { userId: 'cw' }, deps)).rejects.toThrow(/coworkers\.remove/)
+    expect(await store.getMember('cw')).toMatchObject({ role: 'member', kind: 'coworker' })
+  })
+
   it('members cannot list, change or remove', async () => {
     const { deps } = setup()
     const m = { id: 'm', role: 'member' as const }
@@ -125,8 +135,12 @@ describe('members: role rules', () => {
     await removeMember({ id: 'o', role: 'owner' }, { userId: 'm' }, deps)
     await inviteMember({ id: 'o', role: 'owner' }, { email: 'n@k.co', role: 'member' }, { ...deps, mail: { send: async () => ({}), isConfigured: async () => true } })
     const list = await listMembers({ id: 'o', role: 'owner' }, deps)
-    expect(list.members.map((x) => x.role)).toEqual(['owner', 'admin'])
-    expect(list.members.map((x) => x.image)).toEqual([null, null]) // no profile pictures in this fixture
+    expect(list.members.map((x) => [x.role, x.kind])).toEqual([
+      ['owner', 'human'],
+      ['admin', 'human'],
+      ['member', 'coworker'],
+    ])
+    expect(list.members.map((x) => x.image)).toEqual([null, null, null]) // no profile pictures in this fixture
     expect(list.invites).toEqual([{ id: expect.any(String), email: 'n@k.co', role: 'member', expiresAt: '2026-10-28T10:00:00.000Z' }])
   })
 })

@@ -100,8 +100,54 @@ export function isDirectHuman(principal: ToolPrincipal): boolean {
   return principal.kind === 'human' && principal.via === undefined
 }
 
-/** Fails loud on a malformed principal: `via` only as the brain, on a person, with its agent id. */
+/**
+ * An AI co-worker (plan/phase-ai-coworkers.md §3): its own user id (a `user`
+ * row with kind 'coworker'), member rights only (a co-worker is never owner or
+ * admin), and the agent id its turns run as. Row level security scopes it by
+ * its own id exactly like a person (server/kernel/principal-scope.ts).
+ */
+export type CoworkerPrincipal = {
+  id: string
+  kind: 'coworker'
+  roles: string[]
+  agentId: string
+}
+
+/** The principal a co-worker's tool calls run under. Fails loud on a missing user or agent id. */
+export function coworkerPrincipal(userId: string, agentId: string): CoworkerPrincipal {
+  if (typeof userId !== 'string' || userId.trim() === '') {
+    throw new KernelError('invalid_principal', "a co-worker principal names the co-worker's user id")
+  }
+  if (typeof agentId !== 'string' || agentId.trim() === '') {
+    throw new KernelError('invalid_principal', 'a co-worker principal names the agent it runs as')
+  }
+  return { id: userId, kind: 'coworker', roles: ['member'], agentId }
+}
+
+/**
+ * True for whoever acts as a company member with a seat: a person (at their
+ * keyboard or through the brain) or an AI co-worker. Modules opt co-workers in
+ * through this helper deliberately; the existing `kind === 'human'` guards keep
+ * refusing them by default. Agents and services are no member.
+ */
+export function actsAsMember(principal: ToolPrincipal): boolean {
+  return principal.kind === 'human' || principal.kind === 'coworker'
+}
+
+/**
+ * Fails loud on a malformed principal: `via` only as the brain, on a person,
+ * with its agent id; a co-worker carries its own agent id and never `via`.
+ */
 export function assertWellFormedPrincipal(principal: ToolPrincipal): void {
+  if (principal.kind === 'coworker') {
+    if (principal.via !== undefined || typeof principal.agentId !== 'string' || principal.agentId.trim() === '') {
+      throw new KernelError(
+        'invalid_principal',
+        `principal ${principal.id} is malformed: a co-worker carries its own agent id and is never acted for via the brain`,
+      )
+    }
+    return
+  }
   if (principal.via === undefined && principal.agentId === undefined) return
   if (principal.via !== BRAIN_VIA || principal.kind !== 'human' || !principal.agentId) {
     throw new KernelError(

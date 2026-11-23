@@ -227,6 +227,11 @@ const NO_BRAIN_REACH = ['agent.disable', 'agent.enable', 'brand.picker_choose', 
 
 /** What a member (no admin role) reaches through the brain — as themselves, under their own access checks. */
 const MEMBER_KEEPS_VIA_BRAIN = [
+  'coworkers.get',
+  'coworkers.list',
+  'coworkers.templates',
+  'org.chart',
+  'org.set_position',
   'assistant.conversation_rename',
   'brand.social_caption_suggest',
   'brand.social_post_create',
@@ -422,6 +427,11 @@ const MEMBER_KEEPS_VIA_BRAIN = [
  * (owner/admin, when those modules are on).
  */
 const MEMBER_LOSES_VIA_BRAIN = [
+  'coworkers.create',
+  'coworkers.disable',
+  'coworkers.enable',
+  'coworkers.remove',
+  'coworkers.update',
   'agent.list',
   'brand.corpus_get',
   'brand.corpus_list',

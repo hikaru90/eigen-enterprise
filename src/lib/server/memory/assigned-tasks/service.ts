@@ -16,7 +16,8 @@ import type { AssignedTask, AssignedTaskComment, AssignedTaskStore, AssigneeUpda
  * completion); a failed notification is logged and never fails the change.
  */
 
-export type TaskPerson = { id: string; name: string; email: string }
+/** `kind`: a person or an AI co-worker (plan/phase-ai-coworkers.md); the live directory always sets it. */
+export type TaskPerson = { id: string; name: string; email: string; kind?: 'human' | 'coworker' }
 
 export type TaskDirectory = {
   get(id: string): Promise<TaskPerson | null>
@@ -167,7 +168,9 @@ async function viewOne(d: AssignedTaskDeps, viewerId: string, task: AssignedTask
 
 /** The members a person can give a task to: everyone in the company but themself. */
 export async function listAssignees(d: AssignedTaskDeps, userId: string): Promise<TaskPerson[]> {
-  return (await d.directory.list()).filter((p) => p.id !== userId).map((p) => ({ id: p.id, name: p.name, email: p.email }))
+  return (await d.directory.list())
+    .filter((p) => p.id !== userId)
+    .map((p) => ({ id: p.id, name: p.name, email: p.email, ...(p.kind ? { kind: p.kind } : {}) }))
 }
 
 export async function assignTask(

@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { avatarUrl, isAvatarSha } from '$lib/profile/profile'
 import type { MemberRole } from '$lib/server/auth/user-role'
+import type { UserKind } from '$lib/server/db/auth.schema'
 
 /**
  * Company members (Settings → Members and the members.* kernel tools).
@@ -23,6 +24,11 @@ export type Member = {
   email: string
   name: string
   role: MemberRole
+  /**
+   * A person, or an AI co-worker (plan/phase-ai-coworkers.md): co-workers are members with a seat
+   * (always role member) and are managed through coworkers.*, never members.set_role / remove.
+   */
+  kind: UserKind
   createdAt: Date
   /** Profile picture bytes (P-5); null until the person adds one. */
   avatarSha256?: string | null
@@ -61,7 +67,16 @@ export type InviteMail = {
 
 export class MemberError extends Error {
   constructor(
-    readonly code: 'forbidden' | 'not_found' | 'owner_protected' | 'already_member' | 'invalid_email' | 'invalid_role' | 'invalid_group' | 'invalid_input',
+    readonly code:
+      | 'forbidden'
+      | 'not_found'
+      | 'owner_protected'
+      | 'coworker_protected'
+      | 'already_member'
+      | 'invalid_email'
+      | 'invalid_role'
+      | 'invalid_group'
+      | 'invalid_input',
     message: string,
   ) {
     super(message)
@@ -105,6 +120,7 @@ export async function listMembers(actor: Actor, deps: Pick<MemberDeps, 'store' |
       email: m.email,
       name: m.name,
       role: m.role,
+      kind: m.kind,
       /** The profile picture route (P-5), null without one. */
       image: isAvatarSha(m.avatarSha256) ? avatarUrl(m.avatarSha256) : null,
     })),
@@ -160,6 +176,9 @@ export async function setMemberRole(
   const target = await deps.store.getMember(input.userId)
   if (!target) throw new MemberError('not_found', 'No such member.')
   if (target.role === 'owner') throw new MemberError('owner_protected', "The owner's role can't be changed.")
+  if (target.kind === 'coworker') {
+    throw new MemberError('coworker_protected', `${target.name} is an AI co-worker: a co-worker is always a member, never an admin.`)
+  }
   await deps.store.setRole(target.id, role)
   return { userId: target.id, email: target.email, role }
 }
@@ -173,6 +192,12 @@ export async function removeMember(
   const target = await deps.store.getMember(input.userId)
   if (!target) throw new MemberError('not_found', 'No such member.')
   if (target.role === 'owner') throw new MemberError('owner_protected', "The owner can't be removed.")
+  if (target.kind === 'coworker') {
+    throw new MemberError(
+      'coworker_protected',
+      `${target.name} is an AI co-worker: remove it with coworkers.remove (it keeps what it wrote), not members.remove.`,
+    )
+  }
   await deps.store.removeMember(target.id)
   return { userId: target.id, email: target.email }
 }

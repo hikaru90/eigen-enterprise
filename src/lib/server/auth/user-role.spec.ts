@@ -42,6 +42,13 @@ describe('personFor — the person the company brain acts as (CB3)', () => {
     }
   })
 
+  it('an AI co-worker is no person: the brain never acts as one (plan/phase-ai-coworkers.md §3)', async () => {
+    authDbMock.select.mockReturnValue(chainSelect([{ role: 'member', kind: 'coworker' }]))
+    await expect(personFor('cw_1')).resolves.toBeNull()
+    authDbMock.select.mockReturnValue(chainSelect([{ role: 'member', kind: 'human' }]))
+    await expect(personFor('ann')).resolves.toEqual({ id: 'ann', roles: ['member'] })
+  })
+
   it('no member, no person: the brain never acts for someone who is not in the company', async () => {
     authDbMock.select.mockReturnValue(chainSelect([]))
     await expect(personFor('stranger')).resolves.toBeNull()

@@ -4,6 +4,10 @@ import { integer, pgTable, text, timestamp, boolean, index, uniqueIndex } from '
 export const userAccountKindEnum = ['production', 'harness'] as const
 export type UserAccountKind = (typeof userAccountKindEnum)[number]
 
+/** Who a user row is: a person, or an AI co-worker (migration 0170). */
+export const userKindEnum = ['human', 'coworker'] as const
+export type UserKind = (typeof userKindEnum)[number]
+
 export const user = pgTable(
   'user',
   {
@@ -22,6 +26,11 @@ export const user = pgTable(
     .default('member')
     .notNull(),
   accountKind: text('account_kind', { enum: userAccountKindEnum }).default('production').notNull(),
+  /**
+   * A person ('human') or an AI co-worker ('coworker', 0170, plan/phase-ai-coworkers.md §3).
+   * A co-worker never signs in (no account row; auth refuses its session) and is always a member.
+   */
+  kind: text('kind', { enum: userKindEnum }).default('human').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
     .defaultNow()

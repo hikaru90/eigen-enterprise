@@ -25,6 +25,7 @@ async function liveDirectory(): Promise<Directory> {
         name: m.name,
         email: m.email,
         image: isAvatarSha(m.avatarSha256) ? avatarUrl(m.avatarSha256) : null,
+        kind: m.kind,
       }))
     },
     role: (userId) => getUserRole(userId),
