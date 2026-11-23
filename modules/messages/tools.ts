@@ -2,14 +2,35 @@ import type { Conversation } from './store'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { MESSAGES_MODULE_ID } from './manifest'
-import { listConversations, listMessages, messagePage, type MessagesDeps } from './service'
+import { setDoNotDisturb, type PresencePort } from './presence'
+import {
+  conversationMembers,
+  createChannel,
+  deleteMessage,
+  editMessage,
+  listConversations,
+  listMessages,
+  listThread,
+  markRead,
+  MessagesError,
+  messagePage,
+  openDm,
+  postMessage,
+  toggleReaction,
+  uploadAttachments,
+  type MessageDto,
+  type MessagesDeps,
+} from './service'
 
 /**
- * messages.* kernel tools — read only. A person reads what they may see (their
- * channels and their DMs). Any other principal (the agent) reads only what the
- * whole company may see: channels with a company grant; never private channels
- * or DMs.
+ * messages.* kernel tools. A person reads what they may see (their channels
+ * and their DMs) and writes exactly as /api/messages/* does — the same service
+ * calls, the same push fan-out. Any other principal (the agent) reads only what
+ * the whole company may see: channels with a company grant; never private
+ * channels or DMs; and never writes (owner decision W-2).
  */
+
+type PushFn = (d: MessagesDeps, c: Conversation, m: MessageDto) => void
 
 const listInput = z.object({}).strict()
 const readInput = z
@@ -24,9 +45,62 @@ const readInput = z
     message: 'pass exactly one of conversation_id or channel',
   })
 
+const uuid = z.string().uuid()
+const messageInput = z.object({ message_id: uuid }).strict()
+const conversationInput = z.object({ conversation_id: uuid }).strict()
+const createChannelInput = z
+  .object({
+    name: z.string().min(1),
+    topic: z.string().optional(),
+    private: z.boolean(),
+    user_ids: z.array(z.string()).optional(),
+    group_ids: z.array(z.string()).optional(),
+  })
+  .strict()
+const openDmInput = z.object({ user_ids: z.array(z.string()).min(1) }).strict()
+const uploadInput = z
+  .object({
+    conversation_id: uuid,
+    files: z
+      .array(
+        z
+          .object({
+            filename: z.string().min(1),
+            mime: z.string().min(1).optional(),
+            content_base64: z.string(),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict()
+const postInput = z
+  .object({
+    conversation_id: uuid,
+    body: z.string(),
+    parent_id: uuid.optional(),
+    reply_to_id: uuid.optional(),
+    attachment_ids: z.array(z.string()).optional(),
+    voice_clips: z.array(z.object({ file_id: z.string(), duration_ms: z.number() }).strict()).optional(),
+  })
+  .strict()
+const editInput = z.object({ message_id: uuid, body: z.string() }).strict()
+const reactInput = z.object({ message_id: uuid, emoji: z.string().min(1) }).strict()
+const dndInput = z.object({ do_not_disturb: z.boolean() }).strict()
+
 async function liveDeps(): Promise<MessagesDeps> {
   const { messagesDeps } = await import('./live')
   return messagesDeps()
+}
+
+async function livePresence(): Promise<PresencePort> {
+  return (await import('$lib/server/presence')).presence()
+}
+
+function livePush(d: MessagesDeps, c: Conversation, m: MessageDto): void {
+  import('./live')
+    .then(({ pushNewMessage }) => pushNewMessage(d, c, m))
+    .catch((err) => console.error('[messages] push dispatch failed', { conversationId: c.id, err }))
 }
 
 /** Public channels carry the company grant (set at creation, never changed in C1). */
@@ -42,8 +116,56 @@ async function companyChannels(d: MessagesDeps): Promise<Conversation[]> {
 
 const isPerson = (ctx: ToolContext) => ctx.principal.kind === 'human'
 
-export function createMessagesTools(opts: { deps?: () => Promise<MessagesDeps> } = {}): ToolDescriptor[] {
+function personId(ctx: ToolContext): string {
+  if (!isPerson(ctx)) throw new MessagesError('forbidden', 'only a person can do this in Messages')
+  return ctx.principal.id
+}
+
+/** Persons only: admin + member (the agent principal is read-only, W-2). */
+const PERSON = { roles: ['admin', 'member'] }
+
+/** Strict standard base64 (the same bytes the multipart route receives). */
+function decodeBase64(s: string, filename: string): Uint8Array {
+  if (s.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(s)) {
+    throw new MessagesError('invalid', `${filename}: content_base64 is not valid base64`)
+  }
+  return new Uint8Array(Buffer.from(s, 'base64'))
+}
+
+export function createMessagesTools(
+  opts: {
+    deps?: () => Promise<MessagesDeps>
+    presence?: () => Promise<PresencePort>
+    push?: PushFn
+  } = {},
+): ToolDescriptor[] {
   const deps = opts.deps ?? liveDeps
+  const presence = opts.presence ?? livePresence
+  const push = opts.push ?? livePush
+
+  function write<S extends z.ZodTypeAny>(
+    name: string,
+    summary: string,
+    activity: string,
+    inputSchema: S,
+    run: (userId: string, d: MessagesDeps, input: z.infer<S>) => Promise<unknown>,
+  ): ToolDescriptor {
+    return {
+      name,
+      module: MESSAGES_MODULE_ID,
+      summary,
+      auditClass: 'mutate',
+      activity: () => activity,
+      inputSchema,
+      permission: PERSON,
+      handler: async (ctx, input) => {
+        const userId = personId(ctx)
+        const out = await run(userId, await deps(), inputSchema.parse(input))
+        return out ?? { ok: true }
+      },
+    }
+  }
+
   return [
     {
       name: 'messages.list_channels',
@@ -84,5 +206,107 @@ export function createMessagesTools(opts: { deps?: () => Promise<MessagesDeps> }
         return messagePage(d, c, { limit: i.limit, beforeId: i.before_id })
       },
     },
+    {
+      name: 'messages.thread',
+      module: MESSAGES_MODULE_ID,
+      summary: 'Read a thread you may see: its first message (message_id) and every reply, oldest first.',
+      auditClass: 'read',
+      inputSchema: messageInput,
+      permission: PERSON,
+      handler: async (ctx, input) => listThread(await deps(), personId(ctx), messageInput.parse(input).message_id),
+    },
+    {
+      name: 'messages.members',
+      module: MESSAGES_MODULE_ID,
+      summary: "Who is in a conversation you may see (a DM's participants; everyone who may read a channel).",
+      auditClass: 'read',
+      inputSchema: conversationInput,
+      permission: PERSON,
+      handler: async (ctx, input) => ({
+        members: await conversationMembers(await deps(), personId(ctx), conversationInput.parse(input).conversation_id),
+      }),
+    },
+    write(
+      'messages.create_channel',
+      'Create a channel: public (open to everyone) or private with invited user_ids / group_ids.',
+      'Created a channel',
+      createChannelInput,
+      async (userId, d, i) => ({
+        conversation: await createChannel(d, userId, {
+          name: i.name,
+          topic: i.topic ?? '',
+          private: i.private,
+          userIds: i.user_ids ?? [],
+          groupIds: i.group_ids ?? [],
+        }),
+      }),
+    ),
+    write(
+      'messages.open_dm',
+      'Open (or find) the direct message with exactly these people (user_ids; you are included).',
+      'Opened a direct message',
+      openDmInput,
+      async (userId, d, i) => ({ conversation: await openDm(d, userId, i.user_ids) }),
+    ),
+    write(
+      'messages.upload_attachments',
+      "Upload files (content_base64 + filename + mime) into a conversation's Drive folder, then post them with messages.post attachment_ids (a dictated recording: voice_clips). Each file is checked against the Drive size limit: { uploaded, errors }.",
+      'Uploaded files to a conversation',
+      uploadInput,
+      async (userId, d, i) =>
+        uploadAttachments(
+          d,
+          userId,
+          i.conversation_id,
+          i.files.map((f) => ({ name: f.filename, mime: f.mime ?? null, bytes: decodeBase64(f.content_base64, f.filename) })),
+        ),
+    ),
+    write(
+      'messages.post',
+      'Post a message (Markdown) to a conversation you may write in; parent_id makes it a thread reply, reply_to_id quotes a message. DMs, @mentions and thread participants get a push.',
+      'Posted a message',
+      postInput,
+      async (userId, d, i) => {
+        const { message, conversation, parent } = await postMessage(d, userId, i.conversation_id, i.body, {
+          parentId: i.parent_id ?? null,
+          replyToId: i.reply_to_id ?? null,
+          attachmentIds: i.attachment_ids ?? [],
+          voiceClips: (i.voice_clips ?? []).map((v) => ({ fileId: v.file_id, durationMs: v.duration_ms })),
+        })
+        push(d, conversation, message)
+        return { message, parent }
+      },
+    ),
+    write('messages.edit', 'Edit one of your own messages.', 'Edited a message', editInput, async (userId, d, i) => {
+      await editMessage(d, userId, i.message_id, i.body)
+    }),
+    write(
+      'messages.delete',
+      'Delete a message: your own anywhere; an owner/admin may delete any channel message (moderation, audited).',
+      'Deleted a message',
+      messageInput,
+      async (userId, d, i) => {
+        await deleteMessage(d, userId, i.message_id)
+      },
+    ),
+    write(
+      'messages.react',
+      'Toggle your reaction (one emoji) on a message; answers the message.',
+      'Reacted to a message',
+      reactInput,
+      async (userId, d, i) => ({ message: await toggleReaction(d, userId, i.message_id, i.emoji) }),
+    ),
+    write('messages.mark_read', 'Mark a conversation read.', 'Marked a conversation read', conversationInput, async (userId, d, i) => {
+      await markRead(d, userId, i.conversation_id)
+    }),
+    write(
+      'messages.set_do_not_disturb',
+      'Switch your Do not disturb on or off; answers your presence.',
+      'Switched Do not disturb',
+      dndInput,
+      async (userId, d, i) => ({
+        presence: await setDoNotDisturb(d, await presence(), userId, { doNotDisturb: i.do_not_disturb }),
+      }),
+    ),
   ]
 }
