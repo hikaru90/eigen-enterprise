@@ -132,22 +132,12 @@
   >
     <h2 id="your-data-heading" class="text-[13px] font-medium">Your data</h2>
     <p class="mt-1 text-sm text-muted-foreground">
-      Your Memory is yours: take a copy, or delete it. Single thoughts, tasks and notes have their
-      own Delete where they are listed.
+      Delete what you no longer need. Single thoughts, tasks and notes have their own Delete where
+      they are listed.
     </p>
 
     <div class="mt-4 grid gap-4 rounded-lg border border-border bg-card p-4 sm:p-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0">
-          <p class="text-sm font-medium">Download a copy</p>
-          <p class="text-sm text-muted-foreground">
-            Your thoughts, notes and graph as a .zip file.
-          </p>
-        </div>
-        <Button href="/api/memory/export" variant="outline" size="sm" download>Download</Button>
-      </div>
-
-      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
         <div class="min-w-0">
           <p class="text-sm font-medium">Archived thoughts</p>
           <p class="text-sm text-muted-foreground" data-testid="memory-archived-count">

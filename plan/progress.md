@@ -10,6 +10,13 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - Decisions: thumbnails are the original file scaled by the browser (no server-side thumbnail generation yet; the content endpoint is `no-store`, so large photo folders re-download on each visit — a thumbnail store is the follow-up if that hurts). List view keeps icons for text files (a 28 px tile can't hold legible text).
 - Tests: display.spec (hasThumbnail, textPreviewOf), preview.spec (mimeFor avif/bmp/webp), drive-browser component spec (list thumb, grid text + table preview, read failure → icon). vitest.browser.config prebundles papaparse (CommonJS; `noDiscovery`).
 
+## 2026-11-23 — Personal export dropped, member Memory download removed, export takes unmarked work in full (owner decisions)
+
+- **Decision (owner):** "legally the things that you do during your work time are property of the company. So a personal export would be theft legally. And until this is decided or has precedence in law, I wouldn't want to build a personal export." X3 (`kernel.export_mine`) is off the plan (`plan/phase-export.md` §5, §6). Only the company export exists.
+- **Copy fixed:** the export README and Settings → Export no longer tell members they can download their own data in full.
+- **Removed (owner: "just remove the promise or any mention of users being able to export their own memories"):** Memory → Settings → Your data no longer has "Download a copy" or "Your Memory is yours: take a copy". `your-data.svelte.spec.ts` now checks that no download is offered. **Kept:** the endpoint `/api/memory/export` (no link to it any more, still reachable with an API key) until the owner decides on it.
+- **Export rule tightened (owner: "what we sell is the company being able to export the decisions made by an employee … exclude things marked as private, just include metadata"):** work that isn't marked private is now exported in full. That covers assigned tasks and their comments, and company-visible calendar events with their attendees. What is marked private stays metadata only: DMs, personal mailboxes, private Memory, busy/private events, unshared brain answers, DM calls. So do a member's own spaces (assistant chats, reminders, settings). A new integration test pins the calendar line.
+
 ## 2026-11-23 — Company export X1: "export everything" (owner: "we promise our customers no vendor lock in. we need an export function that exports everything!"; committed, not pushed, not on the box)
 
 - **Plan:** `plan/phase-export.md` (new). Owner decision: **two exports**. The company export holds everything the company owns, with a member's private data as metadata only. The personal export gives each member their own data in full (X3, not built yet).
@@ -34,8 +41,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - Inbound raw mail in S3 isn't included (bodies are).
   - Assistant transcripts (pi-durable SQLite) aren't included.
   - App databases are planned as X1b.
-  - The personal export is X3.
-- **Next:** X1b (app databases through ee), X3 (personal export), X2 (readable formats: vCard, iCalendar, mbox, Markdown).
+- **Next:** X1b (app databases through ee), X2 (readable formats: vCard, iCalendar, mbox, Markdown). X3 (personal export) was dropped later the same day.
 
 ## 2026-11-23 — Assistant chat failed on the demo company: a regex lookahead in the hostname rule made OpenRouter's OpenInference refuse every turn (owner error report from demo.eigenenterprise.app)
 

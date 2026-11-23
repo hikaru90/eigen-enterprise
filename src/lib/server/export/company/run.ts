@@ -127,8 +127,7 @@ eigenEnterprise to read it.
 
 A member's private items (${privateRows} rows here) are in this export as
 metadata only: who they belong to, when they were made, who else was involved.
-Their content is not, because nobody but that member can read it. Every member
-can download their own data in full under Settings → Your data.
+Their content is not, because nobody but that member can read it in the app.
 
 ## Left out on purpose
 

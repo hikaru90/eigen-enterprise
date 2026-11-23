@@ -61,7 +61,7 @@
 </p>
 <p class="mt-2 max-w-prose text-xs text-foreground/60">
   A member’s private items (their DMs, personal mailbox, private Memory, calendar details) are in it as
-  metadata only: whose, when, with whom, never what they say. Each member downloads their own data in full.
+  metadata only: whose, when, with whom, never what they say.
   Keys and passwords are never exported; the README lists what to connect again.
 </p>
 

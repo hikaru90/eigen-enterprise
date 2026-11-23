@@ -6,11 +6,14 @@ import type { TableRule } from './plan'
  * The line between company data and a member's private data is the app's own
  * (owner decision 2026-11-23, "everything the company owns, including private
  * data as metadata"): **what the app shows the owner is exported in full; what
- * the app hides from the owner is exported as metadata only.** So contacts,
- * Drive, private channels and shared mailboxes (the owner and admins can open
- * them) are full; DMs and their attachments, personal mailboxes, private Memory,
- * calendar event details, two-person assigned tasks, unshared call answers,
- * assistant chats and reminders are metadata. Metadata is what a camera could
+ * the app hides from the owner is exported as metadata only** — and work is the
+ * company's (owner, 2026-11-23: "what we sell is the company being able to export
+ * the decisions made by an employee … exclude things marked as private, just
+ * include metadata"). So contacts, Drive, private channels, shared mailboxes,
+ * company-visible calendar events and assigned tasks are full; what is marked
+ * private or is private by kind (DMs and their attachments, personal mailboxes,
+ * private Memory, busy/private calendar events, unshared call answers, DM calls)
+ * and a member's own spaces (assistant chats, reminders, settings) are metadata. Metadata is what a camera could
  * observe: whose, when, how big, with whom (by member id). Names, titles,
  * bodies, addresses and embeddings are content.
  *
@@ -314,9 +317,9 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   owlery_settings: fullWith('sealed_secret_access_key'),
   managed_mail_sender: full,
 
-  // --- Calendar (another member sees free/busy only) -------------------------
+  // --- Calendar (an event marked busy or private is its owner’s) ---------------
   calendar_events: meta(
-    always,
+    `t.visibility <> 'company'`,
     [
       'id', 'owner_id', 'starts_at', 'ends_at', 'time_zone', 'all_day', 'call_id', 'visibility', 'status', 'source',
       'external_id', 'etag', 'rrule', 'exdates', 'recurrence_ends_at', 'recurrence_id', 'original_start',
@@ -324,7 +327,8 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
     ],
     ['title', 'notes', 'location'],
   ),
-  calendar_attendees: meta(always, ['id', 'event_id', 'member_id', 'role', 'rsvp', 'created_at', 'updated_at'], ['email', 'name']),
+  calendar_attendees: meta(
+    `EXISTS (SELECT 1 FROM calendar_events ev WHERE ev.id = t.event_id AND ev.visibility <> 'company')`, ['id', 'event_id', 'member_id', 'role', 'rsvp', 'created_at', 'updated_at'], ['email', 'name']),
   calendar_proposals: meta(
     always,
     ['id', 'member_id', 'mailbox_id', 'state', 'event_id', 'created_at', 'decided_at'],
@@ -348,16 +352,9 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   call_brain_answer: meta('t.shared_at IS NULL', ['id', 'call_id', 'asked_by', 'asked_at', 'shared_at'], ['question', 'answer']),
   call_brain_listen: full,
 
-  // --- Tasks between two people ----------------------------------------------
-  assigned_tasks: meta(
-    always,
-    [
-      'id', 'assigner_id', 'assignee_id', 'due_on', 'status', 'created_via', 'created_at', 'updated_at', 'completed_at',
-      'assignee_update_at', 'assignee_seen_at', 'assigner_update_at', 'assigner_seen_at',
-    ],
-    ['title', 'context', 'assignee_update', 'assigner_update'],
-  ),
-  assigned_task_comments: meta(always, ['id', 'task_id', 'author_id', 'created_at'], ['body']),
+  // --- Tasks between two people (work, not marked private: full) ------------
+  assigned_tasks: full,
+  assigned_task_comments: full,
 
   // --- Brand, website, repos, GitHub, contribute --------------------------------
   brand_assets: full,

@@ -62,6 +62,33 @@ describe.skipIf(!sql)('company export rules against the database', () => {
     )
   })
 
+  it('a company-visible calendar event is in full; a busy or private one is metadata only', async () => {
+    const plan = planCompanyExport(await readCatalog(sql!), COMPANY_EXPORT_RULES, COMPANY_EXPORT_EXCLUDED_SCHEMAS)
+    const events = rowsPlan(plan, 'calendar_events')
+    const uid = `export_cal_${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`
+    let seen: Record<string, unknown>[] = []
+    await sql!
+      .begin(async (tx) => {
+        await tx`INSERT INTO "user" (id, name, email) VALUES (${uid}, 'Spec', ${`${uid}@test.local`})`
+        for (const visibility of ['company', 'busy', 'private']) {
+          await tx`INSERT INTO calendar_events (owner_id, title, notes, starts_at, ends_at, time_zone, visibility, created_by)
+            VALUES (${uid}, ${`${visibility} meeting`}, 'the notes', now(), now(), 'UTC', ${visibility}, ${uid})`
+        }
+        seen = (await tx.unsafe(`${events.sql} WHERE t.owner_id = '${uid}' ORDER BY t.visibility`)).map((r) => r.row)
+        throw new Rollback()
+      })
+      .catch((e) => {
+        if (!(e instanceof Rollback)) throw e
+      })
+    const [busy, company, priv] = seen
+    expect(company).toMatchObject({ title: 'company meeting', notes: 'the notes' })
+    for (const row of [busy, priv]) {
+      expect(row).toMatchObject({ _private: true })
+      expect(row).not.toHaveProperty('title')
+      expect(row).not.toHaveProperty('notes')
+    }
+  })
+
   it('a secret column never appears in the exported row', async () => {
     const plan = planCompanyExport(await readCatalog(sql!), COMPANY_EXPORT_RULES, COMPANY_EXPORT_EXCLUDED_SCHEMAS)
     const account = rowsPlan(plan, 'account')

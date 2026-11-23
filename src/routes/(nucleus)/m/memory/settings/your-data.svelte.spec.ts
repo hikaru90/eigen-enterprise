@@ -28,11 +28,10 @@ describe('Memory settings: your data', () => {
     await expect.element(button).toBeEnabled()
   })
 
-  it('offers a download and says how many archived thoughts are still stored', async () => {
+  it('offers no personal download (owner, 2026-11-23) and says how many archived thoughts are still stored', async () => {
     render(SettingsPage, { data: data(3), form: null as never })
-    await expect
-      .element(page.getByRole('link', { name: 'Download' }))
-      .toHaveAttribute('href', '/api/memory/export')
+    await expect.element(page.getByRole('link', { name: 'Download' })).not.toBeInTheDocument()
+    await expect.element(page.getByText(/take a copy/i)).not.toBeInTheDocument()
     await expect.element(page.getByTestId('memory-archived-count')).toHaveTextContent(/3 hidden/)
     await expect.element(page.getByRole('button', { name: 'Delete archived' })).toBeEnabled()
   })
