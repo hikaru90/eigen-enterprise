@@ -2,6 +2,28 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-23 — Contribute round: 8 workstreams merged into main (owner: "get contributions from all boxes and start integrating them"; merged, not pushed, not released)
+
+- **Round:** `plan/contribute-round-2026-11-23.md`. Sources: ee-one, os.cerberusblue.com and the central board.
+- **Merged:**
+  - `f9bb6573` light mode switch (41ad3156);
+  - `652fe0bf` reload sentence after a release (593f7e08);
+  - `4bccc1b8` voice speed/volume (74cbc486);
+  - `a402b84e` "Make a wish" / "Wünsch dir was" (bcd930e2, 3786cf54);
+  - `84909e6a` assistant links stay in the tab, panel survives a full load (de821eda);
+  - `7a9195f6` same-name upload dialog (f45acdef);
+  - `d96463fa` rounder chat + tool steps + cost per reply + usage meter (6b91931f, 30a8d920 part 1);
+  - `14ae73bf` chat in calls (bb05b451).
+  - Details are in each workstream's entry below.
+- **Decisions:**
+  - Theme and voice speed/volume are per-device preferences (localStorage), so they have no registry tool.
+  - `drive.upload` now *requires* `on_conflict`, and the service has no default either. Callers without it are refused (breaking for scripts). Server-made files (PDF tools, message attachments) use `keep_both`.
+  - Call chat gets its own table (migration `0169_call_chat`), because guests have no account and so can't post through Messages. If AI Co-workers lands its own 0169 later, it renumbers.
+  - Amounts are shown in USD, because the cost log and the cap are in USD.
+- **Removed, announced:** the assistant's "→ using tool…" line, replaced by step cards; the raw tool JSON on the conversation page, replaced by a secret-free summary.
+- **Board:** ee-one 54c4b1d2 is `shipped` (v0.5.37), and this round's items are `in_progress` with notes. They become `shipped` once released to ee-one.
+- **Owner's call:** `plan/concept-memory-one-door.md` (draft) — one door in, Memory shows what the brain holds, Status pages out.
+
 ## 2026-11-23 — Chat in a call (member proposal bb05b451: "we still need a chat function in the call"; committed on branch `calls-chat`, not pushed, not merged, not on the box)
 
 - **Shipped:** people in a call write to each other in a chat side panel of the call view, members and guests invited by link alike. A badge on the chat toggle counts lines from others while the panel is closed. On a phone the panel covers the stage, and a member's controls, chat included, fit one 375 px row (buttons 44 px below `sm`).
