@@ -24,6 +24,9 @@ export const MESSAGE_STATUSES = [
 
 export type MessageStatus = (typeof MESSAGE_STATUSES)[number]
 
+export const isMessageStatus = (s: string): s is MessageStatus =>
+  (MESSAGE_STATUSES as readonly string[]).includes(s)
+
 const RANK = new Map<string, number>(MESSAGE_STATUSES.map((s, i) => [s, i]))
 
 /** The status a message shows after `incoming` happened, given its `current` status. */
@@ -51,7 +54,14 @@ export const STATUS_LABEL: Record<MessageStatus, string> = {
 
 /** Problem states are shown in the destructive tone. */
 export function isProblemStatus(s: MessageStatus): boolean {
-  return s === 'bounced' || s === 'rejected' || s === 'rendering_failure' || s === 'complained' || s === 'failed' || s === 'suppressed'
+  return (
+    s === 'bounced' ||
+    s === 'rejected' ||
+    s === 'rendering_failure' ||
+    s === 'complained' ||
+    s === 'failed' ||
+    s === 'suppressed'
+  )
 }
 
 export const SOURCE_LABEL: Record<string, string> = {

@@ -13,6 +13,7 @@
     MESSAGE_STATUSES,
     SOURCE_LABEL,
     STATUS_LABEL,
+    isMessageStatus,
   } from '../../../../../../modules/email/platform/status'
 
   let { data }: PageProps = $props()
@@ -37,7 +38,7 @@
       subject: (m) => m.subject,
       from: (m) => m.from,
       source: (m) => SOURCE_LABEL[m.source] ?? m.source,
-      status: (m) => STATUS_LABEL[m.status] ?? m.status,
+      status: (m) => (isMessageStatus(m.status) ? STATUS_LABEL[m.status] : m.status),
       when: (m) =>
         new Date(m.scheduledAt && m.status === 'scheduled' ? m.scheduledAt : m.createdAt),
     }),
