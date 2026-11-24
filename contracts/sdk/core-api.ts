@@ -2977,6 +2977,45 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "module_hub.file": {
+    input: {
+      "bundle_sha256": string
+      "path": string
+    }
+    output: unknown
+  }
+  "module_hub.get": {
+    input: {
+      "install_id": string
+      "module_id": string
+    }
+    output: unknown
+  }
+  "module_hub.list": {
+    input: {
+      "cursor"?: string
+      "query"?: string
+    }
+    output: unknown
+  }
+  "module_hub.summarize": {
+    input: {
+      "bundle_sha256": string
+    }
+    output: unknown
+  }
+  "module_hub.tree": {
+    input: {
+      "bundle_sha256": string
+    }
+    output: unknown
+  }
+  "module_hub.version": {
+    input: {
+      "bundle_sha256": string
+    }
+    output: unknown
+  }
   "notifications.devices": {
     input: Record<string, unknown>
     output: {
@@ -4037,6 +4076,12 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "messages.set_do_not_disturb",
   "messages.thread",
   "messages.upload_attachments",
+  "module_hub.file",
+  "module_hub.get",
+  "module_hub.list",
+  "module_hub.summarize",
+  "module_hub.tree",
+  "module_hub.version",
   "notifications.devices",
   "notifications.settings_get",
   "notifications.settings_set",
