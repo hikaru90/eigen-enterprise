@@ -646,5 +646,6 @@
   "coworkers_avatar_clear": "Initialen verwenden",
   "coworkers_avatar_hint": "Wähle ein eigenEnterprise-CI-Emblem oder lade ein Bild hoch (wird quadratisch auf 256×256 WebP zugeschnitten).",
   "coworkers_reports_to_multi_hint": "Wähle eine oder mehrere Leitungen. Ist niemand gewählt, antwortet sie der Inhaber:in.",
-  "org_reports_to_multi_hint": "Wähle eine oder mehrere Leitungen (alle abwählen für niemandem)."
+  "org_reports_to_multi_hint": "Wähle eine oder mehrere Leitungen (alle abwählen für niemandem).",
+  "table_sort_by": "Nach {column} sortieren"
 }

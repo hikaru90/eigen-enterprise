@@ -648,5 +648,6 @@
   "coworkers_avatar_clear": "Use initials",
   "coworkers_avatar_hint": "Pick an eigenEnterprise CI emblem or upload a square image (cropped to 256×256 WebP).",
   "coworkers_reports_to_multi_hint": "Select one or more managers. If none are checked, it answers to the owner.",
-  "org_reports_to_multi_hint": "Select one or more managers (leave all unchecked for nobody)."
+  "org_reports_to_multi_hint": "Select one or more managers (leave all unchecked for nobody).",
+  "table_sort_by": "Sort by {column}"
 }

@@ -54,6 +54,8 @@
     type UploadProgress,
   } from '$lib/drive/upload'
   import type { ShownError } from '$lib/errors/agent-report'
+  import { nextSort, sortRows, type SortState } from '$lib/table/sort'
+  import SortableHead from '$lib/table/sortable-head.svelte'
   import DriveItemActions from './drive-item-actions.svelte'
   import DriveTextPreview from './drive-text-preview.svelte'
   import NameDialog from './name-dialog.svelte'
@@ -149,7 +151,9 @@
   let dropFolder = $state<Listed | null>(null)
   let progress = $state<UploadProgress | null>(null)
   /** An upload's name clash waiting for the person's answer (the upload pauses until then). */
-  let clash = $state<{ conflict: UploadConflict; answer: (d: ConflictDecision) => void } | null>(null)
+  let clash = $state<{ conflict: UploadConflict; answer: (d: ConflictDecision) => void } | null>(
+    null,
+  )
   let failures = $state<UploadFailure[]>([])
   let search = $state(query)
   let view = $state<View>('list')
@@ -242,7 +246,17 @@
         matchesOrigin(item, activeOrigin) && (kindFilter === 'all' || item.type === kindFilter),
     )
   })
-  const shown = $derived(results ?? filteredItems)
+  type ColKey = 'name' | 'owner' | 'when' | 'from' | 'size'
+  let sort = $state<SortState<ColKey>>(null)
+  const sortColumns = {
+    name: (i: Listed) => i.name,
+    owner: (i: Listed) => describe[`${i.type}:${i.id}`]?.ownerName,
+    when: (i: Listed) => new Date(whenOf(i)),
+    from: (i: Listed) => (i.dated ? new Date(i.dated.at) : null),
+    size: (i: Listed) => (i.type === 'file' ? i.size : null),
+  }
+  const unsorted = $derived(results ?? filteredItems)
+  const shown = $derived(sortRows(unsorted, sort, sortColumns))
   const isFiltered = $derived(
     hasOverviewOrigins && (activeOrigin !== 'all' || kindFilter !== 'all'),
   )
@@ -251,6 +265,7 @@
   const currentPage = $derived(Math.min(requestedPage, pageCount))
   const firstShown = $derived((currentPage - 1) * PAGE_SIZE)
   const visible = $derived(shown.slice(firstShown, firstShown + PAGE_SIZE))
+  const sortBy = (key: ColKey) => (sort = nextSort(sort, key))
   const dropEnabled = $derived(canEdit && !trashView)
   const dragging = $derived(dragDepth > 0)
   const dropDestination = $derived(
@@ -371,9 +386,12 @@
         )
       const files = (n: number) => `${n} file${n === 1 ? '' : 's'}`
       const said: string[] = []
-      if (landed.length > 0) said.push(`Uploaded ${landed.join(' ')}${target ? ` to ${target.name}` : ''}.`)
+      if (landed.length > 0)
+        said.push(`Uploaded ${landed.join(' ')}${target ? ` to ${target.name}` : ''}.`)
       if (out.replaced > 0)
-        said.push(`Replaced ${files(out.replaced)} with a new version (the old one stays in its history).`)
+        said.push(
+          `Replaced ${files(out.replaced)} with a new version (the old one stays in its history).`,
+        )
       if (out.skipped.length > 0)
         said.push(
           `Left out ${files(out.skipped.length)} that ${out.skipped.length === 1 ? 'is' : 'are'} already there.`,
@@ -1046,17 +1064,35 @@
         <table class="w-full table-fixed text-sm" data-testid="drive-list">
           <thead class="sticky top-0 z-10 bg-background text-left text-xs text-muted-foreground">
             <tr class="border-b border-border">
-              <th class="px-3 py-2 font-medium">Name</th>
-              <th class="hidden w-48 px-3 py-2 font-medium @5xl:table-cell">Owner</th>
-              <th class="hidden w-32 px-3 py-2 font-medium @xl:table-cell"
-                >{trashView ? 'Trashed' : 'Modified'}</th
-              >
-              <th
-                class="hidden w-36 px-3 py-2 font-medium @4xl:table-cell"
-                title="When the file is from: taken or created as the file records it, else when it was uploaded"
-                >From</th
-              >
-              <th class="hidden w-24 px-3 py-2 font-medium @2xl:table-cell">Size</th>
+              <SortableHead label="Name" sortKey="name" {sort} class="px-3 py-2" onsort={sortBy} />
+              <SortableHead
+                label="Owner"
+                sortKey="owner"
+                {sort}
+                class="hidden w-48 px-3 py-2 @5xl:table-cell"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label={trashView ? 'Trashed' : 'Modified'}
+                sortKey="when"
+                {sort}
+                class="hidden w-32 px-3 py-2 @xl:table-cell"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label="From"
+                sortKey="from"
+                {sort}
+                class="hidden w-36 px-3 py-2 @4xl:table-cell"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label="Size"
+                sortKey="size"
+                {sort}
+                class="hidden w-24 px-3 py-2 @2xl:table-cell"
+                onsort={sortBy}
+              />
               <th class="w-52 px-3 py-2"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>

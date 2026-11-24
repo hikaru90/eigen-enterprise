@@ -4,6 +4,8 @@
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import type { AgentReport } from '$lib/errors/agent-report'
+  import { nextSort, sortRows, type SortState } from '$lib/table/sort'
+  import SortableHead from '$lib/table/sortable-head.svelte'
   import {
     CONTACT_LIMITS,
     PIPELINE_STAGES,
@@ -39,6 +41,19 @@
   } = $props()
 
   let reviewOnly = $state(false)
+  type ColKey = 'who' | 'last' | 'owner' | 'via' | 'status' | 'step' | 'date' | 'list'
+  let sort = $state<SortState<ColKey>>(null)
+  const sortBy = (key: ColKey) => (sort = nextSort(sort, key))
+  const sortColumns = {
+    who: (i: PipelineItem) => i.name,
+    last: (i: PipelineItem) => (i.lastContactedOn ? new Date(i.lastContactedOn) : null),
+    owner: (i: PipelineItem) => i.ownerName,
+    via: (i: PipelineItem) => i.via,
+    status: (i: PipelineItem) => i.latestStatus,
+    step: (i: PipelineItem) => i.nextStep,
+    date: (i: PipelineItem) => (i.nextFollowUpOn ? new Date(i.nextFollowUpOn) : null),
+    list: (i: PipelineItem) => i.stage,
+  }
   let errors = $state<Record<string, string>>({})
   let saving = $state<string | null>(null)
   let dragOver = $state<PipelineStage | null>(null)
@@ -140,7 +155,7 @@
 
 {#each pipeline.groups as group, n (group.stage)}
   {@const info = STAGE_INFO[group.stage]}
-  {@const items = shown(group.items)}
+  {@const items = sortRows(shown(group.items), sort, sortColumns)}
   <section
     class="mt-6 rounded-lg border {dragOver === group.stage
       ? 'border-foreground bg-muted/40'
@@ -176,14 +191,56 @@
         <table class="w-full min-w-[960px] text-sm">
           <thead class="text-left text-xs text-muted-foreground">
             <tr>
-              <th scope="col" class="px-2 py-2 pl-4 font-medium">Who</th>
-              <th scope="col" class="px-2 py-2 font-medium">Last contacted</th>
-              <th scope="col" class="px-2 py-2 font-medium">Held by</th>
-              <th scope="col" class="px-2 py-2 font-medium">Via</th>
-              <th scope="col" class="px-2 py-2 font-medium">Latest status</th>
-              <th scope="col" class="px-2 py-2 font-medium">Next step</th>
-              <th scope="col" class="px-2 py-2 font-medium">{info.dateLabel}</th>
-              <th scope="col" class="px-2 py-2 pr-4 font-medium">List</th>
+              <SortableHead
+                label="Who"
+                sortKey="who"
+                {sort}
+                class="px-2 py-2 pl-4"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label="Last contacted"
+                sortKey="last"
+                {sort}
+                class="px-2 py-2"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label="Held by"
+                sortKey="owner"
+                {sort}
+                class="px-2 py-2"
+                onsort={sortBy}
+              />
+              <SortableHead label="Via" sortKey="via" {sort} class="px-2 py-2" onsort={sortBy} />
+              <SortableHead
+                label="Latest status"
+                sortKey="status"
+                {sort}
+                class="px-2 py-2"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label="Next step"
+                sortKey="step"
+                {sort}
+                class="px-2 py-2"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label={info.dateLabel}
+                sortKey="date"
+                {sort}
+                class="px-2 py-2"
+                onsort={sortBy}
+              />
+              <SortableHead
+                label="List"
+                sortKey="list"
+                {sort}
+                class="px-2 py-2 pr-4"
+                onsort={sortBy}
+              />
             </tr>
           </thead>
           <tbody class="divide-y divide-border">

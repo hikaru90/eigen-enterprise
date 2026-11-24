@@ -1,13 +1,15 @@
 <script lang="ts">
-  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import { onMount, untrack } from 'svelte'
   import { enhance } from '$app/forms'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
+  import type { AgentReport } from '$lib/errors/agent-report'
   import type { BackupRun } from '$lib/server/ee/client'
   import { docTitle } from '$lib/shell/title'
-  import type { AgentReport } from '$lib/errors/agent-report'
+  import { nextSort, sortRows, type SortState } from '$lib/table/sort'
+  import SortableHead from '$lib/table/sortable-head.svelte'
 
   let { data, form }: PageProps = $props()
 
@@ -70,6 +72,18 @@
       polling = false
     }
   }
+  type RunCol = 'started' | 'result' | 'uploaded' | 'took' | 'how'
+  let sort = $state<SortState<RunCol>>(null)
+  const sortBy = (key: RunCol) => (sort = nextSort(sort, key))
+  const runRows = $derived(
+    sortRows(status?.runs ?? [], sort, {
+      started: (r) => new Date(r.startedAt),
+      result: (r) => r.status,
+      uploaded: (r) => r.bytesUploaded,
+      took: (r) => r.durationMs,
+      how: (r) => r.trigger,
+    }),
+  )
   // The last check/restore of a backup (ee runs it; this page only asks and shows it).
   const job = $derived(backups.managed ? backups.job : null)
   const snapshots = $derived(backups.managed ? backups.snapshots : null)
@@ -269,15 +283,39 @@
           <table class="w-full text-left text-xs">
             <thead class="text-muted-foreground">
               <tr class="border-b border-border">
-                <th class="px-3 py-2 font-medium">Started</th>
-                <th class="px-3 py-2 font-medium">Result</th>
-                <th class="px-3 py-2 font-medium">Uploaded</th>
-                <th class="px-3 py-2 font-medium">Took</th>
-                <th class="px-3 py-2 font-medium">How</th>
+                <SortableHead
+                  label="Started"
+                  sortKey="started"
+                  {sort}
+                  class="px-3 py-2"
+                  onsort={sortBy}
+                />
+                <SortableHead
+                  label="Result"
+                  sortKey="result"
+                  {sort}
+                  class="px-3 py-2"
+                  onsort={sortBy}
+                />
+                <SortableHead
+                  label="Uploaded"
+                  sortKey="uploaded"
+                  {sort}
+                  class="px-3 py-2"
+                  onsort={sortBy}
+                />
+                <SortableHead
+                  label="Took"
+                  sortKey="took"
+                  {sort}
+                  class="px-3 py-2"
+                  onsort={sortBy}
+                />
+                <SortableHead label="How" sortKey="how" {sort} class="px-3 py-2" onsort={sortBy} />
               </tr>
             </thead>
             <tbody class="divide-y divide-border">
-              {#each status.runs as r (r.id)}
+              {#each runRows as r (r.id)}
                 <tr data-testid="backups-run" data-status={r.status}>
                   <td class="px-3 py-2 whitespace-nowrap">{when(r.startedAt)}</td>
                   <td class="px-3 py-2">
