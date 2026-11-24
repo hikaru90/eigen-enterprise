@@ -43,6 +43,7 @@ import { createCallsTools } from './calls/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
+import { COMPANY_MODULES_MODULE_ID, companyModulesManifest } from './company-modules/manifest'
 import { CONTACTS_MODULE_ID, CONTACTS_WRITE_TOOLS, contactsManifest } from './contacts/manifest'
 import { createContactsTools } from './contacts/tools'
 import { contributeHubManifest } from './contribute/hub/manifest'
@@ -72,6 +73,7 @@ import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { MESSAGES_MODULE_ID, messagesManifest } from './messages/manifest'
 import { createMessagesTools } from './messages/tools'
+import { moduleHubManifest } from './module-hub/manifest'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { orchestratorManifest } from './orchestrator/manifest'
 import { createRepoEngine } from './orchestrator/repo/index'
@@ -122,11 +124,16 @@ export const moduleManifests = [
   // The central Contribute board (plan/contribute-phone-home.md §3): registered everywhere, never
   // self-seeded — off until the owner switches it on, on os.cerberusblue.com only.
   contributeHubManifest,
+  // The central module hub (plan/phase-upgrades-u2.md §7): like the Contribute board, registered
+  // everywhere, never self-seeded — off until the owner switches it on, on the central box only.
+  moduleHubManifest,
   assistantManifest,
   domainsManifest,
   // The demo company seed (plan/phase-demo-company.md): registered everywhere, never
   // self-seeded — off until the owner switches it on, on the demo box only.
   demoManifest,
+  // The company's own modules (plan/phase-upgrades-u2.md §8): the modules.* tools.
+  companyModulesManifest,
 ] as const
 
 /**
@@ -167,6 +174,8 @@ export const SYSTEM_MODULE_IDS = [
   DOMAINS_MODULE_ID,
   // AI co-workers and the org chart (plan/phase-ai-coworkers.md C1): core like Members.
   COWORKERS_MODULE_ID,
+  // Modules (plan/phase-upgrades-u2.md §8): the company's own vibe-coded modules; core like Members.
+  COMPANY_MODULES_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */

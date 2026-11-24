@@ -141,6 +141,7 @@ describe('Settings → Plugins (owner and admins)', () => {
         ].sort(),
       )
       expect(data.core.map((c) => c.id).sort()).toEqual([
+        'company-modules',
         'contribute',
         'coworkers',
         'domains',
@@ -156,6 +157,13 @@ describe('Settings → Plugins (owner and admins)', () => {
     expect((await loaded()).core.map((c) => c.id)).not.toContain('contribute-hub')
     await activations.set('contribute-hub', true)
     expect((await loaded()).core.map((c) => c.id)).toContain('contribute-hub')
+  })
+
+  it('the module hub is in the core line only where the owner switched it on', async () => {
+    roleMock.mockResolvedValue('owner')
+    expect((await loaded()).core.map((c) => c.id)).not.toContain('module-hub')
+    await activations.set('module-hub', true)
+    expect((await loaded()).core.map((c) => c.id)).toContain('module-hub')
   })
 
   it('the demo company seed is in the core line only where the owner switched it on', async () => {

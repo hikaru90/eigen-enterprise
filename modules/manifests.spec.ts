@@ -77,16 +77,25 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator, members, coworkers, contribute, contribute-hub, domains and demo modules are internal (no owner-facing card); the others are not', () => {
+  it('the orchestrator, members, coworkers, contribute, contribute-hub, module-hub, domains, demo and company-modules modules are internal (no owner-facing card); the others are not', () => {
     expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
       'orchestrator',
       'members',
       'coworkers',
       'contribute',
       'contribute-hub',
+      'module-hub',
       'domains',
       'demo',
+      'company-modules',
     ])
+  })
+
+  it('the module hub is never self-seeded: it stays off until the owner switches it on, like the contribute hub', async () => {
+    const { kernel: k, activations } = kernel()
+    await ensureSystemModulesActive(k)
+    expect(SYSTEM_MODULE_IDS as readonly string[]).not.toContain('module-hub')
+    expect(await activations.get('module-hub')).toBe(false)
   })
 
   it('the demo module is never self-seeded: off on every company (its tools fail closed) until the owner switches it on', async () => {
@@ -206,8 +215,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos, calendar, assistant, domains and coworkers, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar', 'assistant', 'domains', 'coworkers'])
+  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos, calendar, assistant, domains, coworkers and company-modules, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar', 'assistant', 'domains', 'coworkers', 'company-modules'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)
@@ -233,6 +242,8 @@ describe('merged module manifests', () => {
     expect(await k.modules.isToolActive('domains.list')).toBe(true)
     // Assistant (round 5): an official plugin, on from the start — on an existing company too (no record yet).
     expect(await activations.get('assistant')).toBe(true)
+    // Modules (plan/phase-upgrades-u2.md §8): the company's own modules are part of the OS.
+    expect(await activations.get('company-modules')).toBe(true)
     // Not a system module: the agent's internal tools keep their own activation.
     expect(await k.modules.isToolActive('repo.merge')).toBe(false)
   })
