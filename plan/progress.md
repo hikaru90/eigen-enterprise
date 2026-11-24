@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Messages: @ suggestions in the composer; a co-worker's handle shown (`c3132357`, `c448ae69`, not pushed, not on the box)
+
+- **Problem:** co-workers answer only to their exact `@handle` (`@nova-mwujrl74`), which was shown nowhere, and the composer had no @ suggestions (for people either).
+- **Shipped:**
+  - Channel and thread composers (`src/lib/messages/message-composer.svelte`): typing `@` + letters lists the conversation's members (people and co-workers, never the writer, max 8), matched on handle, first name, full name or any name word (prefix, case-insensitive — structure, `src/lib/messages/mention.ts`). Co-workers carry the AI mark and their handle. ↑/↓ move, Enter/Tab insert, Esc closes (the page's own Esc waits), click inserts; Enter while open never sends. The box is a `combobox` over a `listbox` with `aria-activedescendant`.
+  - Inserted token = `mentionHandleOf` (new, client-safe in `$lib/coworkers/handle.ts`; `notify.ts primaryHandle` now delegates): a co-worker's slug, a person's email local part — both matched by `mentionedIds`.
+  - `messages.members` (tool + `/api/messages/conversations/[id]/members`) returns each member's `handle`, so the CLI/agent read the same token the UI inserts.
+  - "Mention as @handle" + copy button on the co-worker's profile and its Settings → Co-workers card (`src/lib/coworkers/mention-handle.svelte`, reuses the email `CopyButton`).
+- **Decisions:** a person's highlight now also lights `@<email local part>` (`mentionNamesOf`), since that is what the suggestions insert and it already notified them. The call chat panel is not wired: it posts to the call's chat, not through the messages path, and has no mentions.
+- **Specs:** `mention.spec.ts` (10), `handle.spec.ts` (+2), `service.spec.ts` (+1, members carry handle), `org/page.server.spec.ts` (handle on the profile), composer component spec (+5), e2e `coworkers.e2e.ts` (card + profile handle, copy, `@nov` → pick → send → answer in the thread).
+- **Gaps:** the list opens after the first letter, not on a bare `@`; no group/`@channel` mentions.
+
 ## 2026-11-24 — AI Co-workers: screens checked in a real browser (e2e journey `1c88c50b`, fix `d9984716`, merge `e7973226`, not pushed, not on the box)
 
 - **Owner:** "Yes, check screens".
