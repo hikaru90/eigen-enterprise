@@ -64,6 +64,3 @@ CREATE TABLE IF NOT EXISTS "kernel_module_sharing" (
   "accepted_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "kernel_module_sharing_one_row" CHECK ("id" = 'company')
 );
-
--- Event delivery reads kernel_events by type in (ts, id) order.
-CREATE INDEX IF NOT EXISTS "kernel_events_type_ts_id_idx" ON "kernel_events" ("type", "ts", "id");

@@ -2,6 +2,58 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Upgrades U2: a place for vibe-coded modules (owner: "Start U2 and U3"; contract `8266b353`, branch `upgrades-integrate`; not released, no box touched)
+
+The contract was fixed first in `plan/phase-upgrades-u2.md` (decisions D1–D15). The shared contract commit (§9.0) followed, then three parallel streams. All of it is integrated on `upgrades-integrate`, together with U3.
+
+- **§9.0, shared contract** (`3815e098`):
+  - `contracts/module-manifest.ts` (module.yaml v1), `module-receipt.ts`, `module-protocol.ts` (eem/1), `module-bundle.ts` (a deterministic tar.gz) and `module-workload.ts`, with 565 contract tests;
+  - the `hello` fixture module, a test-only hub key, and empty `company-modules`/`module-hub` manifests.
+  - Deviations, kept: the manifest file imports `js-yaml`; there is an extra problem type, `urn:ee:secret_undeclared`; `module-hub` is off unless switched on; `company-modules` is a system module.
+- **Stream A, kernel host** (`06ec5ccc`, `9d1393e5`, `fdb061db`, `9d83e099`; migration 0179):
+  - **`src/lib/kernel/module-host/`:** the eem/1 socket server, auth by service principal and token, `uses:` enforcement, and the person rule (`via:'module'`).
+    - Proxy tools `x_<id>.*`, with unregister and dynamic gating.
+    - At-least-once event delivery with a cursor, and `data.*` on `extensions/<id>/`.
+    - The state machine and "switched off loudly": failed, ee stopped, `module.failed`, a Needs you entry, data kept. A new commit makes it `running` again; a person's off stays off.
+  - **The `modules.*` tools:** 14 of them, including scaffold → write → commit → publish → test → deploy.
+    - The first deploy, or one that widens reach, needs an admin's own click.
+    - The one-time sharing OK belongs to the owner.
+  - **Also in A:** Settings → Modules → Company, Needs you entries, the export of `extensions/`, and system.yaml v2 (v1 still reads).
+  - **Decisions:** D-A1 to D-A14 are in the stream report. Main ones:
+    - the kernel module page lives at `/settings/modules/company`;
+    - `modules.deploy` needs an existing receipt;
+    - `data.*` writes are authored by `module:<id>`;
+    - after a restore, a bundle is rebuilt from the module repo, or fetched from the hub by sha, and checked against its receipt.
+- **Stream B, ee** (`32a81fce`, `185909ea`):
+  - **Running a module:** receipted bundles only, `/v1/modules`, the build unit, a test unit with no network, and the hardened run unit.
+    - The run unit has no network and sees only the module socket directory; `systemd-analyze` scores it 0.4, against 1.3 for app units.
+  - **Hub trust:** `settings.moduleHub`, set only from root's CLI; `ee/src/hub-key.ts` with current and backup key slots; `scripts/hub-key.sh`.
+  - **`ee/e2e/box.sh module-check`:** 20/20 on real systemd, in a throwaway container.
+    - Tampered bytes give 422 and no unit.
+    - A red test keeps the old release running.
+    - Undeclared secrets get 403.
+  - ee's bundle now carries one copy of zod and of js-yaml (esbuild aliases), and is 760 KB smaller.
+- **Stream C, hub** (`9bcee5bd`, `7858f757`; migration 0180):
+  - `/api/hub/modules/{publish, bundles/:sha, :id/run}`, signed like contributions.
+  - The six checks, with collected problems. The secret scan reports path:line, never the value.
+  - Signed receipts with `MODULE_HUB_SIGNING_KEY`.
+  - The owner's view at Contribute → Modules: the module tools, tree and files, versions, the installs running each, and an LLM summary through the gateway.
+  - The box's `PublishPort` (`livePublishPort()`). The mock hub speaks all of it.
+- **Integration (orchestrator):**
+  - Journal 0179, then 0180. The contract lock has 411 tools and 59 events, with no breaking changes.
+  - `plan/parity-debt.md` is regenerated.
+  - The boot provides `livePublishPort()`.
+  - Stream A's `kernel_events` index moved out of 0179 into its own migration, `0181_kernel_events_type_index` (`-- ee:no-transaction`, `CREATE INDEX CONCURRENTLY`). On a large table, a plain `CREATE INDEX` would block writes while it builds.
+  - The host reports each module's run state to the hub (running, failed, stopped) through `PublishPort.reportRun`. A failed report is a journal line, never a module failure (host.spec).
+- **Not done:**
+  - **No proof on a real box yet:** a full scaffold → publish → deploy → kill → repair run across kernel, ee and the hub. Each stream proved its part against fakes. Stream B also proved its part on real systemd.
+  - **No official hub key.** `hub-key.ts` holds placeholders until the owner runs `scripts/hub-key.sh` and sets `MODULE_HUB_SIGNING_KEY` on os.cerberusblue.com. Until then, official-hub modules get 422.
+  - The module build unit still has full network, not "npm registry only".
+  - No link from `/contribute` to `/contribute/modules`, and no Playwright e2e of the new pages.
+  - About 30 import-order lint warnings.
+  - Streams D (UI slots) and E (the invoices proof) come next.
+- **Why not on main yet:** another session's uncommitted demo guest-access work, migration 0178, sits in the main checkout and overlaps these files. `upgrades-integrate` merges once it is committed.
+
 ## 2026-11-24 — Upgrades U3: the upgrade transaction on the box (`442785b9`, `b159e890`, merged on `upgrades-integrate`; not released, no box touched)
 
 §6.4 in `ee/`, every failure path with an ee spec (`upgrade-transaction.spec.ts`, `upgrade-watch.spec.ts`, `release-meta.spec.ts`, `box-tx.spec.ts`, `upgrade-job.spec.ts`, `reconcile.spec.ts`, `ee-slots-install.spec.ts`).

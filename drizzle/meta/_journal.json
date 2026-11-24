@@ -1240,6 +1240,13 @@
       "when": 1795200000180,
       "tag": "0180_module_hub",
       "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1795200000181,
+      "tag": "0181_kernel_events_type_index",
+      "breakpoints": true
     }
   ]
 }
