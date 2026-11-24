@@ -107,6 +107,8 @@ Each one: tests first, gates green, one commit per workstream, a `plan/progress.
 
 ## 8. Open question (blocks S4 only)
 
+**Answered for maintainer boxes (2026-11-23, `phase-upgrades.md` §4.1):** option 1. A separate "eigenEnterprise maintainer" GitHub App with `contents: write` on the core repo only. Its key is held only by boxes the owner makes maintainers (ee-one first), every merge goes through `upstream.merge` with an admin's approval, and release tags stay with the owner. Every other box has no write credential and contributes through pull requests.
+
 **How the box pushes merged commits to GitHub.** Today's deploy keys are read-only by design. Options:
 1. A GitHub App installation token with `contents: write`, scoped to the eigenEnterprise repo only, minted per push (same pattern as today's fetch tokens). *Recommendation.*
 2. A write-enabled deploy key held by ee for that one repo.

@@ -97,7 +97,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - the signing key stays in CI and on the owner's machine;
   - the box runs the full release gate first, e2e and the rehearsal included, which needs Playwright on the box;
   - the soak and the waves bind everyone, and skipping the soak is the owner's alone.
-- **Still open:** whether upgrade outcome reports are on by default.
+- **Answered 2026-11-24:** boxes report upgrade outcomes (release, from, step, ok/fail; no company data) by default, with a switch in Settings → Updates. All of the owner's calls in `phase-upgrades.md` §9 are answered.
 - **Finding:** today modules are compiled in and X0–X4 are not built, so **the only way a box can add a module is to edit the core**. Every vibe-coding box is a fork today. Hence U1 (`core-api` 1.0) and U2 (module runtime) come first, and U5 gives forks a way back.
 - **Found while mapping (fix in U0):**
   - `kernel.release_install` documents `release` as "the version", but ee's POST requires the full release name, so a bare version gets a 400.
