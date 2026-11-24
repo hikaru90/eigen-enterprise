@@ -2,6 +2,39 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Upgrades U1: `core-api` 1.0, migration rules, upgrade rehearsal (owner: "Push, start U1"; merges `5c889e01`, `59d54c43`, `5d3f46b5`; not released)
+
+Three parallel workstreams, each in its own worktree, reviewed and merged into main.
+
+- **Contract** (`51b9a600`, `5d3b2520`):
+  - **`contracts/core-api.lock.json`:** core-api 1.0.0, with 390 tools (input and output JSON Schema, roles, approval, auditClass), 52 events and 0 UI slots, the last an explicit empty list because X2 isn't built.
+    - The tool set comes from the real `bootApp` composition with in-memory stores.
+    - Every event payload is `null`, because no event has a schema yet.
+  - **`contracts/deprecations.ts`:** `howToMigrate` is required. The window is 2 minor releases and 30 days, whichever is longer.
+  - **Structural classifier** over JSON Schema: inputs are compared one way, outputs and events the other, and unions branch by branch. Removing something needs a major `coreApi` bump. `contract:lock` refuses to write a breaking diff.
+  - **Generated SDK** (`contracts/sdk/`): typed `call(tool, input)` over MCP `tools/call`.
+  - **Conformance suite:** 393 tests against the in-process registry.
+  - **`contract:check`** runs in `ci:local`.
+  - **Behaviour change, announced:** `emitKernelEvent` now refuses an event type that isn't in `src/lib/kernel/event-catalog.ts`. Every existing emit site is catalogued, and the typechecker found them all.
+- **Migrations** (`cc2065ae`):
+  - **The `lint:migrations` gate:** a tokenizer finds destructive statements (DROP, RENAME, a type change, SET NOT NULL, a NOT NULL column without a default, …). They are allowed only in a file whose first line is `-- ee:contract`. The 175 existing migrations, through `0177`, are baselined by name; without the baseline, 0165 is flagged.
+  - **Each migration now runs in its own transaction.** Before, there was no transaction at all, so a failure left a file half-applied and unrecorded. `-- ee:no-transaction` is allowed only for CONCURRENTLY and `ADD VALUE`. Bookkeeping is the same sha256 hash as before, so boxes that are already migrated stay recognized.
+  - **The downgrade floor:** a `-- ee:contract` migration moves it, and an ordinary expand migration no longer does.
+  - `AGENTS.md` documents both markers.
+- **Upgrade rehearsal** (`befe446f`):
+  - **`npm run upgrade:rehearsal`:** previous `v*` tag → a throwaway DB on the test Postgres → the tag's own preStart → the demo company seeded by the tag's code → a read smoke of 32 tools as a baseline → HEAD's migrations → the same smoke again, compared on shape and counts.
+  - **Green on merged main against v0.5.38.** A planted rename of `contacts.organisation` fails at step 8, naming each tool.
+  - **The pre-push hook gates `refs/tags/v*`:** a release tag needs `scripts/tag-gate.sh` (rehearsal + e2e) green on exactly that commit. Branch pushes are unchanged.
+- **Gaps:**
+  - The tag gate is local only: a tag pushed with `--no-verify` still builds in GitHub Actions.
+  - `contract:check` compares against the committed lock, so regenerating the lock from scratch would get past it. Comparing against `origin/main` would close that.
+  - `howToMigrate` is only checked to be non-empty.
+  - The conformance suite runs in process only; there is no mode for a live box yet.
+  - `contract:lock` prints retry noise from the durable agent store.
+  - The demo seed logs failures of LLM enrichment, which has no provider in the rehearsal.
+- **Finding, not a bug:** subagent worktrees fail `role-aware.spec`, because `.env.example` has no `TENANT_MASTER_KEY` that matches the shared test DB. It passes on the main checkout (43/43).
+- **Next:** U2 and U3 can start in parallel: the module runtime with publish-before-run, and the upgrade transaction in `ee`.
+
 ## 2026-11-24 — Messages: @ suggestions in the composer; a co-worker's handle shown (`c3132357`, `c448ae69`, not pushed, not on the box)
 
 - **Problem:** co-workers answer only to their exact `@handle` (`@nova-mwujrl74`), which was shown nowhere, and the composer had no @ suggestions (for people either).
