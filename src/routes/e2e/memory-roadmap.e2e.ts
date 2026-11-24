@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { registerUser } from './test-helpers'
+import { registerUser, waitForHydration } from './test-helpers'
 
 /**
  * P-4: the Roadmap is a Memory project. Memory → Projects pins the company's
@@ -109,6 +109,9 @@ test('Memory → Projects → Roadmap: pinned, migrated, add · start · ship ·
     await expect(started).toBeVisible()
     await expect(planned.getByText(itemTitle)).toHaveCount(0)
     await admin.reload()
+    // Hydrated before the next click: on the server-rendered page 'Mark shipped' posts natively and
+    // reloads, and 'Edit' (a client toggle) then does nothing until the app takes over (flaked under full-run load).
+    await waitForHydration(admin)
     await expect(inProgress.getByText(itemTitle)).toBeVisible()
     await started.getByRole('button', { name: 'Mark shipped' }).click()
     const done = shipped.getByTestId('roadmap-item').filter({ hasText: itemTitle })
