@@ -2,6 +2,31 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Upgrades U0: clean the floor (owner: "Commit, start U0"; plan `4109d898`, `9d77fdab`, `c8d4c786`, merge `530e482f`; not pushed, not on a box)
+
+- **Plan committed:** `plan/phase-upgrades.md` v2 (`4109d898`). Owner call §9.4 answered: boxes report upgrade outcomes by default, with a switch.
+- **e2e:** already green on main from the other session's round (75 passed, 0 failed, `a49ee2a4`). Nothing more to do for U0.
+- **`kernel.release_status` (new read) and a strict `kernel.release_install`** (`9d77fdab`):
+  - The agent had no way to learn the release name, so the install tool was unusable to it.
+  - `release_status` reads Settings → Updates: what runs, the newest signed release with `latest.release` (the exact name to install) and its state, the last update job, and the lookup error if there is one. Owner or admin, as a person.
+  - `release_install` now takes only `eigenenterprise-<version>-<12 hex>` and refuses a bare version before any approval, pointing to `release_status`.
+  - The stale "no agent tool" notes are fixed: the page comment, and the old U2 decision line is marked superseded.
+- **Governance files** (`c8d4c786`):
+  - `CONTRIBUTING.md`: modules need no licence; they are Apache-2.0 and shared before they run. Core PRs need DCO sign-off and the gate.
+  - `SECURITY.md`: private reporting through GitHub advisories. It says plainly that channels (U6) aren't built yet.
+  - `.github/CODEOWNERS`.
+- **Backup release key** (subagent worktree, `7edfcf28`, merge `530e482f`):
+  - ee and `install.sh` trust {current, offline backup}. The backup marker holds an explicit placeholder until the owner generates the key, and a placeholder is skipped.
+  - The current key is still required. A malformed backup, or a backup equal to the current key, fails loud.
+  - `scripts/release-key.sh --backup` writes the key 0600, refuses to overwrite one, and says it must stay offline, never in CI.
+  - ee tests: 532 passed.
+- **Left for the owner:**
+  1. Run `scripts/release-key.sh --backup`, commit the embedded public key, move the private key offline and delete the local copy.
+  2. GitHub protection: today `main` is unprotected and there are no rulesets. Protect `main` and the `v*` tags so only the owner can push them; the maintainer App joins in U8.
+- **Found:** `ee` tsc reports 13 existing type errors in `ee/src/daemon.spec.ts`. They were there before this round and are not in the gate.
+- **Gate:** `npm run ci:local` green on main (9402 unit, 908 component tests, 0 type errors).
+- **Next:** U1, `core-api` 1.0: the contract lock, deprecations with `howToMigrate`, the SDK, the migration lint, and the upgrade rehearsal.
+
 ## 2026-11-24 — Brand extraction runs on the assistant's chat model; `BRAND_EXTRACT_MODEL` removed (owner: "This should be the model that's already used by the assistant."; merged into main `d44249ae`, not pushed, not released)
 
 - **Changed:** `modules/brand/extract/propose.ts` no longer reads an env var or passes `modelOverride`. Both proposers (`proposeCandidates` for a site capture, `proposeCandidatesFromGuide` for an uploaded PDF/image guide) call `llmChatCompletion` without a model, so the gateway resolves the person's chat slot the same way it does for the assistant (`resolveSlot('chat', userId)` → `chatRoutingConfig`). Brand extraction no longer has its own model resolution.
