@@ -19,7 +19,9 @@ import {
  * copy, runs the installer and deploys the new app health-gated, in a process
  * that outlives this app restarting — the page reconnects and shows the end.
  * The person clicking is the decision (like Settings → Backups), so this
- * page calls ee directly; the agent has no verb to update the server.
+ * page calls ee directly. The agent and the CLI reach the same through
+ * kernel.release_status (this load) and kernel.release_install (?/update,
+ * owner only, behind the owner's approval).
  * A managed box is updated by its hosting provider: the page only shows it.
  */
 

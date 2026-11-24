@@ -13,6 +13,8 @@ import { KernelError } from './errors'
  *
  * A call that runs as no person (a bare agent principal) is refused: these
  * pages are a person's capability (company.manage, backups.manage, owner).
+ * kernel.release_status is the read of Settings → Updates: it gives the exact
+ * release name kernel.release_install takes.
  */
 
 export const KERNEL_OPERATIONS_TOOL_NAMES = [
@@ -21,10 +23,26 @@ export const KERNEL_OPERATIONS_TOOL_NAMES = [
   'settings.logo_remove',
   'kernel.backup_run',
   'kernel.release_install',
+  'kernel.release_status',
 ] as const
 
 /** The capabilities these tools check, as the routes do. */
-export type OperationsCapability = 'company.manage' | 'backups.manage' | 'owner'
+export type OperationsCapability = 'company.manage' | 'backups.manage' | 'updates.manage' | 'owner'
+
+/** A release name as ee requires it (ee/src/upgrade-job.ts RELEASE_NAME). */
+export const RELEASE_NAME = /^eigenenterprise-\d+\.\d+\.\d+-[0-9a-f]{12}$/
+
+/** Settings → Updates as data: what runs, the newest signed release, the last update. */
+export type ReleaseStatus = {
+  /** release is null when the running tarball has no release name (a hand-installed build). */
+  installed: { release: string | null; tarball: string; version: string } | null
+  /** Updated by its hosting provider: nothing to install from here. */
+  managed: boolean
+  /** null while an update runs, on a managed box, or when the lookup failed (latestError). */
+  latest: { release: string; version: string; state: 'newer' | 'rebuild' | 'installed' | 'older'; notes: string | null } | null
+  latestError: string | null
+  job: { id: string; release: string; status: 'running' | 'succeeded' | 'failed'; step: string; error: string | null; endedAt: string | null } | null
+}
 
 export type LogoOutcome = { ok: true } | { ok: false; status: number; error: string }
 
@@ -36,6 +54,8 @@ export type OperationsPort = {
   removeLogo(userId: string): Promise<void>
   /** Starts a backup now (ee runBackup, trigger manual); `author` is `human:<id>`. */
   runBackup(author: string): Promise<{ runId: string }>
+  /** Settings → Updates' load (ee upgrade + latestRelease). */
+  releaseStatus(): Promise<ReleaseStatus>
   /** Starts the update to `release` (ee startUpgrade); `author` is `human:<id>`. */
   installRelease(release: string, author: string): Promise<{ jobId: string; status: string }>
 }
@@ -54,13 +74,47 @@ const logoSetInput = z
   })
   .strict()
 const logoRecropInput = z.object({ crop: cropSchema }).strict()
-const releaseInput = z.object({ release: z.string().min(1).max(100) }).strict()
+const releaseInput = z
+  .object({
+    release: z
+      .string()
+      .regex(
+        RELEASE_NAME,
+        'release must be the full release name (eigenenterprise-<version>-<12-hex sha>), not a bare version: kernel.release_status gives it as latest.release',
+      ),
+  })
+  .strict()
+
+const releaseStatusOutput = z.object({
+  installed: z.object({ release: z.string().nullable(), tarball: z.string(), version: z.string() }).nullable(),
+  managed: z.boolean(),
+  latest: z
+    .object({
+      release: z.string(),
+      version: z.string(),
+      state: z.enum(['newer', 'rebuild', 'installed', 'older']),
+      notes: z.string().nullable(),
+    })
+    .nullable(),
+  latestError: z.string().nullable(),
+  job: z
+    .object({
+      id: z.string(),
+      release: z.string(),
+      status: z.enum(['running', 'succeeded', 'failed']),
+      step: z.string(),
+      error: z.string().nullable(),
+      endedAt: z.string().nullable(),
+    })
+    .nullable(),
+})
 
 const okSchema = z.object({ ok: z.literal(true) })
 
 const REFUSED: Record<OperationsCapability, string> = {
   'company.manage': 'Only the owner or an admin can change the company logo.',
   'backups.manage': 'Only the owner can run a backup.',
+  'updates.manage': 'Only the owner or an admin can see eigenEnterprise updates.',
   owner: 'Only the owner can install a new eigenEnterprise release.',
 }
 
@@ -155,7 +209,7 @@ export function createOperationsTools(deps: { port: OperationsPort }): ToolDescr
       name: 'kernel.release_install',
       module: 'kernel',
       summary:
-        'Update this server to a newer signed eigenEnterprise release (Settings → Updates): ee checks the signature, takes a safety copy and deploys it health-gated. Owner only; waits for the owner’s approval. `release` is the version Settings → Updates offers.',
+        'Update this server to a newer signed eigenEnterprise release (Settings → Updates): ee checks the signature, takes a safety copy and deploys it health-gated. Owner only; waits for the owner’s approval. `release` is the full release name (eigenenterprise-<version>-<sha>) that kernel.release_status returns as latest.release.',
       auditClass: 'mutate',
       approvalRisk: 'destructive',
       approvalAlways: true,
@@ -166,6 +220,20 @@ export function createOperationsTools(deps: { port: OperationsPort }): ToolDescr
       handler: async (ctx, input) => {
         const i = releaseInput.parse(input)
         return port.installRelease(i.release, `human:${await personWith(port, ctx, 'owner')}`)
+      },
+    },
+    {
+      name: 'kernel.release_status',
+      module: 'kernel',
+      summary:
+        'Read Settings → Updates: the eigenEnterprise release this server runs, the newest signed release (latest.release is the exact name kernel.release_install takes; state newer or rebuild means it can be installed), and the last update with its step and error. Owner or admin.',
+      auditClass: 'read',
+      inputSchema: z.object({}).strict(),
+      outputSchema: releaseStatusOutput,
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx) => {
+        await personWith(port, ctx, 'updates.manage')
+        return port.releaseStatus()
       },
     },
   ]

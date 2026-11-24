@@ -151,6 +151,7 @@ function liveOperationsPort(): OperationsPort {
     recropLogo: async (userId, crop) => (await live()).recropLogo(userId, crop),
     removeLogo: async (userId) => (await live()).removeLogo(userId),
     runBackup: async (author) => (await live()).runBackup(author),
+    releaseStatus: async () => (await live()).releaseStatus(),
     installRelease: async (release, author) => (await live()).installRelease(release, author),
   }
 }

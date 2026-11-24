@@ -14,7 +14,7 @@ function setup() {
   const calls: unknown[] = []
   const caps: Record<string, OperationsCapability[]> = {
     'u-owner': ['company.manage', 'backups.manage', 'owner'],
-    'u-admin': ['company.manage'],
+    'u-admin': ['company.manage', 'updates.manage'],
   }
   const port: OperationsPort = {
     can: async (userId, capability) => (caps[userId] ?? []).includes(capability),
@@ -34,6 +34,16 @@ function setup() {
     runBackup: async (author) => {
       calls.push(['runBackup', author])
       return { runId: 'run-1' }
+    },
+    releaseStatus: async () => {
+      calls.push(['releaseStatus'])
+      return {
+        installed: { release: 'eigenenterprise-0.5.35-0123456789ab', tarball: 'eigenenterprise-0.5.35-0123456789ab-linux-x64.tar.gz', version: '0.5.35' },
+        managed: false,
+        latest: { release: 'eigenenterprise-0.5.36-a12f40909743', version: '0.5.36', state: 'newer', notes: 'Fixes.' },
+        latestError: null,
+        job: null,
+      }
     },
     installRelease: async (release, author) => {
       calls.push(['installRelease', release, author])
@@ -60,7 +70,7 @@ function setup() {
 describe('company operations tools', () => {
   it('are the logo, backup-now and release-install tools, each always behind the owner’s approval', () => {
     const { registry } = setup()
-    for (const name of KERNEL_OPERATIONS_TOOL_NAMES) {
+    for (const name of KERNEL_OPERATIONS_TOOL_NAMES.filter((n) => n !== 'kernel.release_status')) {
       expect(registry.get(name)).toMatchObject({ auditClass: 'mutate', approvalAlways: true })
     }
   })
@@ -94,20 +104,37 @@ describe('company operations tools', () => {
   it('runs a backup and installs a release as the owner (author human:<id>)', async () => {
     const { calls, approved } = setup()
     expect(await approved('kernel.backup_run', {}, owner)).toEqual({ runId: 'run-1' })
-    expect(await approved('kernel.release_install', { release: '0.5.36' }, owner)).toEqual({ jobId: 'job-1', status: 'running' })
+    expect(await approved('kernel.release_install', { release: 'eigenenterprise-0.5.36-a12f40909743' }, owner)).toEqual({ jobId: 'job-1', status: 'running' })
     expect(calls).toEqual([
       ['runBackup', 'human:u-owner'],
-      ['installRelease', '0.5.36', 'human:u-owner'],
+      ['installRelease', 'eigenenterprise-0.5.36-a12f40909743', 'human:u-owner'],
     ])
   })
 
   it('never more than the person may: an admin cannot back up or update; no person, no call', async () => {
     const { calls, approved } = setup()
     await expect(approved('kernel.backup_run', {}, admin)).rejects.toMatchObject({ code: 'permission_denied' })
-    await expect(approved('kernel.release_install', { release: '0.5.36' }, admin)).rejects.toMatchObject({
+    await expect(approved('kernel.release_install', { release: 'eigenenterprise-0.5.36-a12f40909743' }, admin)).rejects.toMatchObject({
       code: 'permission_denied',
     })
     await expect(approved('settings.logo_remove', {}, bareAgent)).rejects.toMatchObject({ code: 'no_person' })
+    expect(calls).toEqual([])
+  })
+
+  it('release_status reads Settings → Updates for the owner or an admin, with the exact release name to install', async () => {
+    const { registry, calls } = setup()
+    expect(registry.get('kernel.release_status')).toMatchObject({ auditClass: 'read' })
+    const out = await registry.execute('kernel.release_status', {}, admin)
+    expect(out).toMatchObject({ latest: { release: 'eigenenterprise-0.5.36-a12f40909743', state: 'newer' } })
+    expect(calls).toEqual([['releaseStatus']])
+    await expect(registry.execute('kernel.release_status', {}, bareAgent)).rejects.toMatchObject({ code: 'no_person' })
+  })
+
+  it('release_install refuses a bare version before asking anyone: it needs the full release name', async () => {
+    const { registry, calls } = setup()
+    const err = await registry.execute('kernel.release_install', { release: '0.5.36' }, owner).catch((e) => e)
+    expect(err).toMatchObject({ code: 'invalid_input' })
+    expect(String(err.message)).toContain('kernel.release_status')
     expect(calls).toEqual([])
   })
 })

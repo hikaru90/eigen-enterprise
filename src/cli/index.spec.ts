@@ -219,6 +219,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'settings.logo_remove',
           'kernel.backup_run',
           'kernel.release_install',
+          'kernel.release_status',
           'settings.member_ai_cap_get',
           'settings.member_ai_cap_set',
           'settings.my_ai_usage',

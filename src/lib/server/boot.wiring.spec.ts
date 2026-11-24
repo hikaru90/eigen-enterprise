@@ -556,6 +556,7 @@ const MEMBER_LOSES_VIA_BRAIN = [
   'kernel.module_deactivate',
   'kernel.module_list',
   'kernel.release_install',
+  'kernel.release_status',
   'members.group_create',
   'members.group_delete',
   'members.group_update',
