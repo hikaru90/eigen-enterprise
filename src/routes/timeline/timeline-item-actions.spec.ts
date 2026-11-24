@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
 import {
   TIMELINE_QUICK_ACTION_SURFACES,
+  inverseTimelineQuickAction,
   postTimelineQuickAction,
   timelineQuickActionRequestBody,
   timelineQuickActionRequestUrl,
@@ -43,6 +44,12 @@ describe('timeline quick action contract', () => {
     expect(timelineQuickActionRequestBody('mark_done')).toEqual({ action: 'mark_done' })
     expect(timelineQuickActionRequestBody('reopen')).toEqual({ action: 'reopen' })
     expect(timelineQuickActionRequestBody('archive')).toEqual({ action: 'archive' })
+  })
+
+  it('computes the inverse quick action for Undo on mark_done and reopen', () => {
+    expect(inverseTimelineQuickAction('mark_done')).toBe('reopen')
+    expect(inverseTimelineQuickAction('reopen')).toBe('mark_done')
+    expect(inverseTimelineQuickAction('archive')).toBeNull()
   })
 
   it('postTimelineQuickAction hits temporal-events action for a task id', async () => {

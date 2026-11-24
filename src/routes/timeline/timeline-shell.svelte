@@ -3,6 +3,8 @@
   import type { AssignProjectResponse } from '../api/timeline/projects/assign/+server'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw'
+  import Undo2Icon from '@lucide/svelte/icons/undo-2'
+  import XIcon from '@lucide/svelte/icons/x'
   import { onMount } from 'svelte'
   import { submitCaptureRaw } from '$lib/capture/queue/submit-capture'
   import ErrorNotice from '$lib/components/error-notice.svelte'
@@ -36,7 +38,11 @@
   import { filterTimelineItemsBySearch } from './timeline-data-derive'
   import { createTimelineData, type TimelineUnifiedSourceState } from './timeline-data.svelte'
   import TimelineDateRangeDial from './timeline-date-range-dial.svelte'
-  import { postTimelineQuickAction, type TimelineQuickAction } from './timeline-item-actions'
+  import {
+    inverseTimelineQuickAction,
+    postTimelineQuickAction,
+    type TimelineQuickAction,
+  } from './timeline-item-actions'
   import TimelineProjectAssignDialog from './timeline-project-assign-dialog.svelte'
   import TimelineProjectsView from './timeline-projects-view.svelte'
   import TimelineTasksView from './timeline-tasks-view.svelte'
@@ -74,11 +80,20 @@
     userTimeZone,
     initialSource: prefetchedSource,
   })
+  type QuickActionToast = {
+    eventId: string
+    summary: string
+    undoAction: 'mark_done' | 'reopen'
+  }
+  const QUICK_ACTION_TOAST_MS = 8_000
+
   let nowSegment = $state<NowSegment>('todo')
   let updatingEventId = $state<string | null>(null)
   let actionBusy = $state(false)
   let actionError = $state<ShownError | null>(null)
   let lastActionSummary = $state<string | null>(null)
+  let quickActionToast = $state<QuickActionToast | null>(null)
+  let quickActionToastTimer: ReturnType<typeof setTimeout> | null = null
   let assignProjectOpen = $state(false)
   let assignProjectItem = $state<TemporalEventListItem | null>(null)
   let assignAgentOpen = $state(false)
@@ -182,10 +197,30 @@
     })
 
     return () => {
+      clearQuickActionToastTimer()
       unsubscribeView()
       unsubscribeSync()
     }
   })
+
+  function clearQuickActionToastTimer() {
+    if (quickActionToastTimer) clearTimeout(quickActionToastTimer)
+    quickActionToastTimer = null
+  }
+
+  function dismissQuickActionToast() {
+    clearQuickActionToastTimer()
+    quickActionToast = null
+  }
+
+  function showQuickActionToast(toast: QuickActionToast) {
+    clearQuickActionToastTimer()
+    quickActionToast = toast
+    quickActionToastTimer = setTimeout(() => {
+      quickActionToastTimer = null
+      quickActionToast = null
+    }, QUICK_ACTION_TOAST_MS)
+  }
 
   async function withThoughtSyncReloadSuppressedAsync<T>(fn: () => Promise<T>): Promise<T> {
     suppressThoughtSyncReload = true
@@ -258,6 +293,7 @@
   async function runTimelineQuickAction(eventId: string, action: TimelineQuickAction) {
     actionError = null
     lastActionSummary = null
+    dismissQuickActionToast()
     actionBusy = true
     updatingEventId = eventId
     try {
@@ -269,12 +305,23 @@
         }
       })
       lastActionSummary = result.summary
+      const undoAction = inverseTimelineQuickAction(action)
+      if (undoAction) {
+        showQuickActionToast({ eventId, summary: result.summary, undoAction })
+      }
     } catch (err) {
       actionError = shownOf(err)
     } finally {
       actionBusy = false
       updatingEventId = null
     }
+  }
+
+  function undoQuickAction() {
+    const toast = quickActionToast
+    if (!toast || actionBusy) return
+    dismissQuickActionToast()
+    void runTimelineQuickAction(toast.eventId, toast.undoAction)
   }
 
   function onQuickAction(eventId: string, action: 'mark_done' | 'reopen' | 'archive') {
@@ -291,6 +338,7 @@
 
   async function onDelete(eventId: string) {
     actionError = null
+    if (quickActionToast?.eventId === eventId) dismissQuickActionToast()
     actionBusy = true
     try {
       const res = await fetch(`/api/temporal-events/${eventId}`, { method: 'DELETE' })
@@ -520,6 +568,47 @@
         attempted="Changing a timeline item"
       />
     {/if}
+  {/if}
+
+  {#if quickActionToast}
+    <div
+      class="pointer-events-none absolute inset-x-4 bottom-4 z-30 flex justify-center"
+      role="status"
+      aria-live="polite"
+      data-testid="timeline-quick-action-toast"
+    >
+      <div
+        class="pointer-events-auto border-border bg-background/95 text-foreground flex w-full max-w-md items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-sm shadow-lg backdrop-blur-sm"
+      >
+        <span class="min-w-0 truncate">{quickActionToast.summary}</span>
+        <div class="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            class="h-7 gap-1 px-2.5 text-xs"
+            data-testid="timeline-undo"
+            disabled={actionBusy}
+            onclick={undoQuickAction}
+          >
+            <Undo2Icon class="size-3.5" aria-hidden="true" />
+            {m.graph_temporal_undo()}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            class="text-muted-foreground hover:text-foreground size-7"
+            aria-label={m.graph_close()}
+            title={m.graph_close()}
+            data-testid="timeline-toast-dismiss"
+            onclick={dismissQuickActionToast}
+          >
+            <XIcon class="size-3.5" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    </div>
   {/if}
 
   <TemporalEventDetail

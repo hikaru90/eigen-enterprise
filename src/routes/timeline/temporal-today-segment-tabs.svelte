@@ -24,16 +24,16 @@
       countClass: 'text-foreground',
     },
     {
-      segment: 'done' as const,
-      count: tabCounts.done,
-      label: m.graph_timeline_pill_done(),
-      countClass: 'text-primary',
-    },
-    {
       segment: 'overdue' as const,
       count: tabCounts.overdue,
       label: m.graph_timeline_pill_overdue(),
       countClass: tabCounts.overdue > 0 ? 'text-destructive' : 'text-foreground',
+    },
+    {
+      segment: 'done' as const,
+      count: tabCounts.done,
+      label: m.graph_timeline_pill_done(),
+      countClass: 'text-primary',
     },
   ] as const)
 </script>

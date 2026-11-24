@@ -50,6 +50,13 @@ describe('Task row completion control (Contribute d5e61e1f)', () => {
     await expect.element(button).toBeInTheDocument()
     await expect.element(page.getByRole('checkbox')).not.toBeInTheDocument()
     await expect.element(button).toHaveAttribute('data-shape', 'round')
+    await expect.element(button).toHaveAttribute('title', 'Mark done')
+
+    const circle = button.element().querySelector('span')
+    expect(circle).not.toBeNull()
+    expect(circle?.className).toContain('text-muted-foreground/45')
+    expect(circle?.className).not.toContain('text-transparent')
+    expect(circle?.querySelector('svg')).not.toBeNull()
 
     await button.click()
     expect(onQuickAction).toHaveBeenCalledWith('task:1', 'mark_done')
@@ -65,6 +72,7 @@ describe('Task row completion control (Contribute d5e61e1f)', () => {
 
     const button = page.getByRole('button', { name: 'Reopen: Order the flyers' })
     await expect.element(button).toHaveAttribute('data-state', 'done')
+    await expect.element(button).toHaveAttribute('title', 'Reopen')
     await button.click()
     expect(onQuickAction).toHaveBeenCalledWith('task:1', 'reopen')
   })
