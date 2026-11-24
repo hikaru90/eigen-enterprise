@@ -365,6 +365,38 @@ describe('assistant panel', () => {
     await expect.element(panel()).not.toBeInTheDocument()
   })
 
+  it('disables transition while pointer resize drag is active and closes cleanly', async () => {
+    await openPanel()
+    const edge = page.getByTestId('assistant-resize')
+    const el = edge.element()
+
+    el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, button: 0, clientX: 800, bubbles: true }))
+    await expect.element(panel()).toHaveAttribute('data-dragging', 'true')
+
+    window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 760 }))
+    await expect.element(edge).toHaveAttribute('aria-valuenow', String(PANEL_DEFAULT_WIDTH + 40))
+
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: 760 }))
+    await expect.element(panel()).not.toHaveAttribute('data-dragging')
+
+    el.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, button: 0, clientX: 760, bubbles: true }))
+    await expect.element(panel()).toHaveAttribute('data-dragging', 'true')
+    await page.getByTestId('assistant-close').click()
+    await expect.element(panel()).not.toBeInTheDocument()
+  })
+
+  it('opens and closes cleanly on mobile viewport', async () => {
+    await page.viewport(414, 896)
+    try {
+      await openPanel()
+      await expect.element(panel()).toBeInTheDocument()
+      await page.getByTestId('assistant-close').click()
+      await expect.element(panel()).not.toBeInTheDocument()
+    } finally {
+      await page.viewport(1400, 900)
+    }
+  })
+
   it('"New conversation" starts a fresh chat session', async () => {
     await openPanel()
     await expect.element(page.getByText('Welcome back — your website next?')).toBeInTheDocument()
@@ -799,6 +831,9 @@ describe('dictation in "Ask the company brain" (plan/shared-memory-voice-agent-t
     renderShell()
     await page.getByTestId('assistant-toggle').click()
     await expect.element(panel()).toBeInTheDocument()
+    // The panel slides in (panelSlide); a person types once it has settled, and filling a
+    // field mid-slide leaves Chromium's caret at 0.
+    await Promise.all(panel().element().getAnimations().map((a) => a.finished))
     const composer = page.getByTestId('assistant-composer-input')
     await composer.fill('Summarise:')
     const wrapper = page.getByTestId('assistant-mic').element()

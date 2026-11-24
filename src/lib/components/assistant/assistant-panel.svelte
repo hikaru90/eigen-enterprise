@@ -5,6 +5,7 @@
   import X from '@lucide/svelte/icons/x'
   import { resolve } from '$app/paths'
   import AiUsageMeter from '$lib/components/ai-usage-meter.svelte'
+  import { panelSlide } from '$lib/gestures/panel-slide'
   import AssistantActivity from './assistant-activity.svelte'
   import AssistantChatView from './assistant-chat-view.svelte'
   import AssistantHistory from './assistant-history.svelte'
@@ -25,11 +26,17 @@
   ]
   /** One arrow-key press on the resize edge. */
   const KEY_STEP = 24
+  const DESKTOP = '(min-width: 48rem)'
 
   let drag: { pointerId: number; startX: number; startWidth: number } | null = null
+  let dragging = $state(false)
   let maxWidth = $state(
     typeof window === 'undefined' ? PANEL_MIN_WIDTH : panelMaxWidth(window.innerWidth),
   )
+
+  function isDesktop(): boolean {
+    return typeof window !== 'undefined' && window.matchMedia(DESKTOP).matches
+  }
 
   function isEditable(el: Element | null): boolean {
     if (!(el instanceof HTMLElement)) return false
@@ -54,6 +61,7 @@
     if (event.button !== 0) return
     event.preventDefault()
     drag = { pointerId: event.pointerId, startX: event.clientX, startWidth: assistant.width }
+    dragging = true
   }
 
   function onPointerMove(event: PointerEvent): void {
@@ -65,6 +73,7 @@
   function onPointerUp(event: PointerEvent): void {
     if (!drag || event.pointerId !== drag.pointerId) return
     drag = null
+    dragging = false
     assistant.commitWidth()
   }
 
@@ -99,7 +108,15 @@
     id="assistant-panel"
     aria-label="Assistant"
     data-testid="assistant-panel"
+    data-dragging={dragging ? 'true' : undefined}
     style="--assistant-panel-w: {assistant.width}px"
+    transition:panelSlide={{
+      side: 'right',
+      width: assistant.width,
+      duration: 200,
+      mode: isDesktop() ? 'dock' : 'fly',
+      disabled: dragging,
+    }}
     class="@container fixed inset-0 z-50 flex min-h-0 flex-col bg-background md:relative md:inset-auto md:z-auto md:w-[var(--assistant-panel-w)] md:shrink-0 md:border-l md:border-border"
   >
     <!-- The resize edge (desktop only): a focusable window splitter (WAI-ARIA), so the

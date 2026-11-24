@@ -5,7 +5,8 @@
   import PanelLeftClose from '@lucide/svelte/icons/panel-left-close'
   import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open'
   import X from '@lucide/svelte/icons/x'
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
+  import { fade, fly } from 'svelte/transition'
   import { afterNavigate, replaceState } from '$app/navigation'
   import { resolve } from '$app/paths'
   import AssistantBar from '$lib/components/assistant/assistant-bar.svelte'
@@ -14,7 +15,8 @@
   import { provideAssistant } from '$lib/components/assistant/context'
   import ContributeButton from '$lib/components/contribute/contribute-button.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
-  import { sideMove } from '$lib/gestures/side-swipe'
+  import { motionDuration, panelSlide, prefersReducedMotion } from '$lib/gestures/panel-slide'
+  import { peekOffset, sideMove, type SidePanels } from '$lib/gestures/side-swipe'
   import { sideSwipe } from '$lib/gestures/side-swipe-action'
   import type { SwipeDirection } from '$lib/gestures/swipe'
   import { presenceLabel } from '$lib/messages/presence'
@@ -93,6 +95,19 @@
   let drawerOpen = $state(false)
   // Read on mount: the server cannot know this browser's choice.
   let sidebarCollapsed = $state(false)
+  // Enable sidebar transitions only after initial mount so stored collapsed state never flash-animates.
+  let mounted = $state(false)
+  let swipeOffset = $state(0)
+  let swipeSettling = $state(false)
+  let settleTimer: ReturnType<typeof setTimeout> | undefined
+  const SPRING_BACK = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)'
+
+  function clearSettleTimer(): void {
+    if (settleTimer !== undefined) {
+      clearTimeout(settleTimer)
+      settleTimer = undefined
+    }
+  }
 
   // The one assistant: shared by the top bar, the panel and the pages inside the shell.
   // Only while the Assistant plugin is on (round 5): switched off there is no
@@ -113,6 +128,9 @@
 
   onMount(() => {
     sidebarCollapsed = readSidebarCollapsed(() => localStorage)
+    queueMicrotask(() => {
+      mounted = true
+    })
     // Client-side navigation keeps this shell, so the panel and the voice reading a reply stay.
     // A full page load (reload, the first navigation after an update) starts it afresh: the panel
     // comes back as this tab left it, the conversation from the server — only the voice cannot resume.
@@ -120,6 +138,8 @@
     // The welcome wizard's hand-off (handoff.ts): the agent's greeting streams into the panel.
     assistant?.startPendingHandoff()
   })
+
+  onDestroy(clearSettleTimer)
 
   // A deep-linked draft (?prefill=, e.g. from the Apps "+" dialog) lands in the
   // assistant's composer for the member to review and send — never auto-sent.
@@ -161,14 +181,53 @@
   }
   /** Tailwind's `md`: the docked sidebar instead of the drawer. */
   const DESKTOP = '(min-width: 48rem)'
-  function onSideSwipe(direction: SwipeDirection): void {
+  const drawerSwipeStyle = $derived.by(() => {
+    if (!drawerOpen) return undefined
+    if (swipeOffset !== 0) return `transform: translateX(${swipeOffset}px);`
+    return swipeSettling ? `transform: translateX(0px); transition: ${SPRING_BACK};` : undefined
+  })
+  const columnSwipeStyle = $derived.by(() => {
+    if (drawerOpen) return undefined
+    if (swipeOffset !== 0) return `transform: translateX(${swipeOffset}px);`
+    return swipeSettling ? `transform: translateX(0px); transition: ${SPRING_BACK};` : undefined
+  })
+  function currentSidePanels(): SidePanels {
     const desktop = window.matchMedia(DESKTOP).matches
-    const move = sideMove(direction, {
+    return {
       leftShown: desktop ? !sidebarCollapsed : drawerOpen,
       leftOverlays: !desktop,
       rightShown: assistant?.open ?? false,
       hasRight: assistant !== null,
-    })
+    }
+  }
+  function onSwipeProgress(dx: number): void {
+    if (prefersReducedMotion()) return
+    clearSettleTimer()
+    swipeSettling = false
+    swipeOffset = peekOffset(dx, currentSidePanels())
+  }
+  function onSwipeCancel(): void {
+    if (swipeOffset === 0) return
+    swipeSettling = true
+    swipeOffset = 0
+    clearSettleTimer()
+    settleTimer = setTimeout(() => {
+      settleTimer = undefined
+      swipeSettling = false
+    }, 220)
+  }
+  function onSwipeTransitionEnd(event: TransitionEvent): void {
+    if (event.target === event.currentTarget && event.propertyName === 'transform' && swipeOffset === 0) {
+      clearSettleTimer()
+      swipeSettling = false
+    }
+  }
+  function onSideSwipe(direction: SwipeDirection): void {
+    clearSettleTimer()
+    swipeSettling = false
+    swipeOffset = 0
+    const desktop = window.matchMedia(DESKTOP).matches
+    const move = sideMove(direction, currentSidePanels())
     if (move === 'open-left') {
       if (desktop) toggleSidebar()
       else drawerOpen = true
@@ -302,7 +361,7 @@
 <div
   class="relative flex h-dvh w-full flex-row overflow-hidden text-foreground {inkFrame ? 'frame-night' : 'bg-sidebar'}"
   data-testid="app-shell"
-  use:sideSwipe={{ onswipe: onSideSwipe }}
+  use:sideSwipe={{ onswipe: onSideSwipe, onprogress: onSwipeProgress, oncancel: onSwipeCancel }}
 >
   <!-- Desktop sidebar (collapsible; phones use the drawer below) -->
   {#if !sidebarCollapsed}
@@ -310,8 +369,11 @@
       id="shell-sidebar"
       class="hidden min-h-0 w-56 shrink-0 text-foreground md:block {inkFrame ? 'ink-scope' : 'bg-sidebar'}"
       data-testid="shell-sidebar"
+      transition:panelSlide={{ side: 'left', width: 224, duration: 200, disabled: !mounted }}
     >
-      {@render sidebar()}
+      <div class="h-full min-h-0 w-56">
+        {@render sidebar()}
+      </div>
     </aside>
   {/if}
 
@@ -323,18 +385,27 @@
         aria-label="Close menu"
         tabindex="-1"
         onclick={closeDrawer}
+        transition:fade={{ duration: motionDuration(160) }}
       ></button>
       <aside
         id="shell-drawer"
         class="absolute inset-y-0 left-0 w-72 max-w-[85vw] rounded-r-2xl pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-foreground shadow-xl {inkFrame ? 'ink-scope bg-ink' : 'bg-sidebar'}"
         data-testid="shell-drawer"
+        style={drawerSwipeStyle}
+        ontransitionend={onSwipeTransitionEnd}
+        transition:fly={{ x: -288, duration: motionDuration(200) }}
       >
         {@render sidebar()}
       </aside>
     </div>
   {/if}
 
-  <div class="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="shell-column">
+  <div
+    class="flex min-h-0 min-w-0 flex-1 flex-col"
+    data-testid="shell-column"
+    style={columnSwipeStyle}
+    ontransitionend={onSwipeTransitionEnd}
+  >
     <!-- The assistant's top bar, on every signed-in page (on phones with the menu). -->
     <header
       class="box-content flex h-14 shrink-0 items-center gap-2 px-2 pt-[env(safe-area-inset-top)] text-foreground sm:px-3 {inkFrame ? 'ink-scope' : ''}"
