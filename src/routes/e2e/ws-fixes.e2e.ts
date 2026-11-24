@@ -195,9 +195,10 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   expect(await (await b.request.get(`/api/drive/files/${agendaId}/lock`)).json()).toEqual({ state: 'free' })
 
   // ── 5. Shared with me reads "Shared with me" ───────────────────────────────
-  await o.goto('/drive')
+  // My drive, not the Overview: the Overview also lists everyone's shared folders.
+  await o.goto('/drive?origin=mine')
   await newItem(o, 'folder', 'Projects')
-  await expect(o.getByTestId('drive-row').filter({ hasText: 'Projects' })).toBeVisible()
+  await expect(o.locator('[data-testid="drive-row"][data-name="Projects"][data-origin="mine"]')).toHaveCount(1)
   const projects = (await sql()`select id from drive_folder where name = 'Projects' and owner_id = (select id from "user" where email = ${oEmail})`)[0]!.id as string
   const benId = (await sql()`select id from "user" where email = ${benEmail}`)[0]!.id as string
   expect(
