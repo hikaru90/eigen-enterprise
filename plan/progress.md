@@ -2,6 +2,10 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Org chart: visible Profile button on every seat (owner: "this is terrible ux! … just change, commit"; `5b6320a0`; not pushed, not released)
+
+- The owner couldn't find "Notice new messages in its channels". Only the name text on an org-chart card linked to the profile (`/settings/org/[id]`, which holds runs and Would pick up), and clicking the card or Edit seat only opened the seat form. Every card now has an outline **Profile** button next to Edit seat (accessible name "Profile: <name>"). Component spec covers it.
+
 ## 2026-11-24 — Release v0.5.40 (owner: "test commit release")
 
 - **Tagged** `v0.5.40` on `80e25c32`, through the full release gate for the first time:
