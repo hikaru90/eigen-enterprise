@@ -1,6 +1,9 @@
 /** Browser client for /api/drive/*: every call throws the server's plain error sentence (and its agent report) on failure. */
 import { shownErrorOf, type AgentReport } from '$lib/errors/agent-report'
 
+/** Where an item in the unified Drive overview comes from. */
+export type DriveOrigin = 'mine' | 'shared' | 'messages' | 'source'
+
 export type DriveItem = {
   type: 'folder' | 'file'
   id: string
@@ -18,6 +21,9 @@ export type DriveItem = {
   mime?: string
   /** Files: when the file is from (its own recorded date, else when it was uploaded or added). */
   dated?: { at: string | Date; kind: 'taken' | 'created' | 'uploaded' | 'added' }
+  /** Unified overview: which Drive origin this top-level item came from, and its label. */
+  origin?: DriveOrigin
+  originLabel?: string
 }
 export type Crumb = { id: string; name: string }
 /** One folder's archived items in the Archived view. */

@@ -3,8 +3,12 @@ import { driveSection, githubButtonLabel, GITHUB_PAGE, GITHUB_SOURCE } from './s
 
 describe('driveSection', () => {
   it('section pages are their own section', () => {
-    expect(driveSection('/drive', null, [])).toBe('mine')
-    expect(driveSection('/drive/', null, [])).toBe('mine')
+    expect(driveSection('/drive', null, [])).toBe('overview')
+    expect(driveSection('/drive/', null, [])).toBe('overview')
+    expect(driveSection('/drive', null, [], '?origin=mine')).toBe('mine')
+    expect(driveSection('/drive', null, [], 'origin=mine')).toBe('mine')
+    expect(driveSection('/drive', null, [], '?origin=shared')).toBe('overview')
+    expect(driveSection('/drive', null, [], '?q=plan')).toBe('overview')
     expect(driveSection('/drive/shared', null, [])).toBe('shared')
     expect(driveSection('/drive/messages', null, [])).toBe('messages')
     expect(driveSection('/drive/archived', null, [])).toBe('archived')
@@ -13,6 +17,7 @@ describe('driveSection', () => {
 
   it('a folder or file belongs to the section its path starts in', () => {
     expect(driveSection('/drive/folder/f1', '/drive', [])).toBe('mine')
+    expect(driveSection('/drive/folder/f1', '/drive?origin=mine', [])).toBe('mine')
     expect(driveSection('/drive/folder/f1', '/drive/shared', [])).toBe('shared')
     expect(driveSection('/drive/file/x', '/messages', [])).toBe('messages')
   })

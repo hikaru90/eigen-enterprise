@@ -1,7 +1,7 @@
 import { REPOS_DRIVE_SOURCE } from '../../../modules/repos/manifest'
 
 /** The Drive rail's sections: the fixed ones, and one per source root (read-only source folders). */
-export type DriveSection = 'mine' | 'shared' | 'messages' | 'archived' | 'trash' | 'github' | `source:${string}`
+export type DriveSection = 'overview' | 'mine' | 'shared' | 'messages' | 'archived' | 'trash' | 'github' | `source:${string}`
 
 /**
  * Drive → GitHub: the GitHub repos plugin's settings (connecting repos with a
@@ -25,12 +25,12 @@ export const sourceSection = (source: string): DriveSection => `source:${source}
 /** Where a folder or file path starts (the server's PathRoot.href) → the section it belongs to. */
 const SECTION_OF_ROOT: Record<string, DriveSection> = {
   '/drive': 'mine',
+  '/drive?origin=mine': 'mine',
   '/drive/shared': 'shared',
   '/messages': 'messages',
 }
 
 const SECTION_OF_PAGE: Record<string, DriveSection> = {
-  '/drive': 'mine',
   '/drive/shared': 'shared',
   '/drive/messages': 'messages',
   '/drive/archived': 'archived',
@@ -38,12 +38,16 @@ const SECTION_OF_PAGE: Record<string, DriveSection> = {
 }
 
 /**
- * The current rail section: a section page by its path; a folder or file by
- * the root of its path (whose tree it is in, as the server decided) — a
- * source root's tree is that source's section.
+ * The current rail section: a section page by its path (and `?origin=mine` on `/drive`);
+ * a folder or file by the root of its path (whose tree it is in, as the server decided) —
+ * a source root's tree is that source's section.
  */
-export function driveSection(pathname: string, rootHref: string | null, sources: readonly SourceSection[]): DriveSection | null {
+export function driveSection(pathname: string, rootHref: string | null, sources: readonly SourceSection[], search = ''): DriveSection | null {
   const path = pathname.replace(/\/+$/, '') || '/'
+  if (path === '/drive') {
+    const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+    return params.get('origin') === 'mine' ? 'mine' : 'overview'
+  }
   const own = SECTION_OF_PAGE[path]
   if (own) return own
   // The settings belong to the GitHub folder once it exists; before, to the "Connect GitHub" entry.

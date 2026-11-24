@@ -6,16 +6,18 @@
   let { data }: { data: PageData } = $props()
 </script>
 
-<svelte:head><title>{docTitle('My drive', 'Drive')}</title></svelte:head>
+<svelte:head><title>{docTitle(data.origin === 'mine' ? 'My drive' : 'Overview', 'Drive')}</title></svelte:head>
 
 <DriveBrowser
   folderId={null}
   path={[]}
-  items={data.listing.items}
-  canEdit={data.listing.canEdit}
+  root={data.root}
+  items={data.items}
+  canEdit={data.canEdit}
+  origin={data.origin}
   query={data.query}
   results={data.results}
   describe={data.describe}
   emptyText="Your drive is empty."
-  emptyHint="Folders and files you create or upload here are yours; share them with people, groups or everyone."
+  emptyHint="Folders and files you create or upload here land in My drive; shared items, Messages attachments, and connected sources appear here too."
 />
