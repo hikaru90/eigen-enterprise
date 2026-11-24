@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "prepare": "node scripts/npm-prepare.mjs",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --incremental",
+    "check": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --incremental",
     "ci:local": "npm run lint && npm run lint:migrations && npm run assert:svelte-naming && npm run check && npm run test:unit && npm run test:components",
     "push": "scripts/push.sh",
     "lint:migrations": "node scripts/check-migrations.mjs lint",
