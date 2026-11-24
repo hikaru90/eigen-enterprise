@@ -189,6 +189,7 @@ export default defineConfig({
       'modules/email/inbox/ui/*.svelte.spec.ts',
       'src/lib/components/email/*.svelte.spec.ts',
       'src/lib/components/brand-picker/picker.svelte.spec.ts',
+      'src/routes/login/login-page.svelte.spec.ts',
     ],
     exclude: ['src/routes/demo/playwright/**/*.ts', '**/*.e2e.ts'],
     fileParallelism: false,

@@ -66,6 +66,8 @@ export const CORE_EVENTS = {
   // Contribute.
   'contribute.proposed': { module: 'contribute', payload: null },
   'contribute.status_changed': { module: 'contribute', payload: null },
+  // Demo company.
+  'demo.guest_access_changed': { module: 'demo', payload: null },
   // Email (the inbox's mailboxes).
   'email.mailbox_alias_added': { module: 'email', payload: null },
   'email.mailbox_alias_removed': { module: 'email', payload: null },

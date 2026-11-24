@@ -4,6 +4,7 @@ import { parseSignupPlanParam } from '$lib/auth/signup-plan'
 import { requestCode, verifyCode } from '$lib/server/auth/email-code-actions'
 import { managedByEe, unclaimedMessage } from '$lib/server/auth/unclaimed'
 import { listEnabledSocialProviderIds } from '$lib/server/auth-social'
+import { activeDemoGuest } from '$lib/server/demo/guest-access-db'
 import { env } from '$lib/server/env/private-env'
 import { companyMail } from '$lib/server/mail'
 import { openJoinOffMessage } from '$lib/server/members/open-join'
@@ -33,6 +34,9 @@ async function closed() {
 export const load: PageServerLoad = async (event) => {
   if (event.locals.user) {
     throw redirect(302, '/')
+  }
+  if (await activeDemoGuest()) {
+    throw redirect(302, '/login')
   }
 
   const mode = await signupMode()

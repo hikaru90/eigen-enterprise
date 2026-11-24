@@ -20,6 +20,7 @@ export const load: LayoutServerLoad = async ({ locals, cookies, route, url }) =>
     user: locals.user,
     request: () => ({ routeId: route?.id ?? null, path: `${url?.pathname ?? '/'}${url?.search ?? ''}` }),
     isHarness: async (userId) => (await import('$lib/server/auth/harness-account')).isHarnessUser(userId),
+    isDemoGuest: async (userId) => (await import('$lib/server/demo/guest-access-db')).isActiveDemoGuestUser(userId),
   })
   if (gate) throw redirect(303, gate)
 

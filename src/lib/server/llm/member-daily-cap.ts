@@ -1,6 +1,7 @@
 import type { MemberRole } from '$lib/server/auth/roles'
 import type { UserKind } from '$lib/server/db/auth.schema'
 import { resolveTenantUserId } from '$lib/server/db/tenant-context'
+import { assertWithinDemoGuestAiLimit, liveDemoGuestAiLimitDeps } from './demo-guest-ai-limit'
 import { LlmDailyCapError } from './errors'
 
 /**
@@ -113,6 +114,11 @@ export async function assertWithinMemberDailyCap(
 }
 
 /** The gateway's check: the person the call is logged to (tenant user, else the caller). */
-export function assertGatewayCallWithinMemberDailyCap(userId: string): Promise<void> {
-  return assertWithinMemberDailyCap(resolveTenantUserId(userId))
+export async function assertGatewayCallWithinMemberDailyCap(userId: string): Promise<void> {
+  const resolved = resolveTenantUserId(userId)
+  const s = await store()
+  if (s.demoGuest) {
+    await assertWithinDemoGuestAiLimit(resolved, liveDemoGuestAiLimitDeps(s.demoGuest))
+  }
+  await assertWithinMemberDailyCap(resolved)
 }

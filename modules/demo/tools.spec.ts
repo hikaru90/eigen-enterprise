@@ -1,9 +1,20 @@
 import type { DemoPorts } from './tools'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext } from '$lib/kernel/types'
+import {
+  DEFAULT_DEMO_GUEST_EMAIL,
+  memoryDemoGuestStore,
+  type DemoGuestUserRecord,
+} from '$lib/server/demo/guest-access'
 import { northwind } from './data/dataset'
-import { DEMO_MODULE_ID, DEMO_SEED_TOOL, DEMO_STATUS_TOOL } from './manifest'
+import {
+  DEMO_GUEST_ACCESS_GET_TOOL,
+  DEMO_GUEST_ACCESS_SET_TOOL,
+  DEMO_MODULE_ID,
+  DEMO_SEED_TOOL,
+  DEMO_STATUS_TOOL,
+} from './manifest'
 import { SEED_MODULES } from './runner'
 import { createDemoTools } from './tools'
 
@@ -45,15 +56,33 @@ function fakeRegistry(roster: { members: { id: string; email: string; role: stri
 
 const FRESH = { members: [{ id: OWNER_ID, email: 'founder@box.test', role: 'owner' }], invites: [] }
 
-function ports(): DemoPorts & { added: string[] } {
+function ports(): DemoPorts & { added: string[]; audited: unknown[] } {
   const added: string[] = []
+  const audited: unknown[] = []
+  const store = memoryDemoGuestStore()
+  const users: DemoGuestUserRecord[] = [
+    { id: OWNER_ID, email: 'founder@box.test', name: 'Owner', role: 'owner', kind: 'human' },
+    { id: ADMIN_ID, email: 'lena.hoffmann@northwind-studio.example', name: 'Lena Hoffmann', role: 'admin', kind: 'human' },
+    { id: 'u-sophie', email: DEFAULT_DEMO_GUEST_EMAIL, name: 'Sophie Wagner', role: 'member', kind: 'human' },
+  ]
   return {
     added,
+    audited,
     roleOf: async (id) => (id === OWNER_ID ? 'owner' : id === ADMIN_ID ? 'admin' : null),
     personOf: async (id) => ({ id, roles: ['admin', 'member'] }),
     addTeammate: async (_owner, t) => {
       added.push(t.handle)
       return { id: `u-${t.handle}`, roles: ['member'] }
+    },
+    guestAccess: {
+      store,
+      demoModuleActive: async () => true,
+      findUserById: async (id) => users.find((u) => u.id === id) ?? null,
+      findUserByEmail: async (email) =>
+        users.find((u) => u.email.toLowerCase() === email.toLowerCase()) ?? null,
+      audit: vi.fn(async (evt) => {
+        audited.push(evt)
+      }),
     },
   }
 }
@@ -153,5 +182,35 @@ describe('demo tools', () => {
     const { by } = tools()
     expect(by[DEMO_SEED_TOOL]!.inputSchema.safeParse({ force: true }).success).toBe(false)
     expect(by[DEMO_STATUS_TOOL]!.inputSchema.safeParse({}).success).toBe(true)
+    expect(by[DEMO_GUEST_ACCESS_GET_TOOL]!.inputSchema.safeParse({}).success).toBe(true)
+  })
+
+  it('guest_access_set is owner-only, gated public, audited, and guest_access_get reads it back', async () => {
+    const { by, ports: p } = tools()
+    expect(by[DEMO_GUEST_ACCESS_SET_TOOL]).toMatchObject({
+      module: DEMO_MODULE_ID,
+      auditClass: 'mutate',
+      approvalRisk: 'public',
+    })
+    await expect(
+      by[DEMO_GUEST_ACCESS_SET_TOOL]!.handler(as(ADMIN_ID), { enabled: true }),
+    ).rejects.toMatchObject({ code: 'permission_denied' })
+
+    const on = await by[DEMO_GUEST_ACCESS_SET_TOOL]!.handler(as(OWNER_ID), {
+      enabled: true,
+      ai_calls_per_ip: 2,
+    })
+    expect(on).toEqual({
+      enabled: true,
+      guest_user_id: 'u-sophie',
+      guest_email: DEFAULT_DEMO_GUEST_EMAIL,
+      guest_name: 'Sophie Wagner',
+      ai_calls_per_ip: 2,
+    })
+    expect(p.audited).toHaveLength(1)
+    expect(await by[DEMO_GUEST_ACCESS_GET_TOOL]!.handler(as(ADMIN_ID), {})).toEqual(on)
+
+    const off = await by[DEMO_GUEST_ACCESS_SET_TOOL]!.handler(as(OWNER_ID), { enabled: false })
+    expect(off).toMatchObject({ enabled: false })
   })
 })

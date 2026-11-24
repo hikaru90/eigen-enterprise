@@ -2,9 +2,10 @@ import { and, eq, gte, sql } from 'drizzle-orm'
 import { replyCostSchema, type ReplyCost } from '$lib/ai-usage/usage'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { getDb } from '$lib/server/db'
-import type { UserKind } from '$lib/server/db/auth.schema'
+import { demoGuestAccess, type UserKind } from '$lib/server/db/auth.schema'
 import { companyAi } from '$lib/server/db/company.schema'
 import { activityCallLog, chatMessage } from '$lib/server/db/schema'
+import type { ActiveDemoGuest } from '$lib/server/demo/guest-access'
 import { parseStoredCapUsd } from './member-daily-cap'
 
 /**
@@ -23,6 +24,11 @@ export type MemberDailyCapStore = {
   kindOf(userId: string): Promise<UserKind | null>
   spentUsdSince(userId: string, since: Date): Promise<number>
   replyCost(userId: string, messageId: string): Promise<{ usage: ReplyCost | null } | null>
+  /** Login-free demo per-IP AI call limit store (loaded lazily so non-demo tests stay DB-free). */
+  demoGuest?: {
+    activeDemoGuest(): Promise<ActiveDemoGuest | null>
+    claimCall(ipHash: string, dayUtc: string, limit: number): Promise<{ allowed: boolean; used: number }>
+  }
 }
 
 export const memberDailyCapStore: MemberDailyCapStore = {
@@ -79,5 +85,23 @@ export const memberDailyCapStore: MemberDailyCapStore = {
       throw new Error(`activity_call_log cost sum for a person is not a non-negative number: ${JSON.stringify(row?.total)}`)
     }
     return total
+  },
+
+  demoGuest: {
+    activeDemoGuest: async () => {
+      // Fast pre-check on the request's scoped DB so normal companies (and
+      // unit tests that mock getDb()) never open authDb when demo guest access is off.
+      const [row] = await getDb()
+        .select({ enabled: demoGuestAccess.enabled, guestUserId: demoGuestAccess.guestUserId })
+        .from(demoGuestAccess)
+        .where(eq(demoGuestAccess.id, ROW))
+        .limit(1)
+      if (!row || row.enabled !== true || typeof row.guestUserId !== 'string' || !row.guestUserId) {
+        return null
+      }
+      return (await import('$lib/server/demo/guest-access-db')).activeDemoGuest()
+    },
+    claimCall: async (ipHash, dayUtc, limit) =>
+      (await import('$lib/server/demo/guest-access-db')).claimDemoGuestAiCall(ipHash, dayUtc, limit),
   },
 }

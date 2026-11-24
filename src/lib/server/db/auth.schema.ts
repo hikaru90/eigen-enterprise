@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm'
-import { integer, pgTable, text, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { integer, pgTable, primaryKey, text, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core'
 
 export const userAccountKindEnum = ['production', 'harness'] as const
 export type UserAccountKind = (typeof userAccountKindEnum)[number]
@@ -156,6 +156,35 @@ export const memberOpenJoin = pgTable('member_open_join', {
     .references(() => user.id, { onDelete: 'cascade' }),
   joinedAt: timestamp('joined_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/**
+ * Login-free demo guest access (migration 0178, plan/phase-demo-company.md):
+ * one row ('company'); no row = off. Takes effect only when the internal `demo`
+ * module is active and `guest_user_id` is a human `member`.
+ */
+export const demoGuestAccess = pgTable('demo_guest_access', {
+  id: text('id').primaryKey().default('company'),
+  enabled: boolean('enabled').notNull(),
+  guestUserId: text('guest_user_id').references(() => user.id, { onDelete: 'set null' }),
+  aiCallsPerIp: integer('ai_calls_per_ip').default(2).notNull(),
+  updatedBy: text('updated_by').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * Per-IP daily AI turn count for login-free demo visitors (migration 0178).
+ * Stores only the SHA-256 hex digest of the visitor's IP, never the raw address.
+ */
+export const demoGuestAiUsage = pgTable(
+  'demo_guest_ai_usage',
+  {
+    ipHash: text('ip_hash').notNull(),
+    dayUtc: text('day_utc').notNull(),
+    calls: integer('calls').default(0).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.ipHash, t.dayUtc] })],
+)
 
 /** Claim tokens already used (by hash): a claim link works once, even if the owner row later vanished. */
 export const claimConsumed = pgTable('claim_consumed', {

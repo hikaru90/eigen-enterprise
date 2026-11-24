@@ -12,6 +12,32 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - the tag gate refuses a dirty tree, and the main checkout holds another session's uncommitted work, so the tag was pushed from `.claude/worktrees/release-v0.5.39` (pruned). From a worktree, `npm run test:e2e` needs `COMPOSE_PROJECT_NAME=eigenenterprise` (else its `db:up` clashes with the running `eigen-enterprise-db` container) and `svelte-kit sync` first (else `$lib` doesn't resolve).
 - **Next:** install v0.5.39 where the owner wants it (Settings → Updates or `ee upgrade`), update the boards; label "Would pick up" decisions on a box.
 
+## 2026-11-24 — Demo company: one-click login-free access with per-IP daily AI call limit (owner: "can we please make the demo company login-free?" · "let them make 1 or 2 ai calls per user per ip"; uncommitted)
+
+- **Owner decisions (revised `plan/phase-demo-company.md` D6):**
+  - **Shared demo teammate:** visitors enter as one pre-seeded Northwind Studio `member` account (default `sophie.wagner@northwind-studio.example`, never `owner`, `admin`, or AI co-worker).
+  - **One-click welcome card:** visitors landing on `/login` (or `/signup`, which redirects to `/login` when active) see a clean **Explore Northwind Studio** card with a single button and no email/code friction. Owner/admin sign-in stays accessible under **Team sign in** (`?team=1` opens it directly).
+  - **Per-IP daily AI call limit:** visitors can make up to `ai_calls_per_ip` AI turns per IP per UTC day (default **2**, configurable `0..50`).
+- **Built:**
+  - **Migration `0178_demo_guest_access`** (`drizzle/0178_demo_guest_access.sql`, journal idx 178, `src/lib/server/db/auth.schema.ts`, export rules in `src/lib/server/export/company/rules.ts`):
+    - `demo_guest_access` (singleton `id = 'company'`, off by default, FK to `user.id` `ON DELETE SET NULL`, `ai_calls_per_ip` default 2).
+    - `demo_guest_ai_usage` (`(ip_hash, day_utc)` PK, stores SHA-256 hex digest of normalized IP — never raw visitor IPs).
+  - **Domain & DB service** (`src/lib/server/demo/guest-access.ts`, `guest-access-db.ts`): strictly double-gated — active only when `demo` module is active AND `enabled = true` AND configured user is an existing `human` `member`.
+  - **Kernel tools** (`modules/demo/manifest.ts`, `tools.ts`, `live.ts`, `modules/index.ts`, event `'demo.guest_access_changed'` in `src/lib/kernel/event-catalog.ts`):
+    - `demo.guest_access_get` (read, admin/agent)
+    - `demo.guest_access_set` (mutate, owner-only, `approvalRisk: 'public'`, in `APPROVAL_REQUIRED_TOOLS`, audited).
+    - Contract locked (`contracts/core-api.lock.json` + SDK: 392 tools, 53 events, 0 breaking changes).
+  - **Gateway per-IP AI limit** (`src/lib/server/llm/request-context.ts`, `demo-guest-ai-limit.ts`, `member-daily-cap.ts`, `member-daily-cap-store.ts`, `errors.ts`, `src/hooks.server.ts`, `src/lib/server/chat/handle-agent-chat-post.ts`):
+    - `hooks.server.ts` attaches per-request client IP context (`event.getClientAddress()`, backed by `XFF_DEPTH=1` under `ee`); streaming chat turns carry the same context into `chatWork`.
+    - First gateway call in a request claims 1 turn atomically against `(sha256(ip), utcDay)`; follow-up calls inside the same turn (tool loop + embeddings + synthesis) share that claimed turn up to a hard cap of 12 raw gateway calls.
+    - Background jobs running as the shared guest user (no HTTP request IP) are refused so background enrichment/event-routing never silently burns demo budget.
+    - Outer `llm.member_daily_cap_usd` remains enforced on top as a company-wide ceiling.
+  - **Entry UX & profile gate** (`src/routes/login/+page.server.ts`, `+page.svelte`, `src/routes/signup/+page.server.ts`, `src/lib/server/profile/gate.ts`, `src/routes/+layout.server.ts`, `src/lib/kernel/ui-parity.ts` debt 0):
+    - `POST /login?/enterDemo` re-checks `activeDemoGuest()` from DB and signs in via Better Auth's serialized internal OTP flow (`createVerificationOTP` + `signInEmailOTP`, no email sent).
+    - `profileGateRedirect` exempts the active demo guest teammate so visitors never hit `/welcome/profile` even on an already-seeded box without avatars.
+- **To activate on `demo.eigenenterprise.app` after release:** as the owner (CLI/MCP/Assistant), run `demo.guest_access_set` with `{ "enabled": true, "ai_calls_per_ip": 2 }` (and optionally `members.set_open_join` `{ "on": false }`).
+- **Gaps:** shared demo account means concurrent visitors share one workspace view/chat history until the nightly reset (accepted by owner); no browser e2e test added yet for the full click-through on a live DB.
+
 ## 2026-11-24 — Upgrades U1: `core-api` 1.0, migration rules, upgrade rehearsal (owner: "Push, start U1"; merges `5c889e01`, `59d54c43`, `5d3f46b5`; not released)
 
 Three parallel workstreams, each in its own worktree, reviewed and merged into main.

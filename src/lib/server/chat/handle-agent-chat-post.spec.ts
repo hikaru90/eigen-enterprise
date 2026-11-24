@@ -38,6 +38,21 @@ describe('chatErrorTerminalPayload', () => {
       code: 'llm_daily_cap',
     })
   })
+
+  it('preserves a custom LlmDailyCapError message (e.g. demo visitor per-IP limit)', () => {
+    const wrapped = new Error('agent loop failed', {
+      cause: new LlmDailyCapError({
+        capUsd: 0,
+        spentUsd: 0,
+        message: "You've used your 2 demo AI calls for today. Sign up or self-host eigenEnterprise to keep going.",
+      }),
+    })
+    expect(chatErrorTerminalPayload(wrapped)).toEqual({
+      type: 'error',
+      error: "You've used your 2 demo AI calls for today. Sign up or self-host eigenEnterprise to keep going.",
+      code: 'llm_daily_cap',
+    })
+  })
 })
 
 describe('BRIEFING_BOOTSTRAP_MESSAGES', () => {

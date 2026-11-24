@@ -48,6 +48,14 @@ describe('profile gate (P-5)', () => {
     expect(isHarness).toHaveBeenCalledWith('u1')
   })
 
+  it('leaves the active shared demo guest teammate alone so login-free visitors go straight into the app', async () => {
+    const isDemoGuest = vi.fn(async () => true)
+    expect(
+      await profileGateRedirect({ user: noPicture, request: at('/(nucleus)', '/'), isHarness: production, isDemoGuest }),
+    ).toBeNull()
+    expect(isDemoGuest).toHaveBeenCalledWith('u1')
+  })
+
   it('never puts an off-site next into the redirect', async () => {
     expect(await profileGateRedirect({ user: noPicture, request: at('/(nucleus)', '//evil.example'), isHarness: production })).toBe(
       '/welcome/profile?next=%2F',

@@ -1,9 +1,16 @@
 import type { PersonPrincipal } from './runner'
 import type { DemoPorts } from './tools'
 import type { Teammate } from './types'
+import { emitKernelEvent, type EventSink } from '$lib/kernel/events'
 import { auth } from '$lib/server/auth'
 import { getUserRole, personFor } from '$lib/server/auth/user-role'
 import { withDbUser } from '$lib/server/db'
+import {
+  dbDemoGuestStore,
+  findDemoGuestUserByEmail,
+  findDemoGuestUserById,
+  isDemoModuleActiveInDb,
+} from '$lib/server/demo/guest-access-db'
 import { humanActor, inviteMember, memberDeps } from '$lib/server/members'
 import { createInvitedAccount } from '$lib/server/members/accept'
 import { dbMemberStore } from '$lib/server/members/db-store'
@@ -62,6 +69,20 @@ async function addTeammate(owner: PersonPrincipal, t: Teammate): Promise<PersonP
   return personOf(member.id)
 }
 
-export function demoPorts(): DemoPorts {
-  return { roleOf: getUserRole, personOf, addTeammate }
+export function demoPorts(eventSink?: EventSink): DemoPorts {
+  return {
+    roleOf: getUserRole,
+    personOf,
+    addTeammate,
+    guestAccess: {
+      store: dbDemoGuestStore,
+      demoModuleActive: isDemoModuleActiveInDb,
+      findUserById: findDemoGuestUserById,
+      findUserByEmail: findDemoGuestUserByEmail,
+      audit: async (event) => {
+        if (!eventSink) return
+        await emitKernelEvent(eventSink, { ...event, source: 'demo' })
+      },
+    },
+  }
 }

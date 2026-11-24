@@ -484,6 +484,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/session/sign-out POST': human(SIGN_IN),
   '/claim ?/default': human(SIGN_IN),
   '/invite ?/join': human(SIGN_IN),
+  '/login ?/enterDemo': human(SIGN_IN),
   '/login ?/sendCode': human(SIGN_IN),
   '/login ?/verifyCode': human(SIGN_IN),
   '/owner-link ?/default': human(SIGN_IN),

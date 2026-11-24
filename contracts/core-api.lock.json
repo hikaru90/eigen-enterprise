@@ -142,6 +142,11 @@
       "type": "contribute.status_changed"
     },
     {
+      "module": "demo",
+      "payload": null,
+      "type": "demo.guest_access_changed"
+    },
+    {
       "module": "email",
       "payload": null,
       "type": "email.mailbox_alias_added"
@@ -7819,6 +7824,70 @@
       "permission": {
         "roles": [
           "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "demo",
+      "name": "demo.guest_access_get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "public"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_calls_per_ip": {
+            "description": "Maximum AI turns per visitor IP per UTC day (0 disables AI for demo visitors; defaults to 2).",
+            "maximum": 50,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enabled": {
+            "description": "Turn one-click login-free demo access on or off.",
+            "type": "boolean"
+          },
+          "guest_email": {
+            "description": "Email of the human member account visitors share (defaults to sophie.wagner@northwind-studio.example). Never an owner, admin, or AI co-worker.",
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "module": "demo",
+      "name": "demo.guest_access_set",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
         ]
       }
     },

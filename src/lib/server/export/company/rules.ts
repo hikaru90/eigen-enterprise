@@ -73,6 +73,8 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   member_invite: fullWith('token_hash'),
   member_open_join: full,
   company_join: full,
+  demo_guest_access: full,
+  demo_guest_ai_usage: excluded('ephemeral per-IP daily AI rate-limit counters for demo visitors'),
   claim_consumed: excluded('used one-time claim links (hashes only)'),
   member_group: full,
   member_group_member: full,

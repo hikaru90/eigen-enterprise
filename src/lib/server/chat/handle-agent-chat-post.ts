@@ -23,7 +23,13 @@ import {
 } from '$lib/server/db'
 import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/brain.schema'
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
-import { isLlmDailyCapError, isLlmNotConfiguredError, LLM_DAILY_CAP_MESSAGE } from '$lib/server/llm/errors'
+import {
+  dailyCapErrorMessage,
+  isLlmDailyCapError,
+  isLlmNotConfiguredError,
+  LLM_DAILY_CAP_MESSAGE,
+} from '$lib/server/llm/errors'
+import { requestAiContextAsyncLocal } from '$lib/server/llm/request-context'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
 import { readReplyCost, runMeasuredTurn } from './reply-cost'
 import {
@@ -110,9 +116,10 @@ export function chatErrorTerminalPayload(err: unknown): {
   if (isLlmNotConfiguredError(err)) {
     return { type: 'error', error: CHAT_LLM_NOT_CONFIGURED_MESSAGE, code: 'llm_not_configured' }
   }
-  // The company's daily AI cap per member (DC3): the person reads why, and when it resets.
+  // The company's daily AI cap per member (DC3) or demo visitor's per-IP limit:
+  // the person reads why, and when it resets.
   if (isLlmDailyCapError(err)) {
-    return { type: 'error', error: LLM_DAILY_CAP_MESSAGE, code: 'llm_daily_cap' }
+    return { type: 'error', error: dailyCapErrorMessage(err) ?? LLM_DAILY_CAP_MESSAGE, code: 'llm_daily_cap' }
   }
   return { type: 'error', error: CHAT_TURN_FAILED_MESSAGE }
 }
@@ -536,6 +543,7 @@ export async function handleAgentChatPost(
       }
     }
 
+    const requestAiCtx = requestAiContextAsyncLocal.getStore()
     const chatWork = (async () => {
       let reserved: Awaited<ReturnType<typeof appSql.reserve>> | null = null
       try {
@@ -545,25 +553,29 @@ export async function handleAgentChatPost(
 
         // One path: the kernel harness. The reply text comes back from the
         // runtime; stream/surface events flow out through the sinks below.
-        const measured = await tenantUserAsyncLocal.run(user.id, () =>
-          appDbAsyncLocal.run(scopedDb, () =>
-            runMeasuredTurn(() =>
-              options.dispatch(sessionId, agentUserMessage, {
-                stream: (delta) => {
-                  if (!streamClosed) {
-                    writeLine({ type: 'message_delta', content: delta })
-                  }
-                },
-                surfaceEvent: (evt) => {
-                  if (!streamClosed) {
-                    writeLine(evt)
-                  }
-                  recordIntermediateStep(evt)
-                },
-              }, user.id, turn),
+        const runTurn = () =>
+          tenantUserAsyncLocal.run(user.id, () =>
+            appDbAsyncLocal.run(scopedDb, () =>
+              runMeasuredTurn(() =>
+                options.dispatch(sessionId, agentUserMessage, {
+                  stream: (delta) => {
+                    if (!streamClosed) {
+                      writeLine({ type: 'message_delta', content: delta })
+                    }
+                  },
+                  surfaceEvent: (evt) => {
+                    if (!streamClosed) {
+                      writeLine(evt)
+                    }
+                    recordIntermediateStep(evt)
+                  },
+                }, user.id, turn),
+              ),
             ),
-          ),
-        )
+          )
+        const measured = await (requestAiCtx
+          ? requestAiContextAsyncLocal.run(requestAiCtx, runTurn)
+          : runTurn())
         const reply = measured.value
         const usage = await readReplyCost(scopedDb, user.id, measured)
 

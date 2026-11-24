@@ -11,13 +11,19 @@ vi.mock('$lib/server/auth/email-code-actions', () => ({
   verifyCode: verifyCodeMock,
 }))
 const { unclaimedState } = vi.hoisted(() => ({
-  unclaimedState: { ee: false, unclaimed: null as string | null, openJoin: false },
+  unclaimedState: {
+    ee: false,
+    unclaimed: null as string | null,
+    openJoin: false,
+    demoGuest: null as { userId: string; email: string; name: string; aiCallsPerIp: number } | null,
+  },
 }))
 vi.mock('$lib/server/auth/unclaimed', () => ({
   unclaimedMessage: async () => unclaimedState.unclaimed,
   managedByEe: () => unclaimedState.ee,
 }))
 vi.mock('$lib/server/members/open-join-db', () => ({ openJoinOn: async () => unclaimedState.openJoin }))
+vi.mock('$lib/server/demo/guest-access-db', () => ({ activeDemoGuest: async () => unclaimedState.demoGuest }))
 vi.mock('$lib/server/overview/sources', () => ({ foundingCompanyName: async () => 'Northwind' }))
 vi.mock('$lib/server/mail', () => ({
   companyMail: () => ({ isConfigured: async () => isOwleryMailConfiguredMock() }),
@@ -35,6 +41,20 @@ const reset = () => {
 const post = () => ({ request: new Request('http://localhost/signup', { method: 'POST' }) }) as never
 
 describe('signup page server', () => {
+  it('when login-free demo guest access is active, /signup redirects straight to /login welcome card', async () => {
+    unclaimedState.demoGuest = {
+      userId: 'u-sophie',
+      email: 'sophie.wagner@northwind-studio.example',
+      name: 'Sophie Wagner',
+      aiCallsPerIp: 2,
+    }
+    await expect(load({ url: new URL('http://localhost/signup'), locals: { user: null } } as never)).rejects.toMatchObject({
+      status: 302,
+      location: '/login',
+    })
+    unclaimedState.demoGuest = null
+  })
+
   it('on a claimed ee server with open join off, /signup sends people to the normal sign-in', async () => {
     claimed(false)
     await expect(load({ url: new URL('http://localhost/signup'), locals: { user: null } } as never)).rejects.toMatchObject({

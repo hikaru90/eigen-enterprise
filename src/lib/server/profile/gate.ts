@@ -20,6 +20,7 @@ export type GateInput = {
   user: (ProfileFields & { id: string }) | null | undefined
   request: () => { routeId: string | null; path: string }
   isHarness: (userId: string) => Promise<boolean>
+  isDemoGuest?: (userId: string) => Promise<boolean>
 }
 
 /** The URL to redirect to, or null to let the page load. */
@@ -29,5 +30,6 @@ export async function profileGateRedirect(input: GateInput): Promise<string | nu
   const { routeId, path } = input.request()
   if (!routeId || !(routeId === SHELL_ROUTE_GROUP || routeId.startsWith(`${SHELL_ROUTE_GROUP}/`))) return null
   if (await input.isHarness(user.id)) return null
+  if (input.isDemoGuest && (await input.isDemoGuest(user.id))) return null
   return `${PROFILE_STEP_PATH}?next=${encodeURIComponent(safeNextPath(path))}`
 }

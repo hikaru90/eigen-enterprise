@@ -4,7 +4,14 @@ export const DEMO_MODULE_ID = 'demo'
 
 export const DEMO_SEED_TOOL = 'demo.seed_company'
 export const DEMO_STATUS_TOOL = 'demo.status'
-export const DEMO_TOOL_NAMES = [DEMO_SEED_TOOL, DEMO_STATUS_TOOL] as const
+export const DEMO_GUEST_ACCESS_GET_TOOL = 'demo.guest_access_get'
+export const DEMO_GUEST_ACCESS_SET_TOOL = 'demo.guest_access_set'
+export const DEMO_TOOL_NAMES = [
+  DEMO_SEED_TOOL,
+  DEMO_STATUS_TOOL,
+  DEMO_GUEST_ACCESS_GET_TOOL,
+  DEMO_GUEST_ACCESS_SET_TOOL,
+] as const
 
 /**
  * The demo company (plan/phase-demo-company.md DC1): fills a freshly claimed

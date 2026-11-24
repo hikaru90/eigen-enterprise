@@ -13,8 +13,14 @@ vi.mock('$lib/server/auth/user-role', () => ({
 }))
 vi.mock('$lib/i18n/ui-locale', () => ({ normalizeUiLocale: (value: string) => value }))
 vi.mock('$lib/paraglide/runtime', () => ({ cookieName: 'locale', cookieMaxAge: 31_536_000 }))
-const { isHarnessUserMock } = vi.hoisted(() => ({ isHarnessUserMock: vi.fn(async () => false) }))
+const { isHarnessUserMock, isActiveDemoGuestUserMock } = vi.hoisted(() => ({
+  isHarnessUserMock: vi.fn(async () => false),
+  isActiveDemoGuestUserMock: vi.fn(async () => false),
+}))
 vi.mock('$lib/server/auth/harness-account', () => ({ isHarnessUser: isHarnessUserMock }))
+vi.mock('$lib/server/demo/guest-access-db', () => ({
+  isActiveDemoGuestUser: isActiveDemoGuestUserMock,
+}))
 vi.mock('../../modules/brand/store', () => ({
   defaultBrandStore: () => ({ findActiveVisualSet: findActiveVisualSetMock }),
 }))

@@ -27,6 +27,7 @@ import { DRIVE_VIEW_PREFIX, driveViewUser } from '$lib/server/drive-view'
 import { errorReport, GENERIC_SENTENCE } from '$lib/server/errors/report'
 import { startJobQueueTicker } from '$lib/server/job-queue/ticker'
 import { platformAiFromEnv } from '$lib/server/llm/platform-llm'
+import { runWithRequestAiContext } from '$lib/server/llm/request-context'
 import { reportSpeechModelsAtStartup } from '$lib/server/llm/speech-models'
 import { startNotificationDispatchTicker } from '$lib/server/memory/notification-dispatch-ticker'
 import { logOpsStartupDiagnostics } from '$lib/server/ops/startup-diagnostics'
@@ -187,6 +188,14 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
     }
   }
 
+  const clientIp = (() => {
+    try {
+      return event.getClientAddress()
+    } catch {
+      return null
+    }
+  })()
+
   const resolveWithAppDb: typeof resolve = async (opts) => {
     if (building) {
       return resolve(opts)
@@ -197,7 +206,8 @@ const handleBetterAuth: Handle = async ({ event, resolve }) => {
       const uid = event.locals.user?.id ?? ''
       await activateTenantDbSession(reserved, uid)
       const scopedDb = createScopedDrizzle(reserved)
-      const run = () => appDbAsyncLocal.run(scopedDb, () => resolve(opts))
+      const run = () =>
+        runWithRequestAiContext(clientIp, () => appDbAsyncLocal.run(scopedDb, () => resolve(opts)))
       return uid ? await tenantUserAsyncLocal.run(uid, run) : await run()
     } finally {
       await deactivateTenantDbSession(reserved).catch(() => {})

@@ -1300,6 +1300,18 @@ export type CoreApiTools = {
       }>
     }
   }
+  "demo.guest_access_get": {
+    input: Record<string, never>
+    output: unknown
+  }
+  "demo.guest_access_set": {
+    input: {
+      "ai_calls_per_ip"?: number
+      "enabled": boolean
+      "guest_email"?: string
+    }
+    output: unknown
+  }
   "demo.seed_company": {
     input: Record<string, never>
     output: unknown
@@ -3832,6 +3844,8 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "decisions.label",
   "decisions.log",
   "decisions.questions",
+  "demo.guest_access_get",
+  "demo.guest_access_set",
   "demo.seed_company",
   "demo.status",
   "domains.list",

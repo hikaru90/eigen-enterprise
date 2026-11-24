@@ -49,7 +49,7 @@ import { contributeHubManifest } from './contribute/hub/manifest'
 import { createContributeHubTools } from './contribute/hub/tools'
 import { CONTRIBUTE_MODULE_ID, CONTRIBUTE_WRITE_TOOLS, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
-import { DEMO_SEED_TOOL, demoManifest } from './demo/manifest'
+import { DEMO_GUEST_ACCESS_SET_TOOL, DEMO_SEED_TOOL, demoManifest } from './demo/manifest'
 import { createDemoTools } from './demo/tools'
 import { DOMAINS_MODULE_ID, domainsManifest } from './domains/manifest'
 import { createDomainsTools } from './domains/tools'
@@ -247,8 +247,10 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   ...CONTRIBUTE_WRITE_TOOLS,
   // Central board: revoking an install refuses it from now on (destructive for that install).
   'contribute_hub.revoke_install',
-  // The demo seed publishes website pages and makes member accounts (public).
+  // The demo seed publishes website pages and makes member accounts (public);
+  // login-free guest access lets anyone on the internet enter the shared demo seat (public).
   DEMO_SEED_TOOL,
+  DEMO_GUEST_ACCESS_SET_TOOL,
 ])
 
 export type BootstrapKernelOptions = {
@@ -436,7 +438,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createCalendarTools(),
     ...createDomainsTools({ mail: liveMailDomains, bought: liveBoughtDomains }),
     // The seed drives this very registry, as the owner and each teammate.
-    ...createDemoTools({ registry: () => registry }),
+    ...createDemoTools({ registry: () => registry, eventSink }),
   ])
 
   return {

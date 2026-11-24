@@ -483,6 +483,8 @@ const MEMBER_LOSES_VIA_BRAIN = [
   'contribute_hub.get',
   'contribute_hub.list',
   'contribute_hub.revoke_install',
+  'demo.guest_access_get',
+  'demo.guest_access_set',
   'demo.seed_company',
   'demo.status',
   'domains.list',
