@@ -2,6 +2,38 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Release v0.5.40 (owner: "test commit release")
+
+- **Tagged** `v0.5.40` on `80e25c32`, through the full release gate for the first time:
+  - the CI gate (10227 unit and 917 component tests);
+  - the upgrade rehearsal from v0.5.39, GREEN;
+  - e2e, 76 passed.
+- **What's in it:**
+  - upgrades U0–U3 and U2's streams A, B and C: the core-api 1.0 lock, the migration rules, the rehearsal and tag gate, the upgrade transaction (preflight with `UPGRADE.json`, backup, watch, rollback, ee A/B slot), and the module runtime (kernel host, ee module units, hub receipts);
+  - demo guest access;
+  - migrations 0178–0181.
+- **The gate caught two things on the way:**
+  - **A real bug** (`6294b2cc`): two kernel events of the same millisecond could be delivered to a module out of order. Event ids were random UUIDs, and the feed orders by `(ts, id)`.
+    - Event ids are now monotonic UUIDv7, from the same clock reading as `ts`.
+    - Test: 200 events in a burst come out in emission order. `host.protocol.spec`, which failed 4/5 before, now passes 6/6.
+    - Old events keep their random ids, but the module cursor only delivers from a module's start.
+  - **An e2e race** (`80e25c32`): Messages' phone step clicked before hydration. It now uses `gotoHydrated`, like the other specs fixed this round.
+- **Behaviour changes, announced:**
+  - Caddy HTTP metrics are on. This needs Caddy 2.8 or newer; boxes get Caddy from Caddy's stable apt repo, so every box since mid-2024 has it.
+  - `ee upgrade` watches for 30 minutes (`--watch-minutes`).
+  - `/opt/ee/ee.mjs` becomes a link.
+  - `kernel.release_status` and `kernel.release_rollback` exist.
+  - The kernel refuses event types outside the catalog (since U1).
+- **Release build:** run 45424820055 passed on arm64 and amd64. It published 22 assets, among them the signed `UPGRADE.json`: `{downgradeFloor: "0.5.40", minFrom: "0.5.20", capabilities: ["chromium"]}`.
+  - **The floor is 0.5.40 itself:** a box on 0.5.40 can't roll back to 0.5.39. This release changes ee's state files (module workloads, release slots), and the floor rule moves on any such change.
+  - The expand migrations 0178–0181 alone would not have moved it.
+- **First upgrade note:** the upgrade *to* 0.5.40 still runs 0.5.39's ee transaction. The new preflight, watch and rollback apply from the next upgrade on.
+- **Not yet:**
+  - The official module hub key (`scripts/hub-key.sh`) and `MODULE_HUB_SIGNING_KEY` on os.cerberusblue.com, so official-hub modules get 422 until then.
+  - A real-box run from module scaffold to repair.
+  - Activating demo guest access (`demo.guest_access_set`).
+- **Next:** install where the owner wants it (Settings → Updates, `kernel.release_install` or `ee upgrade`), then update the boards.
+
 ## 2026-11-24 — Upgrades U2: a place for vibe-coded modules (owner: "Start U2 and U3"; contract `8266b353`, branch `upgrades-integrate`; not released, no box touched)
 
 The contract was fixed first in `plan/phase-upgrades-u2.md` (decisions D1–D15). The shared contract commit (§9.0) followed, then three parallel streams. All of it is integrated on `upgrades-integrate`, together with U3.
