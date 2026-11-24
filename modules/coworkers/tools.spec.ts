@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { InMemoryApprovalModeStore, InMemoryApprovalStore, ModeAwareApprovalPolicy } from '$lib/kernel/approvals'
 import { coworkerPrincipal } from '$lib/kernel/principals'
@@ -67,6 +68,13 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', opts: { a
     }),
     runLocations: async (reader, ids) => new Set(ids.filter((id) => (sees[reader.id] ?? []).includes(id))),
     deps: async () => deps,
+    avatarStore: async () => ({
+      put: async (bytes: Uint8Array) => {
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        avatars.add(sha256)
+        return { sha256, size: bytes.byteLength }
+      },
+    }),
     actor: async (ctx): Promise<CoworkerActor> => {
       const p = ctx.principal
       if (p.kind === 'coworker') return { id: p.id, role: 'member', kind: 'coworker' }
@@ -415,6 +423,63 @@ describe('multi-manager and avatar tool inputs (WS6)', () => {
     expect(seat).toMatchObject({
       reportsToUserId: 'ari',
       reportsToUserIds: ['ari', 'olga'],
+    })
+  })
+})
+
+describe('coworkers.avatar_upload (CLI + agent upload a custom avatar)', () => {
+  /** A square lossless WebP header of the given size. */
+  function webp(width = 256, height = width): Uint8Array {
+    const b = new Uint8Array(64)
+    const put = (at: number, t: string) => [...t].forEach((c, i) => (b[at + i] = c.charCodeAt(0)))
+    put(0, 'RIFF')
+    put(8, 'WEBP')
+    put(12, 'VP8L')
+    const bits = (width - 1) | ((height - 1) << 14)
+    b.set([0x2f, bits & 0xff, (bits >> 8) & 0xff, (bits >> 16) & 0xff, (bits >>> 24) & 0xff], 20)
+    return b
+  }
+  const b64 = (b: Uint8Array) => Buffer.from(b).toString('base64')
+
+  it('is an admin/agent write that waits on no approval', () => {
+    const { tool } = setup('ask')
+    expect(tool('coworkers.avatar_upload')).toMatchObject({ auditClass: 'mutate', permission: { roles: ['admin', 'agent'] } })
+    expect(COWORKERS_GATED_TOOLS).not.toContain('coworkers.avatar_upload')
+  })
+
+  it('stores a valid square WebP and returns a hash coworkers.update accepts', async () => {
+    const { registry, ownerCtx, approved } = setup('ask')
+    const bytes = webp()
+    const out = (await registry.execute('coworkers.avatar_upload', { image_base64: b64(bytes), mime: 'image/webp' }, ownerCtx)) as {
+      sha256: string
+      image: string
+    }
+    const sha = createHash('sha256').update(bytes).digest('hex')
+    expect(out).toEqual({ sha256: sha, image: `/api/people/avatar/${sha}` })
+    const cw = (await approved('coworkers.create', { template_id: 'designer', name: 'Dana', avatar_sha256: out.sha256 }, ownerCtx)) as Record<string, unknown>
+    expect(cw.image).toBe(`/api/people/avatar/${sha}`)
+  })
+
+  it('refuses members, bad base64, non-WebP and non-square or too-small pictures', async () => {
+    const { registry, ownerCtx, memberCtx } = setup('allow_all')
+    await expect(registry.execute('coworkers.avatar_upload', { image_base64: b64(webp()), mime: 'image/webp' }, memberCtx)).rejects.toMatchObject({
+      code: 'permission_denied',
+    })
+    await expect(registry.execute('coworkers.avatar_upload', { image_base64: 'not base64!', mime: 'image/webp' }, ownerCtx)).rejects.toMatchObject({
+      code: 'invalid_input',
+    })
+    await expect(
+      registry.execute('coworkers.avatar_upload', { image_base64: b64(new Uint8Array(80).fill(1)), mime: 'image/webp' }, ownerCtx),
+    ).rejects.toMatchObject({ code: 'invalid_input', message: expect.stringContaining('not a WebP') })
+    await expect(registry.execute('coworkers.avatar_upload', { image_base64: b64(webp(256, 128)), mime: 'image/webp' }, ownerCtx)).rejects.toMatchObject({
+      code: 'invalid_input',
+      message: expect.stringContaining('square'),
+    })
+    await expect(registry.execute('coworkers.avatar_upload', { image_base64: b64(webp(32)), mime: 'image/webp' }, ownerCtx)).rejects.toMatchObject({
+      code: 'invalid_input',
+    })
+    await expect(registry.execute('coworkers.avatar_upload', { image_base64: b64(webp()), mime: 'image/png' }, ownerCtx)).rejects.toMatchObject({
+      code: 'invalid_input',
     })
   })
 })
