@@ -160,7 +160,10 @@ test('owner creates an AI co-worker and meets it in the org chart, its profile, 
     familyShown = pick.text.split(' · ')[0]!.trim()
     await expect(form.getByTestId('new-coworker-model-note')).not.toHaveText('')
 
-    await form.getByTestId('new-coworker-manager').selectOption(ownerId)
+    // Reports to: a multi-select fieldset of people; tick the owner, only the owner.
+    const managers = form.getByTestId('new-coworker-manager')
+    await managers.getByRole('checkbox', { name: ownerName, exact: true }).check()
+    await expect(managers.getByRole('checkbox', { checked: true })).toHaveCount(1)
     await form.getByTestId('new-coworker-cap').fill('3')
     await shot(page, '02-coworkers-form-filled')
 
