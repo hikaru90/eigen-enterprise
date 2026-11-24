@@ -41,8 +41,11 @@
       <input
         id="extract-url"
         class="w-full rounded border px-3 py-2 text-sm"
-        type="url"
-        placeholder="https://example.com"
+        type="text"
+        inputmode="url"
+        autocapitalize="off"
+        autocomplete="url"
+        placeholder="www.example.com"
         bind:value={url}
       />
       <button
