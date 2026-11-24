@@ -811,7 +811,6 @@
       "input": {
         "properties": {
           "url": {
-            "minLength": 1,
             "type": "string"
           }
         },
@@ -2948,6 +2947,10 @@
             "maxItems": 50,
             "minItems": 1,
             "type": "array"
+          },
+          "invite_later": {
+            "description": "call now with nobody invited yet (instant call on our own server): invite people afterwards with calls.invite_guests",
+            "type": "boolean"
           },
           "starts_at": {
             "description": "ISO time; leave out for now",

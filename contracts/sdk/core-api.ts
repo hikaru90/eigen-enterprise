@@ -488,6 +488,7 @@ export type CoreApiTools = {
       "duration_minutes"?: number
       "external_url"?: string
       "guests"?: Array<string>
+      "invite_later"?: boolean
       "starts_at"?: string
       "time_zone": string
       "title"?: string
