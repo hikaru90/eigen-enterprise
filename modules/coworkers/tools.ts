@@ -1,15 +1,18 @@
 import { z } from 'zod'
 import { COWORKER_AVATAR_PRESET_IDS } from '$lib/coworkers/avatar-presets'
+import { KernelError } from '$lib/kernel/errors'
 import type { ToolContext, ToolDescriptor, ToolPrincipal } from '$lib/kernel/types'
+import { avatarUrl } from '$lib/profile/profile'
 import { notifyCoworkersChanged } from '$lib/server/coworkers/changes'
+import type { EventSubscriptionDeps } from '$lib/server/coworkers/event-subscriptions'
 import type { NoticeDeps } from '$lib/server/coworkers/notices'
 import type { RhythmDeps, RhythmView } from '$lib/server/coworkers/rhythms'
 import type { CoworkerRunRow, CoworkerRunStore } from '$lib/server/coworkers/run-store'
 import type { CoworkerActor, CoworkerDeps, CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
-import type { EventSubscriptionDeps } from '$lib/server/coworkers/event-subscriptions'
 import { COWORKER_TEMPLATE_IDS, COWORKER_TEMPLATES } from '$lib/server/coworkers/templates'
 import { COWORKER_EVENT_KINDS, COWORKER_EVENT_OUTCOMES } from '$lib/server/db/coworker-events.schema'
 import { COWORKER_RUN_STATUSES, COWORKER_STOP_REASONS, COWORKER_TRIGGER_KINDS } from '$lib/server/db/coworkers.schema'
+import type { AvatarStage } from '$lib/server/profile/avatar'
 import { COWORKERS_CREATE_TOOL, COWORKERS_MODULE_ID, COWORKERS_REMOVE_TOOL } from './manifest'
 
 /**
@@ -53,6 +56,8 @@ export type CoworkersToolDeps = {
   rhythms?: () => Promise<RhythmDeps>
   notices?: () => Promise<NoticeDeps>
   events?: () => Promise<EventSubscriptionDeps>
+  /** Where coworkers.avatar_upload stores a picture (default: the avatar blob store). */
+  avatarStore?: () => Promise<AvatarStage>
 }
 
 const READ_ROLES = ['admin', 'member', 'agent']
@@ -67,6 +72,10 @@ const modelField = z.string().min(1).max(200)
 const capField = z.number().positive().max(1000)
 
 const emptyInput = z.object({}).strict()
+/** A cropped square WebP of at most 256 KB, as base64 (same limits as members.set_my_picture). */
+const avatarUploadInput = z
+  .object({ image_base64: z.string().min(1).max(Math.ceil((256 * 1024) / 3) * 4 + 4), mime: z.literal('image/webp') })
+  .strict()
 const byIdInput = z.object({ user_id: userId }).strict()
 const avatarPresetField = z.enum(COWORKER_AVATAR_PRESET_IDS).nullable().optional()
 const avatarShaField = z.string().min(1).max(128).nullable().optional()
@@ -305,6 +314,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
   const rhythms = opts.rhythms ?? liveRhythms
   const notices = opts.notices ?? liveNotices
   const events = opts.events ?? liveEvents
+  const avatarStore = opts.avatarStore ?? (async () => (await import('$lib/server/profile/avatar')).avatarBlobs())
   const eventService = () => import('$lib/server/coworkers/event-subscriptions')
   const service = () => import('$lib/server/coworkers/service')
   const rhythmService = () => import('$lib/server/coworkers/rhythms')
@@ -376,6 +386,26 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
             await deps(),
           ),
         )
+      },
+    },
+    {
+      name: 'coworkers.avatar_upload',
+      module: COWORKERS_MODULE_ID,
+      summary:
+        'Upload a custom AI co-worker avatar: an already cropped square WebP (64–512 px, at most 256 KB) as base64. Returns its sha256 (and image URL) to pass as avatar_sha256 to coworkers.create or coworkers.update; no co-worker changes until then.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => 'Uploaded an AI co-worker avatar',
+      inputSchema: avatarUploadInput,
+      outputSchema: z.object({ sha256: z.string(), image: z.string() }),
+      permission: { roles: ADMIN_ROLES },
+      handler: async (_ctx, input) => {
+        const i = avatarUploadInput.parse(input)
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(i.image_base64)) throw new KernelError('invalid_input', 'image_base64 is not base64.')
+        const { stageCoworkerAvatar } = await import('$lib/server/profile/avatar')
+        const staged = await stageCoworkerAvatar(new Uint8Array(Buffer.from(i.image_base64, 'base64')), i.mime, await avatarStore())
+        if (!staged.ok) throw new KernelError('invalid_input', staged.error)
+        return { sha256: staged.sha256, image: avatarUrl(staged.sha256) }
       },
     },
     {

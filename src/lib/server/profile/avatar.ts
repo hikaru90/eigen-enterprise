@@ -79,3 +79,21 @@ export function avatarBlobs(env: Record<string, string | undefined> = process.en
   live ??= diskBlobStore(resolveAvatarStorageDir(env))
   return live
 }
+
+/** Where a staged avatar goes: the content-addressed avatar blob store (its put). */
+export type AvatarStage = { put(bytes: Uint8Array): Promise<{ sha256: string }> }
+
+export type StagedAvatar = { ok: true; sha256: string } | { ok: false; status: 400 | 413 | 415; error: string }
+
+/**
+ * A custom AI co-worker avatar, staged: checks the bytes (checkAvatar) and
+ * stores them content-addressed, returning the hash coworkers.create /
+ * coworkers.update take as avatar_sha256. No record changes here. Shared by
+ * POST /api/people/avatar/upload and the coworkers.avatar_upload tool.
+ */
+export async function stageCoworkerAvatar(bytes: Uint8Array, contentType: string | null, store: AvatarStage): Promise<StagedAvatar> {
+  const check = checkAvatar(bytes, contentType)
+  if (!check.ok) return check
+  const { sha256 } = await store.put(bytes)
+  return { ok: true, sha256 }
+}

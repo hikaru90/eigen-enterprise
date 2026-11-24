@@ -420,7 +420,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/members ?/setRole': tool('members.set_role'),
   '/(nucleus)/settings/members ?/updateGroup': tool('members.group_update'),
   '/api/onboarding/name POST': tool('members.set_my_called'),
-  '/api/people/avatar/upload POST': noEffect('Stages a checked WebP avatar blob by content hash for coworkers.create or coworkers.update; no record changes until saved through the tool.'),
+  '/api/people/avatar/upload POST': tool('coworkers.avatar_upload'),
   '/api/profile PUT': tool('members.set_my_name'),
   '/api/profile/avatar POST': tool('members.set_my_picture'),
 

@@ -13,6 +13,7 @@ export const COWORKERS_TOOL_NAMES = [
   'coworkers.list',
   'coworkers.get',
   COWORKERS_CREATE_TOOL,
+  'coworkers.avatar_upload',
   'coworkers.update',
   'coworkers.enable',
   'coworkers.disable',
