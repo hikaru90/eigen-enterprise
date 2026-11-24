@@ -1,11 +1,8 @@
 import { CORE_API_VERSION } from '../../contracts/core-api-version'
-import helloLicense from '../../contracts/fixtures/modules/hello/LICENSE?raw'
 import { moduleIdSchema, parseModuleManifestYaml } from '../../contracts/module-manifest'
 import { CORE_API_TOOL_NAMES } from '../../contracts/sdk/core-api'
-import runtimeSource from '../../contracts/sdk/module-runtime.ts?raw'
-import transportSource from '../../contracts/sdk/module-transport.ts?raw'
-import testKernelSource from '../../contracts/sdk/test-kernel.ts?raw'
 import { KernelError } from '$lib/kernel/errors'
+import { APACHE_LICENSE_TEXT, MODULE_SDK_SOURCES } from '$lib/kernel/module-host/sdk-sources'
 
 /**
  * `modules.scaffold` (plan/phase-upgrades-u2.md §8, §4.7, D9): a new module's
@@ -82,7 +79,7 @@ permissions:
   })()
   return [
     { path: 'module.yaml', content: manifest },
-    { path: 'LICENSE', content: helloLicense },
+    { path: 'LICENSE', content: APACHE_LICENSE_TEXT },
     {
       path: 'package.json',
       content: `${JSON.stringify({ name: `eigen-module-${parsed.id}`, version: '0.1.0', private: true, license: 'Apache-2.0', type: 'module' }, null, 2)}\n`,
@@ -122,9 +119,9 @@ assert.deepEqual(await kernel.invoke('hello', { name: 'Ann' }), { greeting: 'Hel
 console.log('ok')
 `,
     },
-    { path: `${SDK_DIR}/module-runtime.ts`, content: runtimeSource },
-    { path: `${SDK_DIR}/module-transport.ts`, content: transportSource },
-    { path: `${SDK_DIR}/test-kernel.ts`, content: testKernelSource },
+    { path: `${SDK_DIR}/module-runtime.ts`, content: MODULE_SDK_SOURCES['module-runtime.ts'] },
+    { path: `${SDK_DIR}/module-transport.ts`, content: MODULE_SDK_SOURCES['module-transport.ts'] },
+    { path: `${SDK_DIR}/test-kernel.ts`, content: MODULE_SDK_SOURCES['test-kernel.ts'] },
     { path: `${SDK_DIR}/core-tools.json`, content: `${JSON.stringify([...CORE_API_TOOL_NAMES], null, 2)}\n` },
   ]
 }

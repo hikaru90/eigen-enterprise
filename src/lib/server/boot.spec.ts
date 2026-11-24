@@ -23,6 +23,7 @@ vi.mock('../../../modules/index', () => ({
   bootstrapChatGateway: mocks.bootstrapChatGateway,
   bootstrapRecap: mocks.bootstrapRecap,
   ensureSystemModulesActive: async () => {},
+  startCompanyModules: async () => {},
 }))
 vi.mock('../../../modules/orchestrator/bootstrap', () => ({
   bootstrapOrchestrator: mocks.bootstrapOrchestrator,
