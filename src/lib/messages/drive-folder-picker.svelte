@@ -182,7 +182,7 @@
             role="option"
             aria-selected={i === activeIndex}
             class={[
-              'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm outline-none',
+              'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring',
               i === activeIndex
                 ? 'bg-foreground/[0.08] text-foreground'
                 : 'hover:bg-foreground/[0.04]',

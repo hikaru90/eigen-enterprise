@@ -172,7 +172,7 @@
       {/if}
     </div>
     <span
-      class="text-muted-foreground/55 group-hover/open:text-foreground group-focus-visible/open:text-foreground mt-0.5 flex shrink-0 items-center transition-colors"
+      class="text-muted-foreground group-hover/open:text-foreground group-focus-visible/open:text-foreground mt-0.5 flex shrink-0 items-center transition-colors"
       aria-hidden="true"
       data-testid="timeline-task-edit-hint"
     >

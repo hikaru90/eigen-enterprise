@@ -56,7 +56,7 @@
     <span
       class="flex size-[18px] items-center justify-center rounded-full border transition-colors {completed
         ? 'border-primary bg-primary text-primary-foreground group-hover/done:border-primary/85 group-hover/done:bg-primary/85 group-focus-visible/done:border-primary/85 group-focus-visible/done:bg-primary/85'
-        : 'border-muted-foreground/70 bg-background text-muted-foreground/45 group-hover/done:border-primary group-hover/done:bg-primary group-hover/done:text-primary-foreground group-focus-visible/done:border-primary group-focus-visible/done:bg-primary group-focus-visible/done:text-primary-foreground'}"
+        : 'border-muted-foreground/70 bg-background text-muted-foreground group-hover/done:border-primary group-hover/done:bg-primary group-hover/done:text-primary-foreground group-focus-visible/done:border-primary group-focus-visible/done:bg-primary group-focus-visible/done:text-primary-foreground'}"
       aria-hidden="true"
     >
       {#if busy}

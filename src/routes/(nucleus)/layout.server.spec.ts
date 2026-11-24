@@ -70,6 +70,7 @@ describe('(nucleus) layout load', () => {
     const data = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
     expect(data.shell.companyName).toBe('Kindred')
     expect(data.shell.nav.items.map((m) => [m.id, m.active])).toEqual([
+      ['coworkers', true],
       ['website', true],
       ['owlery', true],
       ['repo', false],
@@ -113,7 +114,7 @@ describe('(nucleus) layout load', () => {
     const member = (await load(event({ id: 'member-1' }))) as { shell: import('$lib/shell/nav').ShellData }
     expect(roleMock).toHaveBeenCalledWith('member-1')
     expect(Object.values(member.shell.capabilities).some(Boolean)).toBe(false)
-    expect(member.shell.nav.items.map((m) => m.id)).toEqual(['owlery', 'repo', 'settings'])
+    expect(member.shell.nav.items.map((m) => m.id)).toEqual(['coworkers', 'owlery', 'repo', 'settings'])
     const owner = (await load(event({ id: 'owner' }))) as { shell: import('$lib/shell/nav').ShellData }
     expect(owner.shell.capabilities['company.manage']).toBe(true)
     expect(owner.shell.nav.items.map((m) => m.id)).toContain('website')
