@@ -28,10 +28,11 @@ describe('UPGRADE.json (the signed upgrade metadata ee checks on the box)', () =
     expect(() => upgradeMeta({ release: RELEASE, downgradeFloor: 'latest', eeJson: {} })).toThrow(/not a version/)
   })
 
-  it('ee requires it from the next release on (this package version or later)', () => {
+  it('ee requires it from the first release that writes it (0.5.40), and this build is one of them', () => {
     const version = JSON.parse(read('../package.json')).version as string
-    expect(compareVersions(META_REQUIRED_SINCE, version)).toBeGreaterThanOrEqual(0)
-    expect(compareVersions(META_REQUIRED_SINCE, version)).toBeLessThanOrEqual(1)
+    // Pinned: moving the requirement later would let a box accept an unsigned release that should carry one.
+    expect(META_REQUIRED_SINCE).toBe('0.5.40')
+    expect(compareVersions(META_REQUIRED_SINCE, version)).toBeLessThanOrEqual(0)
   })
 
   it('release.sh writes it and lists it in SHA256SUMS; the workflow publishes it', () => {
