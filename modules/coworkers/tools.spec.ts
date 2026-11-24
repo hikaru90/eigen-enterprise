@@ -339,8 +339,10 @@ describe('event subscriptions (C7)', () => {
     expect(tool('coworkers.event_subscriptions_set')).toMatchObject({ auditClass: 'mutate', permission: { roles: ['admin', 'agent'] } })
     const cw = (await approved('coworkers.create', { template_id: 'marketing-manager', name: 'Mara' }, ownerCtx)) as { id: string }
 
-    const off = (await registry.execute('coworkers.event_subscriptions_get', { user_id: cw.id }, memberCtx)) as { kinds: unknown[]; hourlyLimit: number }
-    expect(off).toMatchObject({ userId: cw.id, kinds: [{ kind: 'channel_message', on: false }], hourlyLimit: 20 })
+    const off = (await registry.execute('coworkers.event_subscriptions_get', { user_id: cw.id }, memberCtx)) as Record<string, unknown>
+    expect(off).toMatchObject({ userId: cw.id, kinds: [{ kind: 'channel_message', on: false }] })
+    // The per-co-worker hourly limit is gone (routing: one call per message).
+    expect(off).not.toHaveProperty('hourlyLimit')
 
     await expect(registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: ['channel_message'] }, memberCtx)).rejects.toMatchObject({ code: 'permission_denied' })
     await expect(registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: ['mail'] }, ownerCtx)).rejects.toMatchObject({ code: 'invalid_input' })
@@ -349,10 +351,11 @@ describe('event subscriptions (C7)', () => {
     expect(await eventStores.list(cw.id)).toEqual(['channel_message'])
 
     // What it heard is counted, skipped ones included (visible, never a silent drop).
-    await eventStores.claim({ coworkerUserId: cw.id, eventKind: 'channel_message', eventId: 'm1', conversationId: null, now: at, hourlyLimit: 0 })
+    const claimed = await eventStores.claimRoute({ eventKind: 'channel_message', eventId: 'm1', conversationId: null, authorUserId: 'someone', coworkerUserIds: [cw.id], now: at })
+    await eventStores.finish(claimed!.observations[0]!.id, { outcome: 'skipped_author_cap', error: 'the author’s daily AI budget is spent' }, at)
     const counted = (await registry.execute('coworkers.event_subscriptions_get', { user_id: cw.id }, memberCtx)) as { lastHour: Record<string, number>; lastDay: Record<string, number> }
-    expect(counted.lastHour).toMatchObject({ skipped_rate_limit: 1, observed: 0 })
-    expect(counted.lastDay).toMatchObject({ skipped_rate_limit: 1 })
+    expect(counted.lastHour).toMatchObject({ skipped_author_cap: 1, observed: 0 })
+    expect(counted.lastDay).toMatchObject({ skipped_author_cap: 1 })
 
     expect(await registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: [] }, ownerCtx)).toMatchObject({ kinds: [{ kind: 'channel_message', on: false }] })
     await expect(registry.execute('coworkers.event_subscriptions_get', { user_id: 'nobody' }, memberCtx)).rejects.toMatchObject({ code: 'not_found' })

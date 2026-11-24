@@ -34,7 +34,6 @@ const PICKUP_LIMIT = 20
 
 export type WouldPickUp = {
   noticing: boolean
-  hourlyLimit: number
   lastDay: PickupCounts
   agreement: { agreed: number; compared: number } | null
   items: PickupItem[]
@@ -71,7 +70,6 @@ async function loadWouldPickUp(run: PersonRunner, user: { id: string }, coworker
   const kind = kinds.kinds.find((k) => k.id === EVENT_MINE_KIND)
   return {
     noticing: subs.kinds.some((k) => k.kind === 'channel_message' && k.on),
-    hourlyLimit: subs.hourlyLimit,
     lastDay: subs.lastDay,
     agreement: kind && kind.humanCompared > 0 ? { agreed: kind.humanAgreed, compared: kind.humanCompared } : null,
     items: log.decisions.map(_pickupItem),

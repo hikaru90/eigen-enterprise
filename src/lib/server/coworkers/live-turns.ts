@@ -6,7 +6,7 @@ import type { AgentRuntime } from '$lib/kernel/agent-runtime'
 import { coworkerPrincipal } from '$lib/kernel/principals'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { coworkerAgentSource, CoworkerTriggerListener, type MessageFrames } from './agents'
-import { ChannelMessageSource, CoworkerEventObserver, type CoworkerEventObserverDeps } from './events'
+import { ChannelMessageSource, CoworkerEventRouter, type CoworkerEventRouterDeps } from './events'
 import { onCoworkersChanged } from './changes'
 import { coworkerAgentId } from './service'
 import { CoworkerTurns, STALE_AFTER_MS, TurnPrompts, type CompanyContext, type CoworkerDirectory, type CoworkerTurnsDeps } from './turns'
@@ -17,8 +17,9 @@ import { CoworkerTurns, STALE_AFTER_MS, TurnPrompts, type CompanyContext, type C
  * on the messages hub, the turn queue, and the reply posted through the kernel
  * as the co-worker (messages.post as its own principal: permission, audit and
  * push like any member's post). C7: the same frames feed the channel-message
- * event source (events.ts), which asks Jev in shadow whether a message the
- * co-worker was not @mentioned in is its to act on. `startCoworkerTurns` is the production wiring
+ * event source (events.ts): the assistant routes each message once — one Jev
+ * call, in shadow, asking for every co-worker it could be for whether it is
+ * that co-worker's to act on. `startCoworkerTurns` is the production wiring
  * boot.ts starts; `composeCoworkerTurns` is the same with every port injected.
  */
 
@@ -47,10 +48,10 @@ export type ComposeCoworkerTurnsInput = {
   /** Reads a task as the co-worker (null when it is gone or not its); its comment is posted through the kernel (tasks.comment). */
   readTask: CoworkerTurnsDeps['tasks']['get']
   /**
-   * Event reactions (C7): the observer's ports but the run queue, which is the turns' own
+   * Event reactions (C7): the router's ports but the run queue, which is the turns' own
    * (an enforced "yes" queues an 'event' run on `runs` and starts it here).
    */
-  events?: Omit<CoworkerEventObserverDeps, 'queueRun'>
+  events?: Omit<CoworkerEventRouterDeps, 'queueRun'>
 } & Pick<CoworkerTurnsDeps, 'now' | 'threadTurnBudget' | 'heartbeatMs' | 'staleAfterMs'>
 
 const asCoworker = (coworkerId: string) => ({ principal: coworkerPrincipal(coworkerId, coworkerAgentId(coworkerId)), requestId: randomUUID() })
@@ -102,7 +103,7 @@ export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): Coworker
           listPeople: () => input.messages.directory.listPeople(),
           access: async (userId, c) => ({ read: await canUse(input.messages, userId, c, 'view'), member: await canUse(input.messages, userId, c, 'edit') }),
         },
-        new CoworkerEventObserver({
+        new CoworkerEventRouter({
           ...input.events,
           queueRun: async (run) => {
             const row = await input.runs.enqueue(run)
@@ -141,26 +142,39 @@ export async function liveTurnCost(coworkerId: string, runId: string): Promise<n
 }
 
 /**
- * The live event-reaction ports (C7): the declared kind coworkers.event_mine, the 0176 stores,
- * the cost ledger, and decide() inside the co-worker's own database session (its cost row is
- * RLS-scoped to it; there is no request outside a turn).
+ * The live event-reaction ports (C7): the declared kind coworkers.event_mine, the 0176/0177
+ * stores, the enabled co-workers, the cost ledger, the member daily cap of the message's author
+ * (the routing call is billed to them), and decideMany() inside the author's own database
+ * session (the call's cost row is RLS-scoped to them; there is no request outside a turn).
  */
-export async function liveEventDeps(): Promise<Omit<CoworkerEventObserverDeps, 'queueRun'>> {
-  const [{ coworkerEventMine }, { liveCoworkerEventStores }, coworkers, { ledgerSpentUsdToday }, { decide }, { withDbUser }] = await Promise.all([
-    import('../../../../modules/coworkers/decision-kinds'),
-    import('./db-event-store'),
-    import('./index'),
-    import('$lib/server/agent/ledger-spend'),
-    import('$lib/server/decisions/decide'),
-    import('$lib/server/db'),
-  ])
+export async function liveEventDeps(): Promise<Omit<CoworkerEventRouterDeps, 'queueRun'>> {
+  const [{ coworkerEventMine }, { liveCoworkerEventStores }, coworkers, { ledgerSpentUsdToday }, { decideMany }, { withDbUser }, { assertGatewayCallWithinMemberDailyCap }, { LlmDailyCapError }] =
+    await Promise.all([
+      import('../../../../modules/coworkers/decision-kinds'),
+      import('./db-event-store'),
+      import('./index'),
+      import('$lib/server/agent/ledger-spend'),
+      import('$lib/server/decisions/decide'),
+      import('$lib/server/db'),
+      import('$lib/server/llm/member-daily-cap'),
+      import('$lib/server/llm/errors'),
+    ])
   return {
     kind: coworkerEventMine,
     subscriptions: liveCoworkerEventStores,
     observations: liveCoworkerEventStores,
-    coworkers: { get: coworkers.getCoworker },
+    coworkers: { listEnabled: coworkers.listEnabledCoworkers },
     spentToday: ledgerSpentUsdToday,
-    decide: (kind, input, opts) => withDbUser(opts.requestedBy, () => decide(kind, input, opts)),
+    authorCapRefusal: async (userId) => {
+      try {
+        await withDbUser(userId, () => assertGatewayCallWithinMemberDailyCap(userId))
+        return null
+      } catch (err) {
+        if (err instanceof LlmDailyCapError) return err.message
+        throw err
+      }
+    },
+    decideMany: (kind, items, opts) => withDbUser(opts.requestedBy, () => decideMany(kind, items, opts)),
   }
 }
 

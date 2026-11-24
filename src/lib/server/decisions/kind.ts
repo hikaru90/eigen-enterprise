@@ -36,6 +36,16 @@ export type DecisionKindDef<I, C extends string> = {
   /** What Jev reads: the text the question is about. Sent to the model, never logged. */
   state: (input: I) => string
   /**
+   * For decideMany: many inputs about one state in ONE Jev call (one message, one question per
+   * co-worker it may be for). `state` is what every question of the call reads and must be the
+   * same for every input of a call; `question` is the input's own part (a role card), added to
+   * its question's instructions. Without it the kind is decided one input at a time (decide).
+   */
+  batch?: {
+    state: (input: I) => string
+    question: (input: I) => string
+  }
+  /**
    * What the decision log keeps of the input (then secret-redacted by key): enough to review the
    * decision, never more than the reader of the log may see — a mail body or a private text only
    * if the kind deliberately keeps it. Explicit per kind: there is no default.
@@ -94,6 +104,7 @@ export function defineDecisionKind<I, C extends string>(def: DecisionKindDef<I, 
     choices: Object.freeze([...def.choices]),
     criteria: Object.freeze({ ...def.criteria }),
     ...(def.ask ? { ask: Object.freeze({ ...def.ask, labels: Object.freeze({ ...def.ask.labels }) }) } : {}),
+    ...(def.batch ? { batch: Object.freeze({ ...def.batch }) } : {}),
     [KIND]: true as const,
   })
 }

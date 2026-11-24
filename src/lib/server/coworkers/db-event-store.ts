@@ -1,57 +1,69 @@
-import type { EventObservationRow, EventObservationStore, EventSubscriptionStore } from './events'
-import { and, eq, gt, gte, inArray, sql } from 'drizzle-orm'
+import type { EventObservationRow, EventObservationStore, EventRouteRow, EventSubscriptionStore } from './events'
+import { and, eq, gte, sql } from 'drizzle-orm'
 import type { AppDatabase } from '$lib/server/db/context'
-import { coworkerEventObservation, coworkerEventSubscription } from '$lib/server/db/coworker-events.schema'
-import { COUNTED_OUTCOMES, zeroCounts } from './events'
+import { coworkerEventObservation, coworkerEventRoute, coworkerEventSubscription } from '$lib/server/db/coworker-events.schema'
+import { zeroCounts } from './events'
 
 /**
- * coworker_event_subscription and coworker_event_observation in Postgres (migration 0176).
- * Company-level tables without RLS: the app pool's own connection (never a member's RLS
- * session). A claim holds a transaction-scoped advisory lock on the co-worker, so the
- * hourly count and the insert are one step across every app process; the unique index on
- * (co-worker, kind, event id) makes every insert but the first a no-op.
+ * coworker_event_subscription, coworker_event_route and coworker_event_observation in Postgres
+ * (migrations 0176, 0177). Company-level tables without RLS: the app pool's own connection
+ * (never a member's RLS session). A route claim is one transaction: the unique index on
+ * (kind, event id) makes every route insert but the first a no-op — so an event is routed once
+ * across every app process — and the winner inserts one observation per candidate co-worker
+ * (a row from before routing, unique per co-worker and event, is kept as it was).
  */
 
-/** pg_advisory_xact_lock(namespace, hashtext(co-worker id)) — 'cwev' as an int4. */
-export const COWORKER_EVENT_LOCK_NAMESPACE = 0x63776576
-
-const HOUR_MS = 3_600_000
-
 const rowOf = (r: typeof coworkerEventObservation.$inferSelect): EventObservationRow => ({ ...r })
+const routeOf = (r: typeof coworkerEventRoute.$inferSelect): EventRouteRow => ({ ...r })
 
 export function dbCoworkerEventStores(db: () => Promise<AppDatabase>): EventObservationStore & EventSubscriptionStore {
   return {
-    async claim(input) {
+    async claimRoute(input) {
+      if (input.coworkerUserIds.length === 0) throw new Error('an event is routed only when some co-worker could be its')
       return (await db()).transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(${COWORKER_EVENT_LOCK_NAMESPACE}::int4, hashtext(${input.coworkerUserId}))`)
-        const since = new Date(input.now.getTime() - HOUR_MS)
-        const [{ used }] = (await tx
-          .select({ used: sql<number>`count(*)::int` })
-          .from(coworkerEventObservation)
-          .where(
-            and(
-              eq(coworkerEventObservation.coworkerUserId, input.coworkerUserId),
-              inArray(coworkerEventObservation.outcome, [...COUNTED_OUTCOMES]),
-              gt(coworkerEventObservation.createdAt, since),
-            ),
-          )) as [{ used: number }]
-        const over = used >= input.hourlyLimit
-        const [row] = await tx
-          .insert(coworkerEventObservation)
+        const [route] = await tx
+          .insert(coworkerEventRoute)
           .values({
-            coworkerUserId: input.coworkerUserId,
             eventKind: input.eventKind,
             eventId: input.eventId,
             conversationId: input.conversationId,
-            outcome: over ? 'skipped_rate_limit' : 'claimed',
-            error: over ? `over ${input.hourlyLimit} event decisions in the last hour` : null,
+            authorUserId: input.authorUserId,
+            outcome: 'claimed',
+            candidates: input.coworkerUserIds.length,
             createdAt: input.now,
             updatedAt: input.now,
           })
           .onConflictDoNothing()
           .returning()
-        return row ? rowOf(row) : null
+        if (!route) return null
+        const made = await tx
+          .insert(coworkerEventObservation)
+          .values(
+            input.coworkerUserIds.map((coworkerUserId) => ({
+              coworkerUserId,
+              eventKind: input.eventKind,
+              eventId: input.eventId,
+              conversationId: input.conversationId,
+              outcome: 'claimed' as const,
+              routeId: route.id,
+              createdAt: input.now,
+              updatedAt: input.now,
+            })),
+          )
+          .onConflictDoNothing()
+          .returning()
+        const order = new Map(input.coworkerUserIds.map((id, n) => [id, n]))
+        return { route: routeOf(route), observations: made.map(rowOf).sort((a, b) => order.get(a.coworkerUserId)! - order.get(b.coworkerUserId)!) }
       })
+    },
+
+    async finishRoute(id, patch, at) {
+      const rows = await (await db())
+        .update(coworkerEventRoute)
+        .set({ ...patch, updatedAt: at })
+        .where(eq(coworkerEventRoute.id, id))
+        .returning({ id: coworkerEventRoute.id })
+      if (rows.length !== 1) throw new Error(`updating coworker event route ${id} matched ${rows.length} rows`)
     },
 
     async finish(id, patch, at) {
@@ -81,6 +93,15 @@ export function dbCoworkerEventStores(db: () => Promise<AppDatabase>): EventObse
         .where(eq(coworkerEventSubscription.coworkerUserId, coworkerUserId))
         .orderBy(coworkerEventSubscription.eventKind)
       return rows.map((r) => r.kind)
+    },
+
+    async subscribers(kind) {
+      const rows = await (await db())
+        .select({ id: coworkerEventSubscription.coworkerUserId })
+        .from(coworkerEventSubscription)
+        .where(eq(coworkerEventSubscription.eventKind, kind))
+        .orderBy(coworkerEventSubscription.coworkerUserId)
+      return rows.map((r) => r.id)
     },
 
     async set(coworkerUserId, kinds, by, at) {

@@ -16,4 +16,4 @@ export type PickupItem = {
   humanChoice: 'yes' | 'no' | null
 }
 
-export type PickupCounts = { observed: number; queued: number; failed: number; skipped_rate_limit: number; skipped_daily_cap: number }
+export type PickupCounts = { observed: number; queued: number; failed: number; skipped_daily_cap: number; skipped_author_cap: number }

@@ -1,43 +1,48 @@
 import { describe, expect, it, vi } from 'vitest'
-import { decide, type DecideDeps } from '$lib/server/decisions/decide'
+import { decideMany, type DecideDeps } from '$lib/server/decisions/decide'
 import { defineDecisionKind } from '$lib/server/decisions/kind'
 import { inMemoryDecisionStore } from '$lib/server/decisions/store'
 import type { LlmDecideResult } from '$lib/server/llm/llm-decide'
 import { COWORKER_EVENT_MINE_DEF, coworkerEventMine } from '../../../../modules/coworkers/decision-kinds'
 import { createChannel, postMessage } from '../../../../modules/messages/service'
-import { MemoryEventStores, type CoworkerEventObserverDeps } from './events'
+import { MemoryEventStores, type CoworkerEventRouterDeps } from './events'
 import { turnsFixture, type Script } from './test-fixtures'
 
 /**
  * C7 end to end over in-memory Messages and the co-worker turns: a person's message in a
- * channel Marketing is a member of, not mentioning it, is heard on the messages hub and
- * becomes one coworkers.event_mine decision. In shadow (as shipped) nothing else happens.
+ * channel Marketing is a member of, not mentioning it, is heard on the messages hub (one frame
+ * per co-worker) and is routed once: one Jev call, one coworkers.event_mine decision per
+ * co-worker switched on, billed to the author. In shadow (as shipped) nothing else happens.
  * With the kind enforced (the promotion), Jev's "yes" queues one 'event' run that answers
  * in the message's thread as the co-worker.
  */
 
+/** Every question of the call gets the same answer. */
 const jev = (choice: 'yes' | 'no'): DecideDeps['ask'] =>
   vi.fn(
-    async (): Promise<LlmDecideResult> => ({
+    async (input: { questions: Record<string, unknown> }): Promise<LlmDecideResult> => ({
       model: 'typesafe/jev-1.13-20260917',
-      answers: { decision: { choice, confidence: 0.9, distribution: { yes: choice === 'yes' ? 0.9 : 0.1, no: choice === 'no' ? 0.9 : 0.1 } } },
+      answers: Object.fromEntries(
+        Object.keys(input.questions).map((id) => [id, { choice, confidence: 0.9, distribution: { yes: choice === 'yes' ? 0.9 : 0.1, no: choice === 'no' ? 0.9 : 0.1 } }]),
+      ),
       costUsd: 0.000017,
       durationMs: 50,
     }),
-  )
+  ) as unknown as DecideDeps['ask']
 
 function setup(opts: { enforced?: boolean; choice?: 'yes' | 'no'; script?: Script }) {
   const stores = new MemoryEventStores()
   const decisions = inMemoryDecisionStore()
   const ask = jev(opts.choice ?? 'yes')
   const kind = opts.enforced ? defineDecisionKind({ ...COWORKER_EVENT_MINE_DEF, status: 'enforced' }) : coworkerEventMine
-  const events: Omit<CoworkerEventObserverDeps, 'queueRun'> = {
+  const events: Omit<CoworkerEventRouterDeps, 'queueRun'> = {
     kind,
     subscriptions: stores,
     observations: stores,
-    coworkers: { get: async (id) => fx.coworkers.get(id)! },
+    coworkers: { listEnabled: async () => [...fx.coworkers.values()].filter((c) => c.enabled && !c.removedAt) },
     spentToday: async () => 0,
-    decide: (k, input, o) => decide(k, input, o, { ask, store: decisions }),
+    authorCapRefusal: async () => null,
+    decideMany: (k, items, o) => decideMany(k, items, o, { ask, store: decisions }),
   }
   // Read lazily, once the fixture exists.
   const fx = turnsFixture({ script: opts.script ?? (() => 'I will draft the launch post by Thursday.'), extra: { events } })
@@ -60,7 +65,7 @@ describe('event reactions through the messages hub (C7)', () => {
 
     expect(ask).toHaveBeenCalledTimes(1)
     expect(decisions.rows()).toEqual([
-      expect.objectContaining({ kind: 'coworkers.event_mine', status: 'shadow', outcome: 'observed', jevChoice: 'yes', subjectUserId: 'cw-mkt', requestedBy: 'cw-mkt' }),
+      expect.objectContaining({ kind: 'coworkers.event_mine', status: 'shadow', outcome: 'observed', jevChoice: 'yes', subjectUserId: 'cw-mkt', requestedBy: 'bea' }),
     ])
     expect(decisions.rows()[0]!.input).toMatchObject({ eventId: message.id, conversationId: launch.id, channel: 'launch' })
     // GTM is a member too (a public channel) but not switched on: it decides nothing.
@@ -68,6 +73,21 @@ describe('event reactions through the messages hub (C7)', () => {
     expect(fx.runs.rows).toEqual([])
     expect(fx.calls).toEqual([])
     expect((await fx.thread(message.id)).map((m) => m.authorId)).toEqual(['bea'])
+  })
+
+  it('two co-workers switched on: every frame of the message routes it once — one call, one row each', async () => {
+    const { fx, stores, decisions, ask, settle } = setup({})
+    await fx.handle.reload()
+    await stores.set('cw-mkt', ['channel_message'], 'owner', new Date())
+    await stores.set('cw-gtm', ['channel_message'], 'owner', new Date())
+    const launch = await createChannel(fx.deps, 'owner', { name: 'launch', private: false })
+    const { message } = await postMessage(fx.deps, 'bea', launch.id, 'What should the launch price be?')
+    await settle()
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(Object.keys((ask as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![0].questions)).toHaveLength(2)
+    expect(decisions.rows().map((r) => r.subjectUserId).sort()).toEqual(['cw-gtm', 'cw-mkt'])
+    expect(stores.routes).toEqual([expect.objectContaining({ eventId: message.id, outcome: 'decided', candidates: 2, questions: 2, authorUserId: 'bea' })])
+    expect(fx.runs.rows).toEqual([])
   })
 
   it('a mention is a C3 turn, never an event; a co-worker’s message is never an event', async () => {
