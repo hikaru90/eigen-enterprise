@@ -2,6 +2,25 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Contribute board: six newest wishes (owner: "take the next tasks from the contribute tab over mcp and integrate them" · "use subagents on low"; merges `322747ac`, `ac350dff`, `1ca33d48`, fix `62b9d69c`; not pushed, not released)
+
+- **Brand extract bug** (Ony): `www.eigenenterprise.app` gave a 500 "invalid URL". `modules/brand/extract/site-url.ts` reads a bare host as https://. Anything still not an http(s) URL is a 400 with a plain message. This covers the page and the `brand.extract_start` tool alike, and the page field is no longer type=url.
+- **Sortable table headers:** `src/lib/table/sort.ts` and `sortable-head.svelte` (aria-sort; ascending → descending → original order; empty values last). Wired into five tables:
+  - Drive list (sorted before paging)
+  - Drive archive
+  - Contacts pipeline
+  - Email logs (the loaded page only)
+  - Backups
+  - Skipped as not data lists: DNS/domain tables, the API reference, the CSV editor.
+  - Still open: Assistant activity (grouped and paged, so what sorting should mean is unclear).
+  - The merge needed `isMessageStatus` (`62b9d69c`) to typecheck.
+- **Calls:**
+  - **Call now** on /calls. `calls.schedule` gains `invite_later: true` (an instant call with nobody invited yet), so the CLI/MCP get it too.
+  - **Invite people from outside** inside the live call, host only. It reuses the guest invites, which already existed but were reachable only from /calls.
+  - **Video quality** Auto/High/Low and a **noise cancellation** toggle (browser noiseSuppression/echoCancellation/autoGainControl, on by default) in the Devices menu, remembered per browser in localStorage. Decision: a client media preference, not company data, so no registry tool. No Krisp: not installed, and no paid dependency was added.
+- **Board:** "demo without login" marked shipped (live since v0.5.40). The six above are in_progress until released.
+- **Not run:** the e2e suite (it runs at the release gate). Calls components hard-code English strings (pre-existing; no DE strings for the new controls).
+
 ## 2026-11-24 — Make-a-wish board on one.eigenenterprise.app: integrated wishes marked shipped (owner: "mark the contributions that were integrated as done in the mcp")
 
 - **Shipped (26, via `contribute.update` on the eigen MCP):** the v0.5.41 round (c69349eb, 7f44bcfa, ea945d0b, 497c8358, db3eef35, 89ec3538, 50f6e8db, 3a795090, b55709f1, 604b8ddb, 8f506079, 81319f0e, 68912711, 955e5f85, 8cdc80d8, 14aea69d) and the v0.5.38 round (593f7e08, 6b91931f, 74cbc486, f45acdef, bb05b451, fba4abf3, 3668d181, de821eda, 3786cf54, bcd930e2). Notes now say which release carries each instead of "comes with the next release".
