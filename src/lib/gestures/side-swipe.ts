@@ -48,6 +48,20 @@ export class WheelSwipeTracker {
     return this.#state
   }
 
+  /** Live horizontal gesture offset (px): positive = right, negative = left, 0 outside horizontal state. */
+  get offset(): number {
+    if (this.#state !== 'horizontal') return 0
+    return this.#dx === 0 ? 0 : -this.#dx
+  }
+
+  /** Reset tracker back to idle (e.g. when a partial horizontal gesture ends without committing). */
+  reset(): void {
+    this.#state = 'idle'
+    this.#dx = 0
+    this.#dy = 0
+    this.#last = -Infinity
+  }
+
   /** True when this event starts a new gesture (the caller looks at what is under it then). */
   startsGesture(t: number): boolean {
     return this.#state === 'idle' || t - this.#last > this.options.gap
@@ -109,4 +123,21 @@ export function sideMove(direction: SwipeDirection, panels: SidePanels): SideMov
   }
   if (panels.leftShown && panels.leftOverlays) return 'close-left'
   return panels.hasRight && !panels.rightShown ? 'open-right' : null
+}
+
+export const PEEK_MAX_PX = 48
+
+/**
+ * Convert a raw horizontal gesture delta (`dx > 0` = right, `dx < 0` = left)
+ * into a smooth bounded live peek offset in px, or 0 if no panel can move that way.
+ */
+export function peekOffset(dx: number, panels: SidePanels, maxPx = PEEK_MAX_PX): number {
+  if (!Number.isFinite(dx) || dx === 0 || maxPx <= 0) return 0
+  const direction: SwipeDirection = dx > 0 ? 'right' : 'left'
+  if (sideMove(direction, panels) === null) return 0
+  const abs = Math.abs(dx)
+  const damped = (abs * maxPx) / (abs + maxPx)
+  const signed = Math.sign(dx) * damped
+  const rounded = Math.round(signed * 10) / 10
+  return rounded === 0 ? 0 : rounded
 }

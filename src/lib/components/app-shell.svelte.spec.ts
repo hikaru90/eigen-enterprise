@@ -248,6 +248,62 @@ describe('app-shell.svelte', () => {
         await page.viewport(414, 896)
       }
     })
+
+    it('shows a bounded live peek on partial horizontal trackpad scroll and springs back on cancel', async () => {
+      await page.viewport(1280, 800)
+      try {
+        renderShell()
+        const content = (await page.getByTestId('shell-content').elements())[0]
+        const column = (await page.getByTestId('shell-column').elements())[0] as HTMLElement
+
+        // With desktop sidebar already open, scrolling right produces no phantom peek.
+        content.dispatchEvent(new WheelEvent('wheel', { deltaX: -40, deltaY: 0, bubbles: true, cancelable: true }))
+        await Promise.resolve()
+        expect(column.style.transform).toBe('')
+
+        // Wait past the wheel gesture gap before starting a left scroll peek.
+        await new Promise((r) => setTimeout(r, 260))
+
+        // Partial scroll left (< 80px) peeks the column left without opening the panel yet.
+        content.dispatchEvent(new WheelEvent('wheel', { deltaX: 40, deltaY: 0, bubbles: true, cancelable: true }))
+        await expect.poll(() => column.style.transform).toContain('translateX(-')
+        await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+
+        // After the wheel pause + spring-back settle, the offset clears and panel stays closed.
+        await expect.poll(() => column.style.transform, { timeout: 1_500 }).toBe('')
+        await expect.element(page.getByTestId('assistant-panel')).not.toBeInTheDocument()
+      } finally {
+        await page.viewport(414, 896)
+      }
+    })
+
+    it('shows a live horizontal peek on partial touch drag and springs back on cancel', async () => {
+      await page.viewport(414, 896)
+      renderShell()
+      const content = (await page.getByTestId('shell-content').elements())[0]
+      const column = (await page.getByTestId('shell-column').elements())[0] as HTMLElement
+      const touchAt = (x: number) => new Touch({ identifier: 9, target: content, clientX: x, clientY: 400 })
+
+      const startTouch = touchAt(60)
+      content.dispatchEvent(
+        new TouchEvent('touchstart', { touches: [startTouch], changedTouches: [startTouch], bubbles: true, cancelable: true }),
+      )
+      const moveTouch = touchAt(105)
+      content.dispatchEvent(
+        new TouchEvent('touchmove', { touches: [moveTouch], changedTouches: [moveTouch], bubbles: true, cancelable: true }),
+      )
+
+      await expect.poll(() => column.style.transform).toContain('translateX(')
+      expect(column.style.transform).not.toContain('translateX(-')
+      await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+
+      const endTouch = touchAt(105)
+      content.dispatchEvent(
+        new TouchEvent('touchend', { touches: [], changedTouches: [endTouch], bubbles: true, cancelable: true }),
+      )
+      await expect.poll(() => column.style.transform, { timeout: 1_500 }).toBe('')
+      await expect.element(page.getByTestId('shell-drawer')).not.toBeInTheDocument()
+    })
   })
 
   describe('my status at the foot of the nav (Contribute e4ef6be1)', () => {

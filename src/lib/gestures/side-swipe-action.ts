@@ -19,7 +19,11 @@ import { type SwipeDirection, type SwipePoint, SwipeTracker } from './swipe'
  * element does take are prevented, so the browser's back/forward swipe does
  * not also fire.
  */
-export type SideSwipeParams = { onswipe: (direction: SwipeDirection) => void }
+export type SideSwipeParams = {
+  onswipe: (direction: SwipeDirection) => void
+  onprogress?: (dx: number) => void
+  oncancel?: () => void
+}
 
 /** Which ways something under `target` (up to `root`) would take a sideways gesture. */
 type Taken = Record<SwipeDirection, boolean>
@@ -52,6 +56,14 @@ export const sideSwipe: Action<HTMLElement, SideSwipeParams> = (node, initial) =
   // Touch.
   const touches = new SwipeTracker()
   let touchTaken: Taken = { left: false, right: false }
+  let touchId: number | null = null
+  let touchStartX: number | null = null
+  let touchProgressActive = false
+  const cancelTouchProgress = () => {
+    if (!touchProgressActive) return
+    touchProgressActive = false
+    params.oncancel?.()
+  }
   const point = (t: Touch, e: TouchEvent, isPrimary: boolean): SwipePoint => ({
     pointerId: t.identifier,
     pointerType: 'touch',
@@ -66,41 +78,116 @@ export const sideSwipe: Action<HTMLElement, SideSwipeParams> = (node, initial) =
     // A second finger (pinch, two-finger pan) ends the swipe.
     if (e.touches.length > 1) {
       for (const other of e.touches) touches.cancel(other.identifier)
+      touchId = null
+      touchStartX = null
+      cancelTouchProgress()
       return
     }
     touchTaken = takenUnder(e.target, node, 'touch')
+    touchId = t.identifier
+    touchStartX = t.clientX
+    touchProgressActive = false
     touches.down(point(t, e, true))
   }
   const touchmove = (e: TouchEvent) => {
-    for (const t of e.changedTouches) touches.move(point(t, e, true))
+    for (const t of e.changedTouches) {
+      const state = touches.move(point(t, e, true))
+      if (t.identifier !== touchId || touchStartX === null) continue
+      if (state === 'horizontal') {
+        const dx = t.clientX - touchStartX
+        const heading: SwipeDirection = dx < 0 ? 'left' : 'right'
+        if (dx !== 0 && !touchTaken[heading]) {
+          touchProgressActive = true
+          params.onprogress?.(dx)
+        } else {
+          cancelTouchProgress()
+        }
+      } else if (state === 'abandoned') {
+        cancelTouchProgress()
+      }
+    }
   }
   const touchend = (e: TouchEvent) => {
     for (const t of e.changedTouches) {
       const s = touches.up(point(t, e, true))
+      const isTracked = t.identifier === touchId
+      const wasActive = isTracked && touchProgressActive
+      if (isTracked) {
+        touchId = null
+        touchStartX = null
+        touchProgressActive = false
+      }
       if (s && !touchTaken[s.direction]) params.onswipe(s.direction)
+      else if (wasActive) params.oncancel?.()
     }
   }
   const touchcancel = (e: TouchEvent) => {
-    for (const t of e.changedTouches) touches.cancel(t.identifier)
+    for (const t of e.changedTouches) {
+      touches.cancel(t.identifier)
+      if (t.identifier === touchId) {
+        touchId = null
+        touchStartX = null
+        cancelTouchProgress()
+      }
+    }
   }
 
   // Wheel / trackpad.
   const wheels = new WheelSwipeTracker()
   let wheelTaken: Taken = { left: false, right: false }
+  let wheelTimer: ReturnType<typeof setTimeout> | undefined
+  let wheelProgressActive = false
+  const clearWheelTimer = () => {
+    if (wheelTimer !== undefined) {
+      clearTimeout(wheelTimer)
+      wheelTimer = undefined
+    }
+  }
+  const cancelWheelProgress = () => {
+    clearWheelTimer()
+    if (!wheelProgressActive) return
+    wheelProgressActive = false
+    params.oncancel?.()
+  }
   const wheel = (e: WheelEvent) => {
     if (e.ctrlKey) return // pinch-zoom on a trackpad
-    if (wheels.startsGesture(e.timeStamp)) wheelTaken = takenUnder(e.target, node, 'wheel')
+    if (wheels.startsGesture(e.timeStamp)) {
+      cancelWheelProgress()
+      wheelTaken = takenUnder(e.target, node, 'wheel')
+    }
     const direction = wheels.wheel({ deltaX: px(e.deltaX, e.deltaMode), deltaY: px(e.deltaY, e.deltaMode), t: e.timeStamp })
     const sideways = wheels.state === 'horizontal' || wheels.state === 'done'
-    if (!sideways) return
+    if (!sideways) {
+      if (wheels.state === 'abandoned') cancelWheelProgress()
+      return
+    }
     // Heading a way something under the pointer scrolls: that container's gesture, to its end.
-    const heading: SwipeDirection = e.deltaX < 0 ? 'right' : 'left'
+    const heading: SwipeDirection =
+      e.deltaX !== 0 ? (e.deltaX < 0 ? 'right' : 'left') : wheels.offset > 0 ? 'right' : 'left'
     if (wheelTaken[heading]) {
       if (wheels.state === 'horizontal') wheels.abandon()
+      cancelWheelProgress()
       return
     }
     e.preventDefault()
-    if (direction) params.onswipe(direction)
+    if (direction) {
+      clearWheelTimer()
+      wheelProgressActive = false
+      params.onswipe(direction)
+      return
+    }
+    if (wheels.state === 'horizontal') {
+      wheelProgressActive = true
+      params.onprogress?.(wheels.offset)
+      clearWheelTimer()
+      wheelTimer = setTimeout(() => {
+        wheelTimer = undefined
+        if (!wheelProgressActive) return
+        wheelProgressActive = false
+        wheels.reset()
+        params.oncancel?.()
+      }, wheels.options.gap)
+    }
   }
 
   node.addEventListener('touchstart', touchstart, { passive: true })
@@ -113,6 +200,7 @@ export const sideSwipe: Action<HTMLElement, SideSwipeParams> = (node, initial) =
       params = next
     },
     destroy() {
+      clearWheelTimer()
       node.removeEventListener('touchstart', touchstart)
       node.removeEventListener('touchmove', touchmove)
       node.removeEventListener('touchend', touchend)
