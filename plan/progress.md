@@ -2,6 +2,16 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Release v0.5.39 (owner: "Yes, then release")
+
+- **Tagged** `v0.5.39` on `9a5470dc` (main as pushed; includes the C7 rework, brand extraction on the assistant's model, the co-worker browser journey, @ suggestions in Messages with the visible co-worker handle, and the other session's upgrades U0/U1). Release gate green in a clean worktree: upgrade rehearsal GREEN, e2e 76 passed / 5 skipped (12.4 min). GitHub release workflow run 45386719629 builds, signs and publishes. Not installed on any box yet.
+- **Gate fix on the way:** `c04a68dc` — `npm run check` compiles the paraglide messages first; a new message key failed svelte-check until Vite had run.
+- **What got in the way (environment, not code):**
+  - two local gates ran at once in the shared checkout (this one and the U1 session's), and 3 call e2e tests failed on contended ports; they pass when run alone;
+  - one component run had 94 files fail to load ("Failed to fetch dynamically imported module"); a rerun was 134/134 green;
+  - the tag gate refuses a dirty tree, and the main checkout holds another session's uncommitted work, so the tag was pushed from `.claude/worktrees/release-v0.5.39` (pruned). From a worktree, `npm run test:e2e` needs `COMPOSE_PROJECT_NAME=eigenenterprise` (else its `db:up` clashes with the running `eigen-enterprise-db` container) and `svelte-kit sync` first (else `$lib` doesn't resolve).
+- **Next:** install v0.5.39 where the owner wants it (Settings → Updates or `ee upgrade`), update the boards; label "Would pick up" decisions on a box.
+
 ## 2026-11-24 — Upgrades U1: `core-api` 1.0, migration rules, upgrade rehearsal (owner: "Push, start U1"; merges `5c889e01`, `59d54c43`, `5d3f46b5`; not released)
 
 Three parallel workstreams, each in its own worktree, reviewed and merged into main.
