@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'
 
 describe('emitKernelEvent', () => {
+  it('orders events by (ts, id) in emission order, also within one millisecond (module event delivery reads that order)', async () => {
+    const sink = new InMemoryEventSink()
+    const emitted = []
+    for (let i = 0; i < 200; i++) {
+      emitted.push(await emitKernelEvent(sink, { type: 'contacts.created', payload: { i } }))
+    }
+    const byTsThenId = [...emitted].sort((a, b) => (a.ts !== b.ts ? (a.ts < b.ts ? -1 : 1) : a.id < b.id ? -1 : 1))
+    expect(byTsThenId.map((e) => e.id)).toEqual(emitted.map((e) => e.id))
+    // Still a UUID the kernel_events uuid column takes (version 7: time-ordered).
+    for (const e of emitted) expect(e.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
   it('fills id and ts and forwards the rest', async () => {
     const sink = new InMemoryEventSink()
     const event = await emitKernelEvent(sink, {
