@@ -89,7 +89,7 @@ The contract was fixed first in `plan/phase-upgrades-u2.md` (decisions D1–D15)
   - the tag gate refuses a dirty tree, and the main checkout holds another session's uncommitted work, so the tag was pushed from `.claude/worktrees/release-v0.5.39` (pruned). From a worktree, `npm run test:e2e` needs `COMPOSE_PROJECT_NAME=eigenenterprise` (else its `db:up` clashes with the running `eigen-enterprise-db` container) and `svelte-kit sync` first (else `$lib` doesn't resolve).
 - **Next:** install v0.5.39 where the owner wants it (Settings → Updates or `ee upgrade`), update the boards; label "Would pick up" decisions on a box.
 
-## 2026-11-24 — Demo company: one-click login-free access with per-IP daily AI call limit (owner: "can we please make the demo company login-free?" · "let them make 1 or 2 ai calls per user per ip"; uncommitted)
+## 2026-11-24 — Demo company: one-click login-free access with per-IP daily AI call limit (owner: "can we please make the demo company login-free?" · "let them make 1 or 2 ai calls per user per ip"; `ccd9ba76`, merged `e29e9c6a`, pushed `d86369c8`; not released)
 
 - **Owner decisions (revised `plan/phase-demo-company.md` D6):**
   - **Shared demo teammate:** visitors enter as one pre-seeded Northwind Studio `member` account (default `sophie.wagner@northwind-studio.example`, never `owner`, `admin`, or AI co-worker).
@@ -114,6 +114,13 @@ The contract was fixed first in `plan/phase-upgrades-u2.md` (decisions D1–D15)
     - `profileGateRedirect` exempts the active demo guest teammate so visitors never hit `/welcome/profile` even on an already-seeded box without avatars.
 - **To activate on `demo.eigenenterprise.app` after release:** as the owner (CLI/MCP/Assistant), run `demo.guest_access_set` with `{ "enabled": true, "ai_calls_per_ip": 2 }` (and optionally `members.set_open_join` `{ "on": false }`).
 - **Gaps:** shared demo account means concurrent visitors share one workspace view/chat history until the nightly reset (accepted by owner); no browser e2e test added yet for the full click-through on a live DB.
+- **Integrated by the upgrades session (owner: "integrate their changes"):**
+  - The work had been left uncommitted in the main checkout. It is committed as is and merged onto origin/main, which carries U2 and U3.
+  - Journal order is 0178 → 0181. The contract lock is regenerated: 413 tools, 60 events, 0 breaking.
+  - The test DB is migrated to 0181.
+  - **Two fixes the merged gate turned up:**
+    - Stream A's four `kernel_module*` tables had no export rules, so a company export refused. They are now full.
+    - `coworkers/events.pg.spec.ts` counted every subscriber in the shared test DB, and the co-worker browser journey leaves its `nova-*` co-workers subscribed. It now clears subscriptions inside its own rolled-back transaction, so the assertions are unchanged.
 
 ## 2026-11-24 — Upgrades U1: `core-api` 1.0, migration rules, upgrade rehearsal (owner: "Push, start U1"; merges `5c889e01`, `59d54c43`, `5d3f46b5`; not released)
 
