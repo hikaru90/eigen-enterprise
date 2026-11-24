@@ -2,7 +2,6 @@ import type { HubFileContent, HubModuleDetail, HubModuleListItem } from './types
 import { describe, expect, it } from 'vitest'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
-import { testInstall } from '../contribute/hub/test-fixtures'
 import { MODULE_HUB_TOOL_NAMES } from './manifest'
 import { publishModule } from './service'
 import { bundleOf, moduleHubFixture, publishBody } from './test-fixtures'
@@ -12,7 +11,7 @@ const agentCtx: ToolContext = { principal: { id: 'agent-1', kind: 'agent', roles
 
 async function seeded() {
   const f = moduleHubFixture()
-  const a = await f.registered(testInstall())
+  const a = await f.registered()
   const b = bundleOf()
   await publishModule(f.deps, f.publishReq(a, publishBody(b)))
   const summarized: string[] = []

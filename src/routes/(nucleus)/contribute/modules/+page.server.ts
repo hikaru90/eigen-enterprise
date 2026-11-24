@@ -6,7 +6,7 @@ import { KernelError } from '$lib/kernel/errors'
 import type { ToolPrincipal } from '$lib/kernel/types'
 import { getUserRole, kernelRolesFor } from '$lib/server/auth/user-role'
 import { appKernel } from '$lib/server/boot'
-import { HubError } from '../../../../../modules/contribute/hub/errors'
+import { ModuleHubError } from '../../../../../modules/module-hub/errors'
 
 /**
  * Contribute → Modules (plan/phase-upgrades-u2.md §7), on the module hub's
@@ -36,8 +36,8 @@ async function call<T>(p: ToolPrincipal, tool: string, input: Record<string, unk
 function readError(err: unknown): never {
   if (err instanceof KernelError && err.code === 'module_inactive') throw error(404, 'Not found')
   if (err instanceof KernelError && err.code === 'permission_denied') throw error(403, 'Only an admin reads the module hub.')
-  if (err instanceof HubError && err.code === 'not_found') throw error(404, err.message)
-  if (err instanceof HubError && err.code === 'invalid') throw error(400, err.message)
+  if (err instanceof ModuleHubError && err.code === 'not_found') throw error(404, err.message)
+  if (err instanceof ModuleHubError && err.code === 'invalid') throw error(400, err.message)
   throw err
 }
 
@@ -75,7 +75,7 @@ export const actions: Actions = {
       if (err instanceof KernelError && (err.code === 'permission_denied' || err.code === 'approval_required' || err.code === 'invalid_input')) {
         return fail(err.code === 'invalid_input' ? 400 : 403, { error: err.message })
       }
-      if (err instanceof HubError) return fail(err.code === 'not_found' ? 404 : 400, { error: err.message })
+      if (err instanceof ModuleHubError) return fail(err.code === 'not_found' ? 404 : 400, { error: err.message })
       return fail(502, { error: err instanceof Error ? err.message : String(err) })
     }
   },

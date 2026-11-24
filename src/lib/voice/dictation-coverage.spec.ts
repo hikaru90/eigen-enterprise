@@ -34,6 +34,7 @@ const NO_DICTATION: Record<string, string> = {
     'speaker notes commit on change after taking the deck’s edit lock on focus; a dictated insert does not go through that flow yet (follow-up)',
   'src/routes/(nucleus)/brand/editor/[setId]/+page.svelte': 'design token values (colours, sizes, font names)',
   'src/routes/(nucleus)/brand/extract/specimen-mini.svelte': 'a type specimen preview, not a form',
+  'src/routes/(nucleus)/contribute/modules/+page.svelte': 'search-as-filter by module id or name',
   'src/routes/(nucleus)/m/email/layouts/[id]/+page.svelte': 'MJML/HTML layout source code',
   'src/routes/(nucleus)/m/email/marketing/lists/[id]/+page.svelte': 'CSV import of addresses',
   'src/routes/(nucleus)/settings/backups/+page.svelte': 'storage endpoint, region, bucket, keys and the recovery code',

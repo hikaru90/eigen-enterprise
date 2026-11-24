@@ -19,6 +19,7 @@ import {
 } from '../contracts/fixtures/module-hub-test-key'
 import { HUB_ERROR_STATUS, HubError } from '../modules/contribute/hub/errors'
 import { memoryHubStore } from '../modules/contribute/hub/memory-store'
+import { authenticate } from '../modules/contribute/hub/service'
 import {
   HUB_HEADERS,
   HUB_PATHS,
@@ -28,6 +29,7 @@ import {
 } from '../modules/contribute/share/contract'
 import { memoryBundleStorage } from '../modules/module-hub/bundles'
 import { lockCatalog } from '../modules/module-hub/checks'
+import { MODULE_HUB_ERROR_STATUS, ModuleHubError } from '../modules/module-hub/errors'
 import { memoryModuleHubStore } from '../modules/module-hub/memory-store'
 import {
   fetchModuleBundle,
@@ -84,7 +86,8 @@ export function createMockHub(now: () => number = Date.now, opts: { origin?: str
   const bundles = memoryBundleStorage()
   const summaryQueue: string[] = []
   const moduleDeps: ModuleHubDeps = {
-    hub: { store: hubStore, now },
+    authenticate: (req) => authenticate({ store: hubStore, now }, req),
+    now,
     store: moduleStore,
     bundles,
     signingKey: () => TEST_ONLY_MODULE_HUB_PRIVATE_KEY_PKCS8,
@@ -194,8 +197,9 @@ export function createMockHub(now: () => number = Date.now, opts: { origin?: str
         out = { status: 404, answer: { error: `mock hub has no route for ${method} ${path}` } }
       }
     } catch (err) {
-      if (!(err instanceof HubError)) throw err
-      out = { status: HUB_ERROR_STATUS[err.code], answer: { error: err.message, code: err.code } }
+      if (err instanceof HubError) out = { status: HUB_ERROR_STATUS[err.code], answer: { error: err.message, code: err.code } }
+      else if (err instanceof ModuleHubError) out = { status: MODULE_HUB_ERROR_STATUS[err.code], answer: { error: err.message, code: err.code } }
+      else throw err
     }
     const installId = h.get(HUB_HEADERS.install)
     requests.push({

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { MODULE_HUB_PATHS } from '$lib/module-hub/contract'
 import { TEST_ONLY_MODULE_HUB_PUBLIC_KEY_SPKI } from '../contracts/fixtures/module-hub-test-key'
 import { verifyReceipt } from '../contracts/module-receipt'
 import { HUB_PATHS, signHubRequest } from '../modules/contribute/share/contract'
 import { generateInstallKey } from '../modules/contribute/share/identity'
-import { MODULE_HUB_PATHS } from '../modules/module-hub/contract'
 import { bundleOf, publishBody } from '../modules/module-hub/test-fixtures'
 import { createMockHub } from './mock-hub-core'
 

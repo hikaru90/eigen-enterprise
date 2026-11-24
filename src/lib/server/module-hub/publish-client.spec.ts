@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CORE_API_VERSION } from '../../../contracts/core-api-version'
-import { TEST_ONLY_MODULE_HUB_PUBLIC_KEY_SPKI } from '../../../contracts/fixtures/module-hub-test-key'
-import { verifyReceipt } from '../../../contracts/module-receipt'
-import { createMockHub, isModulePath } from '../../../scripts/mock-hub-core'
-import { generateInstallKey } from '../../contribute/share/identity'
-import { bundleOf, COMMIT_A, helloFiles, withFile } from '../../module-hub/test-fixtures'
-import { createHubPublishPort, type ModuleHubTransport } from './client'
-import { HUB_NOT_CONFIGURED_SENTENCE, HUB_UNAVAILABLE_SENTENCE, PublishPortError } from './port'
+import { CORE_API_VERSION } from '../../../../contracts/core-api-version'
+import { TEST_ONLY_MODULE_HUB_PUBLIC_KEY_SPKI } from '../../../../contracts/fixtures/module-hub-test-key'
+import { verifyReceipt } from '../../../../contracts/module-receipt'
+import { createHubPublishPort, type ModuleHubTransport } from '../../../../modules/company-modules/publish/client'
+import { HUB_NOT_CONFIGURED_SENTENCE, HUB_UNAVAILABLE_SENTENCE, PublishPortError } from '../../../../modules/company-modules/publish/port'
+import { generateInstallKey } from '../../../../modules/contribute/share/identity'
+import { bundleOf, COMMIT_A, helloFiles, withFile } from '../../../../modules/module-hub/test-fixtures'
+import { createMockHub, isModulePath } from '../../../../scripts/mock-hub-core'
+import { installSigner } from './publish-port'
 
 const NOW = Date.parse('2026-11-24T12:00:00Z')
 const PLANTED = ['sk', 'Qa1Ws2Ed3Rf4Tg5Yh6Uj7Ik8'].join('-')
@@ -29,7 +30,7 @@ function setup(opts: { hubUrl?: string | undefined; transport?: ModuleHubTranspo
   const key = generateInstallKey()
   const port = createHubPublishPort({
     hubUrl: () => ('hubUrl' in opts ? opts.hubUrl : 'http://127.0.0.1:5198'),
-    identity: async () => key,
+    identity: async () => installSigner(key),
     transport: () => opts.transport ?? mockTransport(hub),
     appVersion: '0.6.0',
     coreApi: CORE_API_VERSION,

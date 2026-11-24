@@ -1,4 +1,3 @@
-import type { HubDeps, HubReply, HubRequest } from '../contribute/hub/service'
 import type { BundleStorage } from './bundles'
 import type { HubModuleRow, HubModuleVersion, ModuleHubStore } from './store'
 import type { HubFileContent, HubModuleDetail, HubModuleListItem, HubVersionDetail, HubVersionListItem } from './types'
@@ -6,9 +5,6 @@ import { z } from 'zod'
 import { BUNDLE_LIMITS, bundleFileText, readBundle, type BundleEntry } from '../../contracts/module-bundle'
 import { canonicalManifestJson, manifestSha256 } from '../../contracts/module-manifest'
 import { signReceipt, type ModuleReceiptV1 } from '../../contracts/module-receipt'
-import { HubError } from '../contribute/hub/errors'
-import { authenticate } from '../contribute/hub/service'
-import { checkPublish, LICENSE, type HubCatalog } from './checks'
 import {
   bundleShaSchema,
   hubModulePublishV1,
@@ -17,12 +13,15 @@ import {
   type HubProblem,
   type HubRefusalAnswer,
   type HubRunAnswer,
-} from './contract'
+} from '../../src/lib/module-hub/contract'
+import { checkPublish, LICENSE, type HubCatalog } from './checks'
+import { ModuleHubError } from './errors'
 
 /**
  * The module hub (plan/phase-upgrades-u2.md §6–§7), on the central box. Every
  * request is signed like a contribution and passes the contribute hub's own
- * authentication first — unknown install / bad or stale signature → 401,
+ * authentication first (injected as `authenticate`; the composition in
+ * src/lib/server/module-hub wires it, so no module imports another) — unknown install / bad or stale signature → 401,
  * revoked → 403, replay → 401, over the hourly limit → 429 — before any byte
  * of the body is read. Then:
  *
@@ -34,9 +33,18 @@ import {
  *   run      200 which installs run the module.
  */
 
+/** A request as the route hands it over: the raw body, read once. */
+export type ModuleHubRequest = { method: string; path: string; headers: Headers; body: string }
+export type ModuleHubReply = { status: number; body: Record<string, unknown> }
+
 export type ModuleHubDeps = {
-  /** The contribute hub's installs, replay guard and rate limit (shared). */
-  hub: HubDeps
+  /**
+   * The contribute hub's authentication of a signed request (installs,
+   * signature, revoked, replay guard, rate limit); throws its own errors.
+   */
+  authenticate: (req: ModuleHubRequest) => Promise<{ installId: string }>
+  /** Epoch ms (injected so specs move the clock). */
+  now: () => number
   store: ModuleHubStore
   bundles: BundleStorage
   /** The hub's Ed25519 receipt key, base64 DER PKCS#8 (`MODULE_HUB_SIGNING_KEY`); throws when unset. */
@@ -54,7 +62,7 @@ function parseJson(body: string): unknown {
   try {
     return JSON.parse(body)
   } catch {
-    throw new HubError('invalid', 'expected a JSON body')
+    throw new ModuleHubError('invalid', 'expected a JSON body')
   }
 }
 
@@ -62,12 +70,12 @@ function strict<T>(schema: z.ZodType<T>, body: string): T {
   const parsed = schema.safeParse(parseJson(body))
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
-    throw new HubError('invalid', `invalid body: ${issue?.path.join('.') || '(root)'}: ${issue?.message ?? 'does not match'}`)
+    throw new ModuleHubError('invalid', `invalid body: ${issue?.path.join('.') || '(root)'}: ${issue?.message ?? 'does not match'}`)
   }
   return parsed.data
 }
 
-function refusal(status: 409 | 413 | 422, problems: HubProblem[]): HubReply {
+function refusal(status: 409 | 413 | 422, problems: HubProblem[]): ModuleHubReply {
   const code: HubRefusalAnswer['code'] = status === 409 ? 'conflict' : status === 413 ? 'too_large' : 'refused'
   const error =
     status === 422
@@ -80,7 +88,7 @@ function refusal(status: 409 | 413 | 422, problems: HubProblem[]): HubReply {
 const short = (sha: string) => sha.slice(0, 12)
 
 /** 200 with the stored receipt, or 409 when these bytes were published as another module or commit. */
-async function existingAnswer(deps: ModuleHubDeps, existing: HubModuleVersion, installId: string, moduleId: string, commit: string): Promise<HubReply> {
+async function existingAnswer(deps: ModuleHubDeps, existing: HubModuleVersion, installId: string, moduleId: string, commit: string): Promise<ModuleHubReply> {
   if (existing.installId !== installId || existing.moduleId !== moduleId || existing.commit !== commit) {
     return refusal(409, [{ check: 'bundle', message: `bundle ${short(existing.bundleSha256)} is already published as another module or commit` }])
   }
@@ -89,8 +97,8 @@ async function existingAnswer(deps: ModuleHubDeps, existing: HubModuleVersion, i
 }
 
 /** POST /api/hub/modules/publish. */
-export async function publishModule(deps: ModuleHubDeps, req: HubRequest): Promise<HubReply> {
-  const install = await authenticate(deps.hub, req)
+export async function publishModule(deps: ModuleHubDeps, req: ModuleHubRequest): Promise<ModuleHubReply> {
+  const install = await deps.authenticate(req)
   if (Buffer.byteLength(req.body) > MAX_PUBLISH_BODY_BYTES) {
     return refusal(413, [{ check: 'bundle', message: `the request is over ${MAX_PUBLISH_BODY_BYTES} bytes; a bundle is at most ${BUNDLE_LIMITS.packedBytes} bytes packed` }])
   }
@@ -115,7 +123,7 @@ export async function publishModule(deps: ModuleHubDeps, req: HubRequest): Promi
   const existing = await deps.store.getVersion(p.bundle_sha256)
   if (existing) return existingAnswer(deps, existing, install.installId, p.module_id, p.commit)
 
-  const at = new Date(deps.hub.now())
+  const at = new Date(deps.now())
   const receipt: ModuleReceiptV1 = signReceipt(
     {
       hub: deps.origin(),
@@ -167,29 +175,29 @@ export async function publishModule(deps: ModuleHubDeps, req: HubRequest): Promi
 }
 
 function shaParam(sha: string): string {
-  if (!bundleShaSchema.safeParse(sha).success) throw new HubError('invalid', 'the bundle sha256 in the path is not 64 lowercase hex')
+  if (!bundleShaSchema.safeParse(sha).success) throw new ModuleHubError('invalid', 'the bundle sha256 in the path is not 64 lowercase hex')
   return sha
 }
 
 /** GET /api/hub/modules/bundles/:sha256 — any registered install may fetch a published bundle (a restore re-fetches by sha). */
-export async function fetchModuleBundle(deps: ModuleHubDeps, req: HubRequest, sha256: string): Promise<HubBinaryReply> {
-  await authenticate(deps.hub, req)
-  if (req.body !== '') throw new HubError('invalid', 'a GET carries no body')
+export async function fetchModuleBundle(deps: ModuleHubDeps, req: ModuleHubRequest, sha256: string): Promise<HubBinaryReply> {
+  await deps.authenticate(req)
+  if (req.body !== '') throw new ModuleHubError('invalid', 'a GET carries no body')
   const sha = shaParam(sha256)
-  if (!(await deps.store.getVersion(sha))) throw new HubError('not_found', `no published bundle ${short(sha)} on the module hub`)
+  if (!(await deps.store.getVersion(sha))) throw new ModuleHubError('not_found', `no published bundle ${short(sha)} on the module hub`)
   const bytes = await deps.bundles.get(sha)
   if (!bytes) throw new Error(`module hub: bundle ${sha} is published but its file is missing from the bundle store`)
   return { status: 200, bytes, contentType: 'application/gzip' }
 }
 
 /** PUT /api/hub/modules/:module_id/run — the reporting install's run state of one release. */
-export async function reportModuleRun(deps: ModuleHubDeps, req: HubRequest, moduleId: string): Promise<HubReply> {
-  const install = await authenticate(deps.hub, req)
+export async function reportModuleRun(deps: ModuleHubDeps, req: ModuleHubRequest, moduleId: string): Promise<ModuleHubReply> {
+  const install = await deps.authenticate(req)
   const p = strict(hubModuleRunV1, req.body)
   const version = await deps.store.getVersion(p.bundle_sha256)
-  if (!version) throw new HubError('not_found', `no published bundle ${short(p.bundle_sha256)} on the module hub`)
-  if (version.moduleId !== moduleId) throw new HubError('invalid', `bundle ${short(p.bundle_sha256)} is module ${version.moduleId}, not ${moduleId}`)
-  await deps.store.reportRun({ installId: install.installId, moduleId, bundleSha256: p.bundle_sha256, state: p.state, reportedAt: new Date(deps.hub.now()) })
+  if (!version) throw new ModuleHubError('not_found', `no published bundle ${short(p.bundle_sha256)} on the module hub`)
+  if (version.moduleId !== moduleId) throw new ModuleHubError('invalid', `bundle ${short(p.bundle_sha256)} is module ${version.moduleId}, not ${moduleId}`)
+  await deps.store.reportRun({ installId: install.installId, moduleId, bundleSha256: p.bundle_sha256, state: p.state, reportedAt: new Date(deps.now()) })
   const runs = await deps.store.runs(version.installId, version.moduleId)
   const body: HubRunAnswer = {
     module_id: moduleId,
@@ -226,7 +234,7 @@ const cursorSchema = z.string().regex(/^\d{1,9}$/)
 
 /** Modules of installs that are not revoked, most recently published first; `cursor` is the next page's offset. */
 export async function listHubModules(deps: Pick<ModuleHubDeps, 'store'>, opts: { query?: string; cursor?: string }): Promise<{ modules: HubModuleListItem[]; cursor: string | null }> {
-  if (opts.cursor !== undefined && !cursorSchema.safeParse(opts.cursor).success) throw new HubError('invalid', 'cursor is not one this listing gave')
+  if (opts.cursor !== undefined && !cursorSchema.safeParse(opts.cursor).success) throw new ModuleHubError('invalid', 'cursor is not one this listing gave')
   const offset = opts.cursor ? Number(opts.cursor) : 0
   const rows = await deps.store.listModules({ query: opts.query, offset, limit: HUB_LIST_PAGE + 1 })
   const page = rows.slice(0, HUB_LIST_PAGE).map(listItem)
@@ -235,7 +243,7 @@ export async function listHubModules(deps: Pick<ModuleHubDeps, 'store'>, opts: {
 
 export async function getHubModule(deps: Pick<ModuleHubDeps, 'store'>, installId: string, moduleId: string): Promise<HubModuleDetail> {
   const m = await deps.store.getModule(installId, moduleId)
-  if (!m) throw new HubError('not_found', `no module ${moduleId} of install ${installId.slice(0, 8)} on the module hub`)
+  if (!m) throw new ModuleHubError('not_found', `no module ${moduleId} of install ${installId.slice(0, 8)} on the module hub`)
   const [versions, runs] = await Promise.all([deps.store.versions(installId, moduleId), deps.store.runs(installId, moduleId)])
   return {
     module: listItem(m),
@@ -246,7 +254,7 @@ export async function getHubModule(deps: Pick<ModuleHubDeps, 'store'>, installId
 
 async function version(deps: Pick<ModuleHubDeps, 'store'>, sha256: string): Promise<HubModuleVersion> {
   const v = await deps.store.getVersion(shaParam(sha256))
-  if (!v) throw new HubError('not_found', `no published bundle ${short(sha256)} on the module hub`)
+  if (!v) throw new ModuleHubError('not_found', `no published bundle ${short(sha256)} on the module hub`)
   return v
 }
 
@@ -289,7 +297,7 @@ export async function bundleEntries(deps: Pick<ModuleHubDeps, 'store' | 'bundles
 export async function hubVersionFile(deps: Pick<ModuleHubDeps, 'store' | 'bundles'>, sha256: string, path: string): Promise<HubFileContent> {
   const { entries } = await bundleEntries(deps, sha256)
   const e = entries.find((x) => x.type === 'file' && x.path === path)
-  if (!e || e.type !== 'file') throw new HubError('not_found', `no file ${path} in bundle ${short(sha256)}`)
+  if (!e || e.type !== 'file') throw new ModuleHubError('not_found', `no file ${path} in bundle ${short(sha256)}`)
   let text: string | null
   try {
     text = bundleFileText(entries, path)

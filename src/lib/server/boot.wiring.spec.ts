@@ -483,6 +483,13 @@ const MEMBER_LOSES_VIA_BRAIN = [
   'contribute_hub.get',
   'contribute_hub.list',
   'contribute_hub.revoke_install',
+  // U2 §7: the module hub's reads and summarise are the hub box's admins' (and agent's).
+  'module_hub.file',
+  'module_hub.get',
+  'module_hub.list',
+  'module_hub.summarize',
+  'module_hub.tree',
+  'module_hub.version',
   'demo.seed_company',
   'demo.status',
   'domains.list',

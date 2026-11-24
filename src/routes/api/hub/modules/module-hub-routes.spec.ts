@@ -1,19 +1,20 @@
 import { describe, expect, it } from 'vitest'
+import { MODULE_HUB_PATHS } from '$lib/module-hub/contract'
 import { routeOwner } from '$lib/plugins/routes'
+import { composedModuleHubFixture } from '$lib/server/module-hub/test-fixtures'
 import { TEST_ONLY_MODULE_HUB_PUBLIC_KEY_SPKI } from '../../../../../contracts/fixtures/module-hub-test-key'
 import { verifyReceipt } from '../../../../../contracts/module-receipt'
 import { revokeInstall } from '../../../../../modules/contribute/hub/service'
 import { testInstall, type TestInstall } from '../../../../../modules/contribute/hub/test-fixtures'
 import { signHubRequest } from '../../../../../modules/contribute/share/contract'
-import { MODULE_HUB_PATHS } from '../../../../../modules/module-hub/contract'
-import { bundleOf, moduleHubFixture, publishBody } from '../../../../../modules/module-hub/test-fixtures'
+import { bundleOf, publishBody } from '../../../../../modules/module-hub/test-fixtures'
 import * as runRoute from './[moduleId]/run/+server'
 import * as bundleRoute from './bundles/[sha256]/+server'
 import * as publishRoute from './publish/+server'
 
 /** The module hub's machine endpoints on one in-memory hub; no session anywhere. */
 function wire(active = true) {
-  const f = moduleHubFixture()
+  const f = composedModuleHubFixture()
   const runtime = { active: async () => active, deps: async () => f.deps }
   for (const r of [publishRoute, bundleRoute, runRoute]) r._deps.runtime = runtime
   return f
@@ -62,10 +63,12 @@ describe('/api/hub/modules/*', () => {
     const req = () => signedReq(a, 'POST', MODULE_HUB_PATHS.publish, publishBody(b), f.clock.now)
     expect((await publishRoute.POST(ev(req()))).status).toBe(201)
     expect((await publishRoute.POST(ev(req()))).status).toBe(401)
+    const stranger = testInstall()
+    expect((await publishRoute.POST(ev(signedReq(stranger, 'POST', MODULE_HUB_PATHS.publish, publishBody(b), f.clock.now + 1)))).status).toBe(401)
     const bad = await publishRoute.POST(ev(signedReq(a, 'POST', MODULE_HUB_PATHS.publish, publishBody(b, { core_api: '9.0.0' }), f.clock.now + 1)))
     expect(bad.status).toBe(422)
     expect(await bad.json()).toMatchObject({ code: 'refused', problems: [{ check: 'core_api' }] })
-    await revokeInstall(f.deps.hub, a.installId)
+    await revokeInstall(f.hubDeps, a.installId)
     expect((await publishRoute.POST(ev(signedReq(a, 'POST', MODULE_HUB_PATHS.publish, publishBody(b), f.clock.now + 2)))).status).toBe(403)
   })
 

@@ -3,10 +3,8 @@ import { TEST_ONLY_MODULE_HUB_PUBLIC_KEY_SPKI } from '../../contracts/fixtures/m
 import { BUNDLE_LIMITS, readBundle } from '../../contracts/module-bundle'
 import { manifestSha256 } from '../../contracts/module-manifest'
 import { verifyReceipt } from '../../contracts/module-receipt'
-import { revokeInstall } from '../contribute/hub/service'
-import { testInstall } from '../contribute/hub/test-fixtures'
+import { MODULE_HUB_PATHS, type HubProblem } from '../../src/lib/module-hub/contract'
 import { lockCatalog } from './checks'
-import { MODULE_HUB_PATHS, type HubProblem } from './contract'
 import { fetchModuleBundle, getHubModule, getHubVersion, hubVersionFile, hubVersionTree, listHubModules, publishModule, reportModuleRun } from './service'
 import { bundleOf, COMMIT_A, COMMIT_B, helloFiles, helloYaml, moduleHubFixture, publishBody, renamedEntryBundle, withFile } from './test-fixtures'
 
@@ -18,7 +16,7 @@ const problemsOf = (body: Record<string, unknown>) => body.problems as HubProble
 describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
   it('publishing hello gives a 201 receipt that verifyReceipt accepts; publishing it again gives 200 with the same receipt', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     const b = bundleOf()
     const first = await publishModule(f.deps, f.publishReq(i, publishBody(b)))
     expect(first.status).toBe(201)
@@ -45,7 +43,7 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
 
   it('409 for the same commit with another bundle, naming the commit check', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     expect((await publishModule(f.deps, f.publishReq(i, publishBody(bundleOf())))).status).toBe(201)
     const changed = bundleOf(withFile(helloFiles(), 'README.md', 'Hello, again.\n'))
     const out = await publishModule(f.deps, f.publishReq(i, publishBody(changed)))
@@ -57,7 +55,7 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
 
   it('413 for a bundle over the packed limit, naming the bundle check', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     const b = bundleOf()
     const huge = Buffer.alloc(BUNDLE_LIMITS.packedBytes + 1, 1).toString('base64')
     const out = await publishModule(f.deps, f.publishReq(i, publishBody(b, { bundle_b64: huge })))
@@ -67,7 +65,7 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
 
   it('422 reports a planted secret by path:line and never its value', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     const index = new TextDecoder().decode(helloFiles().find((x) => x.path === 'index.mjs')!.content)
     const planted = bundleOf(withFile(helloFiles(), 'index.mjs', `${index}\nconst key = "${PLANTED}"\n`))
     const out = await publishModule(f.deps, f.publishReq(i, publishBody(planted)))
@@ -80,7 +78,7 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
 
   it('422 refuses a wrong licence, a use outside the lock and a manifest that differs — every problem collected', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     const yaml = helloYaml().replace('license: Apache-2.0', 'license: MIT').replace('tools: [members.list]', 'tools: [members.list, payroll.pay_everyone]')
     const b = bundleOf(withFile(helloFiles(), 'module.yaml', yaml.replace('license: MIT', 'license: Apache-2.0')))
     // The manifest sent differs from the bundle's module.yaml (another description), has the wrong licence and an unlocked use.
@@ -99,7 +97,7 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
 
   it('422 names a missing LICENSE, a sha that is not the bundle and an unsatisfiable core-api', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     const noLicense = renamedEntryBundle('LICENSE', 'LICENSF')
     const out = await publishModule(f.deps, f.publishReq(i, publishBody(noLicense, { bundle_sha256: 'f'.repeat(64), core_api: '2.0.0' })))
     expect(out.status).toBe(422)
@@ -109,26 +107,22 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
 
   it('lists deprecated uses on the receipt instead of refusing them', async () => {
     const f = moduleHubFixture({ catalog: { ...lockCatalog(), deprecated: new Set(['tool:members.list']) } })
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     const out = await publishModule(f.deps, f.publishReq(i, publishBody(bundleOf())))
     expect(out.status).toBe(201)
     expect((out.body.receipt as { deprecatedUses: string[] }).deprecatedUses).toEqual(['tool:members.list'])
   })
 
-  it('a replay gives 401, a revoked install 403, an unknown one 401', async () => {
+  it('authenticates before it reads the body: a refused caller stores nothing (replay, revoked: the composed hub spec)', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
-    const req = f.publishReq(i, publishBody(bundleOf()))
-    expect((await publishModule(f.deps, req)).status).toBe(201)
-    await expect(publishModule(f.deps, req)).rejects.toMatchObject({ code: 'unauthorized', message: expect.stringMatching(/replay/) })
-    await expect(publishModule(f.deps, f.publishReq(testInstall(), publishBody(bundleOf())))).rejects.toMatchObject({ code: 'unauthorized' })
-    await revokeInstall(f.deps.hub, i.installId)
-    await expect(publishModule(f.deps, f.publishReq(i, publishBody(bundleOf())))).rejects.toMatchObject({ code: 'forbidden' })
+    const stranger = { installId: 'not-registered' }
+    await expect(publishModule(f.deps, f.publishReq(stranger, '{not json'))).rejects.toThrow(/unknown install/)
+    expect(f.moduleStore.versionsBySha.size).toBe(0)
   })
 
   it('a body off the strict schema is a 400', async () => {
     const f = moduleHubFixture()
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     await expect(publishModule(f.deps, f.publishReq(i, publishBody(bundleOf(), { extra: true })))).rejects.toMatchObject({ code: 'invalid' })
   })
 
@@ -137,7 +131,7 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
     f.deps.signingKey = () => {
       throw new Error('the module hub signing key is not set')
     }
-    const i = await f.registered(testInstall())
+    const i = await f.registered()
     await expect(publishModule(f.deps, f.publishReq(i, publishBody(bundleOf())))).rejects.toThrow(/signing key/)
     expect(f.moduleStore.versionsBySha.size).toBe(0)
   })
@@ -146,8 +140,8 @@ describe('publish (plan/phase-upgrades-u2.md §6.2)', () => {
 describe('bundles and runs', () => {
   it('any registered install fetches a published bundle by sha; an unknown sha is 404', async () => {
     const f = moduleHubFixture()
-    const a = await f.registered(testInstall())
-    const other = await f.registered(testInstall())
+    const a = await f.registered()
+    const other = await f.registered()
     const b = bundleOf()
     await publishModule(f.deps, f.publishReq(a, publishBody(b)))
     const got = await fetchModuleBundle(f.deps, f.req(other, 'GET', MODULE_HUB_PATHS.bundle(b.sha256), ''), b.sha256)
@@ -157,7 +151,7 @@ describe('bundles and runs', () => {
 
   it('a run report answers which installs run the module', async () => {
     const f = moduleHubFixture()
-    const a = await f.registered(testInstall())
+    const a = await f.registered()
     const b = bundleOf()
     await publishModule(f.deps, f.publishReq(a, publishBody(b)))
     const body = JSON.stringify({ v: 1, bundle_sha256: b.sha256, state: 'running' })
@@ -171,7 +165,7 @@ describe('bundles and runs', () => {
 describe("the owner's view (§7)", () => {
   it('lists the module and shows its versions, the installs running it, its code and its summary', async () => {
     const f = moduleHubFixture()
-    const a = await f.registered(testInstall())
+    const a = await f.registered()
     const v1 = bundleOf()
     const v2 = bundleOf(withFile(helloFiles(), 'README.md', 'Hello.\n'))
     await publishModule(f.deps, f.publishReq(a, publishBody(v1)))
@@ -205,10 +199,10 @@ describe("the owner's view (§7)", () => {
 
   it('revoking an install hides its modules from the listing and keeps the code', async () => {
     const f = moduleHubFixture()
-    const a = await f.registered(testInstall())
+    const a = await f.registered()
     const b = bundleOf()
     await publishModule(f.deps, f.publishReq(a, publishBody(b)))
-    await revokeInstall(f.deps.hub, a.installId)
+    f.revoke(a.installId)
     expect((await listHubModules(f.deps, {})).modules).toEqual([])
     expect((await getHubVersion(f.deps, b.sha256)).bundleSha256).toBe(b.sha256)
     expect(await f.bundles.get(b.sha256)).not.toBeNull()

@@ -1,4 +1,5 @@
-import type { ModuleHubDeps } from './service'
+import type { ModuleHubDeps, ModuleHubRequest } from './service'
+import { randomUUID } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
@@ -9,11 +10,9 @@ import {
 } from '../../contracts/fixtures/module-hub-test-key'
 import { createBundle, sha256Hex, type BundleFile } from '../../contracts/module-bundle'
 import { parseModuleManifestYaml } from '../../contracts/module-manifest'
-import { register } from '../contribute/hub/service'
-import { fixture as contributeHubFixture, registerBody, signed, type TestInstall } from '../contribute/hub/test-fixtures'
+import { MODULE_HUB_PATHS, type HubModulePublishV1 } from '../../src/lib/module-hub/contract'
 import { memoryBundleStorage } from './bundles'
 import { lockCatalog, type HubCatalog } from './checks'
-import { MODULE_HUB_PATHS, type HubModulePublishV1 } from './contract'
 import { memoryModuleHubStore } from './memory-store'
 
 /** The contract's hello fixture module (contracts/fixtures/modules/hello). */
@@ -82,14 +81,33 @@ export function publishBody(b: { bytes: Uint8Array; sha256: string; manifest: Re
   })
 }
 
-/** An in-memory module hub with the TEST-ONLY receipt key, a clock the spec moves and the contribute hub's installs. */
+/** A caller in the module's own specs: an install id the stub authentication trusts. */
+export type TestCaller = { installId: string }
+
+/** The header the stub authentication reads (the real one is the contribute hub's signature check). */
+export const TEST_CALLER_HEADER = 'x-test-install'
+
+export const T0 = Date.parse('2026-11-24T10:00:00Z')
+
+/**
+ * An in-memory module hub with the TEST-ONLY receipt key and a clock the spec
+ * moves. Authentication is a stub here (the module imports no other); the
+ * composed hub with the contribute hub's real signature check, replay guard
+ * and revocation is src/lib/server/module-hub/test-fixtures.ts.
+ */
 export function moduleHubFixture(opts: { catalog?: HubCatalog } = {}) {
-  const base = contributeHubFixture()
-  const store = memoryModuleHubStore(base.store.installs)
+  const installs = new Map<string, { revokedAt: Date | null }>()
+  const clock = { now: T0 }
+  const store = memoryModuleHubStore(installs)
   const bundles = memoryBundleStorage()
   const summaries: string[] = []
   const deps: ModuleHubDeps = {
-    hub: base.deps,
+    authenticate: async (req) => {
+      const installId = req.headers.get(TEST_CALLER_HEADER)
+      if (!installId || !installs.has(installId)) throw new Error('stub authentication: unknown install')
+      return { installId }
+    },
+    now: () => clock.now,
     store,
     bundles,
     signingKey: () => TEST_ONLY_MODULE_HUB_PRIVATE_KEY_PKCS8,
@@ -99,15 +117,16 @@ export function moduleHubFixture(opts: { catalog?: HubCatalog } = {}) {
       summaries.push(sha)
     },
   }
-  /** A signed request at the current clock; each call is a new signature (+1 ms). */
-  const req = (i: TestInstall, method: string, path: string, body: string) => {
-    base.clock.now += 1
-    return signed(i, method, path, body, base.clock.now)
+  const req = (i: TestCaller, method: string, path: string, body: string): ModuleHubRequest => {
+    clock.now += 1
+    return { method, path, body, headers: new Headers({ [TEST_CALLER_HEADER]: i.installId, 'content-type': 'application/json' }) }
   }
-  const publishReq = (i: TestInstall, body: string) => req(i, 'POST', MODULE_HUB_PATHS.publish, body)
-  const registered = async (i: TestInstall) => {
-    await register(base.deps, registerBody(i))
-    return i
+  const publishReq = (i: TestCaller, body: string) => req(i, 'POST', MODULE_HUB_PATHS.publish, body)
+  const registered = async (): Promise<TestCaller> => {
+    const installId = randomUUID()
+    installs.set(installId, { revokedAt: null })
+    return { installId }
   }
-  return { ...base, moduleStore: store, bundles, summaries, deps, req, publishReq, registered }
+  const revoke = (installId: string) => installs.set(installId, { revokedAt: new Date(clock.now) })
+  return { installs, clock, moduleStore: store, bundles, summaries, deps, req, publishReq, registered, revoke }
 }

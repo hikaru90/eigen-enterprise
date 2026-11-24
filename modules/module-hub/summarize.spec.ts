@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { readBundle } from '../../contracts/module-bundle'
-import { testInstall } from '../contribute/hub/test-fixtures'
 import { publishModule } from './service'
 import { buildSummaryMessages, summarizeVersion, summarySource, SummaryFailedError, type SummaryChat } from './summarize'
 import { bundleOf, helloFiles, moduleHubFixture, publishBody, withFile } from './test-fixtures'
@@ -10,7 +9,7 @@ const GOOD = JSON.stringify({ does: 'Greets a person by name.', touches: 'Reads 
 
 async function published(files = helloFiles()) {
   const f = moduleHubFixture()
-  const i = await f.registered(testInstall())
+  const i = await f.registered()
   const b = bundleOf(files)
   await publishModule(f.deps, f.publishReq(i, publishBody(b)))
   return { f, b }

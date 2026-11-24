@@ -1,4 +1,4 @@
-import type { HubModulePublishV1, HubProblem } from './contract'
+import type { HubModulePublishV1, HubProblem } from '../../src/lib/module-hub/contract'
 import { CORE_SCHEMA, load, YAMLException } from 'js-yaml'
 import { CORE_API_VERSION } from '../../contracts/core-api-version'
 import lock from '../../contracts/core-api.lock.json'

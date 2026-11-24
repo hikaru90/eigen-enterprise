@@ -1,8 +1,6 @@
-import type { InstallKey } from '../../contribute/share/identity'
 import { sha256Hex } from '../../../contracts/module-bundle'
 import { manifestSha256 } from '../../../contracts/module-manifest'
-import { HUB_PATHS, hubRegisterV1, signHubRequest } from '../../contribute/share/contract'
-import { hubPublishAnswer, hubRefusalAnswer, hubRunAnswer, hubModulePublishV1, hubModuleRunV1, MODULE_HUB_PATHS } from '../../module-hub/contract'
+import { hubPublishAnswer, hubRefusalAnswer, hubRunAnswer, hubModulePublishV1, hubModuleRunV1, MODULE_HUB_PATHS } from '../../../src/lib/module-hub/contract'
 import {
   HUB_NOT_CONFIGURED_SENTENCE,
   HUB_UNAVAILABLE_SENTENCE,
@@ -13,7 +11,9 @@ import {
 /**
  * The box's PublishPort over the signed module-hub API (plan/phase-upgrades-u2.md
  * §6.2). The install identity is the Contribute install key (one random id
- * and Ed25519 key per install, sealed on the server). A 401 means the hub does
+ * and Ed25519 key per install, sealed on the server), handed in as a signer
+ * by the composition (src/lib/server/module-hub/publish-port.ts), so this
+ * module imports no other. A 401 means the hub does
  * not know this install (yet): it registers once through /api/hub/register
  * and sends the request again, newly signed. Any other failure is answered at
  * once — no retry loop (the caller decides):
@@ -27,11 +27,20 @@ export type HubAnswer = { status: number; body: Uint8Array }
 /** Throws on a network failure (no answer). */
 export type ModuleHubTransport = (req: HubCall) => Promise<HubAnswer>
 
+/** The install's identity towards the hubs: it signs requests and makes its register request. */
+export type HubSigner = {
+  installId: string
+  /** The signature headers of one request (v1\nMETHOD\npath\nts\nsha256(body)). */
+  sign: (input: { method: string; path: string; body: string; now: number }) => Record<string, string>
+  /** The unsigned register body (the install id, its public key and the app version). */
+  registerBody: (appVersion: string) => string
+}
+
 export type HubPublishClientDeps = {
   /** MODULE_HUB_URL: no default — unset is "module hub not configured". */
   hubUrl: () => string | undefined
-  /** The install's key (made and stored on first use). */
-  identity: () => Promise<InstallKey>
+  /** The install's signer (its key made and stored on first use). */
+  identity: () => Promise<HubSigner>
   transport: (origin: string) => ModuleHubTransport
   appVersion: string
   /** The box's CORE_API_VERSION. */
@@ -107,9 +116,8 @@ export function createHubPublishPort(deps: HubPublishClientDeps): PublishPort {
     }
   }
 
-  async function register(hub: ModuleHubTransport, key: InstallKey): Promise<void> {
-    const body = JSON.stringify(hubRegisterV1.parse({ v: 1, install_id: key.installId, public_key: key.publicKey, app_version: deps.appVersion }))
-    const res = await send(hub, { method: 'POST', path: HUB_PATHS.register, body, headers: {} })
+  async function register(hub: ModuleHubTransport, key: HubSigner): Promise<void> {
+    const res = await send(hub, { method: 'POST', path: MODULE_HUB_PATHS.register, body: key.registerBody(deps.appVersion), headers: {} })
     if (res.status === 200 || res.status === 201) return
     if (res.status === 409) throw new PublishPortError('hub_revoked', `The module hub knows this install id under another key, so it refuses this install. ${hubSaid(res)}`, { status: 409 })
     throw failure(res)
@@ -123,7 +131,7 @@ export function createHubPublishPort(deps: HubPublishClientDeps): PublishPort {
       method,
       path,
       body,
-      headers: signHubRequest({ method, path, body, installId: key.installId, privateKey: key.privateKey, now: deps.now().getTime() }),
+      headers: key.sign({ method, path, body, now: deps.now().getTime() }),
     })
     const first = await send(hub, signed())
     if (first.status !== 401) return first

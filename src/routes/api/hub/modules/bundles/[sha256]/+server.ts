@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types'
-import { liveModuleHubRuntime, moduleHubRoute } from '../../../../../../../modules/module-hub/http'
+import { liveModuleHubRuntime, moduleHubRoute } from '$lib/server/module-hub/http'
 import { fetchModuleBundle } from '../../../../../../../modules/module-hub/service'
 
 /**

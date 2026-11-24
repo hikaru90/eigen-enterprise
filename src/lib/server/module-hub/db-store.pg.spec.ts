@@ -2,17 +2,17 @@ import { randomUUID } from 'node:crypto'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { MODULE_HUB_PATHS } from '$lib/module-hub/contract'
 import type { AppDatabase } from '$lib/server/db/context'
-import { TEST_ONLY_MODULE_HUB_ORIGIN, TEST_ONLY_MODULE_HUB_PRIVATE_KEY_PKCS8 } from '../../contracts/fixtures/module-hub-test-key'
-import { dbHubStore } from '../contribute/hub/db-store'
-import { register, revokeInstall } from '../contribute/hub/service'
-import { registerBody, signed, testInstall } from '../contribute/hub/test-fixtures'
-import { memoryBundleStorage } from './bundles'
-import { lockCatalog } from './checks'
-import { MODULE_HUB_PATHS } from './contract'
-import { dbModuleHubStore } from './db-store'
-import { getHubModule, listHubModules, publishModule, reportModuleRun, type ModuleHubDeps } from './service'
-import { bundleOf, COMMIT_B, helloFiles, publishBody, withFile } from './test-fixtures'
+import { TEST_ONLY_MODULE_HUB_ORIGIN, TEST_ONLY_MODULE_HUB_PRIVATE_KEY_PKCS8 } from '../../../../contracts/fixtures/module-hub-test-key'
+import { dbHubStore } from '../../../../modules/contribute/hub/db-store'
+import { authenticate, register, revokeInstall, type HubDeps } from '../../../../modules/contribute/hub/service'
+import { registerBody, signed, testInstall } from '../../../../modules/contribute/hub/test-fixtures'
+import { memoryBundleStorage } from '../../../../modules/module-hub/bundles'
+import { lockCatalog } from '../../../../modules/module-hub/checks'
+import { dbModuleHubStore } from '../../../../modules/module-hub/db-store'
+import { getHubModule, listHubModules, publishModule, reportModuleRun, type ModuleHubDeps } from '../../../../modules/module-hub/service'
+import { bundleOf, COMMIT_B, helloFiles, publishBody, withFile } from '../../../../modules/module-hub/test-fixtures'
 
 /**
  * The module hub over real Postgres (the test DB, :5433), with the contribute
@@ -44,9 +44,12 @@ describe.skipIf(!url)('module hub store (Postgres)', () => {
     await sql.end()
   })
 
-  function deps(): ModuleHubDeps {
+  function deps(): ModuleHubDeps & { hub: HubDeps } {
+    const hub: HubDeps = { store: dbHubStore(db), now: () => clock }
     return {
-      hub: { store: dbHubStore(db), now: () => clock },
+      hub,
+      authenticate: (req) => authenticate(hub, req),
+      now: () => clock,
       store: dbModuleHubStore(db),
       bundles: memoryBundleStorage(),
       signingKey: () => TEST_ONLY_MODULE_HUB_PRIVATE_KEY_PKCS8,
@@ -56,7 +59,7 @@ describe.skipIf(!url)('module hub store (Postgres)', () => {
     }
   }
 
-  async function registeredInstall(d: ModuleHubDeps) {
+  async function registeredInstall(d: { hub: HubDeps }) {
     const i = testInstall()
     installs.push(i.installId)
     await register(d.hub, registerBody(i))

@@ -1,12 +1,13 @@
 import { z } from 'zod'
-import { BUNDLE_LIMITS } from '../../contracts/module-bundle'
-import { moduleIdSchema } from '../../contracts/module-manifest'
-import { moduleReceiptSchema } from '../../contracts/module-receipt'
-import { moduleRunStateSchema } from '../../contracts/module-workload'
+import { BUNDLE_LIMITS } from '../../../contracts/module-bundle'
+import { moduleIdSchema } from '../../../contracts/module-manifest'
+import { moduleReceiptSchema } from '../../../contracts/module-receipt'
+import { moduleRunStateSchema } from '../../../contracts/module-workload'
 
 /**
  * The wire contract between a box and the module hub (plan/phase-upgrades-u2.md
- * §6.2). Requests are signed exactly like contributions
+ * §6.2), in $lib so the hub module, the box's publish client and the mock hub
+ * share it without importing each other. Requests are signed exactly like contributions
  * (modules/contribute/share/contract.ts) and an install registers through the
  * same /api/hub/register. Both ends parse with these strict schemas. Pure: no
  * server imports, so the box client, the hub and the mock hub share it.
@@ -20,6 +21,8 @@ const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
 export const bundleShaSchema = z.string().regex(HEX64, '64 lowercase hex')
 
 export const MODULE_HUB_PATHS = {
+  /** The contribute hub's register, reused (one install identity for both hubs). */
+  register: '/api/hub/register',
   publish: '/api/hub/modules/publish',
   bundle: (sha256: string) => `/api/hub/modules/bundles/${sha256}`,
   run: (moduleId: string) => `/api/hub/modules/${moduleId}/run`,

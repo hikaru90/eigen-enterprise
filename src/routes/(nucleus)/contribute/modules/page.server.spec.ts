@@ -13,7 +13,6 @@ vi.mock('$lib/server/auth/user-role', () => ({
 }))
 vi.mock('$lib/server/boot', () => ({ appKernel: async () => ({ registry: holder.registry }) }))
 
-import { testInstall } from '../../../../../modules/contribute/hub/test-fixtures'
 import { publishModule } from '../../../../../modules/module-hub/service'
 import { bundleOf, moduleHubFixture, publishBody } from '../../../../../modules/module-hub/test-fixtures'
 import { createModuleHubTools } from '../../../../../modules/module-hub/tools'
@@ -21,7 +20,7 @@ import { actions, load } from './+page.server'
 
 async function wired(active = true) {
   const f = moduleHubFixture()
-  const a = await f.registered(testInstall())
+  const a = await f.registered()
   const b = bundleOf()
   await publishModule(f.deps, f.publishReq(a, publishBody(b)))
   const activations = new InMemoryActivationStore()

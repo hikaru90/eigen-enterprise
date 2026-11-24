@@ -57,7 +57,7 @@
                 <span class="font-medium">{m.name}</span>
                 <span class="text-xs text-foreground/60">{m.moduleId}@{m.latestVersion}</span>
                 <span class="block truncate text-xs text-foreground/60">{m.description}</span>
-                <span class="text-xs text-foreground/50 tabular-nums">
+                <span class="text-xs text-foreground/60 tabular-nums">
                   install {m.installId.slice(0, 8)} · {m.versions} version{m.versions === 1 ? '' : 's'} · {day(m.lastPublishedAt)}
                 </span>
               </a>
@@ -150,7 +150,7 @@
             {#each data.files as f (f.path)}
               <li class="truncate">
                 <a href={fileHref(data.version.bundleSha256, f.path)} class="font-mono text-xs hover:underline">{f.path}</a>
-                <span class="text-xs text-foreground/50">{kb(f.size)}</span>
+                <span class="text-xs text-foreground/60">{kb(f.size)}</span>
               </li>
             {/each}
           </ul>

@@ -12,13 +12,17 @@ import { summarizeVersion } from './summarize'
 
 /**
  * Live wiring of the module hub (plan/phase-upgrades-u2.md §7), on the central
- * box: the contribute hub's installs, replay guard and rate limit; the DB
- * store over the app pool; bundles under $EE_STATE_DIR/module-hub/bundles;
+ * box: the DB store over the app pool; bundles under $EE_STATE_DIR/module-hub/bundles;
  * receipts signed with the MODULE_HUB_SIGNING_KEY ee secret and naming this
  * box's ORIGIN; summaries as a job-queue job through the gateway, on the
  * company's AI provider, attributed to the owner. Everything resolves at use
- * and fails loud when unset — no defaults.
+ * and fails loud when unset — no defaults. The request authentication (the
+ * contribute hub's) is composed in src/lib/server/module-hub/http.ts: no
+ * module imports another.
  */
+
+/** Everything of the hub's deps but the request authentication. */
+export type ModuleHubParts = Omit<ModuleHubDeps, 'authenticate'>
 
 function signingKey(): string {
   const key = env.MODULE_HUB_SIGNING_KEY?.trim()
@@ -46,14 +50,13 @@ async function enqueueSummary(bundleSha256: string): Promise<void> {
   })
 }
 
-let depsPromise: Promise<ModuleHubDeps> | null = null
+let depsPromise: Promise<ModuleHubParts> | null = null
 
-export function moduleHubDeps(): Promise<ModuleHubDeps> {
-  depsPromise ??= (async (): Promise<ModuleHubDeps> => {
+export function moduleHubDeps(): Promise<ModuleHubParts> {
+  depsPromise ??= (async (): Promise<ModuleHubParts> => {
     const { appSql, createScopedDrizzle } = await import('$lib/server/db')
-    const { contributeHubDeps } = await import('../contribute/hub/live')
     return {
-      hub: await contributeHubDeps(),
+      now: () => Date.now(),
       store: dbModuleHubStore(createScopedDrizzle(appSql)),
       bundles: fsBundleStorage(bundleDir(env.EE_STATE_DIR)),
       signingKey,

@@ -1,14 +1,17 @@
-import type { HubInstall } from '../contribute/hub/store'
 import type { HubModule, HubModuleRow, HubModuleRun, HubModuleVersion, ModuleHubStore } from './store'
 
 const key = (installId: string, moduleId: string) => `${installId}/${moduleId}`
 
+/** What the listing needs of an install: whether it is revoked (the contribute hub's install row). */
+export type ListedInstall = { revokedAt: Date | null }
+
 /**
  * In-memory ModuleHubStore (same semantics as the DB store). `installs` is the
- * contribute hub's install map (memoryHubStore().installs): the listing hides
- * the modules of revoked and unknown installs, like the DB store's join.
+ * registered installs by id (in the mock hub: the contribute hub's memory
+ * install map): the listing hides the modules of revoked and unknown installs,
+ * like the DB store's join.
  */
-export function memoryModuleHubStore(installs: Map<string, HubInstall>): ModuleHubStore & {
+export function memoryModuleHubStore(installs: ReadonlyMap<string, ListedInstall>): ModuleHubStore & {
   versionsBySha: Map<string, HubModuleVersion>
   modules: Map<string, HubModule>
   runRows: Map<string, HubModuleRun>

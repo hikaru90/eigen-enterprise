@@ -1,6 +1,6 @@
 import type { ModuleReceiptV1 } from '../../../contracts/module-receipt'
 import type { ModuleRunState } from '../../../contracts/module-workload'
-import type { HubProblem, HubRunAnswer } from '../../module-hub/contract'
+import type { HubProblem, HubRunAnswer } from '../../../src/lib/module-hub/contract'
 
 /**
  * The box's hands on the module hub (plan/phase-upgrades-u2.md §6, §8): what
