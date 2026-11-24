@@ -5,6 +5,7 @@ import { assertCapabilitiesInstalled } from './capabilities.ts'
 import { DeployRun, secretValues } from './deploys.ts'
 import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
 import { LIVEKIT_INTERNAL_PORT, LIVEKIT_WORKLOAD, linkedEnv, type LinkState } from './livekit.ts'
+import { isModuleWorkload, reconcileModules } from './modules.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import {
@@ -508,7 +509,8 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
   ctx.deployFailures = failures
 
   const redactions = () => secretValues(ctx.secrets.all())
-  for (const w of desired.workloads) {
+  // Module workloads (a `module` field) take their own path below (modules.ts).
+  for (const w of desired.workloads.filter((x) => !isModuleWorkload(x))) {
     let run: DeployRun | null = null
     const deploy: DeployHandle = () => (run ??= new DeployRun(sys, journal, w.name, redactions))
     // A release that already failed to unpack/build is not rebuilt until the workload's spec changes.
@@ -594,6 +596,9 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
     delete journal.workloads[name]
     emit(journal, sys, 'workload.removed', name, `${name} is no longer desired; stopped`)
   }
+
+  // ── Module path (plan/phase-upgrades-u2.md §5, modules.ts): receipt check, build, one slot, health gate.
+  errors.push(...(await reconcileModules({ sys, journal, secrets: ctx.secrets }, desired)))
 
   journal.appliedRev = desired.rev
   await saveJournal(sys, journal)

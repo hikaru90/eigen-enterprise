@@ -88,7 +88,7 @@ describe('hosted install flags (self-hosted passes none)', () => {
 
 describe('withLivekit: what a (re-)run seeds for calls', () => {
   const os = workloadSchema.parse({ name: 'os', tier: 'system', source: { kind: 'release', tarball: '/r/os.tgz', sha256: 'a'.repeat(64) } })
-  const settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null, managed: null, suspended: false, releaseSource: null }
+  const settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: null, rtcNodeIp: null, contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null, managed: null, suspended: false, releaseSource: null, moduleHub: { origin: 'https://os.cerberusblue.com', publicKeys: [] } }
   const lk = livekitWorkload('/var/lib/ee/releases/livekit-server-1.13.11-linux-x64.tar.gz', 'b'.repeat(64), { tcp: 7881, udp: 7882 })
 
   it('adds the livekit workload, saves the node IP and routes the calls host', () => {

@@ -22,7 +22,7 @@ const os = workloadSchema.parse({
   tier: 'system',
   source: { kind: 'release', tarball: '/var/lib/ee/releases/os.tar.gz', sha256: 'a'.repeat(64) },
 })
-const settings: Settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null, managed: null, suspended: false, releaseSource: null }
+const settings: Settings = { consoleHost: 'os.example.com', publicHost: null, acmeEmail: null, callsHost: 'rtc.os.example.com', rtcNodeIp: '203.0.113.7', contributeHub: 'off', rtcPorts: { tcp: 7881, udp: 7882 }, trustedProxy: null, managed: null, suspended: false, releaseSource: null, moduleHub: { origin: 'https://os.cerberusblue.com', publicKeys: [] } }
 const state = (workloads: Workload[], s: Partial<Settings> = {}) => ({ workloads, settings: { ...settings, ...s } })
 
 describe('the livekit workload ee seeds', () => {

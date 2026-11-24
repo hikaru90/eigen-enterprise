@@ -27,6 +27,7 @@ import { callEe, refusal } from './control-client.ts'
 import { DEFAULT_WATCH } from './upgrade-watch.ts'
 import type { UpgradeOutcome } from './upgrade.ts'
 import { parseContributeHubFlag } from './contribute-hub.ts'
+import { parseModuleHubFlag, parseModuleHubKeyFlags } from './hub-key.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
@@ -37,6 +38,9 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
                [--release-source <install.sh --from>]   (where updates come from; install.sh passes it)
                                          (hosted boxes behind a shared-IP router; kept on re-runs,
                                           --claim-hash on the first install only)
+               [--module-hub <origin>] [--module-hub-key <spki> (current, then backup)]
+                                         (the module hub whose receipts this server trusts; root only,
+                                          kept on re-runs; default: the official hub and its embedded keys)
   ee upgrade [--check] [--from <release-url>] [--node-ip <ip>] [--expect <release>]   (update over the
                                          air to the newest release; keeps everything, takes a safety copy
                                          first; --expect: only that release, e.g. eigenenterprise-0.5.19-<sha>;
@@ -131,6 +135,8 @@ async function main(argv: string[]): Promise<void> {
           'trusted-proxy': { type: 'string' },
           'claim-hash': { type: 'string' },
           'release-source': { type: 'string' },
+          'module-hub': { type: 'string' },
+          'module-hub-key': { type: 'string', multiple: true },
         },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
@@ -152,6 +158,11 @@ async function main(argv: string[]): Promise<void> {
         throw new Error('--claim-hash must be 64 lowercase hex characters (the SHA-256 of the claim token)')
       }
       const releaseSource = values['release-source'] === undefined ? undefined : parseReleaseSource(values['release-source'])
+      // Root only (bootstrap refuses anyone else): the one way to change which hub's receipts ee trusts (hub-key.ts, D11).
+      const moduleHub = {
+        ...(values['module-hub'] !== undefined ? { origin: parseModuleHubFlag(values['module-hub']) } : {}),
+        ...(values['module-hub-key'] !== undefined ? { keys: parseModuleHubKeyFlags(values['module-hub-key']) } : {}),
+      }
       const { consoleHost, claimToken, claimIssuedElsewhere } = await bootstrap(sys, {
         release: values.release,
         livekitRelease: values['livekit-release'],
@@ -163,6 +174,7 @@ async function main(argv: string[]): Promise<void> {
         ...(trustedProxy ? { trustedProxy } : {}),
         ...(values['claim-hash'] !== undefined ? { claimHash: values['claim-hash'] } : {}),
         ...(releaseSource ? { releaseSource } : {}),
+        moduleHub,
       })
       console.log('→ first deploy (health-gated; migrations run now, this takes a minute)')
       const ee = new Ee(sys, await SecretStore.open(sys))

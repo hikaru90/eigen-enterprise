@@ -14,6 +14,7 @@ import { mustRun, type System } from './system.ts'
 import { z } from 'zod'
 import { releaseSourceSchema } from './release-source.ts'
 import { OFFICIAL_CONTRIBUTE_HUB } from './contribute-hub.ts'
+import { DEFAULT_MODULE_HUB, moduleHubSchema } from './hub-key.ts'
 
 function assertHostPorts(workloads: Workload[], settings: Settings): void {
   const collisions = hostPortCollisions(workloads)
@@ -84,6 +85,12 @@ export const settingsSchema = z
      * recorded; the next `ee upgrade` records it.
      */
     releaseSource: releaseSourceSchema.nullable().default(null),
+    /**
+     * The module hub whose receipts ee trusts (hub-key.ts, plan/phase-upgrades-u2.md §5):
+     * set only by root's `ee bootstrap --module-hub/--module-hub-key`, never by a control
+     * verb. Missing on companies from before modules: the official hub and the embedded keys.
+     */
+    moduleHub: moduleHubSchema.default({ ...DEFAULT_MODULE_HUB, publicKeys: [] }),
   })
   .strict()
 
