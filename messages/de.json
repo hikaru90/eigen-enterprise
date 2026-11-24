@@ -628,5 +628,15 @@
   "coworkers_notice_seen": "Verstanden",
   "coworkers_mention_as": "Erwähnen als",
   "coworkers_mention_copy": "{handle} kopieren",
-  "messages_mention_list": "Personen und KI-Kolleg:innen zum Erwähnen"
+  "messages_mention_list": "Personen und KI-Kolleg:innen zum Erwähnen",
+  "coworkers_nav_title": "KI-Kolleg:innen",
+  "coworkers_tab_org_diagram": "Organigramm",
+  "coworkers_tab_coworkers": "KI-Kolleg:innen",
+  "coworkers_new_button": "Neue KI-Kolleg:in",
+  "coworkers_empty_modal": "Noch keine KI-Kolleg:innen. Klicke auf „Neue KI-Kolleg:in“, um eine anzulegen.",
+  "org_view_toggle_label": "Organigramm-Ansicht",
+  "org_view_diagram": "Diagramm",
+  "org_view_list": "Liste",
+  "org_accountabilities_more": "+{count} weitere",
+  "org_also_reports_to": "Berichtet auch an {names}"
 }

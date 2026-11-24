@@ -19,10 +19,10 @@ describe('buildShellNav', () => {
       ]),
       owner,
     )
-    expect(nav.items.map((i) => i.id)).toEqual(['website', 'settings'])
+    expect(nav.items.map((i) => i.id)).toEqual(['coworkers', 'website', 'settings'])
   })
 
-  it('keeps the one fixed order: Messages, Calls, Calendar, Website, Email, Brand, Memory, Drive, Settings', () => {
+  it('keeps the one fixed order: Messages, AI Co-workers, Calls, Calendar, Website, Email, Brand, Memory, Drive, Settings', () => {
     const nav = buildShellNav(
       [
         manifest('drive', 'Drive'),
@@ -48,6 +48,7 @@ describe('buildShellNav', () => {
     )
     expect(nav.items.map((i) => [i.name, i.href, i.active])).toEqual([
       ['Messages', '/messages', true],
+      ['AI Co-workers', '/coworkers', true],
       ['Calls', '/calls', true],
       ['Calendar', '/m/calendar', true],
       ['Website', '/m/website', true],
@@ -71,13 +72,13 @@ describe('buildShellNav', () => {
         ]),
         owner,
       )
-      expect(nav.items.map((i) => i.id)).toEqual(['messages', 'settings'])
+      expect(nav.items.map((i) => i.id)).toEqual(['messages', 'coworkers', 'settings'])
     }
   })
 
-  it('always carries Settings, even with no modules', () => {
+  it('always carries AI Co-workers and Settings, even with no modules', () => {
     const nav = buildShellNav([], new Map(), member)
-    expect(nav.items.map((i) => i.href)).toEqual(['/settings'])
+    expect(nav.items.map((i) => i.href)).toEqual(['/coworkers', '/settings'])
   })
 
   it('never lists a page the person cannot open: no Website for a member, modules it does not know stay', () => {
@@ -87,8 +88,8 @@ describe('buildShellNav', () => {
       ['website', true],
       ['recap', true],
     ])
-    expect(buildShellNav(manifests, active, member).items.map((i) => i.id)).toEqual(['messages', 'recap', 'settings'])
-    expect(buildShellNav(manifests, active, owner).items.map((i) => i.id)).toEqual(['messages', 'website', 'recap', 'settings'])
+    expect(buildShellNav(manifests, active, member).items.map((i) => i.id)).toEqual(['messages', 'coworkers', 'recap', 'settings'])
+    expect(buildShellNav(manifests, active, owner).items.map((i) => i.id)).toEqual(['messages', 'coworkers', 'website', 'recap', 'settings'])
   })
 
   it('lists GitHub repos and Contacts inside Drive and Email, not as entries of their own (owner, 2026-11-13)', () => {
@@ -102,7 +103,7 @@ describe('buildShellNav', () => {
       ]),
       owner,
     )
-    expect(nav.items.map((i) => i.id)).toEqual(['email', 'drive', 'settings'])
+    expect(nav.items.map((i) => i.id)).toEqual(['coworkers', 'email', 'drive', 'settings'])
     expect(nav.items.find((i) => i.id === 'drive')?.match).toEqual(['/drive/github', '/m/repos'])
     expect(nav.items.find((i) => i.id === 'email')?.match).toEqual(['/m/email/people', '/m/contacts'])
     for (const [path, id] of [
@@ -110,6 +111,22 @@ describe('buildShellNav', () => {
       ['/m/repos', 'drive'],
       ['/m/email/people/abc', 'email'],
       ['/m/contacts/new', 'email'],
+    ] as const) {
+      expect(currentNavId(nav.items, path)).toBe(id)
+    }
+  })
+
+  it('highlights AI Co-workers on /coworkers as well as /settings/org and /settings/coworkers', () => {
+    const nav = buildShellNav([], new Map(), member)
+    const coworkers = nav.items.find((i) => i.id === 'coworkers')
+    expect(coworkers?.match).toEqual(['/settings/org', '/settings/coworkers'])
+    for (const [path, id] of [
+      ['/coworkers', 'coworkers'],
+      ['/settings/org', 'coworkers'],
+      ['/settings/org/cw1', 'coworkers'],
+      ['/settings/coworkers', 'coworkers'],
+      ['/settings', 'settings'],
+      ['/settings/extensions', 'settings'],
     ] as const) {
       expect(currentNavId(nav.items, path)).toBe(id)
     }

@@ -3,12 +3,12 @@ import { canOpen, type Capabilities } from '$lib/access/capabilities'
 import { moduleHref, PLUGIN_ROUTES } from '$lib/plugins/routes'
 /**
  * The app shell's navigation (phase-cohesion rule 1, phase-workspace W-7,
- * polish P-1/P-2): one fixed order — Messages, Calls, Calendar, Website, Email, Brand,
- * Memory, Drive, Settings. The assistant is not a nav entry: it is the shell's top bar
- * and panel on every page. The dashboard at `/` is the company badge at the
- * top of the sidebar, not an entry either. Module
- * entries come from the module registry (name + activation state); a module
- * that is not registered is not listed, an inactive one is listed dimmed.
+ * polish P-1/P-2): one fixed order — Messages, AI Co-workers, Calls, Calendar,
+ * Website, Email, Brand, Memory, Drive, Settings. The assistant is not a nav
+ * entry: it is the shell's top bar and panel on every page. The dashboard at
+ * `/` is the company badge at the top of the sidebar, not an entry either.
+ * Module entries come from the module registry (name + activation state); a
+ * module that is not registered is not listed, an inactive one is listed dimmed.
  * Registered modules outside the fixed order follow Memory. An entry whose
  * page the signed-in person may not open (their capability set, e.g. the
  * Website pages for a member) is not listed — the nav never leads to a 403.
@@ -41,6 +41,14 @@ export { moduleHref }
  * plugin gate reads, so a dimmed entry leads to its switched-off page.
  */
 const FIXED_ORDER = ['messages', 'calls', 'calendar', 'website', 'email', 'brand', 'memory', 'drive'] as const
+
+const COWORKERS_NAV: ShellNavItem = {
+  id: 'coworkers',
+  name: 'AI Co-workers',
+  href: '/coworkers',
+  active: true,
+  match: ['/settings/org', '/settings/coworkers'],
+}
 
 /**
  * Plugins whose pages live inside another entry's area (owner, 2026-11-13):
@@ -89,7 +97,9 @@ export function buildShellNav(
   const others = visible.filter((m) => !fixed.includes(m.id)).map(moduleItem)
 
   const items: ShellNavItem[] = [
-    ...FIXED_ORDER.flatMap(known),
+    ...known('messages'),
+    COWORKERS_NAV,
+    ...FIXED_ORDER.filter((id) => id !== 'messages').flatMap(known),
     ...others,
     { id: 'settings', name: 'Settings', href: '/settings', active: true },
   ]

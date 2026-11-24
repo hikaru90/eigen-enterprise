@@ -383,6 +383,17 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/voice/transcribe POST': transport(SPEECH),
 
   // ─── Members and the person ───────────────────────────────────────────────
+  // AI Co-workers top-level page and Settings → Co-workers / Org chart: clients of coworkers.* / org.*.
+  '/(nucleus)/coworkers ?/create': tool('coworkers.create'),
+  '/(nucleus)/coworkers ?/disable': tool('coworkers.disable'),
+  '/(nucleus)/coworkers ?/enable': tool('coworkers.enable'),
+  '/(nucleus)/coworkers ?/remove': tool('coworkers.remove'),
+  '/(nucleus)/coworkers ?/rhythmCreate': tool('coworkers.rhythm_create'),
+  '/(nucleus)/coworkers ?/rhythmDelete': tool('coworkers.rhythm_delete'),
+  '/(nucleus)/coworkers ?/rhythmRunNow': tool('coworkers.rhythm_run_now'),
+  '/(nucleus)/coworkers ?/rhythmUpdate': tool('coworkers.rhythm_update'),
+  '/(nucleus)/coworkers ?/setPosition': tool('org.set_position'),
+  '/(nucleus)/coworkers ?/update': tool('coworkers.update'),
   // Settings → Co-workers and the org chart (plan/phase-ai-coworkers.md C5): clients of coworkers.* / org.*.
   '/(nucleus)/settings/coworkers ?/create': tool('coworkers.create'),
   '/(nucleus)/settings/coworkers ?/disable': tool('coworkers.disable'),
