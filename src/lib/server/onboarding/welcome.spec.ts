@@ -19,7 +19,7 @@ vi.mock('$lib/server/db/auth-db', () => ({
   },
 }))
 
-import { completeWelcomeOnboarding, resetWelcomeOnboarding, setWelcomeDisplayName } from './welcome'
+import { completeWelcomeOnboarding, setWelcomeDisplayName } from './welcome'
 
 describe('setWelcomeDisplayName', () => {
   it('saves the name as the preference AND the account name (shown everywhere)', async () => {
@@ -90,44 +90,5 @@ describe('completeWelcomeOnboarding', () => {
     })
 
     await expect(completeWelcomeOnboarding('u1')).rejects.toThrow('db down')
-  })
-})
-
-describe('resetWelcomeOnboarding', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('clears welcome_completed_at (upsert insert leg) so the wizard shows again', async () => {
-    const captured: { values?: unknown; set?: unknown } = {}
-    const chain = {
-      insert() {
-        return chain
-      },
-      values(values: unknown) {
-        captured.values = values
-        return chain
-      },
-      onConflictDoUpdate(config: { set: unknown }) {
-        captured.set = config.set
-        return Promise.resolve()
-      },
-    }
-    getDbMock.mockReturnValue(chain)
-
-    await resetWelcomeOnboarding('u1')
-
-    expect(captured.values).toMatchObject({ userId: 'u1', welcomeCompletedAt: null })
-    expect(captured.set).toMatchObject({ welcomeCompletedAt: null })
-  })
-
-  it('fails loud when persistence breaks', async () => {
-    getDbMock.mockReturnValue({
-      insert() {
-        throw new Error('db down')
-      },
-    })
-
-    await expect(resetWelcomeOnboarding('u1')).rejects.toThrow('db down')
   })
 })

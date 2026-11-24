@@ -496,7 +496,6 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/onboarding/provider POST': human(PROVIDER_SECRET),
   '/api/onboarding/test-provider POST': human(PROVIDER_SECRET),
   '/api/onboarding/welcome POST': noEffect(VIEW_STATE),
-  '/api/onboarding/welcome/reset POST': noEffect(VIEW_STATE),
 
   // ─── Sign-in, sign-up, session ────────────────────────────────────────────
   '/api/session/sign-out POST': human(SIGN_IN),

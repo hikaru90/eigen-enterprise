@@ -2,15 +2,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
 
-const { gotoMock, invalidateAllMock, fetchMock } = vi.hoisted(() => ({
+const { gotoMock, fetchMock } = vi.hoisted(() => ({
   gotoMock: vi.fn(),
-  invalidateAllMock: vi.fn(),
   fetchMock: vi.fn(),
 }))
 
 vi.mock('$app/navigation', () => ({
   goto: gotoMock,
-  invalidateAll: invalidateAllMock,
 }))
 
 vi.mock('$app/paths', () => ({
@@ -45,7 +43,7 @@ describe('home-settings-menu.svelte', () => {
     localStorage.removeItem('theme-preference')
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     const theme = page.getByTestId('menu-theme-switch')
     await expect
       .element(theme.getByRole('radio', { name: 'System' }))
@@ -62,7 +60,7 @@ describe('home-settings-menu.svelte', () => {
   it('offers Install app, which opens the install dialog and closes the menu', async () => {
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     await page.getByTestId('install-app').click()
 
     await expect.element(page.getByTestId('install-app-dialog')).toBeInTheDocument()
@@ -78,54 +76,37 @@ describe('home-settings-menu.svelte', () => {
     )
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
 
     await expect.element(page.getByTestId('sound-toggle')).toBeInTheDocument()
     await expect.element(page.getByTestId('install-app')).not.toBeInTheDocument()
   })
 
-  it('renders the settings cog trigger', async () => {
+  it('renders the personal preferences trigger', async () => {
     render(HomeSettingsMenu)
 
-    await expect.element(page.getByRole('button', { name: 'Settings menu' })).toBeInTheDocument()
+    await expect.element(page.getByRole('button', { name: 'Your preferences' })).toBeInTheDocument()
   })
 
-  it('opens the menu: one Settings link (the sections live in the settings page), then the toggles', async () => {
+  it('holds only personal prefs + sign out: no Settings link (main nav owns it, 81319f0e), no restart onboarding (68912711)', async () => {
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
 
-    await expect
-      .element(page.getByRole('link', { name: 'Settings' }))
-      .toHaveAttribute('href', '/settings')
-    await expect.element(page.getByRole('link', { name: 'API Keys' })).not.toBeInTheDocument()
-    await expect.element(page.getByRole('link', { name: 'Extensions' })).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('menu-theme-switch')).toBeInTheDocument()
     await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
     await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice on')
-    await expect
-      .element(page.getByRole('button', { name: 'Restart onboarding' }))
-      .toBeInTheDocument()
-  })
-
-  it('offers Sign out next to Restart onboarding, below a second divider', async () => {
-    render(HomeSettingsMenu)
-
-    await page.getByRole('button', { name: 'Settings menu' }).click()
-
-    const restart = page.getByTestId('restart-onboarding')
-    const signOut = page.getByTestId('sign-out')
-    await expect.element(signOut).toBeInTheDocument()
-    // DOM order: restart onboarding first, sign out right after it.
-    expect(restart.element().compareDocumentPosition(signOut.element())).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    )
+    await expect.element(page.getByTestId('voice-playback-toggle')).toBeInTheDocument()
+    await expect.element(page.getByTestId('sign-out')).toBeInTheDocument()
+    await expect.element(page.getByRole('link', { name: 'Settings' })).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('restart-onboarding')).not.toBeInTheDocument()
   })
 
   it('the voice toggle flips the persisted flag — assistant speech is a real choice', async () => {
     window.localStorage.removeItem('ee-voice')
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     await expect.element(page.getByTestId('voice-toggle')).toHaveTextContent('Voice on')
 
     await page.getByTestId('voice-toggle').click()
@@ -141,7 +122,7 @@ describe('home-settings-menu.svelte', () => {
   it('Audio devices, next to the voice toggle, opens the microphone + speaker choice', async () => {
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     const toggle = page.getByTestId('audio-devices-toggle')
     await expect.element(toggle).toHaveTextContent('Audio devices')
     expect(page.getByTestId('voice-toggle').element().nextElementSibling).toBe(toggle.element())
@@ -160,7 +141,7 @@ describe('home-settings-menu.svelte', () => {
   it('Voice speed and volume, after Audio devices, opens the reading voice controls (74cbc486)', async () => {
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     const toggle = page.getByTestId('voice-playback-toggle')
     await expect.element(toggle).toHaveTextContent('Voice speed and volume')
     expect(
@@ -181,7 +162,7 @@ describe('home-settings-menu.svelte', () => {
     window.localStorage.removeItem('ee-sound')
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     await expect.element(page.getByTestId('sound-toggle')).toHaveTextContent('Sound on')
 
     await page.getByTestId('sound-toggle').click()
@@ -194,40 +175,10 @@ describe('home-settings-menu.svelte', () => {
     window.localStorage.removeItem('ee-sound')
   })
 
-  it('restart onboarding clears the welcome stamp and refreshes page data', async () => {
-    render(HomeSettingsMenu)
-
-    await page.getByRole('button', { name: 'Settings menu' }).click()
-    await page.getByRole('button', { name: 'Restart onboarding' }).click()
-
-    await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/onboarding/welcome/reset',
-        expect.objectContaining({ method: 'POST' }),
-      )
-      expect(invalidateAllMock).toHaveBeenCalled()
-    })
-  })
-
-  it('fails loud when the reset call breaks — the menu shows the exact error', async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({ error: 'db down' }),
-    })
-    render(HomeSettingsMenu)
-
-    await page.getByRole('button', { name: 'Settings menu' }).click()
-    await page.getByRole('button', { name: 'Restart onboarding' }).click()
-
-    await expect.element(page.getByText(/db down/)).toBeInTheDocument()
-    expect(invalidateAllMock).not.toHaveBeenCalled()
-  })
-
   it('sign out posts to the session endpoint and lands on /login', async () => {
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     await page.getByTestId('sign-out').click()
 
     await vi.waitFor(() => {
@@ -243,7 +194,7 @@ describe('home-settings-menu.svelte', () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
     render(HomeSettingsMenu)
 
-    await page.getByRole('button', { name: 'Settings menu' }).click()
+    await page.getByRole('button', { name: 'Your preferences' }).click()
     await page.getByTestId('sign-out').click()
 
     await expect.element(page.getByText(/Sign out failed \(HTTP 500\)\./)).toBeInTheDocument()

@@ -81,7 +81,9 @@ async function resetCompanyMail(page: Page): Promise<void> {
   expect(res.status(), await res.text()).toBe(200)
 }
 
-async function stubSpeechSynthesis(context: import('@playwright/test').BrowserContext): Promise<void> {
+async function stubSpeechSynthesis(
+  context: import('@playwright/test').BrowserContext,
+): Promise<void> {
   await context.addInitScript(() => {
     const spoken: string[] = []
     const recorder = {
@@ -115,7 +117,9 @@ async function stubSpeechSynthesis(context: import('@playwright/test').BrowserCo
   })
 }
 
-async function interceptTts(context: import('@playwright/test').BrowserContext): Promise<{ texts: string[] }> {
+async function interceptTts(
+  context: import('@playwright/test').BrowserContext,
+): Promise<{ texts: string[] }> {
   const texts: string[] = []
   await context.route('**/api/tts', async (route) => {
     const request = route.request()
@@ -125,7 +129,11 @@ async function interceptTts(context: import('@playwright/test').BrowserContext):
     }
     // The gateway cannot speak in this environment — the client's honest
     // silence path runs, and the boot flow must not care.
-    await route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"no speech route"}' })
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: '{"error":"no speech route"}',
+    })
   })
   return { texts }
 }
@@ -150,7 +158,8 @@ test.afterAll(async () => {
  * would (correctly) turn it off. Start from "not started".
  */
 async function websiteNotStarted(): Promise<void> {
-  if (!DATABASE_URL) throw new Error('DATABASE_URL not set — the hand-off spec resets the website journey')
+  if (!DATABASE_URL)
+    throw new Error('DATABASE_URL not set — the hand-off spec resets the website journey')
   await sql()`update kernel_journeys set status = 'abandoned' where kind = 'website_founding' and status = 'active'`
 }
 
@@ -314,43 +323,5 @@ test.describe('welcome boot sequence', () => {
 
     await expectHomeVisible(page)
     await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
-  })
-
-  test('restarting onboarding brings the boot back — and it knows your name', async ({
-    page,
-    context,
-  }) => {
-    await registerOwner(page, context, { emailDomain: 'test.eigenlabs.dev', profile: { firstName: 'Ada', lastName: 'Lovelace' } })
-
-    // First pass (the name came from the profile step): set up email, reach the mind
-    // gate, skip it — tour done.
-    await walkBoot(page, 'Ada')
-    await continueThroughLines(page)
-    await connectMailInBoot(page)
-    await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
-    await page.getByTestId('skip-onboarding').click()
-
-    // No provider yet: the hard gate takes over. Connect through the server contract.
-    await expect(page.getByText('Connect your AI provider.')).toBeVisible({ timeout: 15_000 })
-    await saveApiKeyViaApi(page)
-    await page.goto('/')
-    await expectHomeVisible(page)
-
-    // The cog is in the shell; restart brings the boot sequence back.
-    // A click that lands before hydration opens nothing: retry until the menu is up.
-    await expect(async () => {
-      await page.getByTestId('home-settings-trigger').click()
-      await expect(page.getByTestId('restart-onboarding')).toBeVisible({ timeout: 2_000 })
-    }).toPass({ timeout: 20_000 })
-    await page.getByTestId('restart-onboarding').click()
-    await expectWizard(page)
-
-    // Personalized greeting, no name ask — the name survived the restart.
-    await expect(page.getByText('Hello, Ada.')).toBeVisible()
-    await expect(page.getByRole('textbox', { name: 'Your name' })).not.toBeVisible()
-
-    // And the boot still completes into the app.
-    await page.getByTestId('skip-onboarding').click()
-    await expectHomeVisible(page)
   })
 })
