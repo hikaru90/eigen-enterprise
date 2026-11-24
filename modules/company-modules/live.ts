@@ -17,7 +17,7 @@ import type { ActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import type { KernelRegistry } from '$lib/kernel/registry'
 import { moduleBundles } from './bundles'
 import { eeModuleWorkload, NO_EE_SENTENCE } from './ee-workload'
-import type { PublishPort } from './ports'
+import { HUB_NOT_CONFIGURED_SENTENCE, PublishPortError, type PublishPort } from './ports'
 import { MODULE_REPO_DIR, ModuleRepo } from './repo'
 import { CompanyModules } from './service'
 
@@ -39,20 +39,18 @@ export function moduleStateDir(env: Record<string, string | undefined> = process
 let publishPort: PublishPort | null = null
 
 /**
- * The box's publish client (stream C, modules/company-modules/publish/) is
- * handed in by the composition root. Until it is, publishing fails loud.
+ * The box's publish client (stream C: livePublishPort() in
+ * $lib/server/module-hub/publish-port.ts) is handed in by the composition
+ * root. Until it is, publishing fails loud as "not configured".
  */
 export function providePublishPort(port: PublishPort): void {
   publishPort = port
 }
 
-const notWired = () =>
-  new KernelError(
-    'hub_unavailable',
-    "module hub not configured: this box's publish client is not wired, so new module code can't run yet. Everything already running keeps running.",
-  )
+const notWired = () => new PublishPortError('hub_unavailable', HUB_NOT_CONFIGURED_SENTENCE, { reason: 'not_configured' })
 const unwiredPublish: PublishPort = {
   publish: async () => Promise.reject(notWired()),
+  reportRun: async () => Promise.reject(notWired()),
   fetchBundle: async () => Promise.reject(notWired()),
 }
 
@@ -126,6 +124,7 @@ export function liveCompanyModules(kernel: CompanyModulesKernel): LiveCompanyMod
     const hub: PublishPort = {
       publish: (r) => (publishPort ?? unwiredPublish).publish(r),
       fetchBundle: (sha) => (publishPort ?? unwiredPublish).fetchBundle(sha),
+      reportRun: (r) => (publishPort ?? unwiredPublish).reportRun(r),
     }
     const host = new ModuleHost({
       registry: kernel.registry,

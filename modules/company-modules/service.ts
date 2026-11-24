@@ -18,7 +18,7 @@ import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolPrincipal } from '$lib/kernel/types'
 import type { GitAuthor } from '$lib/server/gitstore/engine'
 import type { ModuleView } from '../../contracts/module-workload'
-import type { PublishPort } from './ports'
+import { hubKernelError, type PublishPort } from './ports'
 import type { ModuleRepo, TreeEntry } from './repo'
 import { scaffoldFiles, type ScaffoldInput } from './scaffold'
 import { wideningOf } from './widening'
@@ -198,15 +198,18 @@ export class CompanyModules {
     if (publishing) await this.rt.store.put({ ...record, state: 'publishing' })
     let receipt
     try {
-      receipt = await this.rt.publish.publish({
-        moduleId: id,
-        version: manifest.version,
-        commit,
-        manifest,
-        bundle: bundle.bytes,
-        bundleSha256: bundle.sha256,
-        coreApi: CORE_API_VERSION,
-      })
+      receipt = (
+        await this.rt.publish.publish({
+          moduleId: id,
+          version: manifest.version,
+          commit,
+          manifest: manifest as unknown as Record<string, unknown>,
+          bundle: bundle.bytes,
+          bundleSha256: bundle.sha256,
+        })
+      ).receipt
+    } catch (err) {
+      throw hubKernelError(err, id)
     } finally {
       if (publishing) await this.rt.store.put({ ...(await this.record(id)), state: 'unpublished' })
     }

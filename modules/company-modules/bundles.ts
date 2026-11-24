@@ -1,7 +1,7 @@
 import { sha256Hex } from '../../contracts/module-bundle'
 import { KernelError } from '$lib/kernel/errors'
 import type { ModuleBundles, ModuleStore } from '$lib/kernel/module-host/types'
-import type { PublishPort } from './ports'
+import { hubKernelError, type PublishPort } from './ports'
 import type { ModuleRepo } from './repo'
 
 /**
@@ -30,7 +30,12 @@ export function moduleBundles(repo: ModuleRepo, store: ModuleStore, hub: Publish
           commit,
         })
       }
-      const bytes = await hub.fetchBundle(version.bundleSha256)
+      let bytes: Uint8Array
+      try {
+        bytes = await hub.fetchBundle(version.bundleSha256)
+      } catch (err) {
+        throw hubKernelError(err, id)
+      }
       if (sha256Hex(bytes) !== version.bundleSha256) {
         throw new KernelError('module_unreceipted', `the hub's bundle for ${id}@${commit.slice(0, 12)} does not match its receipt`, {
           module: id,

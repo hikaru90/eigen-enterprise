@@ -6,36 +6,45 @@ import {
 import { readBundle, sha256Hex } from '../../../contracts/module-bundle'
 import { manifestSha256 } from '../../../contracts/module-manifest'
 import { signReceipt, type ModuleReceiptV1 } from '../../../contracts/module-receipt'
-import { KernelError } from '$lib/kernel/errors'
-import { HUB_UNAVAILABLE_SENTENCE, type PublishPort, type PublishRequest } from '../ports'
+import type { HubRunAnswer } from '$lib/module-hub/contract'
+import {
+  HUB_UNAVAILABLE_SENTENCE,
+  PublishPortError,
+  type PublishOutcome,
+  type PublishPort,
+  type PublishRequest,
+  type RunReport,
+} from '../publish/port'
 
 /**
  * TEST ONLY — a module hub that signs receipts with the public fixture key
- * (plan/phase-upgrades-u2.md §9 Stream A). It checks what the real hub checks
- * first (the bundle parses and matches its sha256), answers the same receipt
- * for the same bundle, refuses the same commit with another bundle (409), and
- * can be switched off (`hub_unavailable`).
+ * (plan/phase-upgrades-u2.md §9 Stream A), behind stream C's PublishPort.
+ * It checks the bundle parses and matches its sha256, answers the same
+ * receipt for the same bundle (created: false), refuses the same commit with
+ * another bundle (hub_refused, 409), can be switched off (hub_unavailable),
+ * and serves published bundles by sha256.
  */
 export class FakePublishPort implements PublishPort {
   readonly published: PublishRequest[] = []
+  readonly runs: RunReport[] = []
   private readonly receipts = new Map<string, ModuleReceiptV1>()
   down = false
 
   constructor(private readonly installId = 'test-install') {}
 
-  async publish(request: PublishRequest): Promise<ModuleReceiptV1> {
-    if (this.down) throw new KernelError('hub_unavailable', HUB_UNAVAILABLE_SENTENCE)
+  async publish(request: PublishRequest): Promise<PublishOutcome> {
+    if (this.down) throw new PublishPortError('hub_unavailable', HUB_UNAVAILABLE_SENTENCE, { reason: 'unreachable' })
     if (sha256Hex(request.bundle) !== request.bundleSha256) {
-      throw new KernelError('invalid_input', 'the bundle does not match its sha256')
+      throw new PublishPortError('hub_refused', 'the bundle does not match its sha256', { status: 422 })
     }
     readBundle(request.bundle)
     const key = `${request.moduleId}@${request.commit}`
     const existing = this.receipts.get(key)
     if (existing) {
       if (existing.bundleSha256 !== request.bundleSha256) {
-        throw new KernelError('invalid_input', `${key} was published with another bundle (409)`)
+        throw new PublishPortError('hub_refused', `${key} was published with another bundle`, { status: 409 })
       }
-      return existing
+      return { receipt: existing, created: false }
     }
     const receipt = signReceipt(
       {
@@ -55,13 +64,19 @@ export class FakePublishPort implements PublishPort {
     )
     this.receipts.set(key, receipt)
     this.published.push(request)
-    return receipt
+    return { receipt, created: true }
+  }
+
+  async reportRun(report: RunReport): Promise<HubRunAnswer> {
+    if (this.down) throw new PublishPortError('hub_unavailable', HUB_UNAVAILABLE_SENTENCE, { reason: 'unreachable' })
+    this.runs.push(report)
+    return { module_id: report.moduleId, runs: [] }
   }
 
   async fetchBundle(bundleSha256: string): Promise<Uint8Array> {
-    if (this.down) throw new KernelError('hub_unavailable', HUB_UNAVAILABLE_SENTENCE)
+    if (this.down) throw new PublishPortError('hub_unavailable', HUB_UNAVAILABLE_SENTENCE, { reason: 'unreachable' })
     const found = this.published.find((p) => p.bundleSha256 === bundleSha256)
-    if (!found) throw new KernelError('invalid_input', `the hub has no bundle ${bundleSha256}`)
+    if (!found) throw new PublishPortError('hub_not_found', `the hub has no bundle ${bundleSha256}`, { status: 404 })
     return found.bundle
   }
 }

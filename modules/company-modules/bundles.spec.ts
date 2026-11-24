@@ -25,7 +25,7 @@ describe('moduleBundles (restore: the repo, else the hub, always the receipted b
     await store.addVersion(version)
     const bundles = moduleBundles(repo, store, hub)
     await expect(bundles.bytes('hello', version.commit)).rejects.toThrow(/has no bundle/)
-    hub.published.push({ moduleId: 'hello', version: '0.1.0', commit: version.commit, manifest: version.manifest, bundle: bytes, bundleSha256: version.bundleSha256, coreApi: '1.0.0' })
+    hub.published.push({ moduleId: 'hello', version: '0.1.0', commit: version.commit, manifest: version.manifest, bundle: bytes, bundleSha256: version.bundleSha256 })
     expect(Buffer.from(await bundles.bytes('hello', version.commit)).equals(bytes)).toBe(true)
     hub.published[0]!.bundle = Buffer.from('tampered')
     await expect(bundles.bytes('hello', version.commit)).rejects.toMatchObject({ code: 'module_unreceipted' })
