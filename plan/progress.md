@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Release v0.5.41 (owner: "yes" to releasing the make-a-wish round)
+
+- **Tagged** `v0.5.41` on `eedc2ee4` through the full release gate: CI gate (10338 unit, 947 component), upgrade rehearsal from v0.5.40 GREEN, e2e 75 passed. Contents: the make-a-wish round below.
+- **The gate caught, fixed on the way:**
+  - **Real bug** (`0ec6f556`): the new Drive Overview sorted folders first by name with 200 per page, so with many shared/Messages folders a file just uploaded fell onto page 2. **Decision:** Overview is newest first, folders and files mixed; My drive and folder views stay folders-first by name.
+  - Time-bomb spec (`84d39bff`): `upgrade-meta.spec` required `META_REQUIRED_SINCE` to be this version or the next; it is pinned at 0.5.40 (first release writing UPGRADE.json) and the build must be at or after it.
+  - e2e journeys that followed old behaviour: co-worker manager is a multi-select (`c4da4f2c`), Drive lands on Overview (`837aadba`), ws-fixes scopes its Projects row to My drive (`eedc2ee4`).
+  - **Not a product bug:** 5 calls + 1 tenant-isolation failures in one gate run. All pass alone; reproduced only when something rewrote watched files mid-run (a concurrent `npm run check` → Vite full-reload of every page → the call tab loses its call). Next: make the e2e harness fail loudly on a mid-run Vite reload, so an environmental reload can't masquerade as a product failure.
+- **Worktrees:** 29 merged ones removed; kept 4 with unmerged work (hosted address `agent-a64e910b…`, `repo-branches`, detached CI-fix `wonderful-bouman-65d603`, `../ee-breadcrumb-fix` with 80 uncommitted files) pending owner decision.
+- **Next:** install v0.5.41 on one.eigenenterprise.app (Settings → Updates, owner), then mark the 15 wishes shipped.
+
 ## 2026-11-24 — Make-a-wish round (one.eigenenterprise.app): 12 wishes integrated by low-effort subagents (owner: "look at the contributions … integrate them with subagents on lower thinking")
 
 - **Shipped to main (merged branches):** model_error fix for gpt-5-mini co-worker runs (c69349eb, `6835e46f`); tasks To do → Overdue → Done, clear tick-off vs edit, Undo (7f44bcfa, ea945d0b, `a2ccd151`); Drive unified overview with My drive / Shared tags + filter pills (497c8358, `944523eb`); AI Co-workers sidebar tab with org diagram + "New co-worker" modal (db3eef35, 89ec3538, `94a071ad`); Drive folder links in chat, paste images, file viewer returns to Messages (50f6e8db, 3a795090, b55709f1, `61c54b4a`); more insistent ringtone + horizontal sidebar slide (604b8ddb, 8f506079, `be8b47fa`); one Settings entry + "Your preferences" menu, "Restart onboarding" removed (81319f0e, 68912711, `46b49fb6`); co-workers report to several people + avatar picker/upload, migration 0182 `org_position_report` (955e5f85, 8cdc80d8, `082e1e83`); `coworkers.avatar_upload` tool so CLI + agent can upload avatars (`d6c02f22`); co-worker typing indicator + fact-based presence (14aea69d, `c65e264a`).
