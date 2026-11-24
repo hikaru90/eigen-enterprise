@@ -38,6 +38,20 @@ export const manifestSchema = z.object({
     .optional(),
 })
 
+/**
+ * The prefixes only a company module (plan/phase-upgrades-u2.md §4.5, D3) may
+ * own: its kernel id `x-<id>` and its tool namespace `x_<id_>`. A core
+ * manifest that claims one is refused at `ModuleRegistry.register()`, so a
+ * module's tools can never shadow a core tool and the core never squats on a
+ * module's names.
+ */
+export const COMPANY_MODULE_PREFIXES = ['x-', 'x_'] as const
+
+/** True for a module id or tool namespace in the company-module space (`x-…` / `x_…`). */
+export function isCompanyModuleName(name: string): boolean {
+  return COMPANY_MODULE_PREFIXES.some((prefix) => name.startsWith(prefix))
+}
+
 /** JSON Schema (draft 2020-12 via zod v4) for the module manifest — the published contract document. */
 export function manifestJsonSchema(): Record<string, unknown> {
   return toJSONSchema(manifestSchema, { io: 'input' }) as Record<string, unknown>

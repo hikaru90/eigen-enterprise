@@ -29,6 +29,19 @@ export type KernelErrorCode =
   | 'no_spend_ledger'
   | 'agent_acts_as_itself'
   | 'agent_acts_as_person'
+  // Company modules (plan/phase-upgrades-u2.md §4.6): the eem/1 error codes.
+  | 'module_use_undeclared'
+  | 'module_not_running'
+  | 'module_timeout'
+  | 'module_protocol'
+  | 'module_no_person'
+  | 'module_unreceipted'
+  | 'module_sharing_not_accepted'
+  | 'module_needs_admin_click'
+  | 'hub_unavailable'
+  | 'data_not_found'
+  | 'data_conflict'
+  | 'data_quota'
 
 const KNOWN_CODES: readonly KernelErrorCode[] = [
   'permission_denied',
@@ -61,6 +74,18 @@ const KNOWN_CODES: readonly KernelErrorCode[] = [
   'no_spend_ledger',
   'agent_acts_as_itself',
   'agent_acts_as_person',
+  'module_use_undeclared',
+  'module_not_running',
+  'module_timeout',
+  'module_protocol',
+  'module_no_person',
+  'module_unreceipted',
+  'module_sharing_not_accepted',
+  'module_needs_admin_click',
+  'hub_unavailable',
+  'data_not_found',
+  'data_conflict',
+  'data_quota',
 ]
 
 /** Exhaustive per code — adding a KernelErrorCode without a title is a type error. */
@@ -95,6 +120,18 @@ const PROBLEM_TITLES: Record<KernelErrorCode, string> = {
   no_spend_ledger: 'No spend ledger',
   agent_acts_as_itself: 'Agent acts as itself',
   agent_acts_as_person: 'Agent acts as a person',
+  module_use_undeclared: 'Not declared in module.yaml',
+  module_not_running: 'Module not running',
+  module_timeout: 'Module did not answer in time',
+  module_protocol: 'Module protocol violation',
+  module_no_person: 'No person for the module to act as',
+  module_unreceipted: 'Module version not published',
+  module_sharing_not_accepted: 'Module sharing not accepted',
+  module_needs_admin_click: 'Needs an admin’s own click',
+  hub_unavailable: 'Module hub unavailable',
+  data_not_found: 'Module data not found',
+  data_conflict: 'Module data changed meanwhile',
+  data_quota: 'Module data over its limit',
 }
 
 const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
@@ -136,6 +173,19 @@ const PROBLEM_STATUS: Partial<Record<KernelErrorCode, number>> = {
   // The dispatch entry does not match who the agent acts as (dispatch vs dispatchAsAgent).
   agent_acts_as_itself: 409,
   agent_acts_as_person: 409,
+  // Company modules (plan/phase-upgrades-u2.md §4.6).
+  module_use_undeclared: 403,
+  module_not_running: 409,
+  module_timeout: 504,
+  module_protocol: 400,
+  module_no_person: 403,
+  module_unreceipted: 409,
+  module_sharing_not_accepted: 409,
+  module_needs_admin_click: 403,
+  hub_unavailable: 503,
+  data_not_found: 404,
+  data_conflict: 409,
+  data_quota: 413,
 }
 
 /** RFC 9457 problem-details object as produced by `KernelError.toProblemJson`. */

@@ -43,6 +43,9 @@ import { createCallsTools } from './calls/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
+import { liveCompanyModules } from './company-modules/live'
+import { COMPANY_MODULES_MODULE_ID, companyModulesManifest } from './company-modules/manifest'
+import { COMPANY_MODULES_GATED_TOOLS, createCompanyModulesTools } from './company-modules/tools'
 import { CONTACTS_MODULE_ID, CONTACTS_WRITE_TOOLS, contactsManifest } from './contacts/manifest'
 import { createContactsTools } from './contacts/tools'
 import { contributeHubManifest } from './contribute/hub/manifest'
@@ -72,6 +75,8 @@ import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
 import { createMemoryTools } from './memory/tools'
 import { MESSAGES_MODULE_ID, messagesManifest } from './messages/manifest'
 import { createMessagesTools } from './messages/tools'
+import { moduleHubManifest } from './module-hub/manifest'
+import { createModuleHubTools } from './module-hub/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { orchestratorManifest } from './orchestrator/manifest'
 import { createRepoEngine } from './orchestrator/repo/index'
@@ -95,6 +100,7 @@ import { WEBSITE_MODULE_ID, websiteManifest } from './website/manifest'
 import { createWebsiteTools } from './website/tools'
 
 export { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
+export { providePublishPort, startCompanyModules } from './company-modules/live'
 export type { ChatGatewayBoot } from './chat-gateway/index'
 
 /**
@@ -122,11 +128,16 @@ export const moduleManifests = [
   // The central Contribute board (plan/contribute-phone-home.md §3): registered everywhere, never
   // self-seeded — off until the owner switches it on, on os.cerberusblue.com only.
   contributeHubManifest,
+  // The central module hub (plan/phase-upgrades-u2.md §7): like the Contribute board, registered
+  // everywhere, never self-seeded — off until the owner switches it on, on the central box only.
+  moduleHubManifest,
   assistantManifest,
   domainsManifest,
   // The demo company seed (plan/phase-demo-company.md): registered everywhere, never
   // self-seeded — off until the owner switches it on, on the demo box only.
   demoManifest,
+  // The company's own modules (plan/phase-upgrades-u2.md §8): the modules.* tools.
+  companyModulesManifest,
 ] as const
 
 /**
@@ -167,6 +178,8 @@ export const SYSTEM_MODULE_IDS = [
   DOMAINS_MODULE_ID,
   // AI co-workers and the org chart (plan/phase-ai-coworkers.md C1): core like Members.
   COWORKERS_MODULE_ID,
+  // Modules (plan/phase-upgrades-u2.md §8): the company's own vibe-coded modules; core like Members.
+  COMPANY_MODULES_MODULE_ID,
 ] as const
 
 /** Tools that always require an approval decision before first execution. */
@@ -247,6 +260,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   ...CONTRIBUTE_WRITE_TOOLS,
   // Central board: revoking an install refuses it from now on (destructive for that install).
   'contribute_hub.revoke_install',
+  // Company modules (plan/phase-upgrades-u2.md §8, D13): a deploy that widens nothing follows the mode.
+  ...COMPANY_MODULES_GATED_TOOLS,
   // The demo seed publishes website pages and makes member accounts (public);
   // login-free guest access lets anyone on the internet enter the shared demo seat (public).
   DEMO_SEED_TOOL,
@@ -432,6 +447,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDriveTools(),
     ...createContributeTools(),
     ...createContributeHubTools(),
+    ...createModuleHubTools(),
     ...createCallsTools({ service: liveCallsService }),
     ...createContactsTools(),
     ...createReposTools(),
@@ -439,6 +455,8 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDomainsTools({ mail: liveMailDomains, bought: liveBoughtDomains }),
     // The seed drives this very registry, as the owner and each teammate.
     ...createDemoTools({ registry: () => registry, eventSink }),
+    // The company's own modules (plan/phase-upgrades-u2.md §8): lazy, so composing touches nothing.
+    ...createCompanyModulesTools(liveCompanyModules({ registry, modules, activations, eventSink, db }).service),
   ])
 
   return {

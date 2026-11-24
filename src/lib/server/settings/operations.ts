@@ -37,14 +37,25 @@ export const liveOperationsPort: OperationsPort = {
     const job = info.job
       ? { id: info.job.id, release: info.job.release, status: info.job.status, step: info.job.step, error: info.job.error, endedAt: info.job.endedAt }
       : null
+    const lastOutcome = info.lastOutcome
     // As Settings → Updates: nothing to look up while an update runs, or on a box its hosting provider updates.
-    if (info.managed || info.job?.status === 'running') return { installed, managed: info.managed, latest: null, latestError: null, job }
+    if (info.managed || info.job?.status === 'running') return { installed, managed: info.managed, latest: null, latestError: null, job, lastOutcome, rollback: null }
+    const plan = await client.rollbackPlan()
+    const rollback = { to: plan.to ? releaseName(plan.to) : null, refused: plan.refused }
     try {
       const { latest } = await client.latestRelease()
-      return { installed, managed: false, latest: { release: latest.name, version: latest.version, state: latest.state, notes: latest.notes }, latestError: null, job }
+      return {
+        installed,
+        managed: false,
+        latest: { release: latest.name, version: latest.version, state: latest.state, notes: latest.notes },
+        latestError: null,
+        job,
+        lastOutcome,
+        rollback,
+      }
     } catch (err) {
       if (err instanceof SubstrateError || err instanceof SubstrateUnavailableError)
-        return { installed, managed: false, latest: null, latestError: err.message, job }
+        return { installed, managed: false, latest: null, latestError: err.message, job, lastOutcome, rollback }
       throw err
     }
   },
@@ -52,4 +63,5 @@ export const liveOperationsPort: OperationsPort = {
     const { job } = await new EeClient().startUpgrade({ release, author })
     return { jobId: job.id, status: job.status }
   },
+  rollbackRelease: (author, to) => new EeClient().rollback({ author, ...(to !== undefined ? { to } : {}) }),
 }

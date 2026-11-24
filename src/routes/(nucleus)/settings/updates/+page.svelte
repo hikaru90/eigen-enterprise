@@ -38,13 +38,18 @@
   const STEPS: Array<{ label: string; steps: UpgradeStep[] }> = [
     { label: 'Check the release and its signature', steps: ['handover', 'verifying'] },
     {
-      label: 'Take a safety copy (the database and the server’s own settings)',
-      steps: ['safety-copy'],
+      label:
+        'Take a safety copy (the database and the server’s own settings, and a backup when backups are set up)',
+      steps: ['safety-copy', 'backup'],
     },
     {
       label:
         'Install the new release and start it (migrations run; the old one stays live until it is healthy)',
       steps: ['installing'],
+    },
+    {
+      label: 'Watch it for 30 minutes (if it fails, the release before is put back)',
+      steps: ['watching', 'rolling-back'],
     },
   ]
   const current = $derived(

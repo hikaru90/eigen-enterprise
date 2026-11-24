@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process'
-import { request } from 'node:http'
 import { isIP } from 'node:net'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
@@ -20,10 +19,15 @@ import { renderLiveEnvFiles } from './reconcile.ts'
 import { SecretStore } from './secret-store.ts'
 import { HOSTNAME } from './spec.ts'
 import { mustRun, RealSystem } from './system.ts'
-import { boxUpgradeDeps, hostArch, installedOsRelease, RELEASES_URL, upgrade } from './upgrade.ts'
+import { boxUpgradeDeps, hostArch, RELEASES_URL, upgrade } from './upgrade.ts'
 import { parseReleaseSource } from './release-source.ts'
 import { runUpgradeApply } from './upgrade-job.ts'
+import { boxTransactionDeps } from './box-tx.ts'
+import { callEe, refusal } from './control-client.ts'
+import { DEFAULT_WATCH } from './upgrade-watch.ts'
+import type { UpgradeOutcome } from './upgrade.ts'
 import { parseContributeHubFlag } from './contribute-hub.ts'
+import { parseModuleHubFlag, parseModuleHubKeyFlags } from './hub-key.ts'
 
 const USAGE = `ee — the company's init (plan/phase-substrate.md)
 
@@ -34,9 +38,15 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
                [--release-source <install.sh --from>]   (where updates come from; install.sh passes it)
                                          (hosted boxes behind a shared-IP router; kept on re-runs,
                                           --claim-hash on the first install only)
+               [--module-hub <origin>] [--module-hub-key <spki> (current, then backup)]
+                                         (the module hub whose receipts this server trusts; root only,
+                                          kept on re-runs; default: the official hub and its embedded keys)
   ee upgrade [--check] [--from <release-url>] [--node-ip <ip>] [--expect <release>]   (update over the
                                          air to the newest release; keeps everything, takes a safety copy
-                                         first; --expect: only that release, e.g. eigenenterprise-0.5.19-<sha>)
+                                         first; --expect: only that release, e.g. eigenenterprise-0.5.19-<sha>;
+                                         then watches it 30 min — --watch-minutes <n> — and rolls back if it fails)
+  ee rollback [--to <release>] [--check]  (put the os release that ran before back live: no restore;
+                                         refused below the downgrade floor; --check: say what it would do)
   ee upgrade-apply --job <id>           (run by ee-upgrade.service, which Settings → Updates starts through ee)
   ee claim-link                          (new private link to claim this server)
   ee owner-link                          (one-hour link that signs the owner back in: no passkey, no email yet)
@@ -67,27 +77,14 @@ const USAGE = `ee — the company's init (plan/phase-substrate.md)
                                       through ee after it verified and staged that snapshot)
 `
 
-function call(method: string, path: string, body?: unknown): Promise<{ status: number; data: unknown }> {
-  const text = body === undefined ? '' : JSON.stringify(body)
-  return new Promise((resolve, reject) => {
-    const req = request(
-      {
-        socketPath: PATHS.controlSocket,
-        path,
-        method,
-        headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) },
-      },
-      (res) => {
-        let raw = ''
-        res.on('data', (d) => (raw += String(d)))
-        res.on('end', () => resolve({ status: res.statusCode ?? 500, data: raw ? JSON.parse(raw) : null }))
-      },
-    )
-    req.on('error', (err) =>
-      reject(new Error(`ee daemon unreachable at ${PATHS.controlSocket} (is ee.service running?): ${err.message}`, { cause: err })),
-    )
-    req.end(text)
-  })
+const call = callEe
+
+/** `--watch-minutes <n>`: the watch after the cut-over (a test box shortens it); 30 minutes otherwise. */
+function watchLimits(raw: string | undefined) {
+  if (raw === undefined) return DEFAULT_WATCH
+  const minutes = Number(raw)
+  if (!Number.isFinite(minutes) || minutes < 0 || minutes > 240) throw new Error(`--watch-minutes "${raw}" must be a number of minutes from 0 to 240`)
+  return { ...DEFAULT_WATCH, durationMs: minutes * 60_000, queueStallMs: Math.min(DEFAULT_WATCH.queueStallMs, minutes * 60_000) }
 }
 
 async function print(p: Promise<{ status: number; data: unknown }>): Promise<void> {
@@ -138,6 +135,8 @@ async function main(argv: string[]): Promise<void> {
           'trusted-proxy': { type: 'string' },
           'claim-hash': { type: 'string' },
           'release-source': { type: 'string' },
+          'module-hub': { type: 'string' },
+          'module-hub-key': { type: 'string', multiple: true },
         },
       })
       if (!values.release) throw new Error('--release <tarball> is required')
@@ -159,6 +158,11 @@ async function main(argv: string[]): Promise<void> {
         throw new Error('--claim-hash must be 64 lowercase hex characters (the SHA-256 of the claim token)')
       }
       const releaseSource = values['release-source'] === undefined ? undefined : parseReleaseSource(values['release-source'])
+      // Root only (bootstrap refuses anyone else): the one way to change which hub's receipts ee trusts (hub-key.ts, D11).
+      const moduleHub = {
+        ...(values['module-hub'] !== undefined ? { origin: parseModuleHubFlag(values['module-hub']) } : {}),
+        ...(values['module-hub-key'] !== undefined ? { keys: parseModuleHubKeyFlags(values['module-hub-key']) } : {}),
+      }
       const { consoleHost, claimToken, claimIssuedElsewhere } = await bootstrap(sys, {
         release: values.release,
         livekitRelease: values['livekit-release'],
@@ -170,6 +174,7 @@ async function main(argv: string[]): Promise<void> {
         ...(trustedProxy ? { trustedProxy } : {}),
         ...(values['claim-hash'] !== undefined ? { claimHash: values['claim-hash'] } : {}),
         ...(releaseSource ? { releaseSource } : {}),
+        moduleHub,
       })
       console.log('→ first deploy (health-gated; migrations run now, this takes a minute)')
       const ee = new Ee(sys, await SecretStore.open(sys))
@@ -195,11 +200,27 @@ async function main(argv: string[]): Promise<void> {
     case 'upgrade': {
       const { values } = parseArgs({
         args: rest,
-        options: { check: { type: 'boolean' }, from: { type: 'string' }, 'node-ip': { type: 'string' }, expect: { type: 'string' } },
+        options: {
+          check: { type: 'boolean' },
+          from: { type: 'string' },
+          'node-ip': { type: 'string' },
+          expect: { type: 'string' },
+          'watch-minutes': { type: 'string' },
+        },
       })
       if (process.getuid?.() !== 0) throw new Error('ee upgrade must run as root')
       if (values['node-ip'] && isIP(values['node-ip']) === 0) {
         throw new Error(`--node-ip "${values['node-ip']}" is not an IP address`)
+      }
+      // The CLI path has no job record: the outcome goes to the daemon, which journals it.
+      let unrecorded: string | null = null
+      const report = async (outcome: UpgradeOutcome) => {
+        try {
+          const { status, data } = await call('POST', '/v1/upgrade/outcome', { outcome })
+          if (status >= 400) unrecorded = refusal(data, status)
+        } catch (err) {
+          unrecorded = (err as Error).message
+        }
       }
       const result = await upgrade(
         boxUpgradeDeps(sys, {
@@ -208,6 +229,7 @@ async function main(argv: string[]): Promise<void> {
               spawn(cmd, args, { stdio: 'inherit' }).on('error', reject).on('exit', (code) => resolve(code ?? 1))
             }),
           log: (l) => console.log(l),
+          tx: boxTransactionDeps({ sys, call, watchLimits: watchLimits(values['watch-minutes']) }),
         }),
         {
           from: values.from ?? RELEASES_URL,
@@ -215,10 +237,20 @@ async function main(argv: string[]): Promise<void> {
           check: values.check === true,
           ...(values['node-ip'] ? { nodeIp: values['node-ip'] } : {}),
           ...(values.expect !== undefined ? { expect: values.expect } : {}),
+          onOutcome: report,
         },
-      )
+      ).finally(() => {
+        if (unrecorded) console.error(`✗ the outcome could not be written to ee's journal: ${unrecorded}`)
+      })
+      if (unrecorded) process.exitCode = 1
       if (values.check && result === 'available') console.log('  run `ee upgrade` to install it')
       return
+    }
+    case 'rollback': {
+      // Put the os release that ran before back live (blue is still on disk; no restore).
+      const { values } = parseArgs({ args: rest, options: { to: { type: 'string' }, check: { type: 'boolean' } } })
+      if (values.check) return print(call('GET', '/v1/upgrade/rollback'))
+      return print(call('POST', '/v1/upgrade/rollback', { author: who(), ...(values.to !== undefined ? { to: values.to } : {}) }))
     }
     case 'upgrade-apply': {
       // Settings → Updates (upgrade-job.ts): the daemon checked the release and recorded the job, then
@@ -244,17 +276,22 @@ async function main(argv: string[]): Promise<void> {
                   for (const stream of [child.stdout, child.stderr]) createInterface({ input: stream }).on('line', line)
                   child.on('error', reject).on('close', (code) => resolve(code ?? 1))
                 }),
+              tx: boxTransactionDeps({ sys, call, watchLimits: DEFAULT_WATCH }),
             }),
-            { from: job.from, arch: hostArch(), check: false, expect: job.release, onStep: (step, detail) => hooks.step(step, step === 'safety-copy' ? detail : undefined) },
+            {
+              from: job.from,
+              arch: hostArch(),
+              check: false,
+              expect: job.release,
+              onStep: (step, detail) => hooks.step(step, step === 'safety-copy' ? detail : undefined),
+              onOutcome: (o) => hooks.outcome(o),
+            },
           )
           await lines
           if (lineError) throw lineError
           if (result !== 'upgraded') throw new Error(`nothing was changed: this server already runs ${job.release}`)
-          const now = await installedOsRelease(sys)
-          if (now !== `${job.release}-linux-${hostArch()}.tar.gz`) {
-            throw new Error(`the installer finished, but the company repo runs ${now ?? 'no release'}, not ${job.release}`)
-          }
-          return now
+          // upgrade() checked that the company repo now names the release.
+          return `${job.release}-linux-${hostArch()}.tar.gz`
         },
         (l) => console.log(l),
       )

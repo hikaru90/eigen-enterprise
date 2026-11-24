@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { fail } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
+import { isCompanyModuleName } from '$lib/kernel/manifest-schema'
 import { errorReport, refusalReport } from '$lib/server/errors/report'
 import type { ToolContext } from '$lib/kernel/types'
 import { requireCapability } from '$lib/server/auth/require-capability'
@@ -10,6 +11,7 @@ import { ownerRun } from '$lib/server/website/owner-run'
 import { ownerModuleBlurb } from '$lib/shell/module-copy'
 import { CONTRIBUTE_HUB_MODULE_ID } from '../../../../../modules/contribute/hub/manifest'
 import { DEMO_MODULE_ID } from '../../../../../modules/demo/manifest'
+import { MODULE_HUB_MODULE_ID } from '../../../../../modules/module-hub/manifest'
 
 /**
  * Settings → Plugins (owner, 2026-11-12: "everything is a plugin"): every
@@ -97,22 +99,27 @@ export const load: PageServerLoad = async ({ locals }): Promise<PluginsData> => 
         name: m.name,
         version: m.version,
         description: ownerModuleBlurb(m.id, m.description ?? '') || null,
-        origin: 'official',
+        // A company module (U2) owns the x- id space; everything else ships with eigenEnterprise.
+        origin: isCompanyModuleName(m.id) ? 'company' : 'official',
         active: m.active,
         tools: m.tools,
         requires: m.requires.map(ref),
         requiredBy: m.requiredBy.map(ref),
       })),
-    // The central Contribute board and the demo company seed are internal but switched on only
-    // on one install each (the owner's, the demo box): where they are off, they are not part of
-    // this company's core.
+    // The central Contribute board, the module hub and the demo company seed are internal but
+    // switched on only on one install each (the owner's, the demo box): where they are off, they
+    // are not part of this company's core.
     core: listed
       .filter((m) => m.core && (m.active || !OFF_UNLESS_SWITCHED_ON.has(m.id)))
       .map((m) => ({ id: m.id, name: m.name })),
   }
 }
 
-const OFF_UNLESS_SWITCHED_ON: ReadonlySet<string> = new Set([CONTRIBUTE_HUB_MODULE_ID, DEMO_MODULE_ID])
+const OFF_UNLESS_SWITCHED_ON: ReadonlySet<string> = new Set([
+  CONTRIBUTE_HUB_MODULE_ID,
+  MODULE_HUB_MODULE_ID,
+  DEMO_MODULE_ID,
+])
 
 type SwitchAction = 'activate' | 'deactivate'
 

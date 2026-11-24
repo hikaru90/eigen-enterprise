@@ -23,8 +23,17 @@ export function productionSources(): BackupSources {
     // config) and the host key that unseals it: together they are ee. Plus the
     // os workload's git-native company data repo and its sealed company root key
     // (plan/phase-git-native.md; sealed under TENANT_MASTER_KEY, which lives in
-    // the secret store above).
-    eeState: [PATHS.company, PATHS.secrets, PATHS.masterKey, join(PATHS.osState, 'company-data'), join(PATHS.osState, 'company-keys')],
+    // the secret store above). Modules (plan/phase-upgrades-u2.md §3): the kernel's
+    // module repo and ee's store of receipted bundles, so a restore runs the same bytes.
+    eeState: [
+      PATHS.company,
+      PATHS.secrets,
+      PATHS.masterKey,
+      join(PATHS.osState, 'company-data'),
+      join(PATHS.osState, 'company-keys'),
+      PATHS.moduleRepo,
+      PATHS.moduleBundles,
+    ],
     tmpDir: PATHS.backupTmp,
   }
 }
@@ -91,6 +100,12 @@ export async function applyRestore(sys: System, id: string, progress: ApplyProgr
     .map((l) => l.trim().split(/\s+/)[0])
     .filter((u): u is string => !!u && /^ee-[a-z0-9-]+-[ab]\.service$/.test(u))
   if (units.length) await mustRun(sys, 'systemctl', ['stop', ...units])
+  // Module units (one slot, ee-mod-<id>.service): ee starts them again after its reconcile.
+  const modules = (await mustRun(sys, 'systemctl', ['list-units', '--plain', '--no-legend', '--all', 'ee-mod-*.service']))
+    .split('\n')
+    .map((l) => l.trim().split(/\s+/)[0])
+    .filter((u): u is string => !!u && /^ee-mod-[a-z0-9-]+\.service$/.test(u))
+  if (modules.length) await mustRun(sys, 'systemctl', ['stop', ...modules])
 
   await progress('restoring-state', '→ restoring ee state (company repo, sealed secrets, host key)')
   await sys.remove(PATHS.company)

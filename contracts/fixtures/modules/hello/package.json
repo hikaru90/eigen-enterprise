@@ -1,0 +1,11 @@
+{
+  "name": "eigen-module-hello",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node test.mjs"
+  }
+}

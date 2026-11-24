@@ -47,6 +47,18 @@ export const PATHS = {
   previewCache: '/var/lib/ee/preview-cache',
   /** The os workload's persistent state (Drive under drive/, the agent under agent/). */
   osState: '/var/lib/ee-state/os',
+  /**
+   * Modules (plan/phase-upgrades-u2.md §5, modules.ts): ee's store of receipted
+   * bundles, /var/lib/ee/modules/<id>/<bundleSha256>.tar.gz (root, 0600; the
+   * contract's MODULE_BUNDLE_STORE). Backed up: a restore runs the same bytes.
+   */
+  moduleBundles: '/var/lib/ee/modules',
+  /** Where the kernel hands a bundle over (`${osState}/module-bundles`, the contract's MODULE_BUNDLE_HANDOFF_DIR). */
+  moduleHandoff: '/var/lib/ee-state/os/module-bundles',
+  /** The kernel's module repo (one folder per module; plan/phase-upgrades-u2.md §3). Backed up. */
+  moduleRepo: '/var/lib/ee-state/os/module-repo',
+  /** ee's runtime record of each module (what runs, why it failed). Never authoritative, like the journal. */
+  moduleState: '/var/lib/ee/modules-state.json',
 } as const
 
 export const CONTROL_GROUP = 'ee-control'

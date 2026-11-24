@@ -150,9 +150,23 @@ export const workloadSchema = z
      * repo. ee writes it into the release as ee.json; it wins over the repo's.
      */
     contract: z.lazy(() => appContractSchema).optional(),
+    /**
+     * A vibe-coded module (plan/phase-upgrades-u2.md §5, modules.ts): the receipted
+     * manifest and the hub's receipt it runs under, and whether it should run.
+     * Only on a `module` workload named mod-<id>; ee checks the receipt again on
+     * every reconcile, so a tampered file here stops the module, never widens it.
+     */
+    module: z.lazy(() => moduleFieldSchema).optional(),
   })
   .strict()
   .superRefine((w, ctx) => {
+    if (w.module) {
+      if (w.tier !== 'module') ctx.addIssue({ code: 'custom', path: ['module'], message: `only module workloads carry a module (${w.name} is ${w.tier})` })
+      if (w.name !== `mod-${w.module.id}`) ctx.addIssue({ code: 'custom', path: ['name'], message: `a module workload is named mod-${w.module.id}, not ${w.name}` })
+      if (w.source.kind !== 'release') ctx.addIssue({ code: 'custom', path: ['source'], message: 'a module runs from its receipted bundle (a release source)' })
+      if (Object.keys(w.env).length > 0) ctx.addIssue({ code: 'custom', path: ['env'], message: 'a module gets exactly the module env (modules.ts), never workload env' })
+      if (!w.contract) ctx.addIssue({ code: 'custom', path: ['contract'], message: 'a module workload carries the contract derived from its manifest' })
+    }
     const ports = w.ports ?? []
     if (ports.length > 0 && w.tier !== 'system') {
       ctx.addIssue({ code: 'custom', path: ['ports'], message: `only system workloads may open host ports (${w.name} is ${w.tier})` })
@@ -166,6 +180,35 @@ export const workloadSchema = z
   })
 
 export type Workload = z.infer<typeof workloadSchema>
+
+/**
+ * The `module` field of a module workload. The manifest and receipt stay plain
+ * objects here (as the kernel sent them): modules.ts checks them with the U2
+ * contract files on every POST and every reconcile.
+ */
+export const moduleFieldSchema = z
+  .object({
+    id: z.string().min(2).max(24).regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/),
+    version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/),
+    commit: z.string().regex(GIT_REV),
+    manifest: z.record(z.string(), z.unknown()),
+    receipt: z.record(z.string(), z.unknown()),
+    desired: z.enum(['running', 'stopped']),
+    /** Why it is stopped (a person's off, or the kernel switching a failing module off); null while it should run. */
+    stopReason: z.enum(['person', 'failed']).nullable().default(null),
+    /** The sentence a person reads about the stop; null while it should run. */
+    sentence: z.string().min(1).max(300).nullable().default(null),
+  })
+  .strict()
+  .superRefine((m, ctx) => {
+    if (m.desired === 'running' && (m.stopReason !== null || m.sentence !== null)) {
+      ctx.addIssue({ code: 'custom', message: 'a module that should run has no stop reason' })
+    }
+    if (m.desired === 'stopped' && (m.stopReason === null || m.sentence === null)) {
+      ctx.addIssue({ code: 'custom', message: 'a stopped module says why (stopReason and sentence)' })
+    }
+  })
+export type ModuleField = z.infer<typeof moduleFieldSchema>
 
 /** Host ports held by more than one workload, in plain words (empty = no collision). */
 export function hostPortCollisions(workloads: Workload[]): string[] {

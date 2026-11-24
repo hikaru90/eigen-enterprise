@@ -2,6 +2,83 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Upgrades U2: a place for vibe-coded modules (owner: "Start U2 and U3"; contract `8266b353`, branch `upgrades-integrate`; not released, no box touched)
+
+The contract was fixed first in `plan/phase-upgrades-u2.md` (decisions D1–D15). The shared contract commit (§9.0) followed, then three parallel streams. All of it is integrated on `upgrades-integrate`, together with U3.
+
+- **§9.0, shared contract** (`3815e098`):
+  - `contracts/module-manifest.ts` (module.yaml v1), `module-receipt.ts`, `module-protocol.ts` (eem/1), `module-bundle.ts` (a deterministic tar.gz) and `module-workload.ts`, with 565 contract tests;
+  - the `hello` fixture module, a test-only hub key, and empty `company-modules`/`module-hub` manifests.
+  - Deviations, kept: the manifest file imports `js-yaml`; there is an extra problem type, `urn:ee:secret_undeclared`; `module-hub` is off unless switched on; `company-modules` is a system module.
+- **Stream A, kernel host** (`06ec5ccc`, `9d1393e5`, `fdb061db`, `9d83e099`; migration 0179):
+  - **`src/lib/kernel/module-host/`:** the eem/1 socket server, auth by service principal and token, `uses:` enforcement, and the person rule (`via:'module'`).
+    - Proxy tools `x_<id>.*`, with unregister and dynamic gating.
+    - At-least-once event delivery with a cursor, and `data.*` on `extensions/<id>/`.
+    - The state machine and "switched off loudly": failed, ee stopped, `module.failed`, a Needs you entry, data kept. A new commit makes it `running` again; a person's off stays off.
+  - **The `modules.*` tools:** 14 of them, including scaffold → write → commit → publish → test → deploy.
+    - The first deploy, or one that widens reach, needs an admin's own click.
+    - The one-time sharing OK belongs to the owner.
+  - **Also in A:** Settings → Modules → Company, Needs you entries, the export of `extensions/`, and system.yaml v2 (v1 still reads).
+  - **Decisions:** D-A1 to D-A14 are in the stream report. Main ones:
+    - the kernel module page lives at `/settings/modules/company`;
+    - `modules.deploy` needs an existing receipt;
+    - `data.*` writes are authored by `module:<id>`;
+    - after a restore, a bundle is rebuilt from the module repo, or fetched from the hub by sha, and checked against its receipt.
+- **Stream B, ee** (`32a81fce`, `185909ea`):
+  - **Running a module:** receipted bundles only, `/v1/modules`, the build unit, a test unit with no network, and the hardened run unit.
+    - The run unit has no network and sees only the module socket directory; `systemd-analyze` scores it 0.4, against 1.3 for app units.
+  - **Hub trust:** `settings.moduleHub`, set only from root's CLI; `ee/src/hub-key.ts` with current and backup key slots; `scripts/hub-key.sh`.
+  - **`ee/e2e/box.sh module-check`:** 20/20 on real systemd, in a throwaway container.
+    - Tampered bytes give 422 and no unit.
+    - A red test keeps the old release running.
+    - Undeclared secrets get 403.
+  - ee's bundle now carries one copy of zod and of js-yaml (esbuild aliases), and is 760 KB smaller.
+- **Stream C, hub** (`9bcee5bd`, `7858f757`; migration 0180):
+  - `/api/hub/modules/{publish, bundles/:sha, :id/run}`, signed like contributions.
+  - The six checks, with collected problems. The secret scan reports path:line, never the value.
+  - Signed receipts with `MODULE_HUB_SIGNING_KEY`.
+  - The owner's view at Contribute → Modules: the module tools, tree and files, versions, the installs running each, and an LLM summary through the gateway.
+  - The box's `PublishPort` (`livePublishPort()`). The mock hub speaks all of it.
+- **Integration (orchestrator):**
+  - Journal 0179, then 0180. The contract lock has 411 tools and 59 events, with no breaking changes.
+  - `plan/parity-debt.md` is regenerated.
+  - The boot provides `livePublishPort()`.
+  - Stream A's `kernel_events` index moved out of 0179 into its own migration, `0181_kernel_events_type_index` (`-- ee:no-transaction`, `CREATE INDEX CONCURRENTLY`). On a large table, a plain `CREATE INDEX` would block writes while it builds.
+  - The host reports each module's run state to the hub (running, failed, stopped) through `PublishPort.reportRun`. A failed report is a journal line, never a module failure (host.spec).
+- **Not done:**
+  - **No proof on a real box yet:** a full scaffold → publish → deploy → kill → repair run across kernel, ee and the hub. Each stream proved its part against fakes. Stream B also proved its part on real systemd.
+  - **No official hub key.** `hub-key.ts` holds placeholders until the owner runs `scripts/hub-key.sh` and sets `MODULE_HUB_SIGNING_KEY` on os.cerberusblue.com. Until then, official-hub modules get 422.
+  - The module build unit still has full network, not "npm registry only".
+  - No link from `/contribute` to `/contribute/modules`, and no Playwright e2e of the new pages.
+  - About 30 import-order lint warnings.
+  - Streams D (UI slots) and E (the invoices proof) come next.
+- **Why not on main yet:** another session's uncommitted demo guest-access work, migration 0178, sits in the main checkout and overlaps these files. `upgrades-integrate` merges once it is committed.
+
+## 2026-11-24 — Upgrades U3: the upgrade transaction on the box (`442785b9`, `b159e890`, merged on `upgrades-integrate`; not released, no box touched)
+
+§6.4 in `ee/`, every failure path with an ee spec (`upgrade-transaction.spec.ts`, `upgrade-watch.spec.ts`, `release-meta.spec.ts`, `box-tx.spec.ts`, `upgrade-job.spec.ts`, `reconcile.spec.ts`, `ee-slots-install.spec.ts`).
+
+- **1. Preflight** (`upgrade.ts`, `release-meta.ts`): refused with a sentence, nothing changed, on: the signature; **minFrom and the downgrade floor checked on the box** from the new signed asset **`UPGRADE.json`** (`{release, downgradeFloor, minFrom, capabilities}`, `scripts/upgrade-meta.mjs`, listed in SHA256SUMS by `release.sh`, published by `release.yml`); a capability the release needs that the box lacks and the release does not ship; no livekit for this CPU; disk (`3 GB + the database` free on /var/lib/ee); a restore running. ee keeps each installed release's signed SHA256SUMS + UPGRADE.json in `/var/lib/ee/releases/<release>.release/` and verifies it again whenever it reads the floor. `moduleImpact` hook: typed, no-op, only annotates (a throwing hook is logged, never refuses).
+- **2. Safety copy:** the local copy as before, then an off-box backup through the daemon (`POST /v1/backups/run wait`) when backups are configured; a failed backup refuses the update ("upgrade stopped, nothing changed: the off-box backup failed: …").
+- **3 + 4. Green:** its preStart runs the migrations (spec: a failing migration leaves blue serving, edge untouched). **New: the core smoke** — after health, os must answer `GET /login` and `GET /manifest.webmanifest` before the edge points at it (`reconcile.ts OS_CORE_SMOKE`). An installer that fails after its bootstrap named the new release puts the company repo back to what serves (reported `rolledBack`).
+- **5. Watch** (`upgrade-watch.ts`): 30 min (`ee upgrade --watch-minutes <n>` for test boxes): the live os slot and ee.service (not active, ≥3 restarts), the edge 5xx share of app answers (>10% of ≥20, from **Caddy metrics, now switched on** in `caddy.ts`, read over the admin socket), a stalled job queue (overdue jobs and none started since the cut-over, after 10 min). A probe that cannot read fails the watch. `moduleCheck` hook runs after the cut-over and only reports.
+- **6. Rollback** (`rollback.ts`, `rollback-box.ts`): os's source in the company repo goes back to blue's tarball; the normal blue/green deploy brings blue up from disk (no unpack, health-gated) and points the edge back. No restore. Refused below the floor of what runs (a release with no kept metadata is its own floor). **`ee rollback [--to] [--check]`**, `GET|POST /v1/upgrade/rollback`, and the owner-only registry tool **`kernel.release_rollback`** (human, approvalAlways, destructive). The last two os releases stay on disk (`pruneReleases`, after a held watch).
+- **7. Report:** the outcome `{release, from, step, ok, reason, rolledBack}` goes on the job (Settings → Updates), into ee's journal (the CLI path posts `POST /v1/upgrade/outcome`; only the daemon writes the journal), into `kernel.release_status` (`lastOutcome`, plus `rollback: {to, refused}`), and onto the owner's **Overview → Needs you** while the newest update did not hold. Settings → Updates shows the backup and the watch as steps.
+- **8. ee's own A/B slot** (`install.sh` `install_ee`, `ee-slots.ts`): `/opt/ee/releases/<release>/ee.mjs`, `/opt/ee/ee.mjs` → the one that runs, `/opt/ee/ee.previous.mjs` → the one before (nothing older kept; the pre-slots ee is kept as `releases/pre-slots`). The new ee runs the previous os release (rollback never needs the old ee). If ee.service does not answer during a rollback, the upgrade process points ee back at the previous one, restarts it and asks it (≤60 s).
+- **Decisions (orchestrator may veto):**
+  - The rollback restores os's **source only**, not the whole previous `system.yaml`: a domain or secret added since stays (no silent removals); livekit stays (an older os talks to it the same).
+  - Blue is **stopped but installed** during the watch, not kept running (2 GB each); a rollback is a health-gated start of blue, not an instant flip.
+  - `UPGRADE.json` required since **0.5.40**; an older release = floor its own version, no minFrom, no capabilities. `MIN_UPGRADE_FROM = 0.5.20`.
+  - The preflight step keeps its name `verifying`; new steps `backup`, `watching`, `rolling-back`.
+  - A watch probe that cannot read counts as a failed watch (it can't vouch for the release).
+  - The rollback a running update asks for (`automatic`) is allowed on a managed box and while its own job runs; a person's is not.
+- **Behaviour changes, announced:** Caddy now has HTTP metrics on (`apps.http.metrics`; needs Caddy ≥ 2.8). `ee upgrade` now blocks ~30 min for the watch (`--watch-minutes 0` skips it). install.sh moves `/opt/ee/ee.mjs` into slots (a link now).
+- **Not done:**
+  - **Fleet report (§9.4):** no phone-home channel for upgrade stats exists (the managed-fleet poll carries no outcomes, and self-hosted boxes have none): `UpgradeReportSink` is a typed no-op port; the switch in Settings → Updates comes with the channel.
+  - The first upgrade **to** this release still runs the old ee's transaction (the box's ee runs `ee upgrade`); the watch, rollback and new preflight apply from the upgrade after.
+  - An ee self-rollback to the pre-slots ee cannot roll os back (that ee has no rollback verb): it fails loud with the sentence.
+  - Not run on a box: the Caddy metrics names (`caddy_http_request_duration_seconds_count{server="ee",handler="reverse_proxy"}`) and the job-queue query are checked against fixtures only.
+
 ## 2026-11-24 — Release v0.5.39 (owner: "Yes, then release")
 
 - **Tagged** `v0.5.39` on `9a5470dc` (main as pushed; includes the C7 rework, brand extraction on the assistant's model, the co-worker browser journey, @ suggestions in Messages with the visible co-worker handle, and the other session's upgrades U0/U1). Release gate green in a clean worktree: upgrade rehearsal GREEN, e2e 76 passed / 5 skipped (12.4 min). GitHub release workflow run 45386719629 builds, signs and publishes. Not installed on any box yet.

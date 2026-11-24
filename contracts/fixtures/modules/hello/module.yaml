@@ -1,0 +1,44 @@
+manifest: eigen.module/1
+id: hello
+name: Hello
+version: 0.1.0
+description: Greets a person by name. The fixture module of the U2 contract.
+license: Apache-2.0
+requires: { core-api: '^1.0.0' }
+runtime: { node: '22' }
+build: []
+test: [['node', 'test.mjs']]
+start: ['node', 'index.mjs']
+resources: { memoryMb: 64, cpuPercent: 10 }
+uses:
+  tools: [members.list]
+  events: []
+  slots: []
+provides:
+  tools:
+    - name: greet
+      summary: Greet someone by name
+      input:
+        type: object
+        properties:
+          name: { type: string, minLength: 1, maxLength: 100 }
+        required: [name]
+        additionalProperties: false
+      output:
+        type: object
+        properties:
+          greeting: { type: string }
+        required: [greeting]
+        additionalProperties: false
+      auditClass: read
+      approval: none
+      roles: [admin, member, agent]
+      activity: 'Greeted {input.name}'
+      timeoutMs: 5000
+  events: []
+  slots: []
+permissions:
+  background: false
+  secrets: []
+  network: []
+  capabilities: []

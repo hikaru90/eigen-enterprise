@@ -142,7 +142,9 @@ export function renderCaddyConfig(input: CaddyInput): Json {
     // Pinned (the package default) so certificates.ts reads where Caddy writes.
     storage: { module: 'file_system', root: PATHS.caddyStorage },
     apps: {
-      http: { servers },
+      // HTTP metrics (Caddy ≥ 2.8 makes them opt-in) on the admin socket's /metrics: the upgrade
+      // watch reads the app's 5xx rate from them (upgrade-watch.ts). Counts only, no hosts or paths.
+      http: { servers, metrics: {} },
       ...(policies.length > 0 ? { tls: { automation: { policies } } } : {}),
     },
   }

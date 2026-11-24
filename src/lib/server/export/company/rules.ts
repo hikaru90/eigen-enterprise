@@ -421,6 +421,9 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   hub_installs: full,
   hub_request_counts: excluded('rate-limit counters'),
   hub_seen_signatures: excluded('replay guard (seen request signatures)'),
+  hub_modules: full,
+  hub_module_versions: full,
+  hub_module_runs: full,
 }
 
 /**

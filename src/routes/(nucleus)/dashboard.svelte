@@ -99,10 +99,18 @@
   const coworkerNotices = $derived(dashboard.coworkerNotices)
   // Decision questions asked of this person: Jev was unsure, the person answers from the closed set (CB2, decisions.answer).
   const decisionQuestions = $derived(dashboard.decisionQuestions)
+  // The company's own modules: a failed one, a deploy waiting for an admin, the owner's sharing OK (U2).
+  const moduleNotices = $derived(dashboard.moduleNotices)
   const taskCount = $derived(
-    tasks.assignedToMe.length + tasks.updates.length + reminders.length + coworkerNotices.length + decisionQuestions.length,
+    tasks.assignedToMe.length +
+      tasks.updates.length +
+      reminders.length +
+      coworkerNotices.length +
+      decisionQuestions.length +
+      moduleNotices.length,
   )
-  const needsYou = $derived(overview.approvals.length + taskCount + (dashboard.backup ? 1 : 0))
+  const warnings = $derived((dashboard.backup ? 1 : 0) + (dashboard.update ? 1 : 0))
+  const needsYou = $derived(overview.approvals.length + taskCount + warnings)
   // Assigned tasks live in Memory › Tasks, reminders in Memory › Reminders; the dashboard's buttons post to those pages' actions.
   const tasksPage = resolve('/m/memory/tasks')
   const remindersPage = resolve('/m/memory/reminders')
@@ -350,7 +358,7 @@
                 Tasks<span class="on-soft font-mono">{taskCount}</span>
               </span>
               <span class="hairline flex flex-col text-sm leading-tight">
-                Warnings<span class="on-soft font-mono">{dashboard.backup ? 1 : 0}</span>
+                Warnings<span class="on-soft font-mono">{warnings}</span>
               </span>
             </span>
             <span class="sr-only">{needsYou} waiting on you</span>
@@ -469,6 +477,18 @@
                 <span class="min-w-0 truncate">{dashboard.backup.text}</span>
               </span>
               <a href={resolve('/settings/backups')} class={inkPill}>Open backups</a>
+            </div>
+          {/if}
+          {#if dashboard.update}
+            <div class={row} data-testid="overview-update-notice" data-kind={dashboard.update.kind}>
+              <span class="flex min-w-0 items-center gap-3">
+                <span
+                  class="grid size-8 shrink-0 place-items-center rounded-full bg-ink"
+                  aria-hidden="true"><span class="size-2 rounded-full bg-destructive"></span></span
+                >
+                <span class="min-w-0 truncate">{dashboard.update.text}</span>
+              </span>
+              <a href={resolve('/settings/updates')} class={inkPill}>Open updates</a>
             </div>
           {/if}
           {#if taskCount > 0}
@@ -622,9 +642,32 @@
                   </form>
                 </li>
               {/each}
+              {#each moduleNotices as notice (notice.kind === 'module_sharing' ? 'sharing' : `${notice.kind}:${notice.moduleId}`)}
+                <li class={taskRow} data-testid="dashboard-module-notice" data-kind={notice.kind}>
+                  <span class="flex min-w-0 items-center gap-3">
+                    <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                      ><span class="size-2 rounded-full bg-coral"></span></span
+                    >
+                    <span class="flex min-w-0 flex-col">
+                      <span class="truncate"
+                        >{notice.kind === 'module_deploy_needs_admin'
+                          ? `${notice.name} is waiting for an admin to deploy ${notice.commit.slice(0, 12)}.`
+                          : notice.sentence}</span
+                      >
+                    </span>
+                  </span>
+                  {#if notice.kind === 'module_sharing'}
+                    <form method="POST" action="{resolve('/settings/modules/company')}?/acceptSharing" use:enhance>
+                      <button type="submit" class={inkPill} data-testid="dashboard-module-sharing-ok">OK</button>
+                    </form>
+                  {:else}
+                    <a href={resolve('/settings/modules/company')} class={softPill} data-testid="dashboard-module-open">Open</a>
+                  {/if}
+                </li>
+              {/each}
             </ul>
           {/if}
-          {#if overview.approvals.length === 0 && !dashboard.backup && taskCount === 0}
+          {#if overview.approvals.length === 0 && warnings === 0 && taskCount === 0}
             <p class="{row} pr-4 text-muted-foreground">
               <span class="flex min-w-0 items-center gap-3">
                 <span

@@ -2334,6 +2334,15 @@ export type CoreApiTools = {
       "status": string
     }
   }
+  "kernel.release_rollback": {
+    input: {
+      "to"?: string
+    }
+    output: {
+      "from": string
+      "to": string
+    }
+  }
   "kernel.release_status": {
     input: Record<string, never>
     output: {
@@ -2350,6 +2359,14 @@ export type CoreApiTools = {
         "status": "running" | "succeeded" | "failed"
         "step": string
       }) | null
+      "lastOutcome": ({
+        "from": string | null
+        "ok": boolean
+        "reason": string | null
+        "release": string
+        "rolledBack": boolean
+        "step": string
+      }) | null
       "latest": ({
         "notes": string | null
         "release": string
@@ -2358,6 +2375,10 @@ export type CoreApiTools = {
       }) | null
       "latestError": string | null
       "managed": boolean
+      "rollback": ({
+        "refused": string | null
+        "to": string | null
+      }) | null
     }
   }
   "kernel.whoami": {
@@ -2986,6 +3007,137 @@ export type CoreApiTools = {
         "filename": string
         "mime"?: string
       }>
+    }
+    output: unknown
+  }
+  "module_hub.file": {
+    input: {
+      "bundle_sha256": string
+      "path": string
+    }
+    output: unknown
+  }
+  "module_hub.get": {
+    input: {
+      "install_id": string
+      "module_id": string
+    }
+    output: unknown
+  }
+  "module_hub.list": {
+    input: {
+      "cursor"?: string
+      "query"?: string
+    }
+    output: unknown
+  }
+  "module_hub.summarize": {
+    input: {
+      "bundle_sha256": string
+    }
+    output: unknown
+  }
+  "module_hub.tree": {
+    input: {
+      "bundle_sha256": string
+    }
+    output: unknown
+  }
+  "module_hub.version": {
+    input: {
+      "bundle_sha256": string
+    }
+    output: unknown
+  }
+  "modules.accept_sharing": {
+    input: Record<string, unknown>
+    output: unknown
+  }
+  "modules.commit": {
+    input: {
+      "id": string
+      "message": string
+    }
+    output: unknown
+  }
+  "modules.delete_file": {
+    input: {
+      "id": string
+      "path": string
+    }
+    output: unknown
+  }
+  "modules.deploy": {
+    input: {
+      "commit": string
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.get": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.list": {
+    input: Record<string, unknown>
+    output: unknown
+  }
+  "modules.logs": {
+    input: {
+      "id": string
+      "lines"?: number
+    }
+    output: unknown
+  }
+  "modules.publish": {
+    input: {
+      "commit": string
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.remove": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.scaffold": {
+    input: {
+      "description": string
+      "id": string
+      "name": string
+    }
+    output: unknown
+  }
+  "modules.source": {
+    input: {
+      "commit"?: string
+      "id": string
+      "path"?: string
+    }
+    output: unknown
+  }
+  "modules.status": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.test": {
+    input: {
+      "commit": string
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.write_file": {
+    input: {
+      "content": string
+      "id": string
+      "path": string
     }
     output: unknown
   }
@@ -3966,6 +4118,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "kernel.module_deactivate",
   "kernel.module_list",
   "kernel.release_install",
+  "kernel.release_rollback",
   "kernel.release_status",
   "kernel.whoami",
   "members.get_open_join",
@@ -4051,6 +4204,26 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "messages.set_do_not_disturb",
   "messages.thread",
   "messages.upload_attachments",
+  "module_hub.file",
+  "module_hub.get",
+  "module_hub.list",
+  "module_hub.summarize",
+  "module_hub.tree",
+  "module_hub.version",
+  "modules.accept_sharing",
+  "modules.commit",
+  "modules.delete_file",
+  "modules.deploy",
+  "modules.get",
+  "modules.list",
+  "modules.logs",
+  "modules.publish",
+  "modules.remove",
+  "modules.scaffold",
+  "modules.source",
+  "modules.status",
+  "modules.test",
+  "modules.write_file",
   "notifications.devices",
   "notifications.settings_get",
   "notifications.settings_set",

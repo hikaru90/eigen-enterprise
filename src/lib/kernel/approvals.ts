@@ -22,8 +22,19 @@ export type ApprovalRequest = {
  */
 export type ApprovalDecision = 'require' | 'pass' | 'auto_approved'
 
+/**
+ * `gated`: the registry gated this tool when it registered it (a company
+ * module's `approval: mode` tool, plan/phase-upgrades-u2.md §4.5) — gated
+ * exactly like a name on the policy's own list.
+ */
+export type ApprovalGateOptions = { gated?: boolean }
+
 export type ApprovalPolicy = {
-  decide(tool: ToolDescriptor, ctx: ToolContext): ApprovalDecision | Promise<ApprovalDecision>
+  decide(
+    tool: ToolDescriptor,
+    ctx: ToolContext,
+    options?: ApprovalGateOptions,
+  ): ApprovalDecision | Promise<ApprovalDecision>
   /** Called on registration; throws to fail the load (e.g. missing metadata). */
   validateTool?(tool: ToolDescriptor): void
 }
@@ -36,8 +47,8 @@ export class StaticApprovalPolicy implements ApprovalPolicy {
     return this.alwaysRequire.has(tool.name)
   }
 
-  decide(tool: ToolDescriptor, ctx: ToolContext): ApprovalDecision {
-    return this.requiresApproval(tool, ctx) ? 'require' : 'pass'
+  decide(tool: ToolDescriptor, ctx: ToolContext, options?: ApprovalGateOptions): ApprovalDecision {
+    return options?.gated === true || this.requiresApproval(tool, ctx) ? 'require' : 'pass'
   }
 }
 
@@ -86,8 +97,12 @@ export class ModeAwareApprovalPolicy implements ApprovalPolicy {
     }
   }
 
-  async decide(tool: ToolDescriptor, _ctx: ToolContext): Promise<ApprovalDecision> {
-    if (!this.gated.has(tool.name)) return 'pass'
+  async decide(
+    tool: ToolDescriptor,
+    _ctx: ToolContext,
+    options?: ApprovalGateOptions,
+  ): Promise<ApprovalDecision> {
+    if (!this.gated.has(tool.name) && options?.gated !== true) return 'pass'
     this.validateTool(tool)
     const mode = await this.modeStore.get()
     switch (mode) {

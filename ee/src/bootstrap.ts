@@ -11,6 +11,7 @@ import { CompanyRepo, ipv4CidrSchema, type DesiredState, type Settings } from '.
 import { assertContainerHostReady, detectContainer } from './container.ts'
 import { contributeHubEnv, resolveContributeHub, type ContributeHub } from './contribute-hub.ts'
 import { withCallsHost } from './domains.ts'
+import { moduleHubEnv, resolveModuleHub } from './hub-key.ts'
 import { LIVEKIT_SECRETS, LIVEKIT_WORKLOAD, generateLivekitKeys, livekitWorkload } from './livekit.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { PREVIEW_USER } from './previews.ts'
@@ -46,6 +47,8 @@ export type BootstrapOptions = {
   trustedProxy?: string
   /** First install only: the SHA-256 of a claim token minted by whoever set up this server. */
   claimHash?: string
+  /** The module hub (hub-key.ts): `--module-hub <origin>` / `--module-hub-key <spki>`; when omitted, the company's. */
+  moduleHub?: { origin?: string; keys?: string[] }
 }
 
 /**
@@ -468,11 +471,12 @@ async function seedCompany(
       { consoleHost, explicitHost: opts.consoleHost !== undefined, ...(opts.acmeEmail ? { acmeEmail: opts.acmeEmail } : {}) },
     )
     const contributeHub = resolveContributeHub(opts.contributeHub, s.settings.contributeHub)
+    const moduleHub = resolveModuleHub(opts.moduleHub ?? {}, s.settings.moduleHub)
     const os = workloadSchema.parse({
       name: 'os',
       tier: 'system',
       source: { kind: 'release', tarball, sha256 },
-      env: contributeHubEnv({
+      env: moduleHubEnv(contributeHubEnv({
         ...(existing?.env ?? {}),
         ORIGIN: routing.origin,
         AGE_GRAPH_NAME: 'eigen_graph',
@@ -488,7 +492,7 @@ async function seedCompany(
         BODY_SIZE_LIMIT: OS_BODY_SIZE_LIMIT,
         // The app refuses to embed without it; without it no thought is ever indexed.
         EMBEDDING_COMPRESS_INTENSITY: OS_EMBEDDING_COMPRESS_INTENSITY,
-      }, contributeHub),
+      }, contributeHub), moduleHub),
       secrets: resolveOsSecrets([...OS_SECRETS, ...CLAIM_SECRETS], existing?.secrets ?? null, secrets.all()['os'] ?? {}),
       resources: { memoryMb: 2048, cpuPercent: 200 },
     })
@@ -500,6 +504,7 @@ async function seedCompany(
           ...s.settings,
           ...routing.settings,
           contributeHub,
+          moduleHub,
           trustedProxy: net.trustedProxy,
           releaseSource: opts.releaseSource ?? s.settings.releaseSource,
         },

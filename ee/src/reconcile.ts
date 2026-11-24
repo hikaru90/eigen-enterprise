@@ -5,6 +5,7 @@ import { assertCapabilitiesInstalled } from './capabilities.ts'
 import { DeployRun, secretValues } from './deploys.ts'
 import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
 import { LIVEKIT_INTERNAL_PORT, LIVEKIT_WORKLOAD, linkedEnv, type LinkState } from './livekit.ts'
+import { isModuleWorkload, reconcileModules } from './modules.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import {
@@ -321,6 +322,21 @@ async function waitHealthy(ctx: ReconcileContext, unit: string, port: number, pa
   return `the app started but did not answer GET ${path} within ${Math.round(timeoutMs / 1000)}s`
 }
 
+/**
+ * The core smoke (plan/phase-upgrades.md §6.4 step 4): beyond its health check, a new os must
+ * render the pages every visitor reaches first — the sign-in page and the web app manifest, both
+ * rendered from the company's data on the migrated schema — before it takes traffic.
+ */
+export const OS_CORE_SMOKE = ['/login', '/manifest.webmanifest'] as const
+
+async function coreSmoke(ctx: ReconcileContext, w: Workload, port: number): Promise<string | null> {
+  if (w.tier !== 'system' || w.name !== 'os') return null
+  for (const path of OS_CORE_SMOKE) {
+    if (!(await ctx.sys.httpOk(port, path, 10_000))) return `the app is healthy but failed the core smoke: GET ${path} did not answer 2xx/3xx`
+  }
+  return null
+}
+
 /** The candidate's own output since this attempt started (bounded; redacted by the deploy log). */
 async function unitLogs(sys: System, unit: string, sinceMs: number): Promise<string> {
   const since = `@${Math.floor(sinceMs / 1000)}`
@@ -423,7 +439,8 @@ async function reconcileNode(
   run.stage('health')
 
   const captureStart = async () => run.log('start', await unitLogs(sys, unit, startedMs), 'replace')
-  const failure = await waitHealthy(ctx, unit, port, rel.contract.health, captureStart)
+  // Health first, then (os only) the core smoke: both pass before the edge ever points here.
+  const failure = (await waitHealthy(ctx, unit, port, rel.contract.health, captureStart)) ?? (await coreSmoke(ctx, w, port))
   await captureStart()
   if (failure) {
     // Stop AND disable: a failed candidate never crash-loops in the background or comes back at boot.
@@ -492,7 +509,8 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
   ctx.deployFailures = failures
 
   const redactions = () => secretValues(ctx.secrets.all())
-  for (const w of desired.workloads) {
+  // Module workloads (a `module` field) take their own path below (modules.ts).
+  for (const w of desired.workloads.filter((x) => !isModuleWorkload(x))) {
     let run: DeployRun | null = null
     const deploy: DeployHandle = () => (run ??= new DeployRun(sys, journal, w.name, redactions))
     // A release that already failed to unpack/build is not rebuilt until the workload's spec changes.
@@ -578,6 +596,9 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
     delete journal.workloads[name]
     emit(journal, sys, 'workload.removed', name, `${name} is no longer desired; stopped`)
   }
+
+  // ── Module path (plan/phase-upgrades-u2.md §5, modules.ts): receipt check, build, one slot, health gate.
+  errors.push(...(await reconcileModules({ sys, journal, secrets: ctx.secrets }, desired)))
 
   journal.appliedRev = desired.rev
   await saveJournal(sys, journal)

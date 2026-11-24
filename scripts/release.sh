@@ -6,6 +6,7 @@
 #   dist/release/LATEST                                          (the release name, for install.sh --from <url>)
 #   dist/release/NOTES.md                                        (what changed since the previous v* tag; Settings → Updates shows it)
 #   dist/release/DOWNGRADE_FLOOR                                 (the oldest release a box may go back to from this one; /ops reads it)
+#   dist/release/UPGRADE.json                                    (floor, minFrom, capabilities: ee checks them on the box)
 #   dist/release/SHA256SUMS                                      (all of the above; the workflow re-makes and signs it)
 #   dist/release/livekit-server-<LIVEKIT_VERSION>-linux-<arch>.tar.gz (+ .sha256)   (calls, plan/video-calls.md §4)
 #   dist/release/chromium-headless-shell-<CHROMIUM_REVISION>-linux-<arch>.tar.gz (+ .sha256)   (the chromium capability: brand site capture)
@@ -130,8 +131,10 @@ PREV=$(git -C "$ROOT" describe --tags --abbrev=0 --match 'v[0-9]*' --exclude "v$
 } > "$OUT/NOTES.md"
 # Downgrades: the oldest release this one can be replaced with (no migration or ee state change since).
 node "$ROOT/scripts/downgrade-floor.mjs" "$VERSION" > "$OUT/DOWNGRADE_FLOOR"
+# Upgrades: the floor, minFrom and the capabilities, which ee checks on the box (ee/src/release-meta.ts).
+node "$ROOT/scripts/upgrade-meta.mjs" "eigenenterprise-${VERSION}-${SHA}" "$(cat "$OUT/DOWNGRADE_FLOOR")" > "$OUT/UPGRADE.json"
 # One manifest over everything this build produced (signed in the release workflow, M5).
-(cd "$OUT" && shasum -a 256 LATEST NOTES.md DOWNGRADE_FLOOR install.sh ee.mjs "$NAME.tar.gz" "$LIVEKIT_NAME.tar.gz" "$CHROMIUM_NAME.tar.gz" > SHA256SUMS)
+(cd "$OUT" && shasum -a 256 LATEST NOTES.md DOWNGRADE_FLOOR UPGRADE.json install.sh ee.mjs "$NAME.tar.gz" "$LIVEKIT_NAME.tar.gz" "$CHROMIUM_NAME.tar.gz" > SHA256SUMS)
 rm -f "$OUT/SHA256SUMS.sig"
 # On the owner's machine the release key signs it too, so the local box (ee/e2e/box.sh) installs it.
 # CI builds have no key here: the publish job signs the combined manifest.

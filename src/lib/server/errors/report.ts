@@ -85,6 +85,31 @@ const KERNEL_STEPS: Record<KernelErrorCode, string[]> = {
   agent_acts_as_person: [
     'This agent acts as the person it works for (the company brain): dispatch it with dispatch and that person.',
   ],
+  // Company modules (plan/phase-upgrades-u2.md §4.6).
+  module_use_undeclared: [
+    "The module called a core tool (or emitted an event) its module.yaml does not declare. Add it to `uses.tools` (or `provides.events`), commit, publish and deploy; a widened `uses` needs an admin's own click.",
+  ],
+  module_not_running: [
+    'The company module is not running; `details.sentence` says why. `ee tool run modules.status --input \'{"id":"<id>"}\'` and `modules.logs`; a failed module comes back with a new commit that builds, tests and sends ready.',
+  ],
+  module_timeout: ["The module did not answer within its tool's timeoutMs. Look at `modules.logs`; a timeout alone does not switch it off."],
+  module_protocol: ['The module broke the eem/1 protocol. Use the vendored SDK (vendor/eigen-sdk) instead of a hand-made client; see `modules.logs`.'],
+  module_no_person: [
+    'A module acts only as a person: pass the callId of the tool call it serves, or declare `permissions.background` to act as its owner.',
+  ],
+  module_unreceipted: ['That commit is not published. `modules.publish` it first (ee runs only receipted code).'],
+  module_sharing_not_accepted: [
+    'The owner has not given the one-time OK that modules built here are open source and shared. Ask the owner; only they give it (Settings → Modules or Needs you).',
+  ],
+  module_needs_admin_click: [
+    "A first deploy, or one that widens what the module may reach, needs an admin's own click. It waits in the admins' Needs you; never retry it as the agent.",
+  ],
+  hub_unavailable: [
+    "The module hub can't be reached (or MODULE_HUB_URL is not set). Everything already running keeps running; publish again when the hub answers.",
+  ],
+  data_not_found: ['The module asked for a data file that does not exist under extensions/<id>/.'],
+  data_conflict: ['The data file changed since the etag the module had: read it again, then write with the new etag.'],
+  data_quota: ['A module data file is at most 1 MiB, and a module holds at most 200 MiB: split the data or delete old files.'],
 }
 
 function causeChain(err: unknown): string | undefined {

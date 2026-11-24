@@ -46,7 +46,7 @@ vi.mock('$lib/server/domains/registrant-defaults', () => ({
 }))
 
 const loadDashboardMock = vi.hoisted(() =>
-  vi.fn(async () => ({ overview: { modules: [], actions: [], approvals: [] }, backup: null })),
+  vi.fn(async () => ({ overview: { modules: [], actions: [], approvals: [] }, backup: null, update: null })),
 )
 vi.mock('$lib/server/overview/dashboard', () => ({ loadDashboard: loadDashboardMock }))
 const hiddenTilesMock = vi.hoisted(() => vi.fn(async () => ['apps']))
@@ -325,7 +325,7 @@ describe('nucleus page server load', () => {
     expect(done).toMatchObject({
       showWelcome: false,
       needsOnboarding: false,
-      dashboard: { overview: { modules: [], actions: [], approvals: [] }, backup: null },
+      dashboard: { overview: { modules: [], actions: [], approvals: [] }, backup: null, update: null },
       // The tiles this person closed (Contribute 06894ad7), from their preference.
       hiddenTiles: ['apps'],
     })

@@ -370,6 +370,10 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/hub/contributions/[remoteId] PUT': transport(HUB),
   '/api/hub/installs/[installId] DELETE': transport(HUB),
   '/api/hub/register POST': transport(HUB),
+  // The module hub (plan/phase-upgrades-u2.md §6.2): other installs publish and report runs, signed.
+  '/api/hub/modules/publish POST': transport(HUB),
+  '/api/hub/modules/[moduleId]/run PUT': transport(HUB),
+  '/(nucleus)/contribute/modules ?/summarize': tool('module_hub.summarize'),
 
   // ─── Assistant ────────────────────────────────────────────────────────────
   '/api/chat POST': transport(CHAT),
@@ -439,6 +443,9 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/llm/byok/[provider] ?/setEigenInference': tool('settings.update'),
   '/(nucleus)/settings/llm/byok/[provider] ?/setMemberAiCap': tool('settings.member_ai_cap_set'),
   '/(nucleus)/settings/llm/byok/[provider] ?/setSlot': tool('settings.update'),
+  '/(nucleus)/settings/modules/company ?/acceptSharing': tool('modules.accept_sharing'),
+  '/(nucleus)/settings/modules/company ?/deploy': tool('modules.deploy'),
+  '/(nucleus)/settings/modules/company ?/remove': tool('modules.remove'),
   '/(nucleus)/settings/modules ?/activate': tool('kernel.module_activate'),
   '/(nucleus)/settings/modules ?/deactivate': tool('kernel.module_deactivate'),
   '/(nucleus)/settings/updates ?/update': tool('kernel.release_install'),

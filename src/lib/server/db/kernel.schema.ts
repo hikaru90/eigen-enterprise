@@ -1,8 +1,10 @@
 import {
   bigint,
   boolean,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -58,6 +60,65 @@ export const kernelApprovalMode = pgTable('kernel_approval_mode', {
   mode: text('mode', { enum: ['ask', 'reasonable', 'allow_all'] }).notNull(),
   updatedBy: text('updated_by').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * The company's own modules (migration 0179, plan/phase-upgrades-u2.md §4.6):
+ * one row per module, its deployed manifest/receipt/commit and the kernel's
+ * state (src/lib/kernel/module-host/types.ts ModuleRecord).
+ */
+export const kernelModules = pgTable('kernel_modules', {
+  id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull(),
+  manifest: jsonb('manifest'),
+  receipt: jsonb('receipt'),
+  commit: text('commit'),
+  bundleSha256: text('bundle_sha256'),
+  state: text('state', {
+    enum: ['unpublished', 'publishing', 'deploying', 'connecting', 'running', 'failed', 'off'],
+  }).notNull(),
+  reason: text('reason'),
+  stateSince: timestamp('state_since', { withTimezone: true }).notNull(),
+  firstDeployedAt: timestamp('first_deployed_at', { withTimezone: true }),
+  deployedFrom: text('deployed_from', {
+    enum: ['unpublished', 'publishing', 'deploying', 'connecting', 'running', 'failed', 'off'],
+  }),
+  deployedBy: text('deployed_by'),
+  pendingDeploy: jsonb('pending_deploy').$type<{ commit: string; by: string; at: string }>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/** Every receipted (published) commit of a company module (migration 0179). */
+export const kernelModuleVersions = pgTable(
+  'kernel_module_versions',
+  {
+    moduleId: text('module_id').notNull(),
+    commit: text('commit').notNull(),
+    version: text('version').notNull(),
+    bundleSha256: text('bundle_sha256').notNull(),
+    manifest: jsonb('manifest').notNull(),
+    receipt: jsonb('receipt').notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ name: 'kernel_module_versions_pk', columns: [t.moduleId, t.commit] })],
+)
+
+/** Event delivery per company module (migration 0179, §4.4). */
+export const kernelModuleEventCursor = pgTable('kernel_module_event_cursor', {
+  moduleId: text('module_id').primaryKey(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  lastTs: timestamp('last_ts', { withTimezone: true }),
+  lastId: uuid('last_id'),
+  attempts: integer('attempts').default(0).notNull(),
+  failingSince: timestamp('failing_since', { withTimezone: true }),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+})
+
+/** The owner's one-time module sharing OK (migration 0179, §6.6): one row, id 'company'. */
+export const kernelModuleSharing = pgTable('kernel_module_sharing', {
+  id: text('id').primaryKey().default('company'),
+  acceptedBy: text('accepted_by').notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
 /** Company export runs (migration 0168, plan/phase-export.md X1); the archive is <state dir>/exports/<id>.zip. */

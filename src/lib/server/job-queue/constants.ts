@@ -6,6 +6,8 @@ export const ONBOARDING_GROUNDING_PUSH_JOB = 'onboarding_grounding_push' as cons
 /** Calendar K7 (modules/calendar/mail-scan.ts keeps the same name). */
 export const CALENDAR_MAIL_PROPOSAL_JOB = 'calendar_mail_proposal' as const
 export const COMPANY_EXPORT_JOB = 'company_export' as const
+/** Module hub U2 §7 (modules/module-hub/live.ts queues it). */
+export const MODULE_HUB_SUMMARY_JOB = 'module_hub_summarize' as const
 export { WEBHOOK_DELIVERY_JOB }
 export const OVERNIGHT_CONSOLIDATION_TASK = SLEEP_CONSOLIDATION_TASK_ID
 

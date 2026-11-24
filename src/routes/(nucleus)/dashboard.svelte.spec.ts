@@ -22,10 +22,12 @@ const navItems = buildShellNav(
 
 const dashboard: Dashboard = {
   backup: null,
+  update: null,
   tasks: { assignedToMe: [], updates: [] },
   reminders: [],
   coworkerNotices: [],
   decisionQuestions: [],
+  moduleNotices: [],
   overview: {
     modules: [
       {
@@ -73,6 +75,8 @@ function renderDashboard(
     reminders?: Dashboard['reminders']
     coworkerNotices?: Dashboard['coworkerNotices']
     decisionQuestions?: Dashboard['decisionQuestions']
+    update?: Dashboard['update']
+    moduleNotices?: Dashboard['moduleNotices']
   } = {},
 ) {
   return render(Harness, {
@@ -85,6 +89,8 @@ function renderDashboard(
       ...(notices.reminders ? { reminders: notices.reminders } : {}),
       ...(notices.coworkerNotices ? { coworkerNotices: notices.coworkerNotices } : {}),
       ...(notices.decisionQuestions ? { decisionQuestions: notices.decisionQuestions } : {}),
+      ...(notices.update ? { update: notices.update } : {}),
+      ...(notices.moduleNotices ? { moduleNotices: notices.moduleNotices } : {}),
     },
     greetingName: 'Alex',
     companyName: 'Kindred',
@@ -101,6 +107,16 @@ describe('dashboard.svelte', () => {
     await expect.element(page.getByTestId('dashboard-mail-notice')).toHaveTextContent(/Set up company email/)
     await expect.element(page.getByTestId('dashboard-mail-notice')).toHaveTextContent(/sign-in codes/)
     await expect.element(page.getByTestId('dashboard-mail-setup')).toHaveAttribute('href', '/m/email/setup')
+  })
+
+  it('a rolled-back update is in Needs you for the owner, with a way to Settings → Updates', async () => {
+    renderDashboard(controller(), {}, {
+      update: { kind: 'rolled-back', text: 'The update to 0.5.41 was rolled back: the job queue stalled', href: '/settings/updates' },
+    })
+    const notice = page.getByTestId('overview-update-notice')
+    await expect.element(notice).toHaveTextContent('The update to 0.5.41 was rolled back: the job queue stalled')
+    await expect.element(notice).toHaveAttribute('data-kind', 'rolled-back')
+    await expect.element(page.getByRole('link', { name: 'Open updates' })).toHaveAttribute('href', '/settings/updates')
   })
 
   it('with company email set up: no email notice', async () => {
@@ -298,5 +314,28 @@ describe('dashboard.svelte', () => {
     expect(form.querySelector<HTMLInputElement>('input[name=decision_id]')!.value).toBe('q-1')
     // 1 approval + 1 question waiting.
     await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
+  })
+
+  it('Needs you holds a switched-off company module with its sentence, and the owner\'s sharing OK posting modules.accept_sharing — U2', async () => {
+    renderDashboard(controller(), {}, {
+      moduleNotices: [
+        {
+          kind: 'module_failed',
+          moduleId: 'invoices',
+          name: 'Invoices',
+          sentence: 'Invoices is switched off because it stopped answering. Its data is kept.',
+          since: '2026-11-24T10:00:00.000Z',
+        },
+        { kind: 'module_sharing', sentence: 'Modules you build here are open source (Apache-2.0) and shared with eigenEnterprise.' },
+      ],
+    })
+    const rows = page.getByTestId('dashboard-module-notice')
+    await expect.element(rows.nth(0)).toHaveTextContent(/Invoices is switched off because it stopped answering\. Its data is kept\./)
+    await expect.element(rows.nth(0).getByTestId('dashboard-module-open')).toHaveAttribute('href', '/settings/modules/company')
+    await expect.element(rows.nth(1)).toHaveAttribute('data-kind', 'module_sharing')
+    const form = rows.nth(1).element().querySelector('form')!
+    expect(form.getAttribute('action')).toBe('/settings/modules/company?/acceptSharing')
+    // 1 approval + 2 module notices waiting.
+    await expect.element(page.getByText('3 waiting on you')).toBeInTheDocument()
   })
 })

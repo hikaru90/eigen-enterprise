@@ -8,9 +8,9 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  OSS_FORBIDDEN_KEY_PATTERNS,
   OSS_OPERATOR_SECRET_KEYS,
   parseEnvExampleValue,
+  scanSecrets,
 } from './oss-operator-secret-keys.mjs'
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -65,10 +65,11 @@ function assertNoForbiddenKeyMaterialInTrackedFiles(files) {
       continue
     }
 
-    for (const pattern of OSS_FORBIDDEN_KEY_PATTERNS) {
-      if (pattern.test(content)) {
-        fail(`${relPath} matches forbidden key pattern ${pattern}`)
-      }
+    // The repo's own specs and fixtures assign fake values to operator keys on
+    // purpose; tracked files are held to the credential formats only (the
+    // module hub applies every rule of scanSecrets to a module bundle).
+    for (const finding of scanSecrets(content)) {
+      if (finding.rule === 'credential') fail(`${relPath}:${finding.line} holds ${finding.message}`)
     }
   }
 }

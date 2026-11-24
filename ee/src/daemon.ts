@@ -28,7 +28,9 @@ import { readHostedAddress } from './fleet/hosted-address.ts'
 import { UPGRADE_UNIT as FLEET_UPGRADE_UNIT } from './fleet/agent.ts'
 import { fetchReleaseText, hostArch, installedOsRelease } from './upgrade.ts'
 import { UPGRADE_UNIT, upgradeRoute, UpgradeService, type UpgradeServiceDeps } from './upgrade-job.ts'
+import { boxRollbackDeps, lastUpgradeOutcome } from './rollback-box.ts'
 import { RELEASE_PUBLIC_KEY_PEM } from './release-key.ts'
+import { ModuleService, moduleRoute, moduleSecretRefusal, type ModuleServiceDeps } from './modules.ts'
 
 /**
  * The control API (§3.1): typed verbs over a unix socket, readable only by root
@@ -49,6 +51,8 @@ export class Ee {
   readonly upgrades: UpgradeService
   /** Drive app previews (previews.ts): in memory only, wiped on every start. */
   readonly previews: PreviewService
+  /** Module workloads (modules.ts, plan/phase-upgrades-u2.md §5). */
+  readonly modules: ModuleService
   /** The edge as the last reconcile rendered it from desired state (previews are added on load). */
   private edgeBase: CaddyInput | null = null
   private edgeQueue: Promise<unknown> = Promise.resolve()
@@ -60,6 +64,7 @@ export class Ee {
     restoreDeps: Partial<RestoreDeps> = {},
     upgradeDeps: Partial<UpgradeServiceDeps> = {},
     previewDeps: Partial<PreviewDeps> = {},
+    moduleDeps: Partial<ModuleServiceDeps> = {},
   ) {
     this.repo = new CompanyRepo(sys, PATHS.company)
     this.backups = new BackupService({
@@ -130,6 +135,18 @@ export class Ee {
         if (await unitActive(`${FLEET_UPGRADE_UNIT}.service`)) return 'the hosting provider is updating this server; wait for it to finish'
         return this.restore.busy()
       },
+      // U3: the upgrade report and `ee rollback` (rollback-box.ts).
+      lastOutcome: async () => lastUpgradeOutcome(this.journal),
+      rollback: boxRollbackDeps(
+        {
+          sys,
+          repo: this.repo,
+          journal: () => this.journal,
+          change: (message, author, mutate) => this.change(message, author, mutate),
+          restoreBusy: () => this.restore.busy(),
+        },
+        hostArch(),
+      ),
       ...upgradeDeps,
     })
     this.previews = new PreviewService({
@@ -141,6 +158,19 @@ export class Ee {
       },
       edgeChanged: () => this.previewsChanged(),
       ...previewDeps,
+    })
+    this.modules = new ModuleService({
+      sys,
+      repo: this.repo,
+      secrets,
+      journal: () => this.journal,
+      emit: async (type, workload, message, data) => {
+        emit(this.journal, sys, type, workload, message, data)
+        await saveJournal(sys, this.journal)
+      },
+      change: (message, author, mutate) => this.change(message, author, mutate),
+      exclusive: (fn) => this.exclusive(fn),
+      ...moduleDeps,
     })
   }
 
@@ -355,6 +385,10 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         const p = await previewRoute(ee.previews, route, () => body(req))
         if (p) return send(res, p.status, p.data)
       }
+      if (url.pathname.startsWith('/v1/modules')) {
+        const m = await moduleRoute(ee.modules, route, url.searchParams, () => body(req))
+        if (m) return send(res, m.status, m.data)
+      }
       if (url.pathname.startsWith('/v1/upgrade')) {
         const u = await upgradeRoute(ee.upgrades, route, () => body(req))
         if (u) return send(res, u.status, u.data)
@@ -417,6 +451,9 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         const desired = await ee.repo.read()
         const target = desired.workloads.find((w) => w.name === i.workload)
         if (!target) throw new HttpError(404, `no workload ${i.workload}`)
+        // A module gets only the secrets its receipted manifest declares (modules.ts).
+        const undeclared = moduleSecretRefusal(target, i.name)
+        if (undeclared) return send(res, 403, undeclared)
         await ee.exclusive(() => ee.secrets.set(i.workload, i.name, i.value))
         emit(ee.journal, ee.sys, 'secret.set', i.workload, `secret ${i.name} set by ${i.author}`)
         // Setting a secret declares it: the workload gets it on its next (health-gated) deploy.

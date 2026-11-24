@@ -54,6 +54,7 @@ import {
   CALENDAR_MAIL_PROPOSAL_JOB,
   COMPANY_EXPORT_JOB,
   JOB_QUEUE_BATCH_LIMIT,
+  MODULE_HUB_SUMMARY_JOB,
   ONBOARDING_GROUNDING_PUSH_JOB,
   OVERNIGHT_CONSOLIDATION_JOB,
   WEBHOOK_DELIVERY_JOB,
@@ -196,6 +197,11 @@ async function dispatchJob(job: ClaimedJob): Promise<void> {
     case COMPANY_EXPORT_JOB: {
       const { processCompanyExportJob } = await import('$lib/server/export/company/live')
       await processCompanyExportJob(job)
+      return
+    }
+    case MODULE_HUB_SUMMARY_JOB: {
+      const { processModuleHubSummaryJob } = await import('../../../../modules/module-hub/live')
+      await processModuleHubSummaryJob(job)
       return
     }
     default:

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { sha256Hex } from './release-key.ts'
 import { compareVersions, newestFrom, pinnedFrom, releaseVersion, type ReleaseSource } from './release-source.ts'
-import { latestName, signedManifest, type Arch, type UpgradeDeps, type UpgradeStep } from './upgrade.ts'
+import { planRollback, type RollbackDeps, type RollbackPlan } from './rollback.ts'
+import { latestName, releaseOf, signedManifest, type Arch, type UpgradeDeps, type UpgradeOutcome, type UpgradeStep } from './upgrade.ts'
 
 /**
  * Settings → Updates (owner and admins): the app asks ee to update this
@@ -14,6 +15,10 @@ import { latestName, signedManifest, type Arch, type UpgradeDeps, type UpgradeSt
  *   GET  /v1/upgrade         what runs now, the release source, managed?, the last update → no network
  *   GET  /v1/upgrade/latest  the newest release: LATEST, the signed SHA256SUMS, its signed NOTES.md
  *   POST /v1/upgrade         { release, author } → 202 { job }   (the release the person approved)
+ *   GET  /v1/upgrade/rollback   what `ee rollback` would do now: { from, to, refused }
+ *   POST /v1/upgrade/rollback   { author, to?, reason?, automatic? } → { from, to }   (rollback.ts)
+ *   POST /v1/upgrade/outcome    { outcome } — `ee upgrade` on the CLI (and the fleet's unit) reports
+ *                               how it ended; the daemon journals it (only the daemon writes the journal)
  *
  * The daemon checks the release again (signature, still the newest, newer
  * than what runs), records the job and starts the unit; the unit takes the
@@ -25,12 +30,26 @@ import { latestName, signedManifest, type Arch, type UpgradeDeps, type UpgradeSt
  */
 
 export const UPGRADE_UNIT = 'ee-upgrade.service'
-export const UPGRADE_STEPS = ['handover', 'verifying', 'safety-copy', 'installing', 'done'] as const
+export const UPGRADE_STEPS = ['handover', 'verifying', 'safety-copy', 'backup', 'installing', 'watching', 'rolling-back', 'done'] as const
 export type UpgradeJobStep = (typeof UPGRADE_STEPS)[number]
+/** The steps an upgrade can end in (upgrade.ts UpgradeOutcome). */
+const OUTCOME_STEPS = ['verifying', 'safety-copy', 'backup', 'installing', 'watching', 'rolling-back', 'done'] as const
 
 const MAX_LOG = 200
 const MAX_NOTES = 20_000
 const RELEASE_NAME = /^eigenenterprise-\d+\.\d+\.\d+-[0-9a-f]{12}$/
+
+/** An upgrade's end (upgrade.ts UpgradeOutcome), as the job and the journal keep it. */
+export const outcomeSchema = z
+  .object({
+    release: z.string().regex(RELEASE_NAME),
+    from: z.string().max(200).nullable(),
+    step: z.enum(OUTCOME_STEPS),
+    ok: z.boolean(),
+    reason: z.string().max(2000).nullable(),
+    rolledBack: z.boolean(),
+  })
+  .strict()
 
 export const upgradeJobSchema = z.object({
   id: z.string(),
@@ -53,6 +72,8 @@ export const upgradeJobSchema = z.object({
   log: z.array(z.string()),
   /** The end is in ee's journal (only the daemon writes the journal). */
   announced: z.boolean(),
+  /** How the transaction ended (upgrade.ts UpgradeOutcome); null while it runs, and on jobs from before U3. */
+  outcome: outcomeSchema.nullable().default(null),
 })
 export type UpgradeJob = z.infer<typeof upgradeJobSchema>
 const stateFileSchema = z.object({ version: z.literal(1), job: upgradeJobSchema })
@@ -102,9 +123,31 @@ export type UpgradeServiceDeps = Files & {
   unitActive(): Promise<boolean>
   /** Why nothing may start now (a restore, a fleet upgrade), or null. */
   otherBusy(): Promise<string | null>
+  /** The newest upgrade end in ee's journal (either path: this job, or `ee upgrade` on the CLI). */
+  lastOutcome(): Promise<UpgradeOutcome | null>
+  /** `ee rollback` (rollback.ts): what is on disk, and the hands to switch os back. */
+  rollback: RollbackDeps & {
+    /** Why no rollback may run now (a restore), or null. A running update may still roll itself back. */
+    restoreBusy(): Promise<string | null>
+    /** Commit os's source = this tarball and converge; resolves with the reconcile error, or null. */
+    switchOs(tarball: string, sha256: string, author: string, message: string): Promise<string | null>
+    /** The release id (sha256 prefix) of the os slot that is live now. */
+    liveOsRelease(): Promise<string | null>
+  }
 }
 
 const startInput = z.object({ release: z.string().regex(RELEASE_NAME, 'release must be a release name (eigenenterprise-<version>-<sha>)'), author: z.string().min(1).max(64) }).strict()
+const rollbackInput = z
+  .object({
+    author: z.string().min(1).max(64),
+    /** The release to go back to (eigenenterprise-<version>-<sha>); default: the one the other slot ran. */
+    to: z.string().regex(RELEASE_NAME, 'to must be a release name (eigenenterprise-<version>-<sha>)').optional(),
+    reason: z.string().min(1).max(1000).optional(),
+    /** The update rolling itself back after its watch failed (it holds the update slot itself). */
+    automatic: z.boolean().default(false),
+  })
+  .strict()
+const outcomeInput = z.object({ outcome: outcomeSchema }).strict()
 
 const NO_SOURCE =
   'this server does not know where its releases come from (it was installed before Settings → Updates existed); run `ee upgrade` once on the server, then updates work from here'
@@ -116,9 +159,65 @@ export class UpgradeService {
 
   constructor(private readonly d: UpgradeServiceDeps) {}
 
-  async info(): Promise<{ installed: { tarball: string; version: string } | null; managed: boolean; source: ReleaseSource | null; job: UpgradeJob | null }> {
+  async info(): Promise<{
+    installed: { tarball: string; version: string } | null
+    managed: boolean
+    source: ReleaseSource | null
+    job: UpgradeJob | null
+    lastOutcome: UpgradeOutcome | null
+  }> {
     const [{ managed, releaseSource }, tarball, job] = [await this.d.settings(), await this.d.installed(), await this.job()]
-    return { installed: tarball ? { tarball, version: releaseVersion(tarball) } : null, managed, source: releaseSource, job }
+    const lastOutcome = await this.d.lastOutcome()
+    return { installed: tarball ? { tarball, version: releaseVersion(tarball) } : null, managed, source: releaseSource, job, lastOutcome }
+  }
+
+  /** What `ee rollback` would do now (a read: nothing changes). */
+  rollbackPlan(to?: string): Promise<RollbackPlan> {
+    return planRollback(this.d.rollback, to)
+  }
+
+  /**
+   * `ee rollback` and the owner-only kernel.release_rollback, and the update itself when its
+   * watch fails (`automatic`): os goes back to the release before, health-gated, no restore.
+   */
+  async rollback(raw: unknown): Promise<{ from: string; to: string }> {
+    const i = rollbackInput.parse(raw)
+    const rb = this.d.rollback
+    if (!i.automatic) {
+      if ((await this.d.settings()).managed) {
+        throw new UpgradeError(409, 'this server is updated by its hosting provider (managed mode): it decides which release runs')
+      }
+      const last = await this.job()
+      if (this.claimed || last?.status === 'running') throw new UpgradeError(409, 'an update is running; wait for it to finish (it rolls itself back if its watch fails)')
+    }
+    const busy = await rb.restoreBusy()
+    if (busy) throw new UpgradeError(409, busy)
+    const plan = await this.rollbackPlan(i.to)
+    if (plan.refused || !plan.to || !plan.from) throw new UpgradeError(409, `rollback refused, nothing changed: ${plan.refused ?? 'nothing to roll back to'}`)
+    const { from, to } = plan as { from: string; to: string }
+    const sha256 = await rb.sha256Of(to)
+    const why = i.reason ?? `by ${i.author}`
+    await this.d.emit('upgrade.rollback_started', `rolling os back from ${releaseOf(from)} to ${releaseOf(to)} (${why})`, { from, to, author: i.author, reason: i.reason ?? null })
+    const reconcileError = await rb.switchOs(to, sha256, i.author, `rollback: os to ${releaseOf(to)} (${why})`)
+    if ((await rb.liveOsRelease()) !== sha256.slice(0, 16)) {
+      const message = `the rollback to ${releaseOf(to)} did not bring it live: ${reconcileError ?? 'os is not serving it'}`
+      await this.d.emit('upgrade.rollback_failed', message, { from, to, author: i.author })
+      throw new UpgradeError(500, message)
+    }
+    await this.d.emit('upgrade.rolled_back', `os rolled back from ${releaseOf(from)} to ${releaseOf(to)} (${why})`, { from, to, author: i.author, reason: i.reason ?? null })
+    return { from, to }
+  }
+
+  /** An end `ee upgrade` reported (the CLI path has no job): journalled like a job's end. */
+  async recordOutcome(raw: unknown): Promise<{ recorded: true }> {
+    const { outcome } = outcomeInput.parse(raw)
+    await this.announce(outcome, { via: 'cli' })
+    return { recorded: true }
+  }
+
+  private async announce(o: UpgradeOutcome, data: Record<string, unknown>): Promise<void> {
+    if (o.ok) await this.d.emit('upgrade.succeeded', `updated to ${o.release}`, { ...data, release: o.release, outcome: o })
+    else await this.d.emit('upgrade.failed', `update to ${o.release} failed at "${o.step}": ${o.reason}`, { ...data, release: o.release, error: o.reason, outcome: o })
   }
 
   /** The newest signed release at the source and how it compares to what runs. */
@@ -170,12 +269,17 @@ export class UpgradeService {
       } else j = again
     }
     if (j && j.status !== 'running' && !j.announced) {
-      if (j.status === 'succeeded') {
-        await this.d.emit('upgrade.succeeded', `updated to ${j.release} (${j.author})`, { jobId: j.id, release: j.release })
-      } else {
-        await this.d.emit('upgrade.failed', `update to ${j.release} failed: ${j.error}`, { jobId: j.id, release: j.release, error: j.error, safetyCopy: j.safetyCopy })
+      // A unit that died before it reported an end gets one from what the job shows.
+      const outcome: UpgradeOutcome = j.outcome ?? {
+        release: j.release,
+        from: j.installedBefore,
+        step: j.step === 'handover' ? 'verifying' : j.step,
+        ok: j.status === 'succeeded',
+        reason: j.error,
+        rolledBack: false,
       }
-      j = { ...j, announced: true }
+      await this.announce(outcome, { jobId: j.id, author: j.author, safetyCopy: j.safetyCopy })
+      j = { ...j, outcome, announced: true }
       await writeJob(this.d, j)
     }
     return j
@@ -215,6 +319,7 @@ export class UpgradeService {
         error: null,
         log: [`→ ${latest.name} checked (signed by the release key); starting the update process`],
         announced: false,
+        outcome: null,
       }
       await writeJob(this.d, job)
       try {
@@ -247,6 +352,9 @@ export async function upgradeRoute(svc: UpgradeService, route: string, readBody:
     if (route === 'GET /v1/upgrade') return { status: 200, data: await svc.info() }
     if (route === 'GET /v1/upgrade/latest') return { status: 200, data: { latest: await svc.latest() } }
     if (route === 'POST /v1/upgrade') return { status: 202, data: await svc.start(await readBody()) }
+    if (route === 'GET /v1/upgrade/rollback') return { status: 200, data: await svc.rollbackPlan() }
+    if (route === 'POST /v1/upgrade/rollback') return { status: 200, data: await svc.rollback(await readBody()) }
+    if (route === 'POST /v1/upgrade/outcome') return { status: 200, data: await svc.recordOutcome(await readBody()) }
     return null
   } catch (err) {
     if (err instanceof UpgradeError) return { status: err.status, data: { type: 'urn:ee:upgrade', title: err.message, detail: err.message } }
@@ -260,6 +368,8 @@ export type ApplyHooks = {
   step(step: UpgradeStep, safetyCopy?: string): Promise<void>
   /** A line of output (the installer's). */
   line(line: string): Promise<void>
+  /** How the transaction ended (the daemon journals it when it settles the job). */
+  outcome(o: UpgradeOutcome): Promise<void>
 }
 
 /**
@@ -296,6 +406,10 @@ export async function runUpgradeApply(
     line: async (line) => {
       out(line)
       logLine(job, line)
+      await save()
+    },
+    outcome: async (o) => {
+      job.outcome = outcomeSchema.parse({ ...o, reason: o.reason === null ? null : o.reason.slice(0, 2000) })
       await save()
     },
   }

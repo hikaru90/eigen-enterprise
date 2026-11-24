@@ -1,4 +1,23 @@
 import { request } from 'node:http'
+import {
+  deployModuleRequestSchema,
+  dryRunAnswerSchema,
+  MODULE_PROBLEM_TYPES,
+  moduleAnswerSchema,
+  moduleIdParam,
+  moduleListAnswerSchema,
+  moduleLogsAnswerSchema,
+  moduleLogsQuerySchema,
+  removeModuleRequestSchema,
+  startModuleRequestSchema,
+  stopModuleRequestSchema,
+  type DeployModuleRequest,
+  type DryRunAnswer,
+  type ModuleView,
+  type RemoveModuleRequest,
+  type StartModuleRequest,
+  type StopModuleRequest,
+} from '../../../../contracts/module-workload'
 
 /** ee's AppContract (ee/src/spec.ts), as it travels over the control API. */
 export type AppContract = {
@@ -290,7 +309,21 @@ export type RestoreJob = {
 /** Where a box's releases come from (ee/src/release-source.ts). */
 export type ReleaseSource = { kind: 'github'; repo: string } | { kind: 'dir'; path: string } | { kind: 'url'; base: string }
 
-export type UpgradeStep = 'handover' | 'verifying' | 'safety-copy' | 'installing' | 'done'
+export type UpgradeStep = 'handover' | 'verifying' | 'safety-copy' | 'backup' | 'installing' | 'watching' | 'rolling-back' | 'done'
+
+/** How an update ended (ee/src/upgrade.ts UpgradeOutcome): the release, what ran before, the step, ok or why not. */
+export type UpgradeOutcome = {
+  release: string
+  from: string | null
+  step: Exclude<UpgradeStep, 'handover'>
+  ok: boolean
+  reason: string | null
+  /** The release before was put back live (its watch failed, or it never went live). */
+  rolledBack: boolean
+}
+
+/** What `ee rollback` would do now (ee/src/rollback.ts): from, to, or why not. */
+export type RollbackPlan = { from: string | null; to: string | null; refused: string | null }
 
 /** The last update from Settings → Updates, as ee records it (ee/src/upgrade-job.ts; survives the restarts). */
 export type UpgradeJob = {
@@ -311,6 +344,8 @@ export type UpgradeJob = {
   error: string | null
   log: string[]
   announced: boolean
+  /** How it ended; null while it runs (and on jobs from before ee recorded it). */
+  outcome: UpgradeOutcome | null
 }
 
 export type UpgradeInfo = {
@@ -318,6 +353,8 @@ export type UpgradeInfo = {
   managed: boolean
   source: ReleaseSource | null
   job: UpgradeJob | null
+  /** The newest update end in ee's journal, from Settings → Updates or from `ee upgrade` on the server. */
+  lastOutcome: UpgradeOutcome | null
 }
 
 /** newer / rebuild (same version, another build) are offered; installed / older are not. */
@@ -382,6 +419,16 @@ export class EeClient {
   /** Update to `release` (the one the person approved); ee refuses anything else. */
   startUpgrade(i: { release: string; author: string }): Promise<{ job: UpgradeJob }> {
     return this.call('POST', '/v1/upgrade', i)
+  }
+
+  /** What a rollback would do now (a read: nothing changes). */
+  rollbackPlan(): Promise<RollbackPlan> {
+    return this.call('GET', '/v1/upgrade/rollback')
+  }
+
+  /** Put the release before back live (no restore); ee refuses below the downgrade floor. */
+  rollback(i: { author: string; to?: string }): Promise<{ from: string; to: string }> {
+    return this.call('POST', '/v1/upgrade/rollback', i)
   }
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -592,5 +639,49 @@ export class EeClient {
     author: string
   }): Promise<{ ok: true; reconcileError: string | null }> {
     return this.call('POST', '/v1/secrets', i)
+  }
+
+  // ─── Company modules (plan/phase-upgrades-u2.md §5, contracts/module-workload.ts) ─
+  // Every body is checked against the contract before it leaves, and every
+  // answer when it arrives: a mismatch with ee fails loud, never half-works.
+
+  /** POST /v1/modules: deploy a receipted bundle (202 { module }); stop-then-start for the same id. */
+  async deployModule(request: DeployModuleRequest): Promise<ModuleView> {
+    const body = deployModuleRequestSchema.parse({ ...request, dryRun: undefined })
+    return moduleAnswerSchema.parse(await this.call('POST', '/v1/modules', body)).module
+  }
+  /** POST /v1/modules with dryRun: build and test only ({ passed, log }). */
+  async dryRunModule(request: DeployModuleRequest): Promise<DryRunAnswer> {
+    const body = deployModuleRequestSchema.parse({ ...request, dryRun: true })
+    return dryRunAnswerSchema.parse(await this.call('POST', '/v1/modules', body))
+  }
+  async modules(): Promise<ModuleView[]> {
+    return moduleListAnswerSchema.parse(await this.call('GET', '/v1/modules')).modules
+  }
+  /** One module; null when ee answers 404 urn:ee:module_not_found. */
+  async module(id: string): Promise<ModuleView | null> {
+    try {
+      return moduleAnswerSchema.parse(await this.call('GET', `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}`)).module
+    } catch (err) {
+      if (err instanceof SubstrateError && err.type === MODULE_PROBLEM_TYPES.moduleNotFound) return null
+      throw err
+    }
+  }
+  async stopModule(id: string, body: StopModuleRequest): Promise<ModuleView> {
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}/stop`
+    return moduleAnswerSchema.parse(await this.call('POST', path, stopModuleRequestSchema.parse(body))).module
+  }
+  async startModule(id: string, body: StartModuleRequest): Promise<ModuleView> {
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}/start`
+    return moduleAnswerSchema.parse(await this.call('POST', path, startModuleRequestSchema.parse(body))).module
+  }
+  async moduleLogs(id: string, lines: number): Promise<string[]> {
+    const q = moduleLogsQuerySchema.parse({ lines })
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}/logs?lines=${q.lines}`
+    return moduleLogsAnswerSchema.parse(await this.call('GET', path)).lines
+  }
+  async removeModule(id: string, body: RemoveModuleRequest): Promise<ModuleView> {
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}`
+    return moduleAnswerSchema.parse(await this.call('DELETE', path, removeModuleRequestSchema.parse(body))).module
   }
 }

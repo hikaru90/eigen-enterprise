@@ -193,6 +193,7 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'members.remove': 'destructive',
       'members.set_my_called': 'internal',
       'members.set_my_name': 'internal',
+      'modules.deploy': 'internal',
       'members.set_my_picture': 'internal',
       'members.set_open_join': 'public',
       'members.set_role': 'internal',
@@ -246,9 +247,11 @@ describe('moduleManifests', () => {
       'repos',
       'calendar',
       'contribute-hub',
+      'module-hub',
       'assistant',
       'domains',
       'demo',
+      'company-modules',
     ])
   })
 })
@@ -273,9 +276,11 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'repos',
       'calendar',
       'contribute-hub',
+      'module-hub',
       'assistant',
       'domains',
       'demo',
+      'company-modules',
     ])
     const toolNames = kernel.registry.list().map((t) => t.name)
     expect(toolNames).toContain('memory.retrieve_thoughts')
@@ -456,6 +461,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
       'members.set_my_picture',
       'members.set_open_join',
       'members.set_role',
+      'modules.deploy',
       'org.set_position',
       'repo.merge',
       'website.app_deploy',

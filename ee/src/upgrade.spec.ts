@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { AGE_REPAIR_SQL } from './age-repair.ts'
 import { sha256Hex } from './release-key.ts'
-import { latestTarball, releaseOf, RELEASES_URL, rollbackSteps, upgrade, type UpgradeDeps } from './upgrade.ts'
+import { latestTarball, releaseOf, RELEASES_URL, rollbackSteps, upgrade, type TransactionDeps, type UpgradeDeps } from './upgrade.ts'
+import { legacyMeta } from './release-meta.ts'
+import { DEFAULT_WATCH } from './upgrade-watch.ts'
 
 const LATEST = 'eigenenterprise-0.4.0-1bb02b405565'
 
@@ -21,6 +23,7 @@ function fake(
   const logs: string[] = []
   const dirs = [...(opts.upgradesDir ?? [])]
   const files = new Map<string, string>()
+  let installed = opts.current === undefined ? 'eigenenterprise-0.3.0-2eb55cbca54c-linux-arm64.tar.gz' : opts.current
   const deps: UpgradeDeps = {
     fetchText: async (url) => {
       calls.push(`fetch ${url}`)
@@ -40,18 +43,43 @@ function fake(
     },
     runLive: async (cmd, args) => {
       calls.push(`live ${cmd} ${args.join(' ')}`)
+      // The installer's bootstrap names the new release in the company repo.
+      installed = `${opts.latest ?? LATEST}-linux-arm64.tar.gz`
       return 0
     },
-    installed: async () => (opts.current === undefined ? 'eigenenterprise-0.3.0-2eb55cbca54c-linux-arm64.tar.gz' : opts.current),
+    installed: async () => installed,
     listUpgrades: async () => [...dirs],
     mkdirp: async (p) => void calls.push(`mkdir ${p}`),
     writeFile: async (p) => void calls.push(`write ${p}`),
     remove: async (p) => void calls.push(`remove ${p}`),
     now: () => new Date('2026-11-10T15:30:00Z'),
     log: (l) => void logs.push(l),
+    tx: quietTx(),
     ...over,
   }
   return { deps, calls, logs }
+}
+
+/** A transaction whose checks all pass, with no backups set up and a watch that holds at once. */
+function quietTx(over: Partial<TransactionDeps> = {}): TransactionDeps {
+  return {
+    freeBytes: async () => 100 * 1024 ** 3,
+    databaseBytes: async () => 1024 ** 3,
+    capabilityInstalled: async () => true,
+    busy: async () => null,
+    installedMeta: async (r) => legacyMeta(r),
+    storeMeta: async () => undefined,
+    offBoxBackup: async () => ({ configured: false }),
+    watchProbe: { sample: async () => ({ units: {}, edge: { total: 0, errors: 0 }, queue: { overdue: 0, startedSince: 0 } }) },
+    watchLimits: { ...DEFAULT_WATCH, durationMs: 0 },
+    sleep: async () => undefined,
+    rollback: async () => 'eigenenterprise-0.3.0-2eb55cbca54c-linux-arm64.tar.gz',
+    keepReleases: async () => undefined,
+    moduleImpact: async () => [],
+    moduleCheck: async () => [],
+    report: async () => undefined,
+    ...over,
+  }
 }
 
 describe('latestTarball', () => {
@@ -196,7 +224,7 @@ describe('upgrade from Settings → Updates (pinned to the approved release, ste
     expect(calls.filter((c) => !c.startsWith('fetch'))).toEqual([])
   })
 
-  it('reports verifying, safety-copy (with its directory) and installing, in order', async () => {
+  it('reports verifying, safety-copy (with its directory), backup, installing and watching, in order', async () => {
     const { deps } = fake()
     const steps: string[] = []
     expect(
@@ -211,7 +239,9 @@ describe('upgrade from Settings → Updates (pinned to the approved release, ste
     expect(steps).toEqual([
       `verifying ${RELEASES_URL}`,
       'safety-copy /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
+      'backup /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
       'installing /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
+      'watching /var/lib/ee/upgrades/2026-11-10T15-30-00Z',
     ])
   })
 })

@@ -222,6 +222,41 @@
       "type": "messages.message_moderated"
     },
     {
+      "module": "kernel",
+      "payload": null,
+      "type": "module.deployed"
+    },
+    {
+      "module": "kernel",
+      "payload": null,
+      "type": "module.failed"
+    },
+    {
+      "module": "kernel",
+      "payload": null,
+      "type": "module.published"
+    },
+    {
+      "module": "kernel",
+      "payload": null,
+      "type": "module.recovered"
+    },
+    {
+      "module": "kernel",
+      "payload": null,
+      "type": "module.removed"
+    },
+    {
+      "module": "kernel",
+      "payload": null,
+      "type": "module.switched_off"
+    },
+    {
+      "module": "kernel",
+      "payload": null,
+      "type": "module.switched_on"
+    },
+    {
       "module": "recap",
       "payload": null,
       "type": "recap.completed"
@@ -13554,6 +13589,48 @@
     },
     {
       "approval": {
+        "always": true,
+        "gated": false,
+        "risk": "destructive"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "to": {
+            "pattern": "^eigenenterprise-\\d+\\.\\d+\\.\\d+-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "module": "kernel",
+      "name": "kernel.release_rollback",
+      "output": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
         "always": false,
         "gated": false,
         "risk": null
@@ -13649,6 +13726,51 @@
               }
             ]
           },
+          "lastOutcome": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "release": {
+                    "type": "string"
+                  },
+                  "rolledBack": {
+                    "type": "boolean"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "ok",
+                  "reason",
+                  "release",
+                  "rolledBack",
+                  "step"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "latest": {
             "anyOf": [
               {
@@ -13697,14 +13819,45 @@
           },
           "managed": {
             "type": "boolean"
+          },
+          "rollback": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "refused": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "refused",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "installed",
           "job",
+          "lastOutcome",
           "latest",
           "latestError",
-          "managed"
+          "managed",
+          "rollback"
         ],
         "type": "object"
       },
@@ -17057,6 +17210,694 @@
         "roles": [
           "admin",
           "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256",
+          "path"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.file",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "install_id": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "module_id": {
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "install_id",
+          "module_id"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "the cursor the previous page gave",
+            "maxLength": 12,
+            "type": "string"
+          },
+          "query": {
+            "description": "part of a module id or name",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.summarize",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.tree",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.version",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "public"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.accept_sharing",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "message"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.commit",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          },
+          "path": {
+            "description": "A path inside the module folder, e.g. \"tools.ts\".",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.delete_file",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {
+          "commit": {
+            "description": "A full 40-hex commit of the module repo.",
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "commit",
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.deploy",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "properties": {
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "properties": {},
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "properties": {
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          },
+          "lines": {
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.logs",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "external",
+      "input": {
+        "properties": {
+          "commit": {
+            "description": "A full 40-hex commit of the module repo.",
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "commit",
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.publish",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": true,
+        "gated": false,
+        "risk": "destructive"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.remove",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {
+          "description": {
+            "description": "One sentence: what it does.",
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          },
+          "name": {
+            "description": "The module name people see.",
+            "maxLength": 60,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.scaffold",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "properties": {
+          "commit": {
+            "description": "A full 40-hex commit of the module repo.",
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          },
+          "path": {
+            "description": "A path inside the module folder, e.g. \"tools.ts\".",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.source",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "properties": {
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.status",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {
+          "commit": {
+            "description": "A full 40-hex commit of the module repo.",
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "commit",
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.test",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "properties": {
+          "content": {
+            "maxLength": 1048576,
+            "type": "string"
+          },
+          "id": {
+            "description": "The module id (lowercase words joined by \"-\").",
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          },
+          "path": {
+            "description": "A path inside the module folder, e.g. \"tools.ts\".",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "id",
+          "path"
+        ],
+        "type": "object"
+      },
+      "module": "company-modules",
+      "name": "modules.write_file",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
         ]
       }
     },
