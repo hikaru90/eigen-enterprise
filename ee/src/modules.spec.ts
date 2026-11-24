@@ -1,3 +1,5 @@
+import type { DesiredState } from './company-repo.ts'
+import type { SecretMap } from './secrets.ts'
 import { generateKeyPairSync } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -6,7 +8,8 @@ import { createBundle, sha256Hex } from '../../contracts/module-bundle.ts'
 import { manifestSha256, parseModuleManifestYaml, type ModuleManifestV1 } from '../../contracts/module-manifest.ts'
 import { signReceipt, type ModuleReceiptV1 } from '../../contracts/module-receipt.ts'
 import { MODULE_UNIT_ENV, moduleViewSchema, type ModuleView } from '../../contracts/module-workload.ts'
-import type { DesiredState } from './company-repo.ts'
+import { settingsSchema } from './company-repo.ts'
+import { NO_HUB_KEY_MESSAGE } from './hub-key.ts'
 import { emptyJournal, type Journal } from './journal.ts'
 import { ModuleBox } from './module-test-box.ts'
 import {
@@ -23,10 +26,7 @@ import {
   verifyModule,
   type ModuleCandidate,
 } from './modules.ts'
-import { NO_HUB_KEY_MESSAGE } from './hub-key.ts'
 import { PATHS } from './paths.ts'
-import type { SecretMap } from './secrets.ts'
-import { settingsSchema } from './company-repo.ts'
 
 const HELLO_DIR = join(import.meta.dirname, '../../contracts/fixtures/modules/hello')
 const HUB = 'https://hub.test'

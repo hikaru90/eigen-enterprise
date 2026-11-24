@@ -5,6 +5,7 @@ import { assertCapabilitiesInstalled } from './capabilities.ts'
 import { DeployRun, secretValues } from './deploys.ts'
 import { saveJournal, workloadEntry, type EeEvent, type Journal } from './journal.ts'
 import { LIVEKIT_INTERNAL_PORT, LIVEKIT_WORKLOAD, linkedEnv, type LinkState } from './livekit.ts'
+import { isModuleWorkload, reconcileModules } from './modules.ts'
 import { CONTROL_GROUP, PATHS } from './paths.ts'
 import { generateSecret, renderEnvFile, type SecretMap } from './secrets.ts'
 import {
@@ -16,7 +17,6 @@ import {
 } from './spec.ts'
 import { mustRun, type RunResult, type System } from './system.ts'
 import { renderUnit, unitName, type Slot } from './units.ts'
-import { isModuleWorkload, reconcileModules } from './modules.ts'
 
 /**
  * The reconciler (§3.2, §3.4): converge the box to the company repo's HEAD.

@@ -1,6 +1,6 @@
+import type { RunResult, System } from './system.ts'
 import { createHash } from 'node:crypto'
 import { readBundle } from '../../contracts/module-bundle.ts'
-import type { RunResult, System } from './system.ts'
 
 /**
  * In-memory box for the module tests (modules.spec.ts): text files, binary

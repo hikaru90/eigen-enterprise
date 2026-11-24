@@ -16,8 +16,8 @@
 
 import { createPublicKey } from 'node:crypto'
 import { z } from 'zod'
-import { keyId } from '../../contracts/module-receipt.ts'
 import { TEST_ONLY_MODULE_HUB_PUBLIC_KEY_SPKI } from '../../contracts/fixtures/module-hub-test-key.ts'
+import { keyId } from '../../contracts/module-receipt.ts'
 import { OFFICIAL_CONTRIBUTE_HUB } from './contribute-hub.ts'
 
 /** The official module hub: the project's central box, which also runs the central Contribute board. */
@@ -47,7 +47,7 @@ export function checkHubKey(spki: string, which = 'module hub key'): string {
   try {
     type = createPublicKey({ key: Buffer.from(spki, 'base64'), format: 'der', type: 'spki' }).asymmetricKeyType
   } catch (err) {
-    throw new Error(`the ${which} is not a public key: ${(err as Error).message}`)
+    throw new Error(`the ${which} is not a public key: ${(err as Error).message}`, { cause: err })
   }
   if (type !== 'ed25519') throw new Error(`the ${which} is ${type}, not ed25519`)
   if (keyId(spki) === keyId(TEST_ONLY_MODULE_HUB_PUBLIC_KEY_SPKI)) {

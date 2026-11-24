@@ -1,3 +1,5 @@
+import type { CompanyRepo, DesiredState } from './company-repo.ts'
+import type { Journal } from './journal.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { posix } from 'node:path'
@@ -32,10 +34,8 @@ import {
   type ModuleRunState,
   type ModuleView,
 } from '../../contracts/module-workload.ts'
-import type { CompanyRepo, DesiredState } from './company-repo.ts'
 import { DeployRun, redact, secretValues } from './deploys.ts'
 import { trustedHubKeys } from './hub-key.ts'
-import type { Journal } from './journal.ts'
 import { PATHS } from './paths.ts'
 import { emit, prepareRelease, type PreparedRelease, type SecretAccess } from './reconcile.ts'
 import { renderEnvFile } from './secrets.ts'
@@ -363,12 +363,7 @@ async function reconcileModule(
   }
 
   // §6.4 on every reconcile: a desired state that does not check out never runs.
-  let bytes: Uint8Array | null = null
-  try {
-    bytes = await io.readBytes(w.source.tarball)
-  } catch {
-    bytes = null
-  }
+  const bytes: Uint8Array | null = await io.readBytes(w.source.tarball).catch(() => null)
   const verdict: ModuleVerdict =
     'error' in trusted
       ? { ok: false, problem: trusted.error }

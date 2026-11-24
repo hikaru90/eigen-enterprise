@@ -1,18 +1,18 @@
 import { randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer, request, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { parseModuleManifestYaml } from '../../contracts/module-manifest.ts'
 import { settingsSchema, type DesiredState } from './company-repo.ts'
 import { controlHandler, Ee } from './daemon.ts'
 import { emptyJournal } from './journal.ts'
+import { ModuleBox } from './module-test-box.ts'
 import { PATHS } from './paths.ts'
 import { SecretStore } from './secret-store.ts'
 import { workloadSchema } from './spec.ts'
-import { ModuleBox } from './module-test-box.ts'
-import { readFileSync } from 'node:fs'
-import { parseModuleManifestYaml } from '../../contracts/module-manifest.ts'
 
 const manifest = parseModuleManifestYaml(
   readFileSync(join(import.meta.dirname, '../../contracts/fixtures/modules/hello/module.yaml'), 'utf8').replace('secrets: []', 'secrets: [STRIPE_API_KEY]'),
@@ -44,6 +44,9 @@ const hello = workloadSchema.parse({
   },
 })
 
+/** A JSON answer, read loosely by the assertions. */
+type Answer = { [key: string]: Answer } & { modules: { id: string }[]; module: unknown; type: string; detail: string }
+
 async function start(workloads = [hello]) {
   const sys = new ModuleBox()
   sys.files.set(PATHS.masterKey, randomBytes(32).toString('base64'))
@@ -56,7 +59,7 @@ async function start(workloads = [hello]) {
   server = createServer(controlHandler(ee))
   await new Promise<void>((r) => server!.listen(socketPath, r))
   const call = (method: string, path: string, body?: unknown) =>
-    new Promise<{ status: number; data: any }>((resolve, reject) => {
+    new Promise<{ status: number; data: Answer }>((resolve, reject) => {
       const text = body === undefined ? '' : JSON.stringify(body)
       const req = request({ socketPath, path, method, headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) } }, (res) => {
         let raw = ''
