@@ -160,6 +160,8 @@
   "graph_temporal_reopen": "Wieder öffnen",
   "graph_temporal_mark_done_item": "Als erledigt markieren: {title}",
   "graph_temporal_reopen_item": "Wieder öffnen: {title}",
+  "graph_temporal_undo": "Rückgängig",
+  "graph_temporal_edit_hint": "Aufgabe ansehen oder bearbeiten",
   "graph_timeline_filters": "Filter",
   "graph_timeline_filters_range": "Zeitraum",
   "graph_timeline_filters_status": "Status",

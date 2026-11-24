@@ -41,6 +41,15 @@ export function timelineQuickActionRequestBody(action: TimelineQuickAction): {
   return { action }
 }
 
+/** Inverse lifecycle action for one-click Undo after marking done or reopening. */
+export function inverseTimelineQuickAction(
+  action: TimelineQuickAction,
+): 'mark_done' | 'reopen' | null {
+  if (action === 'mark_done') return 'reopen'
+  if (action === 'reopen') return 'mark_done'
+  return null
+}
+
 /**
  * Mark done / reopen / archive for any timeline row id (`task:…` or event uuid).
  * Call this from every UI surface — do not fork PATCH /api/thoughts by view.

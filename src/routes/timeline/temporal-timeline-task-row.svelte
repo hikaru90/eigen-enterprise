@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TemporalEventListItem } from '../api/temporal-events/+server'
+  import PencilIcon from '@lucide/svelte/icons/pencil'
   import MemoryAuthorBadge from '$lib/components/memory-author-badge.svelte'
   import { graphEnergyLevelLabel } from '$lib/graph/graph-i18n'
   import { hapticConfirm } from '$lib/haptics'
@@ -102,68 +103,80 @@
   onpointercancel={onPointerUp}
   onpointerleave={onPointerUp}
 >
-  <TemporalEventStatusButton {item} {updatingEventId} compact {onQuickAction} />
+  <div class="shrink-0 pt-0.5">
+    <TemporalEventStatusButton {item} {updatingEventId} compact {onQuickAction} />
+  </div>
   <button
     type="button"
-    class="flex min-w-0 flex-1 flex-col gap-1 text-left"
+    class="group/open flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-md py-0.5 pl-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    title={m.graph_temporal_edit_hint()}
     onclick={onClickSelect}
   >
-    <div class="flex w-full min-w-0 items-start justify-between gap-2">
-      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-        <span
-          class="text-foreground min-w-0 text-sm leading-snug {completedEventSummaryClass(
-            completed,
-          )}"
-        >
-          {item.semanticSummary}
-        </span>
-        <MemoryAuthorBadge author={item.author} authorLabel={item.authorLabel} size="sm" />
-      </div>
-      {#if item.projectLabel}
-        <span
-          class="text-foreground shrink-0 max-w-[120px] truncate rounded-full border border-border px-2 py-0.5 text-xs leading-tight dark:text-foreground"
-          title={item.projectLabel}
-        >
-          {item.projectLabel}
-        </span>
-      {/if}
-    </div>
-
-    <div class="flex flex-col gap-0.5">
-      {#if showWhen && item.startAt}
-        <span class="text-foreground/60 font-mono text-xs leading-tight"
-          >{m.graph_temporal_when()} {formatWhen(item, timeZone)}</span
-        >
-      {/if}
-      <span class="text-muted-foreground font-mono text-xs leading-tight"
-        >Created {formatCreatedDate(item)}</span
-      >
-    </div>
-
-    {#if item.durationMinutes || item.energyLevel || isTaskListItem(item)}
-      <div class="flex flex-wrap items-center gap-1.5">
-        {#if item.durationMinutes}
-          <span class="text-muted-foreground font-mono text-xs">
-            {m.graph_timeline_duration_min({ minutes: item.durationMinutes })}
-          </span>
-        {/if}
-        {#if item.energyLevel}
+    <div class="flex min-w-0 flex-1 flex-col gap-1">
+      <div class="flex w-full min-w-0 items-start justify-between gap-2">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           <span
-            class="rounded-full border px-2 py-0.5 text-xs {energyPillClasses(
-              item.energyLevel,
+            class="text-foreground min-w-0 text-sm leading-snug {completedEventSummaryClass(
+              completed,
             )}"
           >
-            {graphEnergyLevelLabel(item.energyLevel)}
+            {item.semanticSummary}
           </span>
-        {/if}
-        {#if isTaskListItem(item)}
+          <MemoryAuthorBadge author={item.author} authorLabel={item.authorLabel} size="sm" />
+        </div>
+        {#if item.projectLabel}
           <span
-            class="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-xs font-medium"
+            class="text-foreground shrink-0 max-w-[120px] truncate rounded-full border border-border px-2 py-0.5 text-xs leading-tight dark:text-foreground"
+            title={item.projectLabel}
           >
-            {m.graph_timeline_open_loop()}
+            {item.projectLabel}
           </span>
         {/if}
       </div>
-    {/if}
+
+      <div class="flex flex-col gap-0.5">
+        {#if showWhen && item.startAt}
+          <span class="text-foreground/60 font-mono text-xs leading-tight"
+            >{m.graph_temporal_when()} {formatWhen(item, timeZone)}</span
+          >
+        {/if}
+        <span class="text-muted-foreground font-mono text-xs leading-tight"
+          >Created {formatCreatedDate(item)}</span
+        >
+      </div>
+
+      {#if item.durationMinutes || item.energyLevel || isTaskListItem(item)}
+        <div class="flex flex-wrap items-center gap-1.5">
+          {#if item.durationMinutes}
+            <span class="text-muted-foreground font-mono text-xs">
+              {m.graph_timeline_duration_min({ minutes: item.durationMinutes })}
+            </span>
+          {/if}
+          {#if item.energyLevel}
+            <span
+              class="rounded-full border px-2 py-0.5 text-xs {energyPillClasses(
+                item.energyLevel,
+              )}"
+            >
+              {graphEnergyLevelLabel(item.energyLevel)}
+            </span>
+          {/if}
+          {#if isTaskListItem(item)}
+            <span
+              class="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-xs font-medium"
+            >
+              {m.graph_timeline_open_loop()}
+            </span>
+          {/if}
+        </div>
+      {/if}
+    </div>
+    <span
+      class="text-muted-foreground/55 group-hover/open:text-foreground group-focus-visible/open:text-foreground mt-0.5 flex shrink-0 items-center transition-colors"
+      aria-hidden="true"
+      data-testid="timeline-task-edit-hint"
+    >
+      <PencilIcon class="size-3.5" />
+    </span>
   </button>
 </li>

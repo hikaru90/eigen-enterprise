@@ -8,10 +8,11 @@
 
   /**
    * Mark a task done / reopen it. The compact form sits at the start of a task
-   * row: a round completion control (a to-do circle that fills with a check),
-   * never a square that reads as "select this row" (Contribute d5e61e1f). Its
-   * accessible name carries the task — "Mark done: Order the flyers" — so a
-   * screen reader hears what it completes, not a bare verb per row.
+   * row: a round completion control with a subtle check even at rest (a to-do
+   * circle that fills on hover/focus/done), never a square that reads as
+   * "select this row" (Contribute d5e61e1f, ea945d0b). Its accessible name
+   * carries the task — "Mark done: Order the flyers" — so a screen reader hears
+   * what it completes, not a bare verb per row.
    */
   type Props = {
     item: TemporalEventListItem
@@ -41,10 +42,10 @@
 </script>
 
 {#if compact}
-  <!-- 24px hit target (WCAG 2.5.8) around a 18px circle. -->
+  <!-- 24px hit target (WCAG 2.5.8) around an 18px circle. -->
   <button
     type="button"
-    class="group/done -m-0.5 flex size-6 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+    class="group/done flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
     title={actionLabel}
     aria-label={itemLabel}
     data-shape="round"
@@ -54,12 +55,14 @@
   >
     <span
       class="flex size-[18px] items-center justify-center rounded-full border transition-colors {completed
-        ? 'border-foreground/70 bg-foreground/70 text-background'
-        : 'border-muted-foreground/70 bg-background text-transparent group-hover/done:border-foreground group-hover/done:text-muted-foreground'}"
+        ? 'border-primary bg-primary text-primary-foreground group-hover/done:border-primary/85 group-hover/done:bg-primary/85 group-focus-visible/done:border-primary/85 group-focus-visible/done:bg-primary/85'
+        : 'border-muted-foreground/70 bg-background text-muted-foreground/45 group-hover/done:border-primary group-hover/done:bg-primary group-hover/done:text-primary-foreground group-focus-visible/done:border-primary group-focus-visible/done:bg-primary group-focus-visible/done:text-primary-foreground'}"
       aria-hidden="true"
     >
       {#if busy}
-        <LoaderCircleIcon class="text-foreground size-3 animate-spin" />
+        <LoaderCircleIcon
+          class="size-3 animate-spin {completed ? 'text-primary-foreground' : 'text-foreground'}"
+        />
       {:else}
         <CheckIcon class="size-3" strokeWidth={2.5} />
       {/if}
