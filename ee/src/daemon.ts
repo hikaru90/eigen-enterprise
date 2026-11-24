@@ -28,6 +28,7 @@ import { readHostedAddress } from './fleet/hosted-address.ts'
 import { UPGRADE_UNIT as FLEET_UPGRADE_UNIT } from './fleet/agent.ts'
 import { fetchReleaseText, hostArch, installedOsRelease } from './upgrade.ts'
 import { UPGRADE_UNIT, upgradeRoute, UpgradeService, type UpgradeServiceDeps } from './upgrade-job.ts'
+import { boxRollbackDeps, lastUpgradeOutcome } from './rollback-box.ts'
 import { RELEASE_PUBLIC_KEY_PEM } from './release-key.ts'
 
 /**
@@ -130,6 +131,18 @@ export class Ee {
         if (await unitActive(`${FLEET_UPGRADE_UNIT}.service`)) return 'the hosting provider is updating this server; wait for it to finish'
         return this.restore.busy()
       },
+      // U3: the upgrade report and `ee rollback` (rollback-box.ts).
+      lastOutcome: async () => lastUpgradeOutcome(this.journal),
+      rollback: boxRollbackDeps(
+        {
+          sys,
+          repo: this.repo,
+          journal: () => this.journal,
+          change: (message, author, mutate) => this.change(message, author, mutate),
+          restoreBusy: () => this.restore.busy(),
+        },
+        hostArch(),
+      ),
       ...upgradeDeps,
     })
     this.previews = new PreviewService({

@@ -2,6 +2,7 @@ import type { ReleaseSource } from './release-source.ts'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { sha256Hex } from './release-key.ts'
+import { legacyMeta } from './release-meta.ts'
 import { runUpgradeApply, upgradeRoute, UpgradeService, type UpgradeJob, type UpgradeServiceDeps } from './upgrade-job.ts'
 
 const KEY = generateKeyPairSync('ed25519')
@@ -39,6 +40,15 @@ function fake(
   const fetched: string[] = []
   const pinned = o.pinned ?? release(NEW)
   const state = { unitActive: o.unitActive ?? false, installed: o.installed === undefined ? RUNNING : o.installed }
+  const rb = {
+    onDisk: [RUNNING, BLUE] as string[],
+    inactive: null as string | null,
+    floor: '0.5.15' as string | null,
+    restoreBusy: null as string | null,
+    comesBack: true,
+    live: 'a'.repeat(16) as string | null,
+    switched: [] as string[],
+  }
   const deps: UpgradeServiceDeps = {
     readFile: async (p) => disk.get(p) ?? null,
     writeFile: async (p, c) => void disk.set(p, c),
@@ -63,10 +73,141 @@ function fake(
     launch: o.launch ?? (async (id) => void launched.push(id)),
     unitActive: async () => state.unitActive,
     otherBusy: async () => o.busy ?? null,
+    lastOutcome: async () => null,
+    rollback: {
+      arch: 'arm64',
+      installed: async () => state.installed,
+      osTarballs: async () => [...rb.onDisk],
+      inactiveSlotRelease: async () => rb.inactive,
+      sha256Of: async (t) => (t.includes('0.5.15') ? 'b' : t.includes('0.5.14') ? 'c' : 'a').repeat(64),
+      meta: async (r) => ({ ...legacyMeta(r), downgradeFloor: rb.floor ?? legacyMeta(r).version, legacy: rb.floor === null }),
+      restoreBusy: async () => rb.restoreBusy,
+      switchOs: async (tarball, sha256, author, message) => {
+        rb.switched.push(`${tarball} ${author} ${message}`)
+        if (!rb.comesBack) return 'os: the app crashed on start'
+        state.installed = tarball
+        rb.live = sha256.slice(0, 16)
+        return null
+      },
+      liveOsRelease: async () => rb.live,
+    },
   }
   const job = async () => JSON.parse(disk.get('/var/lib/ee/upgrade.json')!).job as UpgradeJob
-  return { deps, disk, events, launched, fetched, state, job, svc: new UpgradeService(deps) }
+  return { deps, disk, events, launched, fetched, state, job, rb, svc: new UpgradeService(deps) }
 }
+
+/** The release that ran before RUNNING (blue, after the update to RUNNING). */
+const BLUE = 'eigenenterprise-0.5.15-bbbbbbbbbbbb-linux-arm64.tar.gz'
+
+describe('ee rollback (plan/phase-upgrades.md §6.4 step 6): blue back live, no restore', () => {
+  it('the plan names blue, the one other release kept on disk', async () => {
+    expect(await fake().svc.rollbackPlan()).toEqual({ from: RUNNING, to: BLUE, refused: null })
+  })
+
+  it('switches os back to blue in the company repo and checks blue is live', async () => {
+    const f = fake()
+    expect(await f.svc.rollback({ author: 'owner:root' })).toEqual({ from: RUNNING, to: BLUE })
+    expect(f.rb.switched).toEqual([`${BLUE} owner:root rollback: os to eigenenterprise-0.5.15-bbbbbbbbbbbb (by owner:root)`])
+    expect(f.events.map((e) => e.type)).toEqual(['upgrade.rollback_started', 'upgrade.rolled_back'])
+  })
+
+  it('refuses below the downgrade floor of what runs, nothing changed', async () => {
+    const f = fake()
+    f.rb.floor = '0.5.16'
+    await expect(f.svc.rollback({ author: 'owner:root' })).rejects.toThrow(
+      'rollback refused, nothing changed: 0.5.15 is below the downgrade floor 0.5.16 of eigenenterprise-0.5.16-14424746613a (it changed what 0.5.15 runs on); going back that far needs a restore from the safety copy',
+    )
+    expect(f.rb.switched).toEqual([])
+  })
+
+  it('a release with no kept metadata (from before U3) is its own floor', async () => {
+    const f = fake()
+    f.rb.floor = null
+    expect((await f.svc.rollbackPlan()).refused).toMatch(/below the downgrade floor 0\.5\.16/)
+  })
+
+  it('refuses when no earlier release is on disk, or when it cannot tell which is blue', async () => {
+    const none = fake()
+    none.rb.onDisk = [RUNNING]
+    expect((await none.svc.rollbackPlan()).refused).toMatch(/no earlier release is on this server/)
+    const two = fake()
+    two.rb.onDisk = [RUNNING, BLUE, 'eigenenterprise-0.5.14-cccccccccccc-linux-arm64.tar.gz']
+    expect((await two.svc.rollbackPlan()).refused).toMatch(/more than one earlier release .* say which \(--to\)/)
+    two.rb.inactive = 'b'.repeat(16)
+    expect((await two.svc.rollbackPlan()).to).toBe(BLUE)
+    expect((await two.svc.rollbackPlan('eigenenterprise-0.5.14-cccccccccccc')).refused).toMatch(/below the downgrade floor 0\.5\.15/)
+    two.rb.floor = '0.5.14'
+    expect((await two.svc.rollbackPlan('eigenenterprise-0.5.14-cccccccccccc')).to).toBe('eigenenterprise-0.5.14-cccccccccccc-linux-arm64.tar.gz')
+  })
+
+  it('refuses a "rollback" to a newer release', async () => {
+    const f = fake({ installed: BLUE })
+    expect((await f.svc.rollbackPlan()).refused).toMatch(/is newer than eigenenterprise-0\.5\.15-bbbbbbbbbbbb: that is an update/)
+  })
+
+  it('a person cannot roll back while an update runs or on a managed box; the update itself can (automatic)', async () => {
+    const managed = fake({ managed: true })
+    await expect(managed.svc.rollback({ author: 'owner:root' })).rejects.toThrow(/managed mode/)
+    expect(await managed.svc.rollback({ author: 'ee-upgrade', automatic: true, reason: 'the watch failed' })).toEqual({ from: RUNNING, to: BLUE })
+    expect(managed.rb.switched[0]).toContain('(the watch failed)')
+  })
+
+  it('refuses while a restore runs', async () => {
+    const f = fake()
+    f.rb.restoreBusy = 'a restore is running; wait for it to finish'
+    await expect(f.svc.rollback({ author: 'ee-upgrade', automatic: true })).rejects.toThrow('a restore is running; wait for it to finish')
+  })
+
+  it('blue that does not come back is a loud failure, journalled', async () => {
+    const f = fake()
+    f.rb.comesBack = false
+    await expect(f.svc.rollback({ author: 'owner:root' })).rejects.toThrow(
+      'the rollback to eigenenterprise-0.5.15-bbbbbbbbbbbb did not bring it live: os: the app crashed on start',
+    )
+    expect(f.events.map((e) => e.type)).toEqual(['upgrade.rollback_started', 'upgrade.rollback_failed'])
+  })
+
+  it('routes: GET is the plan, POST the rollback; a refusal is a 409 problem reply', async () => {
+    const f = fake()
+    expect(await upgradeRoute(f.svc, 'GET /v1/upgrade/rollback', async () => null)).toEqual({ status: 200, data: { from: RUNNING, to: BLUE, refused: null } })
+    f.rb.onDisk = [RUNNING]
+    const r = await upgradeRoute(f.svc, 'POST /v1/upgrade/rollback', async () => ({ author: 'owner:root' }))
+    expect(r?.status).toBe(409)
+    expect((r?.data as { title: string }).title).toMatch(/^rollback refused, nothing changed: no earlier release/)
+  })
+})
+
+describe('the upgrade report (§6.4 step 7)', () => {
+  const outcome = { release: NEW, from: RUNNING, step: 'rolling-back' as const, ok: false, reason: 'the watch failed', rolledBack: true }
+
+  it('the CLI path reports its end; the daemon journals it with the outcome', async () => {
+    const f = fake()
+    const events: Array<{ type: string; data: Record<string, unknown> }> = []
+    f.deps.emit = async (type, _m, data) => void events.push({ type, data })
+    expect(await upgradeRoute(f.svc, 'POST /v1/upgrade/outcome', async () => ({ outcome }))).toEqual({ status: 200, data: { recorded: true } })
+    expect(events).toEqual([{ type: 'upgrade.failed', data: expect.objectContaining({ via: 'cli', outcome }) }])
+  })
+
+  it('refuses an outcome that is not one', async () => {
+    const r = await upgradeRoute(fake().svc, 'POST /v1/upgrade/outcome', async () => ({ outcome: { ...outcome, step: 'whatever' } }))
+    expect(r?.status).toBe(400)
+  })
+
+  it('the unit records the outcome on the job; the daemon journals it once', async () => {
+    const f = fake()
+    const events: Array<{ type: string; data: Record<string, unknown> }> = []
+    f.deps.emit = async (type, _m, data) => void events.push({ type, data })
+    const { job } = await f.svc.start({ release: NEW, author: 'human:u1' })
+    await runUpgradeApply(f.deps, job.id, async (hooks) => {
+      await hooks.outcome({ ...outcome, step: 'done', ok: true, reason: null, rolledBack: false })
+      return `${NEW}-linux-arm64.tar.gz`
+    }, () => undefined)
+    expect((await f.job()).outcome).toMatchObject({ ok: true, step: 'done' })
+    await f.svc.job()
+    await f.svc.job()
+    expect(events.filter((e) => e.type === 'upgrade.succeeded')).toEqual([{ type: 'upgrade.succeeded', data: expect.objectContaining({ jobId: job.id, outcome: expect.objectContaining({ ok: true }) }) }])
+  })
+})
 
 describe('UpgradeService (Settings → Updates: the app asks ee, ee upgrades)', () => {
   it('info: what runs now, where releases come from, the last update — no network', async () => {
@@ -76,6 +217,7 @@ describe('UpgradeService (Settings → Updates: the app asks ee, ee upgrades)', 
       managed: false,
       source: { kind: 'github', repo: 'hikaru90/eigen-enterprise' },
       job: null,
+      lastOutcome: null,
     })
     expect(f.fetched).toEqual([])
   })

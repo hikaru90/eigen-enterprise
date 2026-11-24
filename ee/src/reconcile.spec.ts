@@ -17,6 +17,10 @@ class FakeSystem implements System {
   tarballs = new Map<string, Record<string, string>>()
   units = new Map<string, string>()
   healthy = new Set<number>()
+  /** `${port}${path}` that answer non-2xx even on a healthy port (the core smoke). */
+  failingPaths = new Set<string>()
+  /** Units whose start fails (an ExecStartPre step, e.g. a migration, exits non-zero). */
+  failOnStart = new Set<string>()
   caddyLoads: unknown[] = []
   commands: string[] = []
   /** unit → NRestarts systemd reports (a crash-looping candidate). */
@@ -74,14 +78,14 @@ class FakeSystem implements System {
       const [verb, ...rest] = args
       const unit = rest.filter((a) => !a.startsWith('--')).at(-1) ?? ''
       if (verb === 'is-active') return { code: 0, stdout: (this.units.get(args[1]!) ?? 'inactive') + '\n', stderr: '' }
-      if (verb === 'restart' || verb === 'start') this.units.set(unit, 'active')
+      if (verb === 'restart' || verb === 'start') this.units.set(unit, this.failOnStart.has(unit) ? 'failed' : 'active')
       if (verb === 'stop' || (verb === 'disable' && args.includes('--now'))) this.units.set(unit, 'inactive')
       return ok
     }
     return ok
   }
-  async httpOk(port: number) {
-    return this.healthy.has(port)
+  async httpOk(port: number, path: string) {
+    return this.healthy.has(port) && !this.failingPaths.has(`${port}${path}`)
   }
   async caddyLoad(cfg: unknown) {
     this.caddyLoads.push(cfg)
@@ -654,5 +658,86 @@ describe('livekit-server as a system workload (calls)', () => {
     expect(await renderLiveEnvFiles(sys, callsState(LK_A), journal, secrets.data)).toBe(2)
     expect(envFile(sys, 'livekit-a')).toBe(before.lk)
     expect(envFile(sys, 'os-a')).toBe(before.os)
+  })
+})
+
+describe('the os upgrade on the box (plan/phase-upgrades.md §6.4 steps 3, 4 and 6)', () => {
+  const OS_JSON = JSON.stringify({
+    runtime: 'node',
+    node: '22',
+    start: ['node', 'build/index.js'],
+    preStart: [['node', 'scripts/migrate.mjs']],
+    health: '/api/health',
+  })
+  const osDesired = (sha: string): DesiredState => ({
+    ...desired(sha),
+    workloads: [workloadSchema.parse({ name: 'os', tier: 'system', source: { kind: 'release', tarball: `/rel/${sha}.tgz`, sha256: sha } })],
+    routes: [{ host: 'os.example.com', workload: 'os' }],
+  })
+  function osBox() {
+    const sys = box(A, B)
+    for (const s of [A, B]) sys.tarballs.set(`/rel/${s}.tgz`, { 'ee.json': OS_JSON })
+    sys.healthy.add(4100).add(4101)
+    return sys
+  }
+  const run = (sys: FakeSystem, journal: ReturnType<typeof emptyJournal>, sha: string) =>
+    reconcile({ sys, repo: { read: async () => osDesired(sha) }, journal, secrets: memSecrets(), healthTimeoutMs: 5_000 })
+
+  it("green's preStart runs the migrations before it starts", async () => {
+    const sys = osBox()
+    await run(sys, emptyJournal(), A)
+    const unit = sys.files.get('/etc/systemd/system/ee-os-a.service')!
+    expect(unit).toMatch(/ExecStartPre=.*scripts\/migrate\.mjs/)
+    expect(unit.indexOf('ExecStartPre=')).toBeLessThan(unit.search(/^ExecStart=/m))
+  })
+
+  it('a failing migration (green never starts) leaves blue serving, edge untouched', async () => {
+    const sys = osBox()
+    const journal = emptyJournal()
+    await run(sys, journal, A)
+    const loads = sys.caddyLoads.length
+    sys.failOnStart.add('ee-os-b.service')
+    await expect(run(sys, journal, B)).rejects.toThrow(/os: the app crashed on start.*previous release keeps serving/)
+    expect(journal.workloads.os?.active).toBe('a')
+    expect(sys.units.get('ee-os-a.service')).toBe('active')
+    expect(sys.caddyLoads.length).toBe(loads)
+  })
+
+  it('a healthy green that fails the core smoke never takes traffic', async () => {
+    const sys = osBox()
+    const journal = emptyJournal()
+    await run(sys, journal, A)
+    const loads = sys.caddyLoads.length
+    sys.failingPaths.add('4101/login')
+    await expect(run(sys, journal, B)).rejects.toThrow(/failed the core smoke: GET \/login did not answer 2xx\/3xx.*previous release keeps serving/)
+    expect(journal.workloads.os?.active).toBe('a')
+    expect(sys.caddyLoads.length).toBe(loads)
+    expect(sys.units.get('ee-os-b.service')).toBe('inactive')
+  })
+
+  it('green passes health and the smoke: cut-over, then blue is stopped but stays installed', async () => {
+    const sys = osBox()
+    const journal = emptyJournal()
+    await run(sys, journal, A)
+    await run(sys, journal, B)
+    expect(journal.workloads.os?.active).toBe('b')
+    expect(JSON.stringify(sys.caddyLoads.at(-1))).toContain('127.0.0.1:4101')
+    expect(sys.units.get('ee-os-a.service')).toBe('inactive')
+    expect(sys.files.has(`/var/lib/ee/workloads/os/releases/${A.slice(0, 16)}/.ee-ready`)).toBe(true)
+  })
+
+  it('rollback = os back to blue in desired state: blue comes up from disk (no unpack) and the edge points back', async () => {
+    const sys = osBox()
+    const journal = emptyJournal()
+    await run(sys, journal, A)
+    await run(sys, journal, B)
+    const unpacks = () => sys.commands.filter((c) => c.startsWith(`tar -xzf /rel/${A}.tgz`)).length
+    expect(unpacks()).toBe(1)
+    await run(sys, journal, A)
+    expect(unpacks()).toBe(1)
+    expect(journal.workloads.os?.active).toBe('a')
+    expect(journal.workloads.os?.slots.a?.release).toBe(A.slice(0, 16))
+    expect(JSON.stringify(sys.caddyLoads.at(-1))).toContain('127.0.0.1:4100')
+    expect(sys.units.get('ee-os-b.service')).toBe('inactive')
   })
 })
