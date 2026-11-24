@@ -722,14 +722,27 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "coworkers.avatar_upload": {
+    input: {
+      "image_base64": string
+      "mime": "image/webp"
+    }
+    output: {
+      "image": string
+      "sha256": string
+    }
+  }
   "coworkers.create": {
     input: {
       "accountabilities"?: Array<string>
+      "avatar_preset"?: ("prism" | "orbit" | "blocks" | "arch" | "signal" | "mosaic" | "beacon" | "ribbon") | null
+      "avatar_sha256"?: string | null
       "daily_cap_usd"?: number
       "lens"?: string
       "model_id"?: string
       "name"?: string
       "reports_to_user_id"?: string | null
+      "reports_to_user_ids"?: Array<string>
       "template_id"?: "marketing-manager" | "go-to-market-manager" | "designer" | "ops-analyst" | "finance-analyst" | "customer-success-lead"
       "title"?: string
     }
@@ -740,6 +753,11 @@ export type CoreApiTools = {
         "name": string
         "reason": "chain" | "owner"
       }) | null
+      "accountableHumans": Array<{
+        "id": string
+        "name": string
+        "reason": "chain" | "owner"
+      }>
       "agentId": string
       "createdAt": string
       "createdBy": string
@@ -747,11 +765,13 @@ export type CoreApiTools = {
       "email": string
       "enabled": boolean
       "id": string
+      "image": string | null
       "lens": string
       "modelId": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
+      "reportsToUserIds": Array<string>
       "slug": string
       "templateId": string | null
       "title": string | null
@@ -769,6 +789,11 @@ export type CoreApiTools = {
         "name": string
         "reason": "chain" | "owner"
       }) | null
+      "accountableHumans": Array<{
+        "id": string
+        "name": string
+        "reason": "chain" | "owner"
+      }>
       "agentId": string
       "createdAt": string
       "createdBy": string
@@ -776,11 +801,13 @@ export type CoreApiTools = {
       "email": string
       "enabled": boolean
       "id": string
+      "image": string | null
       "lens": string
       "modelId": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
+      "reportsToUserIds": Array<string>
       "slug": string
       "templateId": string | null
       "title": string | null
@@ -798,6 +825,11 @@ export type CoreApiTools = {
         "name": string
         "reason": "chain" | "owner"
       }) | null
+      "accountableHumans": Array<{
+        "id": string
+        "name": string
+        "reason": "chain" | "owner"
+      }>
       "agentId": string
       "createdAt": string
       "createdBy": string
@@ -805,11 +837,13 @@ export type CoreApiTools = {
       "email": string
       "enabled": boolean
       "id": string
+      "image": string | null
       "lens": string
       "modelId": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
+      "reportsToUserIds": Array<string>
       "slug": string
       "templateId": string | null
       "title": string | null
@@ -888,6 +922,11 @@ export type CoreApiTools = {
         "name": string
         "reason": "chain" | "owner"
       }) | null
+      "accountableHumans": Array<{
+        "id": string
+        "name": string
+        "reason": "chain" | "owner"
+      }>
       "agentId": string
       "createdAt": string
       "createdBy": string
@@ -895,11 +934,13 @@ export type CoreApiTools = {
       "email": string
       "enabled": boolean
       "id": string
+      "image": string | null
       "lens": string
       "modelId": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
+      "reportsToUserIds": Array<string>
       "slug": string
       "templateId": string | null
       "title": string | null
@@ -916,6 +957,11 @@ export type CoreApiTools = {
           "name": string
           "reason": "chain" | "owner"
         }) | null
+        "accountableHumans": Array<{
+          "id": string
+          "name": string
+          "reason": "chain" | "owner"
+        }>
         "agentId": string
         "createdAt": string
         "createdBy": string
@@ -923,11 +969,13 @@ export type CoreApiTools = {
         "email": string
         "enabled": boolean
         "id": string
+        "image": string | null
         "lens": string
         "modelId": string
         "name": string
         "removedAt": string | null
         "reportsToUserId": string | null
+        "reportsToUserIds": Array<string>
         "slug": string
         "templateId": string | null
         "title": string | null
@@ -988,6 +1036,11 @@ export type CoreApiTools = {
         "name": string
         "reason": "chain" | "owner"
       }) | null
+      "accountableHumans": Array<{
+        "id": string
+        "name": string
+        "reason": "chain" | "owner"
+      }>
       "agentId": string
       "createdAt": string
       "createdBy": string
@@ -995,11 +1048,13 @@ export type CoreApiTools = {
       "email": string
       "enabled": boolean
       "id": string
+      "image": string | null
       "lens": string
       "modelId": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
+      "reportsToUserIds": Array<string>
       "slug": string
       "templateId": string | null
       "title": string | null
@@ -1171,11 +1226,14 @@ export type CoreApiTools = {
   "coworkers.update": {
     input: {
       "accountabilities"?: Array<string>
+      "avatar_preset"?: ("prism" | "orbit" | "blocks" | "arch" | "signal" | "mosaic" | "beacon" | "ribbon") | null
+      "avatar_sha256"?: string | null
       "daily_cap_usd"?: number
       "lens"?: string
       "model_id"?: string
       "name"?: string
       "reports_to_user_id"?: string | null
+      "reports_to_user_ids"?: Array<string>
       "title"?: string
       "user_id": string
     }
@@ -1186,6 +1244,11 @@ export type CoreApiTools = {
         "name": string
         "reason": "chain" | "owner"
       }) | null
+      "accountableHumans": Array<{
+        "id": string
+        "name": string
+        "reason": "chain" | "owner"
+      }>
       "agentId": string
       "createdAt": string
       "createdBy": string
@@ -1193,11 +1256,13 @@ export type CoreApiTools = {
       "email": string
       "enabled": boolean
       "id": string
+      "image": string | null
       "lens": string
       "modelId": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
+      "reportsToUserIds": Array<string>
       "slug": string
       "templateId": string | null
       "title": string | null
@@ -3201,11 +3266,18 @@ export type CoreApiTools = {
           "name": string
           "reason": "chain" | "owner"
         }) | null
+        "accountableHumans": Array<{
+          "id": string
+          "name": string
+          "reason": "chain" | "owner"
+        }>
         "enabled": boolean | null
         "id": string
+        "image": string | null
         "kind": "human" | "coworker"
         "name": string
         "reportsToUserId": string | null
+        "reportsToUserIds": Array<string>
         "role": "owner" | "admin" | "member"
         "title": string | null
       }>
@@ -3215,6 +3287,7 @@ export type CoreApiTools = {
     input: {
       "accountabilities"?: Array<string>
       "reports_to_user_id"?: string | null
+      "reports_to_user_ids"?: Array<string>
       "title"?: string | null
       "user_id": string
     }
@@ -3225,11 +3298,18 @@ export type CoreApiTools = {
         "name": string
         "reason": "chain" | "owner"
       }) | null
+      "accountableHumans": Array<{
+        "id": string
+        "name": string
+        "reason": "chain" | "owner"
+      }>
       "enabled": boolean | null
       "id": string
+      "image": string | null
       "kind": "human" | "coworker"
       "name": string
       "reportsToUserId": string | null
+      "reportsToUserIds": Array<string>
       "role": "owner" | "admin" | "member"
       "title": string | null
     }
@@ -3973,6 +4053,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "contribute_hub.get",
   "contribute_hub.list",
   "contribute_hub.revoke_install",
+  "coworkers.avatar_upload",
   "coworkers.create",
   "coworkers.disable",
   "coworkers.enable",

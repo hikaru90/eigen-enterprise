@@ -4531,6 +4531,57 @@
     },
     {
       "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "image_base64": {
+            "maxLength": 349532,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mime": {
+            "const": "image/webp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_base64",
+          "mime"
+        ],
+        "type": "object"
+      },
+      "module": "coworkers",
+      "name": "coworkers.avatar_upload",
+      "output": {
+        "additionalProperties": false,
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "image",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
         "always": true,
         "gated": false,
         "risk": "internal"
@@ -4548,6 +4599,38 @@
             "maxItems": 8,
             "minItems": 1,
             "type": "array"
+          },
+          "avatar_preset": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prism",
+                  "orbit",
+                  "blocks",
+                  "arch",
+                  "signal",
+                  "mosaic",
+                  "beacon",
+                  "ribbon"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatar_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "daily_cap_usd": {
             "exclusiveMinimum": 0,
@@ -4580,6 +4663,15 @@
                 "type": "null"
               }
             ]
+          },
+          "reports_to_user_ids": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
           },
           "template_id": {
             "enum": [
@@ -4642,6 +4734,33 @@
               }
             ]
           },
+          "accountableHumans": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "chain",
+                    "owner"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "agentId": {
             "type": "string"
           },
@@ -4663,6 +4782,12 @@
           "id": {
             "type": "string"
           },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lens": {
             "type": "string"
           },
@@ -4683,6 +4808,12 @@
               "string",
               "null"
             ]
+          },
+          "reportsToUserIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "slug": {
             "type": "string"
@@ -4706,6 +4837,7 @@
         "required": [
           "accountabilities",
           "accountableHuman",
+          "accountableHumans",
           "agentId",
           "createdAt",
           "createdBy",
@@ -4713,11 +4845,13 @@
           "email",
           "enabled",
           "id",
+          "image",
           "lens",
           "modelId",
           "name",
           "removedAt",
           "reportsToUserId",
+          "reportsToUserIds",
           "slug",
           "templateId",
           "title",
@@ -4795,6 +4929,33 @@
               }
             ]
           },
+          "accountableHumans": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "chain",
+                    "owner"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "agentId": {
             "type": "string"
           },
@@ -4816,6 +4977,12 @@
           "id": {
             "type": "string"
           },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lens": {
             "type": "string"
           },
@@ -4836,6 +5003,12 @@
               "string",
               "null"
             ]
+          },
+          "reportsToUserIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "slug": {
             "type": "string"
@@ -4859,6 +5032,7 @@
         "required": [
           "accountabilities",
           "accountableHuman",
+          "accountableHumans",
           "agentId",
           "createdAt",
           "createdBy",
@@ -4866,11 +5040,13 @@
           "email",
           "enabled",
           "id",
+          "image",
           "lens",
           "modelId",
           "name",
           "removedAt",
           "reportsToUserId",
+          "reportsToUserIds",
           "slug",
           "templateId",
           "title",
@@ -4948,6 +5124,33 @@
               }
             ]
           },
+          "accountableHumans": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "chain",
+                    "owner"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "agentId": {
             "type": "string"
           },
@@ -4969,6 +5172,12 @@
           "id": {
             "type": "string"
           },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lens": {
             "type": "string"
           },
@@ -4989,6 +5198,12 @@
               "string",
               "null"
             ]
+          },
+          "reportsToUserIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "slug": {
             "type": "string"
@@ -5012,6 +5227,7 @@
         "required": [
           "accountabilities",
           "accountableHuman",
+          "accountableHumans",
           "agentId",
           "createdAt",
           "createdBy",
@@ -5019,11 +5235,13 @@
           "email",
           "enabled",
           "id",
+          "image",
           "lens",
           "modelId",
           "name",
           "removedAt",
           "reportsToUserId",
+          "reportsToUserIds",
           "slug",
           "templateId",
           "title",
@@ -5448,6 +5666,33 @@
               }
             ]
           },
+          "accountableHumans": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "chain",
+                    "owner"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "agentId": {
             "type": "string"
           },
@@ -5469,6 +5714,12 @@
           "id": {
             "type": "string"
           },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lens": {
             "type": "string"
           },
@@ -5489,6 +5740,12 @@
               "string",
               "null"
             ]
+          },
+          "reportsToUserIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "slug": {
             "type": "string"
@@ -5512,6 +5769,7 @@
         "required": [
           "accountabilities",
           "accountableHuman",
+          "accountableHumans",
           "agentId",
           "createdAt",
           "createdBy",
@@ -5519,11 +5777,13 @@
           "email",
           "enabled",
           "id",
+          "image",
           "lens",
           "modelId",
           "name",
           "removedAt",
           "reportsToUserId",
+          "reportsToUserIds",
           "slug",
           "templateId",
           "title",
@@ -5597,6 +5857,33 @@
                     }
                   ]
                 },
+                "accountableHumans": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "enum": [
+                          "chain",
+                          "owner"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "reason"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
                 "agentId": {
                   "type": "string"
                 },
@@ -5618,6 +5905,12 @@
                 "id": {
                   "type": "string"
                 },
+                "image": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "lens": {
                   "type": "string"
                 },
@@ -5638,6 +5931,12 @@
                     "string",
                     "null"
                   ]
+                },
+                "reportsToUserIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "slug": {
                   "type": "string"
@@ -5661,6 +5960,7 @@
               "required": [
                 "accountabilities",
                 "accountableHuman",
+                "accountableHumans",
                 "agentId",
                 "createdAt",
                 "createdBy",
@@ -5668,11 +5968,13 @@
                 "email",
                 "enabled",
                 "id",
+                "image",
                 "lens",
                 "modelId",
                 "name",
                 "removedAt",
                 "reportsToUserId",
+                "reportsToUserIds",
                 "slug",
                 "templateId",
                 "title",
@@ -6020,6 +6322,33 @@
               }
             ]
           },
+          "accountableHumans": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "chain",
+                    "owner"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "agentId": {
             "type": "string"
           },
@@ -6041,6 +6370,12 @@
           "id": {
             "type": "string"
           },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lens": {
             "type": "string"
           },
@@ -6061,6 +6396,12 @@
               "string",
               "null"
             ]
+          },
+          "reportsToUserIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "slug": {
             "type": "string"
@@ -6084,6 +6425,7 @@
         "required": [
           "accountabilities",
           "accountableHuman",
+          "accountableHumans",
           "agentId",
           "createdAt",
           "createdBy",
@@ -6091,11 +6433,13 @@
           "email",
           "enabled",
           "id",
+          "image",
           "lens",
           "modelId",
           "name",
           "removedAt",
           "reportsToUserId",
+          "reportsToUserIds",
           "slug",
           "templateId",
           "title",
@@ -7122,6 +7466,38 @@
             "minItems": 1,
             "type": "array"
           },
+          "avatar_preset": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prism",
+                  "orbit",
+                  "blocks",
+                  "arch",
+                  "signal",
+                  "mosaic",
+                  "beacon",
+                  "ribbon"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "avatar_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "daily_cap_usd": {
             "exclusiveMinimum": 0,
             "maximum": 1000,
@@ -7153,6 +7529,15 @@
                 "type": "null"
               }
             ]
+          },
+          "reports_to_user_ids": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
           },
           "title": {
             "maxLength": 120,
@@ -7212,6 +7597,33 @@
               }
             ]
           },
+          "accountableHumans": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "chain",
+                    "owner"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "agentId": {
             "type": "string"
           },
@@ -7233,6 +7645,12 @@
           "id": {
             "type": "string"
           },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lens": {
             "type": "string"
           },
@@ -7253,6 +7671,12 @@
               "string",
               "null"
             ]
+          },
+          "reportsToUserIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "slug": {
             "type": "string"
@@ -7276,6 +7700,7 @@
         "required": [
           "accountabilities",
           "accountableHuman",
+          "accountableHumans",
           "agentId",
           "createdAt",
           "createdBy",
@@ -7283,11 +7708,13 @@
           "email",
           "enabled",
           "id",
+          "image",
           "lens",
           "modelId",
           "name",
           "removedAt",
           "reportsToUserId",
+          "reportsToUserIds",
           "slug",
           "templateId",
           "title",
@@ -18200,6 +18627,33 @@
                     }
                   ]
                 },
+                "accountableHumans": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "enum": [
+                          "chain",
+                          "owner"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "reason"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
                 "enabled": {
                   "type": [
                     "boolean",
@@ -18208,6 +18662,12 @@
                 },
                 "id": {
                   "type": "string"
+                },
+                "image": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "kind": {
                   "enum": [
@@ -18224,6 +18684,12 @@
                     "string",
                     "null"
                   ]
+                },
+                "reportsToUserIds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "role": {
                   "enum": [
@@ -18243,11 +18709,14 @@
               "required": [
                 "accountabilities",
                 "accountableHuman",
+                "accountableHumans",
                 "enabled",
                 "id",
+                "image",
                 "kind",
                 "name",
                 "reportsToUserId",
+                "reportsToUserIds",
                 "role",
                 "title"
               ],
@@ -18299,6 +18768,15 @@
                 "type": "null"
               }
             ]
+          },
+          "reports_to_user_ids": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
           },
           "title": {
             "anyOf": [
@@ -18365,6 +18843,33 @@
               }
             ]
           },
+          "accountableHumans": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "enum": [
+                    "chain",
+                    "owner"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "enabled": {
             "type": [
               "boolean",
@@ -18373,6 +18878,12 @@
           },
           "id": {
             "type": "string"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "kind": {
             "enum": [
@@ -18389,6 +18900,12 @@
               "string",
               "null"
             ]
+          },
+          "reportsToUserIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "role": {
             "enum": [
@@ -18408,11 +18925,14 @@
         "required": [
           "accountabilities",
           "accountableHuman",
+          "accountableHumans",
           "enabled",
           "id",
+          "image",
           "kind",
           "name",
           "reportsToUserId",
+          "reportsToUserIds",
           "role",
           "title"
         ],
