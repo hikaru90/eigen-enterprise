@@ -1,5 +1,6 @@
 import type { AgentActsAsSelf, AgentConfig, AgentSummary, CoworkerSource, LoopEngineId } from './agent'
 import type { EngineContext, EngineStreamSinks, EngineToolListing, LoopEngine, RunInstructions } from './engine'
+import type { CoreEventType } from './event-catalog'
 import type { KernelRegistry } from './registry'
 import type { ToolPrincipal } from './types'
 import { randomUUID } from 'node:crypto'
@@ -663,7 +664,7 @@ export class AgentRuntime {
 
   private emitAgentEvent(
     principalId: string,
-    type: string,
+    type: CoreEventType,
     payload: Record<string, unknown>,
   ): Promise<KernelEvent> {
     return emitKernelEvent(this.eventSink, {

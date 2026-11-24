@@ -22,7 +22,7 @@ describe('emitKernelEvent', () => {
     const event = await emitKernelEvent(sink, {
       id: 'fixed-id',
       ts: '2026-01-01T00:00:00.000Z',
-      type: 'custom',
+      type: 'approval.mode_changed',
       payload: null,
     })
     expect(event.id).toBe('fixed-id')
@@ -43,7 +43,7 @@ describe('emitKernelEvent', () => {
 
   it('leaves source unset when the emit site provides none', async () => {
     const sink = new InMemoryEventSink()
-    const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
+    const event = await emitKernelEvent(sink, { type: 'approval.mode_changed', payload: null })
     expect(event.source).toBeUndefined()
   })
 })
@@ -56,5 +56,13 @@ describe('InMemoryEventSink', () => {
       await ordered.emit({ id: `id-${type}`, ts: new Date().toISOString(), type, payload: null })
     }
     expect(sink.events.map((e) => e.type)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('refuses a type outside the core event catalog (the locked contract), and emits nothing', async () => {
+    const sink = new InMemoryEventSink()
+    await expect(
+      emitKernelEvent(sink, { type: 'not.a_core_event' as never, payload: null }),
+    ).rejects.toThrow(/not a core event type.*event-catalog\.ts.*contract:lock/)
+    expect(sink.events).toEqual([])
   })
 })

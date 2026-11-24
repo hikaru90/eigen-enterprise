@@ -1,5 +1,6 @@
 import type { ContactPatch, ContactRow, ContactScope, ContactsStore, Directory, LogEntryRow, ShareRow, SharingChange } from './store'
 import { randomUUID } from 'node:crypto'
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { ContactsError } from './errors'
 import {
@@ -55,7 +56,7 @@ import {
 
 export type Actor = { kind: 'user'; userId: string } | { kind: 'agent'; id: string }
 
-export type ContactsAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type ContactsAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 /** One mail with a contact's address, as the mail port found it. */
 export type ContactMail = Omit<Extract<HistoryItem, { kind: 'mail' }>, 'kind' | 'day' | 'at'> & { at: Date }

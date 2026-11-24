@@ -1,3 +1,4 @@
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import { MemberError, type Actor } from './service'
 
 /**
@@ -16,7 +17,7 @@ export type OpenJoinStore = {
   set(on: boolean, actorId: string): Promise<void>
 }
 
-export type OpenJoinAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type OpenJoinAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 export type OpenJoinDeps = { store: OpenJoinStore; audit: OpenJoinAudit }
 

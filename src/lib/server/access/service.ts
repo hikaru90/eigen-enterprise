@@ -1,3 +1,4 @@
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import {
   ACCESS_LEVELS,
@@ -30,7 +31,7 @@ export type AccessStore = {
 /** Whether a resource of this type with this id exists (registered by the owning module: Drive, Messages). */
 export type ResourceResolver = (resourceId: string) => Promise<boolean>
 
-export type AccessAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type AccessAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 export type AccessDeps = {
   store: AccessStore

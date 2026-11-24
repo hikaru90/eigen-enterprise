@@ -41,7 +41,7 @@ describe('toCloudEvent', () => {
   it('maps payload null to data null with datacontenttype', async () => {
     const sink = new InMemoryEventSink()
     const event = await emitKernelEvent(sink, {
-      type: 'custom',
+      type: 'approval.mode_changed',
       payload: null,
     })
     const ce = toCloudEvent(event, '/kindred/kernel')
@@ -52,7 +52,7 @@ describe('toCloudEvent', () => {
   it('omits the extension attribute when principalId is unset', async () => {
     const sink = new InMemoryEventSink()
     const event = await emitKernelEvent(sink, {
-      type: 'custom',
+      type: 'approval.mode_changed',
       principalId: undefined,
       payload: null,
     })
@@ -63,7 +63,7 @@ describe('toCloudEvent', () => {
   it('omits data and datacontenttype when payload is undefined', async () => {
     const sink = new InMemoryEventSink()
     const event = await emitKernelEvent(sink, {
-      type: 'custom',
+      type: 'approval.mode_changed',
       payload: undefined,
     })
     const ce = toCloudEvent(event, '/kindred/kernel')
@@ -73,7 +73,7 @@ describe('toCloudEvent', () => {
 
   it('throws on empty or whitespace-only source', async () => {
     const sink = new InMemoryEventSink()
-    const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
+    const event = await emitKernelEvent(sink, { type: 'approval.mode_changed', payload: null })
     expect(() => toCloudEvent(event, '')).toThrow()
     expect(() => toCloudEvent(event, '   ')).toThrow()
   })
@@ -81,7 +81,7 @@ describe('toCloudEvent', () => {
   it('prefers the event-borne source over the parameter', async () => {
     const sink = new InMemoryEventSink()
     const event = await emitKernelEvent(sink, {
-      type: 'custom',
+      type: 'approval.mode_changed',
       source: 'urn:eigenenterprise:module:memory',
       payload: null,
     })
@@ -92,13 +92,13 @@ describe('toCloudEvent', () => {
 
   it('falls back to the parameter when the event carries no source', async () => {
     const sink = new InMemoryEventSink()
-    const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
+    const event = await emitKernelEvent(sink, { type: 'approval.mode_changed', payload: null })
     expect(toCloudEvent(event, KERNEL_EVENT_SOURCE).source).toBe(KERNEL_EVENT_SOURCE)
   })
 
   it('throws when neither the event nor the parameter carries a source', async () => {
     const sink = new InMemoryEventSink()
-    const event = await emitKernelEvent(sink, { type: 'custom', payload: null })
+    const event = await emitKernelEvent(sink, { type: 'approval.mode_changed', payload: null })
     expect(() => toCloudEvent(event)).toThrow()
   })
 })
