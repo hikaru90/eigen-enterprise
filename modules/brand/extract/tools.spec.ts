@@ -112,6 +112,17 @@ describe('brand extraction tools', () => {
     expect(capture).toHaveBeenCalledWith('https://example.com')
   })
 
+  it('extract_start reads a bare host as https and refuses a non-URL as a validation error', async () => {
+    const capture = fakeCapture()
+    const { registry, activations } = wiredRegistry({ capture })
+    await activations.set('brand', true)
+    await registry.execute('brand.extract_start', { url: 'www.eigenenterprise.app' }, humanAdmin)
+    expect(capture).toHaveBeenCalledWith('https://www.eigenenterprise.app')
+    await expect(
+      registry.execute('brand.extract_start', { url: 'not a url' }, humanAdmin),
+    ).rejects.toThrow(/not a web address/)
+  })
+
   it('extract_start passes the typed no-browser failure through and opens no session', async () => {
     const store = new InMemoryBrandExtractionStore()
     const capture = vi.fn(async () => {

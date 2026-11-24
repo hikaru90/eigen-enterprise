@@ -12,6 +12,7 @@ import {
   type ProposedCandidate,
   type PriorRound,
 } from './propose'
+import { siteUrlSchema } from './site-url'
 import {
   defaultBrandExtractionStore,
   judgeRoundInputSchema,
@@ -63,7 +64,7 @@ function requireHuman(ctx: ToolContext): void {
   }
 }
 
-const startInput = z.object({ url: z.string().min(1) })
+const startInput = z.object({ url: siteUrlSchema })
 const guideStartInput = z.object({
   filename: z.string().min(1),
   /** The guide's bytes, standard base64 (the upload route encodes the multipart file). */
