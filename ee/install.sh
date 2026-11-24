@@ -75,7 +75,11 @@ PEM
 
 release_backup_public_key() {
 # BEGIN RELEASE BACKUP PUBLIC KEY (written by scripts/release-key.sh --backup)
-  echo 'PLACEHOLDER: no backup release key yet (run scripts/release-key.sh --backup)'
+  cat <<'PEM'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAGIdMcsZKnET7Du3YzNCIfWkLkCtean4l5CPv7YzVPko=
+-----END PUBLIC KEY-----
+PEM
 # END RELEASE BACKUP PUBLIC KEY
 }
 

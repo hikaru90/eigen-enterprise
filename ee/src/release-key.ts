@@ -27,7 +27,10 @@ MCowBQYDK2VwAyEAKvl3XdC1tUoV6fLiwOpijRl2xs92UJmt4rRqvzJPRvA=
 export const BACKUP_PLACEHOLDER = 'PLACEHOLDER: no backup release key yet (run scripts/release-key.sh --backup)'
 
 // BEGIN RELEASE BACKUP PUBLIC KEY (written by scripts/release-key.sh --backup)
-export const RELEASE_BACKUP_PUBLIC_KEY_PEM: string = BACKUP_PLACEHOLDER
+export const RELEASE_BACKUP_PUBLIC_KEY_PEM: string = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAGIdMcsZKnET7Du3YzNCIfWkLkCtean4l5CPv7YzVPko=
+-----END PUBLIC KEY-----
+`
 // END RELEASE BACKUP PUBLIC KEY
 
 export const NO_KEY_MESSAGE = 'this build has no release signing key (run scripts/release-key.sh)'
