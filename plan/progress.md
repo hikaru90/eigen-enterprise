@@ -321,6 +321,13 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Next:** install v0.5.38 where the owner wants it (Settings → Updates or `ee upgrade`), then update ee-one's board.
 
 ## 2026-11-23 — Contribute round: 8 workstreams merged into main (owner: "get contributions from all boxes and start integrating them"; merged, released in v0.5.38, not installed on any box)
+## 2026-11-24 — Brand extraction runs on the assistant's chat model; `BRAND_EXTRACT_MODEL` removed (owner: "This should be the model that's already used by the assistant."; committed on branch, not pushed, not merged, not on the box)
+
+- **Changed:** `modules/brand/extract/propose.ts` no longer reads an env var or passes `modelOverride`. Both proposers (`proposeCandidates` for a site capture, `proposeCandidatesFromGuide` for an uploaded PDF/image guide) call `llmChatCompletion` without a model, so the gateway resolves the person's chat slot the same way it does for the assistant (`resolveSlot('chat', userId)` → `chatRoutingConfig`). Brand extraction no longer has its own model resolution.
+- **Removed, announced:** the `BRAND_EXTRACT_MODEL` config option (`brandExtractModelFromEnv`, its `ExtendedPrivateEnv` key, the `env` injection on `ProposeDeps` and the proposer args). Boxes can drop the variable from their environment. If it is still set, nothing reads it. The earlier release note ("`BRAND_EXTRACT_MODEL` on each box must be a pool chat model") no longer applies.
+- **Gap (images/PDFs):** the model pool (`model-pool.ts`) has no structured data on which chat models read images or PDFs. That is only written in the free-text `note`, and code must not read meaning out of free text. So there is no pre-flight check. A guide is sent as an attachment, and if the company's chat model can't read it, the provider's error surfaces on the extraction session. The model is never switched quietly. The recommended chat model (`~deepseek/deepseek-flash-latest`) may not read images/PDFs, so guide extraction on such a company can fail. A typed capability field on `PoolModel` would allow a loud pre-flight error naming the model. Not added here.
+
+## 2026-11-23 — Contribute round: 8 workstreams merged into main (owner: "get contributions from all boxes and start integrating them"; merged, not pushed, not released)
 
 - **Round:** `plan/contribute-round-2026-11-23.md`. Sources: ee-one, os.cerberusblue.com and the central board.
 - **Merged:**
