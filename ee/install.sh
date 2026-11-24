@@ -59,7 +59,10 @@ fetch() { # fetch <name> <dest>
 }
 
 # BEGIN SIGNED RELEASE (plan/phase-managed-box.md M5; ee/src/install-verify.spec.ts runs this block)
-# Only a release whose SHA256SUMS is signed by the project's Ed25519 key installs.
+# Only a release whose SHA256SUMS is signed by the project's Ed25519 key installs. Two keys
+# are trusted (plan/phase-upgrades.md §6.2): the current key (required) and the offline backup
+# key, used only if the current one is lost or leaked. A backup that is still the placeholder
+# ("no backup release key yet") is skipped; anything else that is not a public key fails loud.
 release_public_key() {
 # BEGIN RELEASE PUBLIC KEY (written by scripts/release-key.sh)
   cat <<'PEM'
@@ -70,11 +73,27 @@ PEM
 # END RELEASE PUBLIC KEY
 }
 
-verify_release() { # verify_release <dir>: <dir>/SHA256SUMS is signed (<dir>/SHA256SUMS.sig, base64) by the release key
+release_backup_public_key() {
+# BEGIN RELEASE BACKUP PUBLIC KEY (written by scripts/release-key.sh --backup)
+  echo 'PLACEHOLDER: no backup release key yet (run scripts/release-key.sh --backup)'
+# END RELEASE BACKUP PUBLIC KEY
+}
+
+signed_by() { # signed_by <dir> <pem>: <dir>/SHA256SUMS.sig.bin is <pem>'s signature of <dir>/SHA256SUMS
+  openssl pkeyutl -verify -pubin -inkey "$2" -rawin -in "$1/SHA256SUMS" -sigfile "$1/SHA256SUMS.sig.bin" >/dev/null 2>&1
+}
+
+verify_release() { # verify_release <dir>: <dir>/SHA256SUMS is signed (<dir>/SHA256SUMS.sig, base64) by the release key or its backup
   release_public_key > "$1/release-key.pem"
   grep -q -- '-----BEGIN PUBLIC KEY-----' "$1/release-key.pem" || { echo "✗ this build has no release signing key (run scripts/release-key.sh)" >&2; exit 1; }
+  release_backup_public_key > "$1/release-backup-key.pem"
+  if grep -qx 'PLACEHOLDER: no backup release key yet (run scripts/release-key.sh --backup)' "$1/release-backup-key.pem"; then
+    rm -f "$1/release-backup-key.pem" # no backup key yet: only the current key is trusted
+  else
+    grep -q -- '-----BEGIN PUBLIC KEY-----' "$1/release-backup-key.pem" || { echo "✗ the backup release key is neither a public key nor the placeholder" >&2; exit 1; }
+  fi
   tr -d '\r\n' < "$1/SHA256SUMS.sig" | openssl base64 -d -A > "$1/SHA256SUMS.sig.bin" 2>/dev/null \
-    && openssl pkeyutl -verify -pubin -inkey "$1/release-key.pem" -rawin -in "$1/SHA256SUMS" -sigfile "$1/SHA256SUMS.sig.bin" >/dev/null 2>&1 \
+    && { signed_by "$1" "$1/release-key.pem" || { [ -e "$1/release-backup-key.pem" ] && signed_by "$1" "$1/release-backup-key.pem"; }; } \
     || { echo "✗ the release SHA256SUMS is not signed by the eigenEnterprise release key — refusing to install" >&2; exit 1; }
   SIGNED_SUMS="$1/SHA256SUMS"
 }
