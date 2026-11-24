@@ -126,6 +126,10 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   await gotoHydrated(a, '/messages')
   await a.getByTestId('shell-sidebar').getByTestId('shell-nav-drive').click()
   await expect(a).toHaveURL(/\/drive$/)
+  // Drive lands on the Overview (everything, newest first); this journey works in My drive.
+  await expect(a.getByTestId('drive-tab-overview')).toHaveAttribute('aria-current', 'page')
+  await a.getByTestId('drive-tab-mine').click()
+  await expect(a).toHaveURL(/\/drive\?origin=mine$/)
   await expect(a.getByTestId('drive-tab-mine')).toHaveAttribute('aria-current', 'page')
   await expect(a.getByTestId('module-status')).toHaveText(/Active/)
   await expect(a.getByTestId('drive-storage')).toHaveText(/used/)
@@ -184,7 +188,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   expect((await b.request.get(`/api/drive/files/${notesId}/text`)).status()).toBe(404)
 
   // A shares Projects with B: view.
-  await gotoHydrated(a, '/drive')
+  await gotoHydrated(a, '/drive?origin=mine')
   await row(a, 'Projects').getByTestId('drive-share').click()
   await expect(a.getByTestId('drive-share-dialog')).toBeVisible()
   await a.getByTestId('drive-share-pick-level').selectOption('view')
@@ -242,7 +246,7 @@ test('Drive: two members — create, upload, share view → edit, preview, renam
   expect((await b.request.put(`/api/drive/files/${notesId}/text`, { data: { content: 'x' } })).status()).toBe(403)
 
   // A raises B to edit.
-  await gotoHydrated(a, '/drive')
+  await gotoHydrated(a, '/drive?origin=mine')
   // Right after a navigation the page may still be hydrating: retry the click until the dialog is up.
   await expect(async () => {
     await row(a, 'Projects').getByTestId('drive-share').click()
