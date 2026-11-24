@@ -43,7 +43,9 @@ import { createCallsTools } from './calls/tools'
 import { DbAllowlistStore } from './chat-gateway/db-stores'
 import { createChatGateway, type ChatGatewayBoot } from './chat-gateway/index'
 import { telegramClientFromEnv } from './chat-gateway/telegram'
+import { liveCompanyModules } from './company-modules/live'
 import { COMPANY_MODULES_MODULE_ID, companyModulesManifest } from './company-modules/manifest'
+import { COMPANY_MODULES_GATED_TOOLS, createCompanyModulesTools } from './company-modules/tools'
 import { CONTACTS_MODULE_ID, CONTACTS_WRITE_TOOLS, contactsManifest } from './contacts/manifest'
 import { createContactsTools } from './contacts/tools'
 import { contributeHubManifest } from './contribute/hub/manifest'
@@ -97,6 +99,7 @@ import { WEBSITE_MODULE_ID, websiteManifest } from './website/manifest'
 import { createWebsiteTools } from './website/tools'
 
 export { registerModuleTools, type WiredKernel } from '$lib/kernel/wiring'
+export { providePublishPort, startCompanyModules } from './company-modules/live'
 export type { ChatGatewayBoot } from './chat-gateway/index'
 
 /**
@@ -256,6 +259,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   ...CONTRIBUTE_WRITE_TOOLS,
   // Central board: revoking an install refuses it from now on (destructive for that install).
   'contribute_hub.revoke_install',
+  // Company modules (plan/phase-upgrades-u2.md §8, D13): a deploy that widens nothing follows the mode.
+  ...COMPANY_MODULES_GATED_TOOLS,
   // The demo seed publishes website pages and makes member accounts (public).
   DEMO_SEED_TOOL,
 ])
@@ -446,6 +451,8 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDomainsTools({ mail: liveMailDomains, bought: liveBoughtDomains }),
     // The seed drives this very registry, as the owner and each teammate.
     ...createDemoTools({ registry: () => registry }),
+    // The company's own modules (plan/phase-upgrades-u2.md §8): lazy, so composing touches nothing.
+    ...createCompanyModulesTools(liveCompanyModules({ registry, modules, activations, eventSink, db }).service),
   ])
 
   return {

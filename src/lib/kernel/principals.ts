@@ -135,10 +135,33 @@ export function actsAsMember(principal: ToolPrincipal): boolean {
 }
 
 /**
- * Fails loud on a malformed principal: `via` only as the brain, on a person,
- * with its agent id; a co-worker carries its own agent id and never `via`.
+ * Fails loud on a malformed principal: `via` brain only on a person, with its
+ * agent id; `via` module only on a person, a co-worker or an agent, with its
+ * module id (never a service: a module never holds rights of its own); a
+ * co-worker otherwise carries its own agent id and never `via`.
  */
 export function assertWellFormedPrincipal(principal: ToolPrincipal): void {
+  if (principal.via === MODULE_VIA) {
+    if (
+      principal.kind === 'service' ||
+      typeof principal.moduleId !== 'string' ||
+      principal.moduleId.trim() === '' ||
+      (principal.kind === 'coworker' &&
+        (typeof principal.agentId !== 'string' || principal.agentId.trim() === ''))
+    ) {
+      throw new KernelError(
+        'invalid_principal',
+        `principal ${principal.id} is malformed: a module acts only as a person, a co-worker or an agent, and names its module`,
+      )
+    }
+    return
+  }
+  if (principal.moduleId !== undefined) {
+    throw new KernelError(
+      'invalid_principal',
+      `principal ${principal.id} is malformed: a module id travels only with via module`,
+    )
+  }
   if (principal.kind === 'coworker') {
     if (principal.via !== undefined || typeof principal.agentId !== 'string' || principal.agentId.trim() === '') {
       throw new KernelError(
@@ -157,18 +180,67 @@ export function assertWellFormedPrincipal(principal: ToolPrincipal): void {
   }
 }
 
-/** One readable reference for audit lines and commit messages: `human:ann`, `human:ann via brain:orchestrator`. */
+// ─── Company modules (plan/phase-upgrades-u2.md §4.3, D5) ────────────────────
+
+export const MODULE_VIA = 'module' as const
+
+/** The principal a company module acts under: exactly the invoker's id, kind and roles, marked `via: 'module'`. */
+export type ModuleActingPrincipal = ToolPrincipal & { via: typeof MODULE_VIA; moduleId: string }
+
+/**
+ * A module acts as whoever invoked it — never more (the brain's rule): the
+ * invoker's id, kind and roles (and a co-worker's agent id), plus `via:
+ * 'module'` and the module's local id. A service invoker is refused: a module
+ * always acts as someone.
+ */
+export function modulePrincipal(invoker: ToolPrincipal, moduleId: string): ModuleActingPrincipal {
+  if (typeof moduleId !== 'string' || moduleId.trim() === '') {
+    throw new KernelError('invalid_principal', 'a module principal names its module')
+  }
+  if (invoker.kind === 'service') {
+    throw new KernelError('module_no_person', `module ${moduleId} acts only as a person: a service invoked it`)
+  }
+  return {
+    id: invoker.id,
+    kind: invoker.kind,
+    roles: [...invoker.roles],
+    via: MODULE_VIA,
+    moduleId,
+    ...(invoker.kind === 'coworker' && invoker.agentId ? { agentId: invoker.agentId } : {}),
+  }
+}
+
+/** A module acting in the background, as its box-side owner (permissions.background, §4.3). */
+export function moduleOwnerPrincipal(owner: PersonRef, moduleId: string): ModuleActingPrincipal {
+  requirePerson(owner)
+  return modulePrincipal({ id: owner.id, kind: 'human', roles: owner.roles }, moduleId)
+}
+
+/** True when a company module is acting as this principal. */
+export function isViaModule(principal: ToolPrincipal): principal is ModuleActingPrincipal {
+  return principal.via === MODULE_VIA
+}
+
+/** One readable reference for audit lines and commit messages: `human:ann`, `human:ann via brain:orchestrator`, `human:ann via module:invoices`. */
 export function principalRef(principal: ToolPrincipal): string {
   const own = `${principal.kind}:${principal.id}`
+  if (isViaModule(principal)) return `${own} via ${MODULE_VIA}:${principal.moduleId}`
   return isViaBrain(principal) ? `${own} via ${BRAIN_VIA}:${principal.agentId}` : own
 }
 
-/** Commit attribution: the actor's id, plus `via brain:<agent>` when the brain carried the call (`ann via brain:orchestrator`). */
+/** Commit attribution: the actor's id, plus `via brain:<agent>` / `via module:<id>` when something carried the call. */
 export function attributionOf(principal: ToolPrincipal): string {
+  if (isViaModule(principal)) return `${principal.id} via ${MODULE_VIA}:${principal.moduleId}`
   return isViaBrain(principal) ? `${principal.id} via ${BRAIN_VIA}:${principal.agentId}` : principal.id
 }
 
-/** Provenance fields for event payloads: `{ via: 'brain', agentId }` for a delegated call, nothing otherwise. */
-export function provenanceOf(principal: ToolPrincipal): { via: typeof BRAIN_VIA; agentId: string } | Record<string, never> {
+/** Provenance fields for event payloads: `{ via: 'brain', agentId }` / `{ via: 'module', moduleId }` for a carried call, nothing otherwise. */
+export function provenanceOf(
+  principal: ToolPrincipal,
+):
+  | { via: typeof BRAIN_VIA; agentId: string }
+  | { via: typeof MODULE_VIA; moduleId: string }
+  | Record<string, never> {
+  if (isViaModule(principal)) return { via: MODULE_VIA, moduleId: principal.moduleId }
   return isViaBrain(principal) ? { via: BRAIN_VIA, agentId: principal.agentId } : {}
 }

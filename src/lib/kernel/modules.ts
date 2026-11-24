@@ -1,7 +1,7 @@
 import type { AgentTypeSpec, VerificationPolicySpec } from './agent'
 import type { ZodType } from 'zod'
 import { KernelError } from './errors'
-import { manifestSchema } from './manifest-schema'
+import { isCompanyModuleName, manifestSchema } from './manifest-schema'
 
 export type ModuleManifest = {
   id: string
@@ -68,14 +68,88 @@ export class InMemoryActivationStore implements ActivationStore {
   }
 }
 
+/**
+ * What a company module's switch does beyond its activation record
+ * (plan/phase-upgrades-u2.md §4.6): the module host starts it on (or retries
+ * a failed one) and stops it off, through ee. Called by `activate` before the
+ * record turns true (a start that fails leaves it as it was) and by
+ * `deactivate` after it turned false (its tools are gated at once).
+ */
+export type CompanyModuleSwitch = {
+  switchedOn(kernelModuleId: string): Promise<void>
+  switchedOff(kernelModuleId: string): Promise<void>
+}
+
 export class ModuleRegistry {
   private readonly manifests = new Map<string, ModuleManifest>()
   /** Tool namespace → owning module id. */
   private readonly namespaces = new Map<string, string>()
+  /** Kernel ids (`x-<id>`) of the company modules registered through registerCompanyModule. */
+  private readonly companyModules = new Set<string>()
+  private companySwitch: CompanyModuleSwitch | null = null
 
   constructor(private readonly activations: ActivationStore) {}
 
+  /**
+   * A core (compiled-in) manifest. Refuses any id or namespace in the
+   * company-module space (`x-…`/`x_…`, D3): module tools can never shadow core
+   * tools, and the core never owns a module's names.
+   */
   register(manifest: ModuleManifest): void {
+    for (const name of [manifest.id, ...manifestNamespaces(manifest)]) {
+      if (isCompanyModuleName(name)) {
+        throw new Error(
+          `module ${manifest.id}: "${name}" is in the company-module space (x-/x_); only a company module (registerCompanyModule) may own it`,
+        )
+      }
+    }
+    this.registerChecked(manifest)
+  }
+
+  /**
+   * A company module's manifest (the module host, §4.5): its id is exactly
+   * `x-<id>` and it owns exactly the namespaces `x-<id>` and `x_<id_>`.
+   */
+  registerCompanyModule(manifest: ModuleManifest, localId: string): void {
+    const id = `x-${localId}`
+    const namespace = `x_${localId.replaceAll('-', '_')}`
+    const owned = manifestNamespaces(manifest)
+    if (
+      manifest.id !== id ||
+      owned.length !== 2 ||
+      !owned.includes(id) ||
+      !owned.includes(namespace)
+    ) {
+      throw new Error(
+        `company module ${localId} must be registered as ${id} owning exactly the namespaces ${id} and ${namespace}`,
+      )
+    }
+    this.registerChecked(manifest)
+    this.companyModules.add(id)
+  }
+
+  /** Removes a company module's manifest (a redeploy that changed what it provides, or a removal). */
+  unregisterCompanyModule(kernelModuleId: string): void {
+    if (!this.companyModules.has(kernelModuleId)) {
+      throw new Error(`${kernelModuleId} is not a registered company module`)
+    }
+    const manifest = this.requireManifest(kernelModuleId)
+    for (const namespace of manifestNamespaces(manifest)) this.namespaces.delete(namespace)
+    this.manifests.delete(kernelModuleId)
+    this.companyModules.delete(kernelModuleId)
+  }
+
+  isCompanyModule(id: string): boolean {
+    return this.companyModules.has(id)
+  }
+
+  /** Wires the module host's switch (once; a second host fails loud). */
+  setCompanyModuleSwitch(companySwitch: CompanyModuleSwitch): void {
+    if (this.companySwitch) throw new Error('the company module switch is already wired')
+    this.companySwitch = companySwitch
+  }
+
+  private registerChecked(manifest: ModuleManifest): void {
     const parsed = manifestSchema.safeParse(manifest)
     if (!parsed.success) {
       const issue = parsed.error.issues[0]
@@ -124,12 +198,21 @@ export class ModuleRegistry {
 
   async activate(id: string): Promise<void> {
     this.requireManifest(id)
+    if (this.companyModules.has(id)) await this.requireSwitch(id).switchedOn(id)
     await this.activations.set(id, true)
   }
 
   async deactivate(id: string): Promise<void> {
     this.requireManifest(id)
     await this.activations.set(id, false)
+    if (this.companyModules.has(id)) await this.requireSwitch(id).switchedOff(id)
+  }
+
+  private requireSwitch(id: string): CompanyModuleSwitch {
+    if (!this.companySwitch) {
+      throw new Error(`company module ${id} cannot be switched: no module host is wired`)
+    }
+    return this.companySwitch
   }
 
   /**

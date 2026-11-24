@@ -12,6 +12,7 @@ import {
   bootstrapRecap,
   bootstrapKernel,
   ensureSystemModulesActive,
+  startCompanyModules,
   type BootstrapKernelOptions,
 } from '../../../modules/index'
 import {
@@ -68,6 +69,8 @@ export type AppBootOptions = {
    * specs without a database opt out.
    */
   coworkers?: { start?: boolean }
+  /** The company's own modules (U2 module host): default started (not while building); specs opt out. */
+  companyModules?: { start?: boolean }
 }
 
 export type AppBootStatus = {
@@ -179,6 +182,12 @@ async function composeApp(options: AppBootOptions): Promise<AppBoot> {
   await registerAdminTools(kernel, { db: kernelDbHandle })
   // Hosting, GitHub, email, members and memory are the company's system modules: on from the first boot.
   await ensureSystemModulesActive(kernel)
+  // The company's own modules (plan/phase-upgrades-u2.md §4): their tools and sockets.
+  if (!building && (options.companyModules?.start ?? true)) {
+    void startCompanyModules(kernel.registry).catch((err: unknown) => {
+      console.error('[modules] could not start the company modules at boot:', err)
+    })
+  }
 
   // Durable journey state: DB-backed via the same lazy pooled-handle pattern
   // the kernel stores use (request-scoped when inside ALS, pooled otherwise).

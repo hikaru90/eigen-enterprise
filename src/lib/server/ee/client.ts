@@ -1,4 +1,23 @@
 import { request } from 'node:http'
+import {
+  deployModuleRequestSchema,
+  dryRunAnswerSchema,
+  MODULE_PROBLEM_TYPES,
+  moduleAnswerSchema,
+  moduleIdParam,
+  moduleListAnswerSchema,
+  moduleLogsAnswerSchema,
+  moduleLogsQuerySchema,
+  removeModuleRequestSchema,
+  startModuleRequestSchema,
+  stopModuleRequestSchema,
+  type DeployModuleRequest,
+  type DryRunAnswer,
+  type ModuleView,
+  type RemoveModuleRequest,
+  type StartModuleRequest,
+  type StopModuleRequest,
+} from '../../../../contracts/module-workload'
 
 /** ee's AppContract (ee/src/spec.ts), as it travels over the control API. */
 export type AppContract = {
@@ -592,5 +611,49 @@ export class EeClient {
     author: string
   }): Promise<{ ok: true; reconcileError: string | null }> {
     return this.call('POST', '/v1/secrets', i)
+  }
+
+  // ─── Company modules (plan/phase-upgrades-u2.md §5, contracts/module-workload.ts) ─
+  // Every body is checked against the contract before it leaves, and every
+  // answer when it arrives: a mismatch with ee fails loud, never half-works.
+
+  /** POST /v1/modules: deploy a receipted bundle (202 { module }); stop-then-start for the same id. */
+  async deployModule(request: DeployModuleRequest): Promise<ModuleView> {
+    const body = deployModuleRequestSchema.parse({ ...request, dryRun: undefined })
+    return moduleAnswerSchema.parse(await this.call('POST', '/v1/modules', body)).module
+  }
+  /** POST /v1/modules with dryRun: build and test only ({ passed, log }). */
+  async dryRunModule(request: DeployModuleRequest): Promise<DryRunAnswer> {
+    const body = deployModuleRequestSchema.parse({ ...request, dryRun: true })
+    return dryRunAnswerSchema.parse(await this.call('POST', '/v1/modules', body))
+  }
+  async modules(): Promise<ModuleView[]> {
+    return moduleListAnswerSchema.parse(await this.call('GET', '/v1/modules')).modules
+  }
+  /** One module; null when ee answers 404 urn:ee:module_not_found. */
+  async module(id: string): Promise<ModuleView | null> {
+    try {
+      return moduleAnswerSchema.parse(await this.call('GET', `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}`)).module
+    } catch (err) {
+      if (err instanceof SubstrateError && err.type === MODULE_PROBLEM_TYPES.moduleNotFound) return null
+      throw err
+    }
+  }
+  async stopModule(id: string, body: StopModuleRequest): Promise<ModuleView> {
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}/stop`
+    return moduleAnswerSchema.parse(await this.call('POST', path, stopModuleRequestSchema.parse(body))).module
+  }
+  async startModule(id: string, body: StartModuleRequest): Promise<ModuleView> {
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}/start`
+    return moduleAnswerSchema.parse(await this.call('POST', path, startModuleRequestSchema.parse(body))).module
+  }
+  async moduleLogs(id: string, lines: number): Promise<string[]> {
+    const q = moduleLogsQuerySchema.parse({ lines })
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}/logs?lines=${q.lines}`
+    return moduleLogsAnswerSchema.parse(await this.call('GET', path)).lines
+  }
+  async removeModule(id: string, body: RemoveModuleRequest): Promise<ModuleView> {
+    const path = `/v1/modules/${encodeURIComponent(moduleIdParam.parse(id))}`
+    return moduleAnswerSchema.parse(await this.call('DELETE', path, removeModuleRequestSchema.parse(body))).module
   }
 }
