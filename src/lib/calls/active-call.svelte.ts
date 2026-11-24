@@ -1,4 +1,11 @@
-import { callReducer, initialCallState, type CallEvent, type CallParticipant, type CallViewState, type Device } from './call-state'
+import {
+  callReducer,
+  initialCallState,
+  type CallEvent,
+  type CallParticipant,
+  type CallViewState,
+  type Device,
+} from './call-state'
 import { problemOf, type CallDto, type CallsClient } from './client'
 import {
   DEVICE_KINDS,
@@ -14,6 +21,7 @@ import {
   type DeviceStorage,
 } from './devices'
 import { nextSpeaker } from './layout'
+import { DEFAULT_MEDIA, readMedia, saveMedia, type MediaSettings } from './media-settings'
 import { MediaError, type CallRoom, type RoomSignal } from './room'
 
 /**
@@ -41,7 +49,10 @@ export type MediaDevicesLike = {
 }
 
 export type CallEnv = {
-  win: { addEventListener(type: 'pagehide', fn: () => void): void; removeEventListener(type: 'pagehide', fn: () => void): void }
+  win: {
+    addEventListener(type: 'pagehide', fn: () => void): void
+    removeEventListener(type: 'pagehide', fn: () => void): void
+  }
   /** null: this browser offers no media devices API (e.g. not a secure context). */
   media: MediaDevicesLike | null
   storage: DeviceStorage
@@ -74,6 +85,7 @@ export class ActiveCall {
   #devices = $state<DeviceLists>(emptyDeviceLists())
   #selected = $state<Selected>(noneSelected())
   #deviceProblem = $state<string | null>(null)
+  #media = $state<MediaSettings>({ ...DEFAULT_MEDIA })
   #canChooseSpeaker = $state(false)
   #canShareScreen = $state(false)
 
@@ -115,6 +127,10 @@ export class ActiveCall {
   get speaker() {
     return this.#speaker
   }
+  /** Video quality and noise cancellation, as this browser remembers them. */
+  get media() {
+    return this.#media
+  }
   get devices() {
     return this.#devices
   }
@@ -147,7 +163,11 @@ export class ActiveCall {
    * The call page asks to show this call. In it already → 'here'; in another
    * one → 'busy' (nothing changes); otherwise it joins this one.
    */
-  open(call: CallDto, me: string, startWith: StartWith = { microphone: true, camera: true }): OpenResult {
+  open(
+    call: CallDto,
+    me: string,
+    startWith: StartWith = { microphone: true, camera: true },
+  ): OpenResult {
     if (this.inCall && this.#call) return this.#call.id === call.id ? 'here' : 'busy'
     this.#forget()
     this.#call = call
@@ -214,8 +234,15 @@ export class ActiveCall {
       await room.setDevice(device, on)
       this.#dispatch({ type: 'media', device, on })
     } catch (err) {
-      if (err instanceof MediaError) this.#dispatch({ type: 'media_failed', device, failure: err.failure, detail: err.message })
-      else this.#dispatch({ type: 'media_failed', device, failure: 'other', detail: err instanceof Error ? err.message : String(err) })
+      if (err instanceof MediaError)
+        this.#dispatch({ type: 'media_failed', device, failure: err.failure, detail: err.message })
+      else
+        this.#dispatch({
+          type: 'media_failed',
+          device,
+          failure: 'other',
+          detail: err instanceof Error ? err.message : String(err),
+        })
     }
     if (on && device !== 'screen') await this.refreshDevices()
   }
@@ -241,6 +268,26 @@ export class ActiveCall {
     }
   }
 
+  /** Change video quality and/or noise cancellation: applied to the room now, remembered for this browser. */
+  async setMedia(patch: Partial<MediaSettings>): Promise<void> {
+    const room = this.#room
+    if (!room || !this.#env) return
+    this.#deviceProblem = null
+    const next = { ...this.#media, ...patch }
+    try {
+      await room.applyMedia(next)
+    } catch (err) {
+      this.#deviceProblem = `Could not change the call quality: ${err instanceof Error ? err.message : String(err)}`
+      return
+    }
+    this.#media = next
+    try {
+      saveMedia(this.#env.storage, patch)
+    } catch (err) {
+      console.error('[calls] remembering the call media settings failed', err)
+    }
+  }
+
   /** Read the device lists again (on devicechange, after a device turned on). */
   async refreshDevices(): Promise<void> {
     const media = this.#env?.media
@@ -256,7 +303,8 @@ export class ActiveCall {
     const lists = deviceOptions(infos)
     const room = this.#room
     const selected = noneSelected()
-    for (const kind of DEVICE_KINDS) selected[kind] = selectedDevice(lists[kind], room ? room.activeDevice(kind) : null)
+    for (const kind of DEVICE_KINDS)
+      selected[kind] = selectedDevice(lists[kind], room ? room.activeDevice(kind) : null)
     this.#devices = lists
     this.#selected = selected
   }
@@ -270,7 +318,9 @@ export class ActiveCall {
   }
 
   startAudio(): void {
-    this.#room?.startAudio().catch((err: unknown) => console.error('[calls] starting audio failed', err))
+    this.#room
+      ?.startAudio()
+      .catch((err: unknown) => console.error('[calls] starting audio failed', err))
   }
 
   // ── internals ────────────────────────────────────────────────────────────
@@ -392,7 +442,10 @@ export class ActiveCall {
       try {
         room = await this.#deps.createRoom()
       } catch (err) {
-        throw new Error(`The call could not load (${err instanceof Error ? err.message : String(err)}). Reload the page.`, { cause: err })
+        throw new Error(
+          `The call could not load (${err instanceof Error ? err.message : String(err)}). Reload the page.`,
+          { cause: err },
+        )
       }
       if (stale()) return
       this.#room = room
@@ -400,15 +453,23 @@ export class ActiveCall {
       try {
         await room.connect(t.url, t.token)
       } catch (err) {
-        throw new Error(`could not connect to the call server (${err instanceof Error ? err.message : String(err)})`, { cause: err })
+        throw new Error(
+          `could not connect to the call server (${err instanceof Error ? err.message : String(err)})`,
+          { cause: err },
+        )
       }
       if (stale()) {
-        await room.disconnect().catch((err: unknown) => console.error('[calls] leaving the room failed', err))
+        await room
+          .disconnect()
+          .catch((err: unknown) => console.error('[calls] leaving the room failed', err))
         return
       }
       this.#dispatch({ type: 'connected' })
       this.#refresh()
       await this.#applyRemembered(room, env)
+      if (stale()) return
+      this.#media = readMedia(env.storage)
+      await room.applyMedia(this.#media)
       if (stale()) return
       if (this.#startWith.microphone) await this.turn('microphone', true)
       if (stale()) return
@@ -432,13 +493,19 @@ export class ActiveCall {
     this.#detachRoom()
     this.#participants = []
     this.#speaker = null
-    const disconnecting = room ? room.disconnect().catch((err: unknown) => console.error('[calls] leaving the room failed', err)) : Promise.resolve()
+    const disconnecting = room
+      ? room
+          .disconnect()
+          .catch((err: unknown) => console.error('[calls] leaving the room failed', err))
+      : Promise.resolve()
     if (!call || !wasIn || this.#hungUp) {
       await disconnecting
       return
     }
     this.#hungUp = true
-    const told = this.#deps.client.hangup(call.id, { keepalive }).catch((err: unknown) => console.error('[calls] hang up failed', err))
+    const told = this.#deps.client
+      .hangup(call.id, { keepalive })
+      .catch((err: unknown) => console.error('[calls] hang up failed', err))
     await Promise.all([disconnecting, told])
   }
 }
@@ -450,7 +517,8 @@ export function browserCallEnv(): CallEnv {
     win: window,
     media: media as MediaDevicesLike | null,
     storage: window.localStorage,
-    canChooseSpeaker: typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype,
+    canChooseSpeaker:
+      typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype,
     canShareScreen: typeof media?.getDisplayMedia === 'function',
   }
 }

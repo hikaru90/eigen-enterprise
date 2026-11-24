@@ -23,7 +23,9 @@ export const callsErrorStatus = (err: CallsError): number => STATUS[err.code]
 
 /** POST /api/calls/meetings body → ScheduleInput (shape only; the service validates emails, times, links). */
 export function scheduleInputOf(body: Record<string, unknown>): ScheduleInput {
-  const { userIds, guests, title, startsAt, durationMinutes, externalUrl, timeZone } = body
+  const { userIds, guests, title, startsAt, durationMinutes, externalUrl, inviteLater, timeZone } = body
+  if (inviteLater !== undefined && typeof inviteLater !== 'boolean')
+    throw new CallsError('invalid', 'inviteLater must be true or false')
   if (
     userIds !== undefined &&
     (!Array.isArray(userIds) || userIds.some((u) => typeof u !== 'string'))
@@ -53,6 +55,7 @@ export function scheduleInputOf(body: Record<string, unknown>): ScheduleInput {
     startsAt: start,
     durationMinutes: durationMinutes ?? null,
     externalUrl: externalUrl ?? null,
+    inviteLater,
     timeZone,
   }
 }
