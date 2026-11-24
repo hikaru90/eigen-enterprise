@@ -18,6 +18,8 @@
   import { driveItemKind, shortWhen, type DriveItemKind } from '$lib/drive/display'
   import { driveShownError } from '$lib/drive/shown-error'
   import type { ShownError } from '$lib/errors/agent-report'
+  import { nextSort, sortRows, type SortState } from '$lib/table/sort'
+  import SortableHead from '$lib/table/sortable-head.svelte'
   import ArchiveSuggestions from './archive-suggestions.svelte'
 
   /**
@@ -41,6 +43,15 @@
   let error = $state<ShownError | null>(null)
   let notice = $state<string | null>(null)
   let busy = $state(false)
+  type ColKey = 'name' | 'modified' | 'archived' | 'size'
+  let sort = $state<SortState<ColKey>>(null)
+  const sortBy = (key: ColKey) => (sort = nextSort(sort, key))
+  const sortColumns = {
+    name: (i: DriveItem) => i.name,
+    modified: (i: DriveItem) => new Date(i.updatedAt),
+    archived: (i: DriveItem) => (i.archivedAt ? new Date(i.archivedAt) : null),
+    size: (i: DriveItem) => (i.type === 'file' ? i.size : null),
+  }
   let suggesting = $state(false)
 
   const placeOf = (g: ArchiveGroup) =>
@@ -171,15 +182,39 @@
           <table class="w-full table-fixed text-sm">
             <thead class="text-left text-xs text-muted-foreground">
               <tr class="border-b border-border">
-                <th class="px-3 py-2 font-medium">Name</th>
-                <th class="hidden w-32 px-3 py-2 font-medium sm:table-cell">Modified</th>
-                <th class="hidden w-52 px-3 py-2 font-medium md:table-cell">Archived</th>
-                <th class="hidden w-24 px-3 py-2 font-medium lg:table-cell">Size</th>
+                <SortableHead
+                  label="Name"
+                  sortKey="name"
+                  {sort}
+                  class="px-3 py-2"
+                  onsort={sortBy}
+                />
+                <SortableHead
+                  label="Modified"
+                  sortKey="modified"
+                  {sort}
+                  class="hidden w-32 px-3 py-2 sm:table-cell"
+                  onsort={sortBy}
+                />
+                <SortableHead
+                  label="Archived"
+                  sortKey="archived"
+                  {sort}
+                  class="hidden w-52 px-3 py-2 md:table-cell"
+                  onsort={sortBy}
+                />
+                <SortableHead
+                  label="Size"
+                  sortKey="size"
+                  {sort}
+                  class="hidden w-24 px-3 py-2 lg:table-cell"
+                  onsort={sortBy}
+                />
                 <th class="w-24 px-3 py-2"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
-              {#each group.items as item (item.type + item.id)}
+              {#each sortRows(group.items, sort, sortColumns) as item (item.type + item.id)}
                 {@const Icon = ICONS[driveItemKind(item)]}
                 <tr
                   class="border-b border-border/60 last:border-0 hover:bg-muted/50"

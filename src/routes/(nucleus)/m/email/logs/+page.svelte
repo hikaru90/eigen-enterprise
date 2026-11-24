@@ -7,6 +7,8 @@
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
+  import { nextSort, sortRows, type SortState } from '$lib/table/sort'
+  import SortableHead from '$lib/table/sortable-head.svelte'
   import {
     MESSAGE_STATUSES,
     SOURCE_LABEL,
@@ -25,6 +27,20 @@
         .filter(([, v]) => v)
         .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
         .join('&'),
+  )
+  type ColKey = 'to' | 'subject' | 'from' | 'source' | 'status' | 'when'
+  let sort = $state<SortState<ColKey>>(null)
+  const sortBy = (key: ColKey) => (sort = nextSort(sort, key))
+  const rows = $derived(
+    sortRows(data.messages, sort, {
+      to: (m) => m.to,
+      subject: (m) => m.subject,
+      from: (m) => m.from,
+      source: (m) => SOURCE_LABEL[m.source] ?? m.source,
+      status: (m) => STATUS_LABEL[m.status] ?? m.status,
+      when: (m) =>
+        new Date(m.scheduledAt && m.status === 'scheduled' ? m.scheduledAt : m.createdAt),
+    }),
   )
   const when = (iso: string) =>
     new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -77,16 +93,34 @@
     <table class="w-full min-w-[48rem] text-left text-sm" data-testid="logs-table">
       <thead class="border-b border-border text-xs text-muted-foreground">
         <tr>
-          <th class="px-4 py-2.5 font-medium">Recipient</th>
-          <th class="px-4 py-2.5 font-medium">Subject</th>
-          <th class="px-4 py-2.5 font-medium">From</th>
-          <th class="px-4 py-2.5 font-medium">Sent by</th>
-          <th class="px-4 py-2.5 font-medium">Status</th>
-          <th class="px-4 py-2.5 font-medium">When</th>
+          <SortableHead label="Recipient" sortKey="to" {sort} class="px-4 py-2.5" onsort={sortBy} />
+          <SortableHead
+            label="Subject"
+            sortKey="subject"
+            {sort}
+            class="px-4 py-2.5"
+            onsort={sortBy}
+          />
+          <SortableHead label="From" sortKey="from" {sort} class="px-4 py-2.5" onsort={sortBy} />
+          <SortableHead
+            label="Sent by"
+            sortKey="source"
+            {sort}
+            class="px-4 py-2.5"
+            onsort={sortBy}
+          />
+          <SortableHead
+            label="Status"
+            sortKey="status"
+            {sort}
+            class="px-4 py-2.5"
+            onsort={sortBy}
+          />
+          <SortableHead label="When" sortKey="when" {sort} class="px-4 py-2.5" onsort={sortBy} />
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
-        {#each data.messages as m (m.id)}
+        {#each rows as m (m.id)}
           <tr class="hover:bg-muted/50" data-testid="log-row">
             <td class="max-w-56 truncate px-4 py-2.5">
               <a class="hover:underline" href={resolve(`/m/email/logs/${m.id}`)}>{m.to}</a>
