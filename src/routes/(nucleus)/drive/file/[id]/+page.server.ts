@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types'
+import { safeReturnTo } from '$lib/drive/return-to'
 import {
   driveService,
   drivePage,
@@ -31,6 +32,7 @@ const TEXT_PREVIEW_TOO_LARGE = 'This file is too large to preview, download it i
 export const load: PageServerLoad = async (event) => {
   const actor = requestActor(event)
   const drive = await driveService()
+  const returnTo = safeReturnTo(event.url.searchParams.get('from'))
   return drivePage(async () => {
     const info = await drive.fileInfo(actor, event.params.id)
     const kind = previewKind(info.file.name, info.file.mime ?? '')
@@ -81,6 +83,7 @@ export const load: PageServerLoad = async (event) => {
       /** Who is looking: the author of comments and tracked changes an office viewer writes. */
       viewer: event.locals.user ? { id: event.locals.user.id, name: event.locals.user.name || event.locals.user.email } : null,
       described,
+      returnTo,
     }
   })
 }

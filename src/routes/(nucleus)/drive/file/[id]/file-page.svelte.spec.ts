@@ -46,6 +46,7 @@ function data(overrides: Record<string, unknown> = {}) {
     content: null,
     heartbeatMs: 10_000,
     described: { ownerName: 'Ada Owner', shared: null, readOnlyFrom: null },
+    returnTo: null,
     ...overrides,
   }
 }
@@ -84,6 +85,19 @@ describe('drive file page: closing the viewer', () => {
     await page.getByTestId('drive-file-share').click()
     await userEvent.keyboard('{Escape}')
     expect(gotoMock).not.toHaveBeenCalled()
+  })
+
+  it('returns to Messages on close and Escape when returnTo is present, while keeping Drive folder breadcrumbs', async () => {
+    render(FilePage, props(data({ returnTo: { href: '/messages?c=c1&t=m1', label: 'Messages' } })))
+    const close = page.getByTestId('drive-file-close')
+    await expect.element(close).toHaveAttribute('href', '/messages?c=c1&t=m1')
+    await expect.element(close).toHaveAccessibleName('Close and go back to Messages')
+    const crumbs = page.getByTestId('drive-path')
+    await expect.element(crumbs.getByRole('link', { name: 'My drive' })).toHaveAttribute('href', '/drive')
+    await expect.element(crumbs.getByRole('link', { name: 'Archive' })).toHaveAttribute('href', '/drive/folder/f1')
+    await expect.element(crumbs.getByRole('link', { name: 'Photos' })).toHaveAttribute('href', '/drive/folder/f2')
+    await userEvent.keyboard('{Escape}')
+    expect(gotoMock).toHaveBeenCalledWith('/messages?c=c1&t=m1')
   })
 })
 

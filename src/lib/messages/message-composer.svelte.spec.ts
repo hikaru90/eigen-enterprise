@@ -63,6 +63,43 @@ describe('message-composer.svelte', () => {
     render(MessageComposer, props({ value: 'halb fertig\nzweite Zeile' }))
     await expect.element(page.getByTestId('composer')).toHaveValue('halb fertig\nzweite Zeile')
   })
+
+  it('inserts a Drive folder Markdown link at the caret when driveFolders is enabled, and omits the button otherwise', async () => {
+    const ondraft = vi.fn()
+    const folders = [
+      { id: 'f1', name: 'Q4 Docs', pathLabel: 'My drive', href: '/drive/folder/f1' },
+      { id: 'f2', name: 'Design', pathLabel: 'Shared with me', href: '/drive/folder/f2' },
+    ]
+    const r = render(
+      MessageComposer,
+      props({
+        driveFolders: true,
+        loadDriveFolders: async () => folders,
+        ondraft,
+      }),
+    )
+    const input = page.getByTestId('composer')
+    await input.click()
+    await userEvent.keyboard('Check ')
+    await page.getByTestId('composer-drive-folder').click()
+    const picker = page.getByRole('dialog', { name: 'Link a Drive folder' })
+    await expect.element(picker).toBeVisible()
+    await picker.getByRole('option', { name: /Q4 Docs/ }).click()
+    await expect.element(input).toHaveValue('Check [Q4 Docs](/drive/folder/f1)')
+    expect(ondraft).toHaveBeenLastCalledWith('Check [Q4 Docs](/drive/folder/f1)')
+    expect(page.getByRole('dialog', { name: 'Link a Drive folder' }).elements()).toHaveLength(0)
+    await expect.element(input).toHaveFocus()
+
+    await page.getByTestId('composer-drive-folder').click()
+    await expect.element(page.getByRole('dialog', { name: 'Link a Drive folder' })).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    expect(page.getByRole('dialog', { name: 'Link a Drive folder' }).elements()).toHaveLength(0)
+    await expect.element(input).toHaveFocus()
+
+    r.unmount()
+    render(MessageComposer, props())
+    expect(page.getByTestId('composer-drive-folder').elements()).toHaveLength(0)
+  })
 })
 
 describe('message-composer.svelte: @ suggestions', () => {

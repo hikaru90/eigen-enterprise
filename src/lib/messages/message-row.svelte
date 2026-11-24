@@ -61,6 +61,7 @@
     onquote,
     onopenquote,
     highlighted = false,
+    returnHref,
   }: {
     message: MessageView
     grouped?: boolean
@@ -88,7 +89,14 @@
     onopenquote?: () => void
     /** Briefly marked: the original a quote jumped to. */
     highlighted?: boolean
+    /** Current Messages URL passed as `?from=` so closing the Drive preview returns here. */
+    returnHref?: string
   } = $props()
+
+  function fileHref(fileId: string): string {
+    const base = resolve(`/drive/file/${fileId}`)
+    return returnHref ? `${base}?from=${encodeURIComponent(returnHref)}` : base
+  }
 
   let rowEl = $state<HTMLElement | null>(null)
   let reactEl = $state<HTMLButtonElement | null>(null)
@@ -258,8 +266,8 @@
         <div class="mt-1.5 flex flex-wrap gap-2" data-testid="messages-attachments">
           {#each m.attachments as f (f.fileId)}
             {#if f.image}
-              <a
-                href={resolve(`/drive/file/${f.fileId}`)}
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- fileHref() calls resolve() plus an optional ?from= query string -->
+              <a href={fileHref(f.fileId)}
                 class="block overflow-hidden rounded-lg border border-border bg-foreground/[0.02] hover:border-foreground/25"
                 title={f.name}
                 data-testid="messages-attachment-image"
@@ -273,8 +281,8 @@
                 />
               </a>
             {:else}
-              <a
-                href={resolve(`/drive/file/${f.fileId}`)}
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- fileHref() calls resolve() plus an optional ?from= query string -->
+              <a href={fileHref(f.fileId)}
                 class="flex w-72 max-w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 hover:border-foreground/25 hover:bg-foreground/[0.02]"
                 data-testid="messages-attachment-file"
                 data-name={f.name}
@@ -530,6 +538,49 @@
     color: var(--primary);
     text-decoration: underline;
     text-underline-offset: 2px;
+  }
+  .message-body :global(a[data-drive-link]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 0.375rem;
+    border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+    background: color-mix(in oklab, var(--primary) 8%, transparent);
+    padding: 0.05rem 0.45rem;
+    font-size: 0.92em;
+    font-weight: 500;
+    color: var(--primary);
+    text-decoration: none;
+    vertical-align: baseline;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease;
+  }
+  .message-body :global(a[data-drive-link]:hover) {
+    border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+    background: color-mix(in oklab, var(--primary) 14%, transparent);
+  }
+  .message-body :global(a[data-drive-link]::before) {
+    content: '';
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    flex-shrink: 0;
+    background-color: currentColor;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+  }
+  .message-body :global(a[data-drive-link='folder']::before) {
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3C/svg%3E");
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3C/svg%3E");
+  }
+  .message-body :global(a[data-drive-link='file']::before) {
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E");
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3C/svg%3E");
   }
   .message-body :global(span[data-mention]) {
     border-radius: 0.25rem;

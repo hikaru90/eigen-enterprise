@@ -84,8 +84,9 @@
     ['source', 'Source'],
   ] as const
 
-  /** Closing the viewer goes back to the folder the file is in (or the path's root at the top level). */
+  /** Closing the viewer returns to Messages when opened from there, else the folder the file is in (or the path's root). */
   const back = $derived.by(() => {
+    if (data.returnTo) return data.returnTo
     const parent = data.path.at(-1)
     return parent
       ? { href: resolve(`/drive/folder/${parent.id}`), label: parent.name }

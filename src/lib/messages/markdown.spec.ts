@@ -46,6 +46,38 @@ describe('renderMessageMarkdown', () => {
     expect(html).not.toMatch(/<[^>]*\sonclick=/)
     expect(html).toContain('href="https://y.test"')
   })
+
+  it('renders internal /drive/folder and /drive/file links for SPA navigation with data-drive-link', () => {
+    const folderHtml = renderMessageMarkdown('[Q4 Docs](/drive/folder/abc-123)')
+    expect(folderHtml).toContain('<a href="/drive/folder/abc-123" data-drive-link="folder">Q4 Docs</a>')
+    expect(folderHtml).not.toContain('target=')
+    expect(folderHtml).not.toContain('rel=')
+
+    const fileHtml = renderMessageMarkdown('[Spec](/drive/file/file_9)')
+    expect(fileHtml).toContain('<a href="/drive/file/file_9" data-drive-link="file">Spec</a>')
+    expect(fileHtml).not.toContain('target=')
+    expect(fileHtml).not.toContain('rel=')
+
+    const escaped = renderMessageMarkdown('[Budget \\[2026\\]](/drive/folder/f2)')
+    expect(escaped).toContain('<a href="/drive/folder/f2" data-drive-link="folder">Budget [2026]</a>')
+  })
+
+  it('rejects non-Drive internal paths, traversal, queries, and spoofed data-drive-link in raw HTML', () => {
+    for (const target of [
+      '/drive/folder/abc/../secret',
+      '/drive/folder/abc?q=1',
+      '/settings',
+      '//evil.com/drive/folder/1',
+    ]) {
+      const html = renderMessageMarkdown(`[x](${target})`)
+      expect(html).not.toContain('href=')
+      expect(html).not.toContain('data-drive-link')
+    }
+
+    const raw = renderMessageMarkdown('<a href="https://example.com" data-drive-link="folder">x</a>')
+    expect(raw).not.toMatch(/<a [^>]*data-drive-link/)
+    expect(raw).toContain('&lt;a ')
+  })
 })
 
 describe('renderMessageMarkdown — the author’s line breaks', () => {
