@@ -1,5 +1,6 @@
 import type { CallParticipant, Device, EndReason, MediaFailure } from './call-state'
 import type { DeviceKind } from './devices'
+import type { MediaSettings } from './media-settings'
 
 /**
  * The live call's seam onto the media server (plan/video-calls.md §3). The
@@ -30,6 +31,12 @@ export type CallRoom = {
    * turns on. Throws when the browser refuses (e.g. no setSinkId for speakers).
    */
   switchDevice(kind: DeviceKind, deviceId: string): Promise<void>
+  /**
+   * Video quality (camera capture resolution) and noise cancellation (the
+   * browser's noiseSuppression / echoCancellation / autoGainControl) from now
+   * on; a camera or microphone that is on restarts with them.
+   */
+  applyMedia(settings: MediaSettings): Promise<void>
   /** The device in use for this kind, as far as the room knows (null: not decided yet). */
   activeDevice(kind: DeviceKind): string | null
   /**

@@ -6,6 +6,7 @@ import { CallTranscription } from './call-transcription.svelte'
 import CallView from './call-view.svelte'
 import { CallRequestError, type CallDto, type CallTokenDto } from './client'
 import { DEVICES_KEY } from './devices'
+import { MEDIA_KEY } from './media-settings'
 import { FakeRoom, fakeCall, fakeEnv, fakeToken, memoryStorage, remotePerson } from './fake-room'
 
 /** The live call as the call page holds it, over a fake room (no server). */
@@ -330,6 +331,48 @@ describe('device picker in the call controls', () => {
         (page.getByTestId('call-device-audioinput').element() as HTMLSelectElement).options,
       ).toHaveLength(3),
     )
+  })
+
+  it('video quality: Auto by default; a choice reaches the room and is remembered in this browser', async () => {
+    const storage = memoryStorage()
+    const { room } = setup({ env: { storage } })
+    await connected()
+    await page.getByTestId('call-devices-toggle').click()
+    await expect.element(page.getByTestId('call-video-quality')).toHaveValue('auto')
+    await page.getByTestId('call-video-quality').selectOptions('low')
+    await vi.waitFor(() =>
+      expect(room.applied.at(-1)).toEqual({ videoQuality: 'low', noiseCancellation: true }),
+    )
+    expect(JSON.parse(storage.data[MEDIA_KEY])).toEqual({
+      videoQuality: 'low',
+      noiseCancellation: true,
+    })
+  })
+
+  it('noise cancellation is on by default; the switch turns it off, reaches the room and is remembered', async () => {
+    const storage = memoryStorage()
+    const { room } = setup({ env: { storage } })
+    await connected()
+    await page.getByTestId('call-devices-toggle').click()
+    const toggle = page.getByTestId('call-noise-cancellation')
+    await expect.element(toggle).toBeChecked()
+    await toggle.click()
+    await vi.waitFor(() =>
+      expect(room.applied.at(-1)).toEqual({ videoQuality: 'auto', noiseCancellation: false }),
+    )
+    expect(JSON.parse(storage.data[MEDIA_KEY]).noiseCancellation).toBe(false)
+  })
+
+  it('the next call starts with the remembered media settings, before the camera and microphone turn on', async () => {
+    const storage = memoryStorage({
+      [MEDIA_KEY]: JSON.stringify({ videoQuality: 'high', noiseCancellation: false }),
+    })
+    const { room } = setup({ env: { storage } })
+    await connected()
+    expect(room.applied[0]).toEqual({ videoQuality: 'high', noiseCancellation: false })
+    await page.getByTestId('call-devices-toggle').click()
+    await expect.element(page.getByTestId('call-video-quality')).toHaveValue('high')
+    await expect.element(page.getByTestId('call-noise-cancellation')).not.toBeChecked()
   })
 })
 

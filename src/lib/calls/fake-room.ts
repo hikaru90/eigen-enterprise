@@ -2,6 +2,7 @@ import type { CallEnv, MediaDevicesLike } from './active-call.svelte'
 import type { CallParticipant, Device, MediaFailure } from './call-state'
 import type { CallDto, CallTokenDto } from './client'
 import type { DeviceInfo, DeviceKind, DeviceStorage } from './devices'
+import type { MediaSettings } from './media-settings'
 import { MediaError, type CallRoom, type RoomSignal } from './room'
 
 /**
@@ -21,6 +22,8 @@ export class FakeRoom implements CallRoom {
   active: Partial<Record<DeviceKind, string>> = {}
   switches: Array<[DeviceKind, string]> = []
   switchFailure: Partial<Record<DeviceKind, string>> = {}
+  /** The media settings the call applied, in order. */
+  applied: MediaSettings[] = []
   /** Resolves connect() when the spec says so (null: at once). */
   holdConnect: Promise<void> | null = null
   private readonly listeners = new Set<(s: RoomSignal) => void>()
@@ -47,12 +50,19 @@ export class FakeRoom implements CallRoom {
     this.switches.push([kind, deviceId])
     this.active[kind] = deviceId
   }
+  async applyMedia(settings: MediaSettings) {
+    this.applied.push(settings)
+  }
   activeDevice(kind: DeviceKind) {
     return this.active[kind] ?? null
   }
   async startAudio() {}
   /** My microphone while it is on: a stand-in track (specs never record real audio). */
-  readonly micTrack = { kind: 'audio', id: 'fake-mic', enabled: true } as unknown as MediaStreamTrack
+  readonly micTrack = {
+    kind: 'audio',
+    id: 'fake-mic',
+    enabled: true,
+  } as unknown as MediaStreamTrack
   microphoneTrack(): MediaStreamTrack | null {
     return this.connectedWith && this.devices.microphone ? this.micTrack : null
   }
@@ -131,12 +141,16 @@ export class FakeWindow {
   }
 }
 
-export function memoryStorage(initial: Record<string, string> = {}): DeviceStorage & { data: Record<string, string> } {
+export function memoryStorage(
+  initial: Record<string, string> = {},
+): DeviceStorage & { data: Record<string, string> } {
   const data = { ...initial }
   return { data, getItem: (k) => data[k] ?? null, setItem: (k, v) => void (data[k] = v) }
 }
 
-export function fakeEnv(over: Partial<CallEnv> = {}): CallEnv & { win: FakeWindow; media: FakeMedia } {
+export function fakeEnv(
+  over: Partial<CallEnv> = {},
+): CallEnv & { win: FakeWindow; media: FakeMedia } {
   return {
     win: new FakeWindow(),
     media: new FakeMedia(),
@@ -147,7 +161,10 @@ export function fakeEnv(over: Partial<CallEnv> = {}): CallEnv & { win: FakeWindo
   } as CallEnv & { win: FakeWindow; media: FakeMedia }
 }
 
-export const fakeCall = (over: Partial<CallDto> = {}, response: 'accepted' | 'none' = 'accepted'): CallDto => ({
+export const fakeCall = (
+  over: Partial<CallDto> = {},
+  response: 'accepted' | 'none' = 'accepted',
+): CallDto => ({
   id: 'call-1',
   contextKind: 'dm',
   contextId: 'dm-1',
@@ -160,8 +177,26 @@ export const fakeCall = (over: Partial<CallDto> = {}, response: 'accepted' | 'no
   endedAt: null,
   ringUntil: '2026-11-11T09:00:45.000Z',
   participants: [
-    { userId: 'ben', name: 'Ben Example', guest: false, response: 'accepted', joinedAt: null, leftAt: null, inRoom: false, transcribing: true },
-    { userId: 'ann', name: 'Ann Example', guest: false, response, joinedAt: null, leftAt: null, inRoom: false, transcribing: true },
+    {
+      userId: 'ben',
+      name: 'Ben Example',
+      guest: false,
+      response: 'accepted',
+      joinedAt: null,
+      leftAt: null,
+      inRoom: false,
+      transcribing: true,
+    },
+    {
+      userId: 'ann',
+      name: 'Ann Example',
+      guest: false,
+      response,
+      joinedAt: null,
+      leftAt: null,
+      inRoom: false,
+      transcribing: true,
+    },
   ],
   scheduledStart: null,
   scheduledEnd: null,

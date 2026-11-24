@@ -9,6 +9,7 @@ import {
   type RemoteTrack,
 } from 'livekit-client'
 import { GUEST_ATTRIBUTE, GUEST_ROLE } from '../../../modules/calls/guest-attribute'
+import { audioCaptureOf, videoCaptureOf, type MediaSettings } from './media-settings'
 import { MediaError, type CallRoom, type RoomSignal } from './room'
 
 /**
@@ -95,13 +96,16 @@ export function createLiveKitRoom(): CallRoom {
     .on(RoomEvent.TrackUnmuted, changed)
     .on(RoomEvent.LocalTrackPublished, changed)
     .on(RoomEvent.LocalTrackUnpublished, (pub) => {
-      if (pub.source === Track.Source.ScreenShare) emit({ type: 'media', device: 'screen', on: false })
+      if (pub.source === Track.Source.ScreenShare)
+        emit({ type: 'media', device: 'screen', on: false })
       changed()
     })
     .on(RoomEvent.ActiveSpeakersChanged, changed)
     .on(RoomEvent.Reconnecting, () => emit({ type: 'reconnecting' }))
     .on(RoomEvent.Reconnected, () => emit({ type: 'reconnected' }))
-    .on(RoomEvent.AudioPlaybackStatusChanged, () => emit({ type: 'audio', blocked: !room.canPlaybackAudio }))
+    .on(RoomEvent.AudioPlaybackStatusChanged, () =>
+      emit({ type: 'audio', blocked: !room.canPlaybackAudio }),
+    )
     .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
       audio.replaceChildren()
       audio.remove()
@@ -145,11 +149,31 @@ export function createLiveKitRoom(): CallRoom {
       }
       // A cancelled screen picker resolves without a track.
       if (on && !lp.getTrackPublication(SOURCE[device])?.track) {
-        throw new MediaError(device === 'screen' ? 'permission_denied' : 'other', `${device} did not start`)
+        throw new MediaError(
+          device === 'screen' ? 'permission_denied' : 'other',
+          `${device} did not start`,
+        )
       }
     },
+    async applyMedia(settings: MediaSettings) {
+      const video = videoCaptureOf(settings.videoQuality)
+      const audioOpts = audioCaptureOf(settings.noiseCancellation)
+      // What the next camera / microphone starts with (the room reads these when a track is created) ...
+      room.options.videoCaptureDefaults = {
+        ...room.options.videoCaptureDefaults,
+        resolution: video.resolution,
+      }
+      room.options.audioCaptureDefaults = { ...room.options.audioCaptureDefaults, ...audioOpts }
+      // ... and the ones already on restart with them.
+      const lp = room.localParticipant
+      const cam = lp.getTrackPublication(Track.Source.Camera)?.videoTrack
+      const mic = lp.getTrackPublication(Track.Source.Microphone)?.audioTrack
+      if (cam) await cam.restartTrack({ resolution: video.resolution })
+      if (mic) await mic.restartTrack(audioOpts)
+    },
     async switchDevice(kind, deviceId) {
-      if (!(await room.switchActiveDevice(kind, deviceId))) throw new Error(`the ${kind} did not switch to ${deviceId}`)
+      if (!(await room.switchActiveDevice(kind, deviceId)))
+        throw new Error(`the ${kind} did not switch to ${deviceId}`)
     },
     activeDevice(kind) {
       return room.getActiveDevice(kind) ?? null
@@ -163,7 +187,10 @@ export function createLiveKitRoom(): CallRoom {
       emit({ type: 'audio', blocked: !room.canPlaybackAudio })
     },
     participants() {
-      return [snapshot(room.localParticipant, true), ...[...room.remoteParticipants.values()].map((p) => snapshot(p, false))]
+      return [
+        snapshot(room.localParticipant, true),
+        ...[...room.remoteParticipants.values()].map((p) => snapshot(p, false)),
+      ]
     },
     on(listener) {
       listeners.add(listener)

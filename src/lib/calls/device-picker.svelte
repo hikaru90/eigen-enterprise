@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ActiveCall } from './active-call.svelte'
   import type { DeviceKind } from './devices'
+  import { VIDEO_QUALITIES, VIDEO_QUALITY_LABEL, type VideoQuality } from './media-settings'
   import X from '@lucide/svelte/icons/x'
 
   /**
@@ -27,23 +28,36 @@
   }
 </script>
 
-<div class="w-full rounded-xl border border-white/10 bg-neutral-900 p-3 text-sm text-neutral-50 shadow-xl" role="group" aria-label="Call devices" data-testid="call-devices">
+<div
+  class="w-full rounded-xl border border-white/10 bg-neutral-900 p-3 text-sm text-neutral-50 shadow-xl"
+  role="group"
+  aria-label="Call devices"
+  data-testid="call-devices"
+>
   <div class="mb-2 flex items-center justify-between">
     <p class="text-xs font-semibold tracking-wide text-neutral-400 uppercase">Devices</p>
-    <button type="button" class="grid size-7 place-items-center rounded-md text-neutral-400 hover:bg-white/10 hover:text-white" aria-label="Close devices" onclick={onclose}
-      ><X class="size-4" /></button
+    <button
+      type="button"
+      class="grid size-7 place-items-center rounded-md text-neutral-400 hover:bg-white/10 hover:text-white"
+      aria-label="Close devices"
+      onclick={onclose}><X class="size-4" /></button
     >
   </div>
   <div class="flex flex-col gap-3">
     {#each ROWS as row (row.kind)}
       <div class="flex flex-col gap-1">
-        <label for="call-device-{row.kind}" class="text-xs font-medium text-neutral-300">{row.label}</label>
+        <label for="call-device-{row.kind}" class="text-xs font-medium text-neutral-300"
+          >{row.label}</label
+        >
         {#if row.kind === 'audiooutput' && !active.canChooseSpeaker}
           <p class="text-xs text-neutral-400" data-testid="call-speaker-unsupported">
-            This browser cannot choose the speaker for calls. Sound plays on your device's current output; change it in your system's sound settings.
+            This browser cannot choose the speaker for calls. Sound plays on your device's current
+            output; change it in your system's sound settings.
           </p>
         {:else if active.devices[row.kind].length === 0}
-          <p class="text-xs text-neutral-400" data-testid="call-device-none" data-kind={row.kind}>{row.none}</p>
+          <p class="text-xs text-neutral-400" data-testid="call-device-none" data-kind={row.kind}>
+            {row.none}
+          </p>
         {:else}
           <select
             id="call-device-{row.kind}"
@@ -60,10 +74,50 @@
       </div>
     {/each}
   </div>
+  <div class="mt-3 flex flex-col gap-3 border-t border-white/10 pt-3" data-testid="call-quality">
+    <div class="flex flex-col gap-1">
+      <label for="call-video-quality" class="text-xs font-medium text-neutral-300"
+        >Video quality</label
+      >
+      <select
+        id="call-video-quality"
+        class="h-9 w-full min-w-0 rounded-md border border-white/15 bg-neutral-800 px-2 text-sm text-white focus:border-white/40 focus:outline-none"
+        value={active.media.videoQuality}
+        onchange={(e) => active.setMedia({ videoQuality: e.currentTarget.value as VideoQuality })}
+        data-testid="call-video-quality"
+      >
+        {#each VIDEO_QUALITIES as q (q)}
+          <option value={q}>{VIDEO_QUALITY_LABEL[q]}</option>
+        {/each}
+      </select>
+    </div>
+    <label class="flex items-start gap-2 text-xs text-neutral-300">
+      <input
+        type="checkbox"
+        class="mt-0.5"
+        checked={active.media.noiseCancellation}
+        onchange={(e) => active.setMedia({ noiseCancellation: e.currentTarget.checked })}
+        data-testid="call-noise-cancellation"
+      />
+      <span
+        ><span class="block text-sm font-medium text-white">Noise cancellation</span>Filters
+        background noise, echo and uneven volume from your microphone.</span
+      >
+    </label>
+  </div>
   {#if active.deviceProblem}
-    <div class="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-2 text-xs" role="alert" data-testid="call-device-problem">
+    <div
+      class="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-2 text-xs"
+      role="alert"
+      data-testid="call-device-problem"
+    >
       <p class="min-w-0 flex-1">{active.deviceProblem}</p>
-      <button type="button" class="text-neutral-400 hover:text-white" aria-label="Dismiss" onclick={() => active.dismissDeviceProblem()}><X class="size-3.5" /></button>
+      <button
+        type="button"
+        class="text-neutral-400 hover:text-white"
+        aria-label="Dismiss"
+        onclick={() => active.dismissDeviceProblem()}><X class="size-3.5" /></button
+      >
     </div>
   {/if}
 </div>
