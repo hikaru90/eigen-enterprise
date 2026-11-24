@@ -16,6 +16,7 @@ import {
 } from './spec.ts'
 import { mustRun, type RunResult, type System } from './system.ts'
 import { renderUnit, unitName, type Slot } from './units.ts'
+import { isModuleWorkload, reconcileModules } from './modules.ts'
 
 /**
  * The reconciler (§3.2, §3.4): converge the box to the company repo's HEAD.
@@ -492,7 +493,8 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
   ctx.deployFailures = failures
 
   const redactions = () => secretValues(ctx.secrets.all())
-  for (const w of desired.workloads) {
+  // Module workloads (a `module` field) take their own path below (modules.ts).
+  for (const w of desired.workloads.filter((x) => !isModuleWorkload(x))) {
     let run: DeployRun | null = null
     const deploy: DeployHandle = () => (run ??= new DeployRun(sys, journal, w.name, redactions))
     // A release that already failed to unpack/build is not rebuilt until the workload's spec changes.
@@ -578,6 +580,9 @@ export async function reconcile(ctx: ReconcileContext): Promise<DesiredState> {
     delete journal.workloads[name]
     emit(journal, sys, 'workload.removed', name, `${name} is no longer desired; stopped`)
   }
+
+  // ── Module path (plan/phase-upgrades-u2.md §5, modules.ts): receipt check, build, one slot, health gate.
+  errors.push(...(await reconcileModules({ sys, journal, secrets: ctx.secrets }, desired)))
 
   journal.appliedRev = desired.rev
   await saveJournal(sys, journal)
