@@ -446,6 +446,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
  * (owner/admin, when those modules are on).
  */
 const MEMBER_LOSES_VIA_BRAIN = [
+  'coworkers.avatar_upload',
   'coworkers.create',
   'coworkers.disable',
   'coworkers.enable',
