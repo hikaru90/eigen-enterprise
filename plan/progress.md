@@ -2,6 +2,15 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-25 — Release v0.5.42 (owner: "Yes, release"; tag on `4d2ad0d2`, GitHub release run 45507898796)
+
+- **Contents:** the six Contribute-board wishes (brand bare-host fix, sortable tables, calls: Call now / outside invites in the call / video quality / noise cancellation) and the org-chart Profile button.
+- **Gate fixes on the way:**
+  1. `0b050da1`: the core-api lock and SDK were stale (calls.schedule `invite_later`, additive).
+  2. `a2009321`: the dictation coverage check counted the brand site field (now type=text). It is exempt as a web address.
+  3. `4d2ad0d2`: the memory roadmap e2e flaked under full-run load. It clicked Mark shipped before hydration (native post plus reload, then Edit hit an unhydrated page) and now waits for hydration after the reload.
+- **Gate:** CI green, rehearsal GREEN, e2e 75 passed (11.4 min). Not installed on any box yet.
+
 ## 2026-11-24 — Contribute board: six newest wishes (owner: "take the next tasks from the contribute tab over mcp and integrate them" · "use subagents on low"; merges `322747ac`, `ac350dff`, `1ca33d48`, fix `62b9d69c`; not pushed, not released)
 
 - **Brand extract bug** (Ony): `www.eigenenterprise.app` gave a 500 "invalid URL". `modules/brand/extract/site-url.ts` reads a bare host as https://. Anything still not an http(s) URL is a 400 with a plain message. This covers the page and the `brand.extract_start` tool alike, and the page field is no longer type=url.
