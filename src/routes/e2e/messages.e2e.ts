@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import postgres from 'postgres'
-import { completeProfileViaApi, profileNames, registerUser } from './test-helpers'
+import { completeProfileViaApi, gotoHydrated, profileNames, registerUser } from './test-helpers'
 
 /**
  * Phase-workspace C1 proof: two members in two browsers. The owner (admin)
@@ -143,7 +143,8 @@ test('two members chat live: channel, unread, DM, private channel stays private'
 
   // Phone: list first, then the conversation with a back button.
   await b.setViewportSize({ width: 390, height: 844 })
-  await b.goto('/messages')
+  // Hydrated first: a click on the server-rendered list does nothing until the app takes over.
+  await gotoHydrated(b, '/messages')
   await expect(b.getByTestId('messages-list')).toBeVisible()
   await b.screenshot({ path: `${SHOTS}/07-phone-list.png` })
   await conv(b, general).click()
