@@ -1,5 +1,6 @@
 import type { AccessLevel, AccessPort, GrantInput } from './access-port'
 import { randomUUID } from 'node:crypto'
+import { mentionHandleOf } from '$lib/coworkers/handle'
 import { isSingleEmoji } from '$lib/messages/emoji'
 import { attachmentMarker, quoteSnippet, type ReplyQuote } from '$lib/messages/quote'
 import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
@@ -622,16 +623,23 @@ export async function toggleReaction(d: MessagesDeps, actorId: string, messageId
  * Who is in a conversation (the header's member count and avatars): a DM's
  * participants; for a channel, every member who may read it (a public
  * channel = everyone; a private one = its people and groups, plus owner/admin).
+ * Each carries `handle`, the @token that reaches them (the composer's @
+ * suggestions insert it; an agent writes it the same way).
  */
-export async function conversationMembers(d: MessagesDeps, actorId: string, conversationId: string): Promise<Person[]> {
+export async function conversationMembers(
+  d: MessagesDeps,
+  actorId: string,
+  conversationId: string,
+): Promise<Array<Person & { handle: string }>> {
   const c = await visible(d, actorId, conversationId)
   const people = await d.directory.listPeople()
+  const withHandle = (p: Person) => ({ ...p, handle: mentionHandleOf(p) })
   if (c.kind === 'dm') {
     const ids = new Set(await d.store.memberIds(c.id))
-    return people.filter((p) => ids.has(p.id))
+    return people.filter((p) => ids.has(p.id)).map(withHandle)
   }
-  const out: Person[] = []
-  for (const p of people) if (await canUse(d, p.id, c, 'view')) out.push(p)
+  const out: Array<Person & { handle: string }> = []
+  for (const p of people) if (await canUse(d, p.id, c, 'view')) out.push(withHandle(p))
   return out
 }
 

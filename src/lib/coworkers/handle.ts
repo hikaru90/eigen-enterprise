@@ -23,14 +23,29 @@ export function coworkerSlugFromEmail(email: string, userId: string): string {
   return slug
 }
 
+type MentionPerson = { id: string; name: string; email: string; kind?: 'human' | 'coworker' }
+
+/**
+ * The one handle people write to reach someone, and what the composer's @
+ * suggestions insert: a co-worker's slug, a person's email local part
+ * (modules/messages/notify.ts handlesOf matches both).
+ */
+export function mentionHandleOf(p: MentionPerson): string {
+  if (p.kind === 'coworker') return coworkerSlugFromEmail(p.email, p.id)
+  const local = p.email.split('@')[0]?.toLowerCase()
+  if (!local) throw new Error(`member ${p.id} has no email local part to mention them by`)
+  return local
+}
+
 /**
  * What Messages highlights as an @mention of someone: a person's full and
- * first name; a co-worker's handle only, the exact token that asks it for a
- * turn (modules/messages/notify.ts handlesOf) — its name would light up
- * "@Nova" although that asks nobody.
+ * first name and their handle (what the @ suggestions insert); a co-worker's
+ * handle only, the exact token that asks it for a turn
+ * (modules/messages/notify.ts handlesOf) — its name would light up "@Nova"
+ * although that asks nobody.
  */
-export function mentionNamesOf(p: { id: string; name: string; email: string; kind?: 'human' | 'coworker' }): string[] {
+export function mentionNamesOf(p: MentionPerson): string[] {
   if (p.kind === 'coworker') return [coworkerSlugFromEmail(p.email, p.id)]
   const first = p.name.trim().split(/\s+/)[0] ?? ''
-  return [p.name, first].filter(Boolean)
+  return [...new Set([p.name, first, p.email.split('@')[0]?.toLowerCase() ?? ''].filter(Boolean))]
 }

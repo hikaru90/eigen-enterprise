@@ -246,7 +246,7 @@ export function createMessagesTools(
     {
       name: 'messages.members',
       module: MESSAGES_MODULE_ID,
-      summary: "Who is in a conversation you may see (a DM's participants; everyone who may read a channel).",
+      summary: "Who is in a conversation you may see (a DM's participants; everyone who may read a channel), each with the @handle that mentions them.",
       auditClass: 'read',
       inputSchema: conversationInput,
       permission: PERSON,

@@ -622,5 +622,8 @@
   "coworkers_run_hidden_task": "Bei einer Aufgabe, die nicht deine ist",
   "coworkers_notice_line": "{name}: {trigger} · {status}",
   "coworkers_notice_open": "Öffnen",
-  "coworkers_notice_seen": "Verstanden"
+  "coworkers_notice_seen": "Verstanden",
+  "coworkers_mention_as": "Erwähnen als",
+  "coworkers_mention_copy": "{handle} kopieren",
+  "messages_mention_list": "Personen und KI-Kolleg:innen zum Erwähnen"
 }

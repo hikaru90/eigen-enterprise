@@ -624,5 +624,8 @@
   "coworkers_run_hidden_task": "On a task that isn't yours",
   "coworkers_notice_line": "{name}: {trigger} · {status}",
   "coworkers_notice_open": "Open",
-  "coworkers_notice_seen": "Got it"
+  "coworkers_notice_seen": "Got it",
+  "coworkers_mention_as": "Mention as",
+  "coworkers_mention_copy": "Copy {handle}",
+  "messages_mention_list": "People and co-workers to mention"
 }
