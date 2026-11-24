@@ -22,7 +22,7 @@ async function readlink(sys: Pick<System, 'run'>, path: string): Promise<string 
 async function relink(sys: Pick<System, 'run'>, link: string, target: string): Promise<void> {
   for (const [cmd, args] of [
     ['ln', ['-sfn', target, `${link}.ee-tmp`]],
-    ['mv', ['-Tf', `${link}.ee-tmp`, link]],
+    ['mv', ['-f', `${link}.ee-tmp`, link]],
   ] as const) {
     const r = await sys.run(cmd, [...args])
     if (r.code !== 0) throw new Error(`${cmd} ${args.join(' ')}: ${r.stderr.trim()}`)

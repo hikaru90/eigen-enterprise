@@ -43,11 +43,17 @@ function setup() {
         latest: { release: 'eigenenterprise-0.5.36-a12f40909743', version: '0.5.36', state: 'newer', notes: 'Fixes.' },
         latestError: null,
         job: null,
+        lastOutcome: { release: 'eigenenterprise-0.5.35-0123456789ab', from: null, step: 'done', ok: true, reason: null, rolledBack: false },
+        rollback: { to: null, refused: 'no earlier release is on this server to roll back to' },
       }
     },
     installRelease: async (release, author) => {
       calls.push(['installRelease', release, author])
       return { jobId: 'job-1', status: 'running' }
+    },
+    rollbackRelease: async (author, to) => {
+      calls.push(['rollbackRelease', author, to])
+      return { from: 'eigenenterprise-0.5.36-a12f40909743-linux-x64.tar.gz', to: 'eigenenterprise-0.5.35-0123456789ab-linux-x64.tar.gz' }
     },
   }
   const approvals = new InMemoryApprovalStore()
@@ -128,6 +134,37 @@ describe('company operations tools', () => {
     expect(out).toMatchObject({ latest: { release: 'eigenenterprise-0.5.36-a12f40909743', state: 'newer' } })
     expect(calls).toEqual([['releaseStatus']])
     await expect(registry.execute('kernel.release_status', {}, bareAgent)).rejects.toMatchObject({ code: 'no_person' })
+  })
+
+  it('release_rollback puts the release before back, as the owner, behind the owner’s approval (destructive)', async () => {
+    const { registry, calls, approved } = setup()
+    expect(registry.get('kernel.release_rollback')).toMatchObject({ auditClass: 'mutate', approvalAlways: true, approvalRisk: 'destructive' })
+    expect(await approved('kernel.release_rollback', {}, owner)).toEqual({
+      from: 'eigenenterprise-0.5.36-a12f40909743-linux-x64.tar.gz',
+      to: 'eigenenterprise-0.5.35-0123456789ab-linux-x64.tar.gz',
+    })
+    await approved('kernel.release_rollback', { to: 'eigenenterprise-0.5.34-0123456789ab' }, owner)
+    expect(calls).toEqual([
+      ['rollbackRelease', 'human:u-owner', undefined],
+      ['rollbackRelease', 'human:u-owner', 'eigenenterprise-0.5.34-0123456789ab'],
+    ])
+  })
+
+  it('release_rollback is the owner’s alone: an admin is refused, no person is refused, a bare version is invalid', async () => {
+    const { registry, calls, approved } = setup()
+    await expect(approved('kernel.release_rollback', {}, admin)).rejects.toMatchObject({ code: 'permission_denied' })
+    await expect(approved('kernel.release_rollback', {}, bareAgent)).rejects.toMatchObject({ code: 'no_person' })
+    const err = await registry.execute('kernel.release_rollback', { to: '0.5.34' }, owner).catch((e) => e)
+    expect(err).toMatchObject({ code: 'invalid_input' })
+    expect(calls).toEqual([])
+  })
+
+  it('release_status says how the last update ended and what a rollback would do', async () => {
+    const { registry } = setup()
+    expect(await registry.execute('kernel.release_status', {}, admin)).toMatchObject({
+      lastOutcome: { ok: true, step: 'done' },
+      rollback: { to: null, refused: 'no earlier release is on this server to roll back to' },
+    })
   })
 
   it('release_install refuses a bare version before asking anyone: it needs the full release name', async () => {

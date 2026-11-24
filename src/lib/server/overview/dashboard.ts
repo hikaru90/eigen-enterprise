@@ -14,6 +14,7 @@ import { needsYouTasks, type NeedsYouTasks } from '$lib/server/memory/assigned-t
 import { reminderDeps } from '$lib/server/memory/reminders/live'
 import { needsYouReminders, type ReminderView } from '$lib/server/memory/reminders/service'
 import { buildOverview, type Overview } from '$lib/server/overview/overview'
+import { updateNotice, type UpdateNotice } from '$lib/server/settings/update-notice'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 
 /** How many recent agent actions the dashboard shows; Assistant › Activity holds the rest. */
@@ -23,6 +24,8 @@ export type Dashboard = {
   overview: Overview
   /** The owner's nightly-backup problem, if any (plan/phase-backups.md). */
   backup: BackupNotice | null
+  /** The owner's failed or rolled-back eigenEnterprise update, if any (plan/phase-upgrades.md §6.4 step 7). */
+  update: UpdateNotice | null
   /** Tasks other members assigned to this person (open), and news on the ones they assigned (unseen). */
   tasks: NeedsYouTasks
   /** The person's own reminders with an open occurrence and no running snooze (one item per reminder). */
@@ -73,10 +76,21 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
   return {
     overview,
     backup: role === 'owner' ? await ownerBackupNotice() : null,
+    update: role === 'owner' ? await ownerUpdateNotice() : null,
     tasks: await needsYouTasks(await assignedTaskDeps(), userId),
     reminders: await needsYouReminders(await reminderDeps(), userId),
     coworkerNotices: await needsYouNotices(await liveNoticeDeps(), userId),
     decisionQuestions: await needsYouDecisionQuestions(userId),
+  }
+}
+
+/** A failed or rolled-back update is the owner's to look at (plan/phase-upgrades.md §6.4). */
+async function ownerUpdateNotice(): Promise<UpdateNotice | null> {
+  try {
+    return updateNotice(await new EeClient().upgrade())
+  } catch (err) {
+    if (err instanceof SubstrateUnavailableError) return null // not on an ee box: no updates to watch
+    throw err
   }
 }
 

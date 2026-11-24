@@ -102,7 +102,8 @@
   const taskCount = $derived(
     tasks.assignedToMe.length + tasks.updates.length + reminders.length + coworkerNotices.length + decisionQuestions.length,
   )
-  const needsYou = $derived(overview.approvals.length + taskCount + (dashboard.backup ? 1 : 0))
+  const warnings = $derived((dashboard.backup ? 1 : 0) + (dashboard.update ? 1 : 0))
+  const needsYou = $derived(overview.approvals.length + taskCount + warnings)
   // Assigned tasks live in Memory › Tasks, reminders in Memory › Reminders; the dashboard's buttons post to those pages' actions.
   const tasksPage = resolve('/m/memory/tasks')
   const remindersPage = resolve('/m/memory/reminders')
@@ -350,7 +351,7 @@
                 Tasks<span class="on-soft font-mono">{taskCount}</span>
               </span>
               <span class="hairline flex flex-col text-sm leading-tight">
-                Warnings<span class="on-soft font-mono">{dashboard.backup ? 1 : 0}</span>
+                Warnings<span class="on-soft font-mono">{warnings}</span>
               </span>
             </span>
             <span class="sr-only">{needsYou} waiting on you</span>
@@ -469,6 +470,18 @@
                 <span class="min-w-0 truncate">{dashboard.backup.text}</span>
               </span>
               <a href={resolve('/settings/backups')} class={inkPill}>Open backups</a>
+            </div>
+          {/if}
+          {#if dashboard.update}
+            <div class={row} data-testid="overview-update-notice" data-kind={dashboard.update.kind}>
+              <span class="flex min-w-0 items-center gap-3">
+                <span
+                  class="grid size-8 shrink-0 place-items-center rounded-full bg-ink"
+                  aria-hidden="true"><span class="size-2 rounded-full bg-destructive"></span></span
+                >
+                <span class="min-w-0 truncate">{dashboard.update.text}</span>
+              </span>
+              <a href={resolve('/settings/updates')} class={inkPill}>Open updates</a>
             </div>
           {/if}
           {#if taskCount > 0}
@@ -624,7 +637,7 @@
               {/each}
             </ul>
           {/if}
-          {#if overview.approvals.length === 0 && !dashboard.backup && taskCount === 0}
+          {#if overview.approvals.length === 0 && warnings === 0 && taskCount === 0}
             <p class="{row} pr-4 text-muted-foreground">
               <span class="flex min-w-0 items-center gap-3">
                 <span

@@ -220,6 +220,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'kernel.backup_run',
           'kernel.release_install',
           'kernel.release_status',
+          'kernel.release_rollback',
           'settings.member_ai_cap_get',
           'settings.member_ai_cap_set',
           'settings.my_ai_usage',

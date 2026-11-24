@@ -22,6 +22,7 @@ const navItems = buildShellNav(
 
 const dashboard: Dashboard = {
   backup: null,
+  update: null,
   tasks: { assignedToMe: [], updates: [] },
   reminders: [],
   coworkerNotices: [],
@@ -73,6 +74,7 @@ function renderDashboard(
     reminders?: Dashboard['reminders']
     coworkerNotices?: Dashboard['coworkerNotices']
     decisionQuestions?: Dashboard['decisionQuestions']
+    update?: Dashboard['update']
   } = {},
 ) {
   return render(Harness, {
@@ -85,6 +87,7 @@ function renderDashboard(
       ...(notices.reminders ? { reminders: notices.reminders } : {}),
       ...(notices.coworkerNotices ? { coworkerNotices: notices.coworkerNotices } : {}),
       ...(notices.decisionQuestions ? { decisionQuestions: notices.decisionQuestions } : {}),
+      ...(notices.update ? { update: notices.update } : {}),
     },
     greetingName: 'Alex',
     companyName: 'Kindred',
@@ -101,6 +104,16 @@ describe('dashboard.svelte', () => {
     await expect.element(page.getByTestId('dashboard-mail-notice')).toHaveTextContent(/Set up company email/)
     await expect.element(page.getByTestId('dashboard-mail-notice')).toHaveTextContent(/sign-in codes/)
     await expect.element(page.getByTestId('dashboard-mail-setup')).toHaveAttribute('href', '/m/email/setup')
+  })
+
+  it('a rolled-back update is in Needs you for the owner, with a way to Settings → Updates', async () => {
+    renderDashboard(controller(), {}, {
+      update: { kind: 'rolled-back', text: 'The update to 0.5.41 was rolled back: the job queue stalled', href: '/settings/updates' },
+    })
+    const notice = page.getByTestId('overview-update-notice')
+    await expect.element(notice).toHaveTextContent('The update to 0.5.41 was rolled back: the job queue stalled')
+    await expect.element(notice).toHaveAttribute('data-kind', 'rolled-back')
+    await expect.element(page.getByRole('link', { name: 'Open updates' })).toHaveAttribute('href', '/settings/updates')
   })
 
   it('with company email set up: no email notice', async () => {

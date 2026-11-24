@@ -2322,6 +2322,15 @@ export type CoreApiTools = {
       "status": string
     }
   }
+  "kernel.release_rollback": {
+    input: {
+      "to"?: string
+    }
+    output: {
+      "from": string
+      "to": string
+    }
+  }
   "kernel.release_status": {
     input: Record<string, never>
     output: {
@@ -2338,6 +2347,14 @@ export type CoreApiTools = {
         "status": "running" | "succeeded" | "failed"
         "step": string
       }) | null
+      "lastOutcome": ({
+        "from": string | null
+        "ok": boolean
+        "reason": string | null
+        "release": string
+        "rolledBack": boolean
+        "step": string
+      }) | null
       "latest": ({
         "notes": string | null
         "release": string
@@ -2346,6 +2363,10 @@ export type CoreApiTools = {
       }) | null
       "latestError": string | null
       "managed": boolean
+      "rollback": ({
+        "refused": string | null
+        "to": string | null
+      }) | null
     }
   }
   "kernel.whoami": {
@@ -3952,6 +3973,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "kernel.module_deactivate",
   "kernel.module_list",
   "kernel.release_install",
+  "kernel.release_rollback",
   "kernel.release_status",
   "kernel.whoami",
   "members.get_open_join",

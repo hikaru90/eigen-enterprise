@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTasks, reminders, notices, decisions } = vi.hoisted(() => ({
+const { kernelHolder, roleMock, backupsMock, upgradeMock, eventRows, journeyRows, assignedTasks, reminders, notices, decisions } = vi.hoisted(() => ({
   assignedTasks: { deps: null as unknown },
   decisions: { questions: null as unknown as (userId: string) => Promise<unknown[]> },
   notices: { deps: null as unknown },
@@ -10,6 +10,7 @@ const { kernelHolder, roleMock, backupsMock, eventRows, journeyRows, assignedTas
   kernelHolder: { kernel: null as unknown },
   roleMock: vi.fn(async (): Promise<string> => 'admin'),
   backupsMock: vi.fn(),
+  upgradeMock: vi.fn(async () => ({ installed: null, managed: false, source: null, job: null, lastOutcome: null as unknown })),
   eventRows: [] as Array<{ ts: Date; payload: unknown }>,
   journeyRows: [] as Array<{ status: string }>,
 }))
@@ -24,6 +25,7 @@ vi.mock('$lib/server/ee/client', () => {
     SubstrateUnavailableError,
     EeClient: class {
       backups = backupsMock
+      upgrade = upgradeMock
     },
   }
 })
@@ -230,6 +232,32 @@ describe('the dashboard at / (loadDashboard)', () => {
     backupsMock.mockRejectedValueOnce(new SubstrateUnavailableError('ENOENT'))
     expect((await loadDashboard('owner')).backup).toBeNull()
     roleMock.mockResolvedValue('admin')
+  })
+
+  it('the owner sees a rolled-back update under Needs you; an admin does not; off an ee box there is nothing to show', async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    roleMock.mockResolvedValue('owner')
+    backupsMock.mockResolvedValue({ health: { state: 'ok', lastSuccessAt: 't' }, runs: [] })
+    upgradeMock.mockResolvedValueOnce({
+      installed: null,
+      managed: false,
+      source: null,
+      job: null,
+      lastOutcome: { release: 'eigenenterprise-0.5.41-aaaaaaaaaaaa', from: null, step: 'rolling-back', ok: false, reason: 'the job queue stalled', rolledBack: true },
+    })
+    expect((await loadDashboard('owner')).update).toEqual({
+      kind: 'rolled-back',
+      text: 'The update to 0.5.41 was rolled back: the job queue stalled',
+      href: '/settings/updates',
+    })
+    const { SubstrateUnavailableError } = await import('$lib/server/ee/client')
+    upgradeMock.mockRejectedValueOnce(new SubstrateUnavailableError('ENOENT'))
+    expect((await loadDashboard('owner')).update).toBeNull()
+    roleMock.mockResolvedValue('admin')
+    upgradeMock.mockClear()
+    expect((await loadDashboard('admin')).update).toBeNull()
+    expect(upgradeMock).not.toHaveBeenCalled()
+    backupsMock.mockReset()
   })
 
   it('Needs you holds the tasks other members assigned to this person, and the news on the ones they assigned', async () => {

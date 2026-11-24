@@ -2,6 +2,31 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Upgrades U3: the upgrade transaction on the box (branch `worktree-agent-ab22abb59b357885c`; not merged, not released, no box touched)
+
+§6.4 in `ee/`, every failure path with an ee spec (`upgrade-transaction.spec.ts`, `upgrade-watch.spec.ts`, `release-meta.spec.ts`, `box-tx.spec.ts`, `upgrade-job.spec.ts`, `reconcile.spec.ts`, `ee-slots-install.spec.ts`).
+
+- **1. Preflight** (`upgrade.ts`, `release-meta.ts`): refused with a sentence, nothing changed, on: the signature; **minFrom and the downgrade floor checked on the box** from the new signed asset **`UPGRADE.json`** (`{release, downgradeFloor, minFrom, capabilities}`, `scripts/upgrade-meta.mjs`, listed in SHA256SUMS by `release.sh`, published by `release.yml`); a capability the release needs that the box lacks and the release does not ship; no livekit for this CPU; disk (`3 GB + the database` free on /var/lib/ee); a restore running. ee keeps each installed release's signed SHA256SUMS + UPGRADE.json in `/var/lib/ee/releases/<release>.release/` and verifies it again whenever it reads the floor. `moduleImpact` hook: typed, no-op, only annotates (a throwing hook is logged, never refuses).
+- **2. Safety copy:** the local copy as before, then an off-box backup through the daemon (`POST /v1/backups/run wait`) when backups are configured; a failed backup refuses the update ("upgrade stopped, nothing changed: the off-box backup failed: …").
+- **3 + 4. Green:** its preStart runs the migrations (spec: a failing migration leaves blue serving, edge untouched). **New: the core smoke** — after health, os must answer `GET /login` and `GET /manifest.webmanifest` before the edge points at it (`reconcile.ts OS_CORE_SMOKE`). An installer that fails after its bootstrap named the new release puts the company repo back to what serves (reported `rolledBack`).
+- **5. Watch** (`upgrade-watch.ts`): 30 min (`ee upgrade --watch-minutes <n>` for test boxes): the live os slot and ee.service (not active, ≥3 restarts), the edge 5xx share of app answers (>10% of ≥20, from **Caddy metrics, now switched on** in `caddy.ts`, read over the admin socket), a stalled job queue (overdue jobs and none started since the cut-over, after 10 min). A probe that cannot read fails the watch. `moduleCheck` hook runs after the cut-over and only reports.
+- **6. Rollback** (`rollback.ts`, `rollback-box.ts`): os's source in the company repo goes back to blue's tarball; the normal blue/green deploy brings blue up from disk (no unpack, health-gated) and points the edge back. No restore. Refused below the floor of what runs (a release with no kept metadata is its own floor). **`ee rollback [--to] [--check]`**, `GET|POST /v1/upgrade/rollback`, and the owner-only registry tool **`kernel.release_rollback`** (human, approvalAlways, destructive). The last two os releases stay on disk (`pruneReleases`, after a held watch).
+- **7. Report:** the outcome `{release, from, step, ok, reason, rolledBack}` goes on the job (Settings → Updates), into ee's journal (the CLI path posts `POST /v1/upgrade/outcome`; only the daemon writes the journal), into `kernel.release_status` (`lastOutcome`, plus `rollback: {to, refused}`), and onto the owner's **Overview → Needs you** while the newest update did not hold. Settings → Updates shows the backup and the watch as steps.
+- **8. ee's own A/B slot** (`install.sh` `install_ee`, `ee-slots.ts`): `/opt/ee/releases/<release>/ee.mjs`, `/opt/ee/ee.mjs` → the one that runs, `/opt/ee/ee.previous.mjs` → the one before (nothing older kept; the pre-slots ee is kept as `releases/pre-slots`). The new ee runs the previous os release (rollback never needs the old ee). If ee.service does not answer during a rollback, the upgrade process points ee back at the previous one, restarts it and asks it (≤60 s).
+- **Decisions (orchestrator may veto):**
+  - The rollback restores os's **source only**, not the whole previous `system.yaml`: a domain or secret added since stays (no silent removals); livekit stays (an older os talks to it the same).
+  - Blue is **stopped but installed** during the watch, not kept running (2 GB each); a rollback is a health-gated start of blue, not an instant flip.
+  - `UPGRADE.json` required since **0.5.40**; an older release = floor its own version, no minFrom, no capabilities. `MIN_UPGRADE_FROM = 0.5.20`.
+  - The preflight step keeps its name `verifying`; new steps `backup`, `watching`, `rolling-back`.
+  - A watch probe that cannot read counts as a failed watch (it can't vouch for the release).
+  - The rollback a running update asks for (`automatic`) is allowed on a managed box and while its own job runs; a person's is not.
+- **Behaviour changes, announced:** Caddy now has HTTP metrics on (`apps.http.metrics`; needs Caddy ≥ 2.8). `ee upgrade` now blocks ~30 min for the watch (`--watch-minutes 0` skips it). install.sh moves `/opt/ee/ee.mjs` into slots (a link now).
+- **Not done:**
+  - **Fleet report (§9.4):** no phone-home channel for upgrade stats exists (the managed-fleet poll carries no outcomes, and self-hosted boxes have none): `UpgradeReportSink` is a typed no-op port; the switch in Settings → Updates comes with the channel.
+  - The first upgrade **to** this release still runs the old ee's transaction (the box's ee runs `ee upgrade`); the watch, rollback and new preflight apply from the upgrade after.
+  - An ee self-rollback to the pre-slots ee cannot roll os back (that ee has no rollback verb): it fails loud with the sentence.
+  - Not run on a box: the Caddy metrics names (`caddy_http_request_duration_seconds_count{server="ee",handler="reverse_proxy"}`) and the job-queue query are checked against fixtures only.
+
 ## 2026-11-24 — Upgrades U1: `core-api` 1.0, migration rules, upgrade rehearsal (owner: "Push, start U1"; merges `5c889e01`, `59d54c43`, `5d3f46b5`; not released)
 
 Three parallel workstreams, each in its own worktree, reviewed and merged into main.
