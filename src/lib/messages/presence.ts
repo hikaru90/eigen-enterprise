@@ -6,7 +6,12 @@
  * only shows it.
  */
 
-export type PresenceStatus = 'in_call' | 'dnd' | 'online' | 'away' | 'offline'
+/**
+ * People: from heartbeats and calls. AI co-workers (Contribute 14aea69d): from
+ * facts, never offline — available while switched on, busy while writing a
+ * reply, paused when switched off.
+ */
+export type PresenceStatus = 'in_call' | 'dnd' | 'online' | 'away' | 'offline' | 'available' | 'busy' | 'paused'
 
 export type PresenceView = {
   userId: string
@@ -36,6 +41,9 @@ const LABELS: Record<Exclude<PresenceStatus, 'offline'>, string> = {
   dnd: 'Do not disturb',
   online: 'Online',
   away: 'Away',
+  available: 'AI co-worker · always available',
+  busy: 'Writing a reply',
+  paused: 'Paused (switched off)',
 }
 
 function lastActive(iso: string, now: Date): string {

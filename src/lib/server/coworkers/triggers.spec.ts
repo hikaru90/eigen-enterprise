@@ -141,6 +141,7 @@ describe('the trigger listener and the turn queue', () => {
     await fx.handle.reload()
     // A second app process: its own turns and listener on the same hub, the same queue.
     const other = composeCoworkerTurns({
+      typing: fx.typing,
       registry: fx.registry,
       runtime: fx.runtime,
       messages: fx.deps,

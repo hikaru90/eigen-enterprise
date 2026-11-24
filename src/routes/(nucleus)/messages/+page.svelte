@@ -40,6 +40,7 @@
     type PresenceView,
   } from '$lib/messages/presence'
   import PresenceDot from '$lib/messages/presence-dot.svelte'
+  import { applyTyping, typingLine, typistsIn, type TypingFrame, type TypingMap } from '$lib/messages/typing'
   import PresenceSelf from '$lib/messages/presence-self.svelte'
   import type { ReplyQuote as Quote } from '$lib/messages/quote'
   import ReplyQuote from '$lib/messages/reply-quote.svelte'
@@ -108,6 +109,11 @@
 
   // Presence (Contribute 119f59a4): everyone's status from the live feed; mine is set by this tab's heartbeat.
   let presence = $state<PresenceMap>({})
+  // "<name> is typing…" (Contribute 14aea69d): who writes where, from the same feed; each (re)connect sends it afresh.
+  let typing = $state<TypingMap>({})
+  let typingError = $state<string | null>(null)
+  const typingIn = (conversationId: string, threadRootId: string | null) =>
+    typingLine(typistsIn(typing, conversationId, threadRootId, data.me).map((id) => rowPerson(id).name))
   let presenceError = $state<ShownError | null>(null)
   let dndSaving = $state(false)
   const presenceFor = (userId: string): PresenceView => presenceOf(presence, userId)
@@ -689,8 +695,11 @@
     stream = new ResumableStream({
       url: (after) => `/api/messages/stream?after=${after}`,
       initialCursor: data.cursor,
-      events: ['message', 'conversation', 'read', 'presence', 'presence-error'],
-      onStatus: (status) => (live = status),
+      events: ['message', 'conversation', 'read', 'presence', 'presence-error', 'typing', 'typing-error'],
+      onStatus: (status) => {
+        live = status
+        if (status === 'live') typing = {}
+      },
       onEvent: (type, payload) => {
         if (type === 'message') void onMessageFrame(payload as MessageFrame)
         else if (type === 'conversation') {
@@ -706,6 +715,11 @@
           tellNav(frame.people)
         } else if (type === 'presence-error') {
           presenceError = { error: (payload as { error: string }).error, agent: null }
+        } else if (type === 'typing') {
+          typing = applyTyping(typing, payload as TypingFrame)
+          typingError = null
+        } else if (type === 'typing-error') {
+          typingError = (payload as { error: string }).error
         }
       },
     })
@@ -885,6 +899,13 @@
 
 <svelte:head><title>{docTitle('Messages')}</title></svelte:head>
 <svelte:window onkeydown={onWindowKey} />
+
+<!-- "<name> is typing…" above a composer; the live region stays in place so screen readers hear it start. -->
+{#snippet typingNote(line: string, testid: string)}
+  <p class="h-5 truncate px-5 text-xs text-muted-foreground" aria-live="polite" data-testid={testid}>
+    {#if typingError}<span data-testid="{testid}-error">{typingError}</span>{:else}{line}{/if}
+  </p>
+{/snippet}
 
 {#snippet conversationRow(c: ConversationView)}
   {@const current = c.id === selectedId}
@@ -1337,6 +1358,7 @@
         data-testid="messages-file-input"
         onchange={onPickFiles}
       />
+      {@render typingNote(typingIn(selected.id, null), 'messages-typing')}
       <MessageComposer
         bind:value={draft}
         bind:textarea={composerEl}
@@ -1488,6 +1510,7 @@
           attempted={threadError.attempted}
         />
       {/if}
+      {@render typingNote(typingIn(selected.id, thread.parent.id), 'messages-thread-typing')}
       <MessageComposer
         bind:value={threadDraft}
         bind:textarea={threadComposerEl}

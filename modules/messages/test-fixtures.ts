@@ -2,6 +2,7 @@ import type { AttachmentPort, DriveFileInfo, MessagesDeps } from './service'
 import { coworkerEmail } from '$lib/server/coworkers/service'
 import { FakeAccessPort, levelSatisfies, type AccessLevel, type GrantInput } from './access-port'
 import { MemoryDirectory, MemoryMessagesStore } from './memory-store'
+import type { CoworkerPresencePort } from './presence'
 
 /** Owner + two members, a fake access port and a ticking clock. */
 export function fixture() {
@@ -125,3 +126,6 @@ export function depthFixture() {
   }
   return { ...f, drive, audits }
 }
+
+/** A company whose co-workers have no status yet (each shows as paused). */
+export const NO_COWORKERS: CoworkerPresencePort = { statuses: async () => new Map(), subscribe: () => () => {} }

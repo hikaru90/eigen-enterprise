@@ -1,4 +1,5 @@
 import { canUse, type MessagesDeps } from '../../../../modules/messages/service'
+import type { TypingBoard } from '../../../../modules/messages/typing'
 import type { CoworkerRunStore } from './run-store'
 import type { CoworkerView } from './service'
 import { randomUUID } from 'node:crypto'
@@ -47,6 +48,8 @@ export type ComposeCoworkerTurnsInput = {
   rhythms: CoworkerTurnsDeps['rhythms']
   /** Reads a task as the co-worker (null when it is gone or not its); its comment is posted through the kernel (tasks.comment). */
   readTask: CoworkerTurnsDeps['tasks']['get']
+  /** "<name> is typing…" while a turn runs: the process's typing board (modules/messages/typing.ts). */
+  typing: Pick<TypingBoard, 'start'>
   /**
    * Event reactions (C7): the router's ports but the run queue, which is the turns' own
    * (an enforced "yes" queues an 'event' run on `runs` and starts it here).
@@ -65,6 +68,7 @@ export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): Coworker
     coworkers: input.coworkers,
     company: input.company,
     prompts,
+    typing: (entry) => input.typing.start(entry),
     agents: {
       reload: async () => {
         await input.runtime.loadAgents(source)
@@ -210,6 +214,7 @@ export async function startCoworkerTurns(input: {
     inTrace: runWithTrace,
     rhythms: liveRhythmStore,
     readTask: liveReadTask,
+    typing: (await import('../../../../modules/messages/typing')).typingBoard(),
     events,
   })
   await handle.reload()

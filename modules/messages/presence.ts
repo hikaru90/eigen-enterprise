@@ -11,8 +11,26 @@ import { MessagesError, type MessagesDeps } from './service'
 
 export type PresencePort = Pick<PresenceTracker, 'heartbeat' | 'setDoNotDisturb' | 'get' | 'list' | 'subscribe'>
 
+/**
+ * An AI co-worker's presence, from facts (Contribute 14aea69d), never a
+ * heartbeat: switched on = available (it answers whenever it is asked), busy
+ * while one of its turns is writing, paused when switched off or removed.
+ */
+export const COWORKER_PRESENCE_STATUSES = ['available', 'busy', 'paused'] as const
+export type CoworkerPresenceStatus = (typeof COWORKER_PRESENCE_STATUSES)[number]
+
+export type CoworkerPresencePort = {
+  /** Each co-worker's status by user id (absent: removed, shown as paused). */
+  statuses(): Promise<Map<string, CoworkerPresenceStatus>>
+  /** Called when a status may have changed (switched on/off, a turn started or ended); returns unsubscribe. */
+  subscribe(onChange: () => void): () => void
+}
+
+/** A person's (tracker) or a co-worker's presence as the feed carries it. */
+export type PresenceEntry = Omit<Presence, 'status'> & { status: Presence['status'] | CoworkerPresenceStatus }
+
 /** `replace`: the whole company (on every (re)connect); otherwise only who changed. */
-export type PresenceFrame = { people: Presence[]; replace: boolean }
+export type PresenceFrame = { people: PresenceEntry[]; replace: boolean }
 
 export type PresenceStream = {
   /** Sends the snapshot, then every change, until the returned stop is called. */
@@ -63,15 +81,47 @@ export async function presenceStreamFor(
   d: MessagesDeps,
   tracker: () => Promise<PresencePort>,
   viewerId: string,
+  coworkers: CoworkerPresencePort,
 ): Promise<PresenceStream | null> {
   if (!(await d.directory.role(viewerId))) return null
   return {
     async start(send) {
       const [p, people] = await Promise.all([tracker(), d.directory.listPeople()])
-      const ids = people.map((person) => person.id)
+      const coworkerIds = new Set(people.filter((person) => person.kind === 'coworker').map((person) => person.id))
+      const humanIds = people.filter((person) => !coworkerIds.has(person.id)).map((person) => person.id)
+      const entry = (userId: string, s: Map<string, CoworkerPresenceStatus>): PresenceEntry => ({
+        userId,
+        status: s.get(userId) ?? 'paused',
+        doNotDisturb: false,
+        lastSeenAt: null,
+      })
+      let told = await coworkers.statuses()
+      let stopped = false
+      let chain = Promise.resolve()
+      const onCoworkers = () => {
+        chain = chain
+          .then(async () => {
+            const now = await coworkers.statuses()
+            if (stopped) return
+            const changed = [...coworkerIds].filter((id) => (now.get(id) ?? 'paused') !== (told.get(id) ?? 'paused'))
+            told = now
+            if (changed.length) send({ people: changed.map((id) => entry(id, now)), replace: false })
+          })
+          .catch((err: unknown) => console.error('[messages] co-worker presence failed', { viewerId, err }))
+      }
       // Subscribe and snapshot in the same tick: no change falls between them.
-      const unsubscribe = p.subscribe((changed) => send({ people: changed, replace: false }))
-      send({ people: p.list(ids), replace: true })
+      const unsubscribeTracker = p.subscribe((changed) => {
+        const humans = changed.filter((c) => !coworkerIds.has(c.userId))
+        if (humans.length) send({ people: humans, replace: false })
+      })
+      const unsubscribeCoworkers = coworkers.subscribe(onCoworkers)
+      const unsubscribe = () => {
+        stopped = true
+        unsubscribeTracker()
+        unsubscribeCoworkers()
+      }
+      const humans = new Map(p.list(humanIds).map((x) => [x.userId, x]))
+      send({ people: people.map((person) => humans.get(person.id) ?? entry(person.id, told)), replace: true })
       const recheck = setInterval(() => {
         d.directory
           .role(viewerId)

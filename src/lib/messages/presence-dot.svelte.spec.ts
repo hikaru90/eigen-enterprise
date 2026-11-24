@@ -37,6 +37,20 @@ describe('presence-dot.svelte', () => {
     }
   })
 
+  it('AI co-workers never show offline: available, writing, paused each have their own glyph and words (Contribute 14aea69d)', async () => {
+    const want = {
+      available: ['spark', 'AI co-worker · always available'],
+      busy: ['dots', 'Writing a reply'],
+      paused: ['pause', 'Paused (switched off)'],
+    } as const
+    for (const status of ['available', 'busy', 'paused'] as const) {
+      const { unmount } = render(PresenceDot, { presence: view({ status }), now: NOW })
+      const dot = page.getByRole('img', { name: want[status][1] })
+      await expect.element(dot).toHaveAttribute('data-glyph', want[status][0])
+      unmount()
+    }
+  })
+
   it('offline people say when they were last active', async () => {
     render(PresenceDot, {
       presence: view({ status: 'offline', lastSeenAt: '2026-11-12T10:00:00.000Z' }),
