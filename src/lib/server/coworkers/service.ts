@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { coworkerEmail } from '$lib/coworkers/handle'
 import { isAdminRole, type MemberRole } from '$lib/server/auth/roles'
 import type { UserKind } from '$lib/server/db/auth.schema'
 import { assertPoolModel, ModelNotInPoolError } from '$lib/server/llm/model-pool'
@@ -21,7 +22,7 @@ import { coworkerTemplate, type CoworkerTemplate } from './templates'
  * leaves the member list and the chart, and its reports move up to its manager.
  */
 
-export const COWORKER_EMAIL_DOMAIN = 'coworker.invalid'
+export { COWORKER_EMAIL_DOMAIN, coworkerEmail } from '$lib/coworkers/handle'
 
 export const NAME_MAX = 80
 export const TITLE_MAX = 120
@@ -136,10 +137,6 @@ export function coworkerAgentId(userId: string): string {
   return `coworker-${userId}`
 }
 
-/** A co-worker's never-mailed address: `<slug>.<first 8 of id>@coworker.invalid` (reserved TLD). */
-export function coworkerEmail(slug: string, userId: string): string {
-  return `${slug}.${userId.slice(0, 8)}@${COWORKER_EMAIL_DOMAIN}`
-}
 
 /** URL-safe handle from a name: ASCII letters and digits joined by "-" (formatting, not meaning). */
 export function slugify(name: string): string {

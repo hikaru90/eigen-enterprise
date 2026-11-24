@@ -25,6 +25,7 @@
   import { Label } from '$lib/components/ui/label'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import AiMark from '$lib/coworkers/ai-mark.svelte'
+  import { mentionNamesOf } from '$lib/coworkers/handle'
   import { m as msg } from '$lib/paraglide/messages.js'
   import type { ShownError } from '$lib/errors/agent-report'
   import { createDrafts } from '$lib/messages/drafts'
@@ -188,13 +189,12 @@
       (draft.trim().length > 0 || readyFiles.length > 0 || readyVoice.length > 0),
   )
 
-  const firstWord = (name: string) => name.trim().split(/\s+/)[0] ?? ''
-  /** @mention highlighting: everyone's full and first names; yours marked as "me". */
+  /** @mention highlighting: people's full and first names, a co-worker's @handle; yours marked as "me". */
   const mentions = $derived({
-    names: people.flatMap((p) => [p.name, firstWord(p.name)]).filter(Boolean),
+    names: people.flatMap(mentionNamesOf),
     me: (() => {
       const mine = peopleById.get(data.me)
-      return mine ? [mine.name, firstWord(mine.name)] : []
+      return mine ? mentionNamesOf(mine) : []
     })(),
   })
 
