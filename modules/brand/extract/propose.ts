@@ -1,5 +1,4 @@
 import type { GuideMime } from './guide'
-import { env as privateEnv } from '$lib/server/env/private-env'
 import type { ChatAttachment, ChatMessage } from '$lib/server/llm/llm-client'
 import { expandSeeds } from '../style-format/expand'
 import { brandSeedsSchema, SEED_SHAPE_DESCRIPTION, type BrandSeeds } from '../style-format/seeds'
@@ -10,6 +9,12 @@ import { brandSeedsSchema, SEED_SHAPE_DESCRIPTION, type BrandSeeds } from '../st
  * block via json_object mode. Post-LLM code parses + zod-validates + expands
  * only; semantics live entirely in the prompts (G14). The transport is
  * injectable so unit tests never hit the network.
+ *
+ * The model is the person's chat slot — the same one the assistant runs on: no
+ * modelOverride, so llmChatCompletion resolves it exactly as for the assistant
+ * (resolveSlot('chat') + chatRoutingConfig). The pool holds no per-model
+ * image/PDF capability data, so a guide is sent as-is and a chat model that
+ * cannot read it surfaces as the provider's error, never a silent model switch.
  *
  * Two sources, one output: a site capture's computed-style digest (text), or an
  * uploaded brand guide (PDF/image, sent to the model as a gateway attachment).
@@ -23,7 +28,6 @@ export type ChatCompletionFn = (input: {
   maxTokens?: number
   logContext?: string
   responseFormat?: 'json_object'
-  modelOverride?: string
   aiSessionId?: string
 }) => Promise<unknown>
 
@@ -56,18 +60,6 @@ export type ProposedCandidate =
 
 export type ProposeDeps = {
   chatCompletion?: ChatCompletionFn
-  /** Test/alternative-env injection; defaults to process env at call time. */
-  env?: Record<string, string | undefined>
-}
-
-export function brandExtractModelFromEnv(env: Record<string, string | undefined>): string {
-  const model = env.BRAND_EXTRACT_MODEL?.trim()
-  if (!model) {
-    throw new Error(
-      'BRAND_EXTRACT_MODEL is not set — seed extraction requires an explicit model env var (fail loud, never a default model)',
-    )
-  }
-  return model
 }
 
 function systemPrompt(): string {
@@ -133,7 +125,6 @@ async function defaultChatCompletion(input: Parameters<ChatCompletionFn>[0]): Pr
 /** One round: the three lenses in parallel, each answer parsed, zod-validated and expanded. */
 async function runLensRound(args: {
   chatCompletion: ChatCompletionFn
-  model: string
   userId: string
   aiSessionId?: string
   logContext: string
@@ -149,7 +140,6 @@ async function runLensRound(args: {
           maxTokens: 2048,
           logContext: args.logContext,
           responseFormat: 'json_object',
-          modelOverride: args.model,
           ...(args.aiSessionId === undefined ? {} : { aiSessionId: args.aiSessionId }),
         })
         const parsed = parseJsonCandidate(extractContent(response)) as { seeds?: unknown }
@@ -176,14 +166,11 @@ export async function proposeCandidates(
     digest: string
     priorRounds: PriorRound[]
     aiSessionId?: string
-    env?: Record<string, string | undefined>
   },
 ): Promise<ProposedCandidate[]> {
-  const model = brandExtractModelFromEnv(args.env ?? deps.env ?? privateEnv)
   const feedback = formatPriorRounds(args.priorRounds)
   return runLensRound({
     chatCompletion: deps.chatCompletion ?? defaultChatCompletion,
-    model,
     userId: args.userId,
     ...(args.aiSessionId === undefined ? {} : { aiSessionId: args.aiSessionId }),
     logContext: 'brand_extract',
@@ -234,15 +221,12 @@ export async function proposeCandidatesFromGuide(
     guide: GuideForModel
     priorRounds: PriorRound[]
     aiSessionId?: string
-    env?: Record<string, string | undefined>
   },
 ): Promise<ProposedCandidate[]> {
-  const model = brandExtractModelFromEnv(args.env ?? deps.env ?? privateEnv)
   const feedback = formatPriorRounds(args.priorRounds)
   const attachment = guideAttachment(args.guide)
   return runLensRound({
     chatCompletion: deps.chatCompletion ?? defaultChatCompletion,
-    model,
     userId: args.userId,
     ...(args.aiSessionId === undefined ? {} : { aiSessionId: args.aiSessionId }),
     logContext: 'brand_extract_guide',

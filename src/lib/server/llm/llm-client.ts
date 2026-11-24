@@ -686,7 +686,7 @@ export async function llmChatCompletion(input: {
   /** Override chat routing rule (e.g. LLM_RULE_ROUTER for the agent router judge). */
   routingRuleId?: string
   /**
-   * Explicit chat model for this call (a co-worker's own model, BRAND_EXTRACT_MODEL) — wins
+   * Explicit chat model for this call (a co-worker's own model) — wins
    * over per-credential/env chat routing, never silently defaulted. Must be a chat model of the
    * vetted pool (model-pool.ts), else ModelNotInPoolError before any request.
    */

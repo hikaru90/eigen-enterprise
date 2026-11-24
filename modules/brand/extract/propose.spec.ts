@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { expandSeeds } from '../style-format/expand'
 import { validSeeds } from '../style-format/seeds.spec'
 import {
-  brandExtractModelFromEnv,
   proposeCandidates,
   proposeCandidatesFromGuide,
   type ChatCompletionFn,
@@ -25,32 +24,18 @@ function mockChat(
   return fn as unknown as ChatCompletionFn & { mock: ReturnType<typeof vi.fn> }
 }
 
-describe('brandExtractModelFromEnv', () => {
-  it('returns the trimmed model when set', () => {
-    expect(brandExtractModelFromEnv({ BRAND_EXTRACT_MODEL: ' zed-industries/claude ' })).toBe(
-      'zed-industries/claude',
-    )
-  })
-
-  it('throws naming the env var when unset or blank (D2 precedent, no fallback)', () => {
-    expect(() => brandExtractModelFromEnv({})).toThrow(/BRAND_EXTRACT_MODEL/)
-    expect(() => brandExtractModelFromEnv({ BRAND_EXTRACT_MODEL: '  ' })).toThrow(
-      /BRAND_EXTRACT_MODEL/,
-    )
-  })
-})
-
 describe('proposeCandidates', () => {
-  it('makes three gateway calls with the pinned temperature ladder and json_object mode', async () => {
+  it('makes three gateway calls with the pinned temperature ladder and json_object mode, on the assistant chat model', async () => {
     const chat = mockChat(() => validSeedsResponse())
     const candidates = await proposeCandidates(
       { chatCompletion: chat },
-      { userId: 'owner-1', digest: 'SITE: x', priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm1' } },
+      { userId: 'owner-1', digest: 'SITE: x', priorRounds: [] },
     )
     expect(candidates).toHaveLength(3)
     expect(chat.mock.calls.map((c) => c[0].temperature)).toEqual([0.4, 0.7, 1.0])
     for (const call of chat.mock.calls) {
-      expect(call[0].modelOverride).toBe('m1')
+      // No modelOverride: the gateway routes the person's chat slot, the model the assistant runs on.
+      expect('modelOverride' in call[0]).toBe(false)
       expect(call[0].responseFormat).toBe('json_object')
       expect(call[0].userId).toBe('owner-1')
       expect(call[0].logContext).toBe('brand_extract')
@@ -62,7 +47,7 @@ describe('proposeCandidates', () => {
     const chat = mockChat(() => validSeedsResponse())
     const candidates = await proposeCandidates(
       { chatCompletion: chat },
-      { userId: 'u', digest: 'd', priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm' } },
+      { userId: 'u', digest: 'd', priorRounds: [] },
     )
     expect(candidates.map((c) => c.label)).toEqual(['Color-led', 'Type-led', 'Structure-led'])
     for (const candidate of candidates) {
@@ -86,7 +71,6 @@ describe('proposeCandidates', () => {
             candidateLabels: ['Color-led', 'Type-led', 'Structure-led'],
           },
         ],
-        env: { BRAND_EXTRACT_MODEL: 'm' },
       },
     )
     const [system, user] = chat.mock.calls[0][0].messages
@@ -105,7 +89,7 @@ describe('proposeCandidates', () => {
     )
     const candidates = await proposeCandidates(
       { chatCompletion: chat },
-      { userId: 'u', digest: 'd', priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm' } },
+      { userId: 'u', digest: 'd', priorRounds: [] },
     )
     expect(candidates).toHaveLength(3)
     const invalid = candidates[1]
@@ -118,7 +102,7 @@ describe('proposeCandidates', () => {
     await expect(
       proposeCandidates(
         { chatCompletion: chat },
-        { userId: 'u', digest: 'd', priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm' } },
+        { userId: 'u', digest: 'd', priorRounds: [] },
       ),
     ).rejects.toThrow(/all three extraction candidates invalid/)
   })
@@ -129,21 +113,11 @@ describe('proposeCandidates', () => {
     await expect(
       proposeCandidates(
         { chatCompletion: chat },
-        { userId: 'u', digest: 'd', priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm' } },
+        { userId: 'u', digest: 'd', priorRounds: [] },
       ),
     ).rejects.toThrow(/grain/)
   })
 
-  it('fails loud before any gateway call when the model env is unset', async () => {
-    const chat = mockChat(() => validSeedsResponse())
-    await expect(
-      proposeCandidates(
-        { chatCompletion: chat },
-        { userId: 'u', digest: 'd', priorRounds: [], env: {} },
-      ),
-    ).rejects.toThrow(/BRAND_EXTRACT_MODEL/)
-    expect(chat.mock.calls).toHaveLength(0)
-  })
 })
 
 describe('proposeCandidatesFromGuide', () => {
@@ -154,7 +128,7 @@ describe('proposeCandidatesFromGuide', () => {
   }
   const pngGuide = { filename: 'moodboard.png', mime: 'image/png' as const, base64: 'iVBORw0KGgo=' }
 
-  it('sends the guide with every lens call: same ladder, model env, json mode, the existing seed shape', async () => {
+  it('sends the guide with every lens call: same ladder, the assistant chat model, json mode, the existing seed shape', async () => {
     const chat = mockChat(() => validSeedsResponse())
     const candidates = await proposeCandidatesFromGuide(
       { chatCompletion: chat },
@@ -162,7 +136,6 @@ describe('proposeCandidatesFromGuide', () => {
         userId: 'owner-1',
         guide: pdfGuide,
         priorRounds: [],
-        env: { BRAND_EXTRACT_MODEL: 'vision-m' },
         aiSessionId: 's-1',
       },
     )
@@ -170,7 +143,7 @@ describe('proposeCandidatesFromGuide', () => {
     expect(chat.mock.calls.map((c) => c[0].temperature)).toEqual([0.4, 0.7, 1.0])
     for (const call of chat.mock.calls) {
       const input = call[0]
-      expect(input.modelOverride).toBe('vision-m')
+      expect('modelOverride' in input).toBe(false)
       expect(input.responseFormat).toBe('json_object')
       expect(input.logContext).toBe('brand_extract_guide')
       expect(input.aiSessionId).toBe('s-1')
@@ -193,7 +166,7 @@ describe('proposeCandidatesFromGuide', () => {
     const chat = mockChat(() => validSeedsResponse())
     await proposeCandidatesFromGuide(
       { chatCompletion: chat },
-      { userId: 'u', guide: pngGuide, priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm' } },
+      { userId: 'u', guide: pngGuide, priorRounds: [] },
     )
     expect(chat.mock.calls[0][0].messages[1].attachments).toEqual([
       { type: 'image', mime: 'image/png', base64: 'iVBORw0KGgo=' },
@@ -214,7 +187,6 @@ describe('proposeCandidatesFromGuide', () => {
             candidateLabels: ['Color-led', 'Type-led', 'Structure-led'],
           },
         ],
-        env: { BRAND_EXTRACT_MODEL: 'm' },
       },
     )
     const user = chat.mock.calls[0][0].messages[1]
@@ -228,25 +200,15 @@ describe('proposeCandidatesFromGuide', () => {
     )
     const mixed = await proposeCandidatesFromGuide(
       { chatCompletion: oneBad },
-      { userId: 'u', guide: pdfGuide, priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm' } },
+      { userId: 'u', guide: pdfGuide, priorRounds: [] },
     )
     expect('error' in mixed[2] && mixed[2].error).toMatch(/grain/)
     await expect(
       proposeCandidatesFromGuide(
         { chatCompletion: mockChat(() => 'nope') },
-        { userId: 'u', guide: pdfGuide, priorRounds: [], env: { BRAND_EXTRACT_MODEL: 'm' } },
+        { userId: 'u', guide: pdfGuide, priorRounds: [] },
       ),
     ).rejects.toThrow(/all three extraction candidates invalid/)
   })
 
-  it('fails loud before any call when the model env is unset', async () => {
-    const chat = mockChat(() => validSeedsResponse())
-    await expect(
-      proposeCandidatesFromGuide(
-        { chatCompletion: chat },
-        { userId: 'u', guide: pdfGuide, priorRounds: [], env: {} },
-      ),
-    ).rejects.toThrow(/BRAND_EXTRACT_MODEL/)
-    expect(chat.mock.calls).toHaveLength(0)
-  })
 })
