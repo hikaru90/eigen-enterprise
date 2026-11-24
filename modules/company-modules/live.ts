@@ -15,6 +15,7 @@ import type { ModuleDataRepo, SystemPinPort } from '$lib/kernel/module-host/type
 import { isCompanyModuleName } from '$lib/kernel/manifest-schema'
 import type { ActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import type { KernelRegistry } from '$lib/kernel/registry'
+import { moduleBundles } from './bundles'
 import { eeModuleWorkload, NO_EE_SENTENCE } from './ee-workload'
 import type { PublishPort } from './ports'
 import { MODULE_REPO_DIR, ModuleRepo } from './repo'
@@ -45,13 +46,14 @@ export function providePublishPort(port: PublishPort): void {
   publishPort = port
 }
 
+const notWired = () =>
+  new KernelError(
+    'hub_unavailable',
+    "module hub not configured: this box's publish client is not wired, so new module code can't run yet. Everything already running keeps running.",
+  )
 const unwiredPublish: PublishPort = {
-  async publish() {
-    throw new KernelError(
-      'hub_unavailable',
-      "module hub not configured: this box's publish client is not wired, so new module code can't run yet. Everything already running keeps running.",
-    )
-  },
+  publish: async () => Promise.reject(notWired()),
+  fetchBundle: async () => Promise.reject(notWired()),
 }
 
 /** The company data repo as `data.*` and system.yaml write it (the live GitEngine). */
@@ -121,6 +123,10 @@ export function liveCompanyModules(kernel: CompanyModulesKernel): LiveCompanyMod
     ])
     const store = new DbModuleStore(kernel.db)
     const workload = eeModuleWorkload()
+    const hub: PublishPort = {
+      publish: (r) => (publishPort ?? unwiredPublish).publish(r),
+      fetchBundle: (sha) => (publishPort ?? unwiredPublish).fetchBundle(sha),
+    }
     const host = new ModuleHost({
       registry: kernel.registry,
       modules: kernel.modules,
@@ -132,7 +138,7 @@ export function liveCompanyModules(kernel: CompanyModulesKernel): LiveCompanyMod
       feed: dbEventFeed(kernel.db),
       data,
       workload,
-      bundles: { bytes: async (id, commit) => (await repo.bundle(id, commit)).bytes },
+      bundles: moduleBundles(repo, store, hub),
       people: { personById: personFor },
       stateDir: () => stateDir,
       system,
@@ -142,7 +148,7 @@ export function liveCompanyModules(kernel: CompanyModulesKernel): LiveCompanyMod
       store,
       sharing: new DbSharingStore(kernel.db),
       repo,
-      publish: { publish: (r) => (publishPort ?? unwiredPublish).publish(r) },
+      publish: hub,
       workload,
       eventSink: kernel.eventSink,
       coreTools: () => kernel.registry.list().filter((t) => !isCompanyModuleName(t.module)).map((t) => t.name),

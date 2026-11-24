@@ -99,8 +99,15 @@
   const coworkerNotices = $derived(dashboard.coworkerNotices)
   // Decision questions asked of this person: Jev was unsure, the person answers from the closed set (CB2, decisions.answer).
   const decisionQuestions = $derived(dashboard.decisionQuestions)
+  // The company's own modules: a failed one, a deploy waiting for an admin, the owner's sharing OK (U2).
+  const moduleNotices = $derived(dashboard.moduleNotices)
   const taskCount = $derived(
-    tasks.assignedToMe.length + tasks.updates.length + reminders.length + coworkerNotices.length + decisionQuestions.length,
+    tasks.assignedToMe.length +
+      tasks.updates.length +
+      reminders.length +
+      coworkerNotices.length +
+      decisionQuestions.length +
+      moduleNotices.length,
   )
   const needsYou = $derived(overview.approvals.length + taskCount + (dashboard.backup ? 1 : 0))
   // Assigned tasks live in Memory › Tasks, reminders in Memory › Reminders; the dashboard's buttons post to those pages' actions.
@@ -620,6 +627,29 @@
                       >
                     {/each}
                   </form>
+                </li>
+              {/each}
+              {#each moduleNotices as notice (notice.kind === 'module_sharing' ? 'sharing' : `${notice.kind}:${notice.moduleId}`)}
+                <li class={taskRow} data-testid="dashboard-module-notice" data-kind={notice.kind}>
+                  <span class="flex min-w-0 items-center gap-3">
+                    <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                      ><span class="size-2 rounded-full bg-coral"></span></span
+                    >
+                    <span class="flex min-w-0 flex-col">
+                      <span class="truncate"
+                        >{notice.kind === 'module_deploy_needs_admin'
+                          ? `${notice.name} is waiting for an admin to deploy ${notice.commit.slice(0, 12)}.`
+                          : notice.sentence}</span
+                      >
+                    </span>
+                  </span>
+                  {#if notice.kind === 'module_sharing'}
+                    <form method="POST" action="{resolve('/settings/modules/company')}?/acceptSharing" use:enhance>
+                      <button type="submit" class={inkPill} data-testid="dashboard-module-sharing-ok">OK</button>
+                    </form>
+                  {:else}
+                    <a href={resolve('/settings/modules/company')} class={softPill} data-testid="dashboard-module-open">Open</a>
+                  {/if}
                 </li>
               {/each}
             </ul>

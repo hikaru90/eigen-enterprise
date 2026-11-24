@@ -27,6 +27,12 @@ export type PublishRequest = {
 
 export type PublishPort = {
   publish(request: PublishRequest): Promise<ModuleReceiptV1>
+  /**
+   * A published bundle's bytes by sha256 (`GET /api/hub/modules/bundles/:sha256`, §3):
+   * after a restore whose module repo lacks the commit, the kernel re-fetches it
+   * and re-deploys. The caller checks the sha256.
+   */
+  fetchBundle(bundleSha256: string): Promise<Uint8Array>
 }
 
 /** The sentence of §6.5 when the hub is down. */

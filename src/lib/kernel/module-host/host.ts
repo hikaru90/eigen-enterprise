@@ -210,10 +210,31 @@ export class ModuleHost implements CompanyModuleSwitch {
         // A restarted os: give each module the full windows to reconnect.
         this.lastSeen.set(record.id, this.now())
         this.connectingSince.set(record.id, this.now())
+        await this.redeployIfLost(record)
       }
     }
     this.watchdog = setInterval(() => void this.tick(), this.limits.watchdogMs)
     this.delivery = setInterval(() => void this.pumpAll(), this.limits.deliveryPollMs)
+  }
+
+  /**
+   * After a restore ee may not have the module (or another commit): the
+   * kernel re-POSTs the pinned, receipted commit (its bundle rebuilt from the
+   * module repo or re-fetched from the hub, ModuleBundles). A failure is
+   * loud: the module is switched off with the reason.
+   */
+  private async redeployIfLost(record: ModuleRecord): Promise<void> {
+    try {
+      const view = await this.deps.workload.get(record.id)
+      if (view && view.commit === record.commit) return
+      const version = record.commit ? await this.deps.store.version(record.id, record.commit) : null
+      if (!version) throw new Error(`${record.id}@${record.commit ?? 'none'} has no receipt`)
+      await this.deps.store.put({ ...record, deployedFrom: record.deployedFrom ?? record.state })
+      await this.deployVersion(version, HOST_AUTHOR, true)
+    } catch (err) {
+      this.log(`could not bring back module ${record.id}: ${err instanceof Error ? err.message : String(err)}`)
+      await this.fail(record.id, 'it could not be brought back on this server')
+    }
   }
 
   /** Closes every socket and session (the modules keep running under ee and reconnect to the next os). */

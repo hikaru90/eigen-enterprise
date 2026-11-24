@@ -2,6 +2,7 @@ import type { Actions, PageServerLoad } from './$types'
 import { randomUUID } from 'node:crypto'
 import { fail } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
+import { isCompanyModuleName } from '$lib/kernel/manifest-schema'
 import { errorReport, refusalReport } from '$lib/server/errors/report'
 import type { ToolContext } from '$lib/kernel/types'
 import { requireCapability } from '$lib/server/auth/require-capability'
@@ -98,7 +99,8 @@ export const load: PageServerLoad = async ({ locals }): Promise<PluginsData> => 
         name: m.name,
         version: m.version,
         description: ownerModuleBlurb(m.id, m.description ?? '') || null,
-        origin: 'official',
+        // A company module (U2) owns the x- id space; everything else ships with eigenEnterprise.
+        origin: isCompanyModuleName(m.id) ? 'company' : 'official',
         active: m.active,
         tools: m.tools,
         requires: m.requires.map(ref),

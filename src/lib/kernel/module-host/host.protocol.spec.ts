@@ -130,6 +130,27 @@ describe('eem/1 authentication', () => {
   })
 })
 
+describe('after a restore', () => {
+  it('a running module ee no longer has is re-POSTed at the os start; one that cannot be is switched off loudly', async () => {
+    await deployRaw()
+    await connected(workload.calls.find((c) => c.verb === 'deploy')!.body.token as string)
+    expect((await k.store.get('hello'))?.state).toBe('running')
+    await k.host.stop()
+    workload.views.clear() // ee restored without the module's bundle
+    await k.host.start()
+    expect(workload.calls.filter((c) => c.verb === 'deploy')).toHaveLength(2)
+    expect((await k.store.get('hello'))?.state).toBe('connecting')
+
+    await k.host.stop()
+    workload.views.clear()
+    k.bundles.clear() // and the bytes are nowhere
+    await k.host.start()
+    expect((await k.store.get('hello'))?.reason).toBe(
+      'Hello is switched off because it could not be brought back on this server. Its data is kept.',
+    )
+  })
+})
+
 describe('tools.call: uses and the person rule (§4.3)', () => {
   it('a tool not in uses.tools is module_use_undeclared', async () => {
     const c = await connected(await deployRaw())

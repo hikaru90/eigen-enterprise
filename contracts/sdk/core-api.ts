@@ -2977,6 +2977,98 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "modules.accept_sharing": {
+    input: Record<string, unknown>
+    output: unknown
+  }
+  "modules.commit": {
+    input: {
+      "id": string
+      "message": string
+    }
+    output: unknown
+  }
+  "modules.delete_file": {
+    input: {
+      "id": string
+      "path": string
+    }
+    output: unknown
+  }
+  "modules.deploy": {
+    input: {
+      "commit": string
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.get": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.list": {
+    input: Record<string, unknown>
+    output: unknown
+  }
+  "modules.logs": {
+    input: {
+      "id": string
+      "lines"?: number
+    }
+    output: unknown
+  }
+  "modules.publish": {
+    input: {
+      "commit": string
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.remove": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.scaffold": {
+    input: {
+      "description": string
+      "id": string
+      "name": string
+    }
+    output: unknown
+  }
+  "modules.source": {
+    input: {
+      "commit"?: string
+      "id": string
+      "path"?: string
+    }
+    output: unknown
+  }
+  "modules.status": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.test": {
+    input: {
+      "commit": string
+      "id": string
+    }
+    output: unknown
+  }
+  "modules.write_file": {
+    input: {
+      "content": string
+      "id": string
+      "path": string
+    }
+    output: unknown
+  }
   "notifications.devices": {
     input: Record<string, unknown>
     output: {
@@ -4037,6 +4129,20 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "messages.set_do_not_disturb",
   "messages.thread",
   "messages.upload_attachments",
+  "modules.accept_sharing",
+  "modules.commit",
+  "modules.delete_file",
+  "modules.deploy",
+  "modules.get",
+  "modules.list",
+  "modules.logs",
+  "modules.publish",
+  "modules.remove",
+  "modules.scaffold",
+  "modules.source",
+  "modules.status",
+  "modules.test",
+  "modules.write_file",
   "notifications.devices",
   "notifications.settings_get",
   "notifications.settings_set",

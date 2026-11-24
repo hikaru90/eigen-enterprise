@@ -3,6 +3,7 @@
   import type { PageProps } from './$types'
   import type { PluginRef, PluginRow } from './+page.server'
   import { enhance } from '$app/forms'
+  import { resolve } from '$app/paths'
   import { Button } from '$lib/components/ui/button'
   import { Switch } from '$lib/components/ui/switch'
   import { docTitle } from '$lib/shell/title'
@@ -185,6 +186,11 @@
       </ul>
     </section>
   {/if}
+
+  <p class="text-xs text-foreground/60" data-testid="plugins-company-modules-link">
+    Modules built for your company — their state, the sharing OK and deploys:
+    <a class="underline" href={resolve('/settings/modules/company')}>Company modules</a>.
+  </p>
 
   <p
     class="rounded-lg border border-dashed border-border p-4 text-xs text-foreground/60"

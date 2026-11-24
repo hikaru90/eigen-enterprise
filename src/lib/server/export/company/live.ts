@@ -13,6 +13,7 @@ import { COMPANY_EXPORT_JOB } from '$lib/server/job-queue/constants'
 import { enqueueUserJob } from '$lib/server/job-queue/enqueue'
 import { version as appVersion } from '../../../../../package.json'
 import { cursorRows, readCatalog } from './catalog'
+import { concatFiles, extensionExportFiles } from './extensions'
 import { companyExportFiles } from './files'
 import { COMPANY_EXPORT_EXCLUDED_SCHEMAS, COMPANY_EXPORT_RULES } from './rules'
 import { buildCompanyExport } from './run'
@@ -43,6 +44,13 @@ export function exportFile(id: string): string {
 }
 
 type Row = typeof companyExport.$inferSelect
+
+/** The company data repo's extensions/ (the modules' data), read from the live working tree. */
+async function* liveExtensionFiles() {
+  const { companyData } = await import('$lib/server/gitstore/live')
+  const engine = (await companyData()).framework.engine
+  yield* extensionExportFiles({ list: (prefix) => engine.listWorking(prefix), read: (path) => engine.readWorking(path) })
+}
 
 function toView(r: Row, now = new Date()): CompanyExportView {
   const live = r.status === 'done' && (!r.expiresAt || r.expiresAt > now)
@@ -160,7 +168,8 @@ export async function runCompanyExport(id: string, requestedBy: string): Promise
       {
         catalog: () => readCatalog(sql),
         rows: (query) => cursorRows(sql, query),
-        files: () => companyExportFiles(sql),
+        // The company's files, then the company modules' data (extensions/<id>/, U2 D7).
+        files: () => concatFiles(companyExportFiles(sql), liveExtensionFiles()),
       },
     )
     const summary: CompanyExportSummary = {

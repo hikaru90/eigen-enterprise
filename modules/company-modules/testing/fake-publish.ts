@@ -57,4 +57,11 @@ export class FakePublishPort implements PublishPort {
     this.published.push(request)
     return receipt
   }
+
+  async fetchBundle(bundleSha256: string): Promise<Uint8Array> {
+    if (this.down) throw new KernelError('hub_unavailable', HUB_UNAVAILABLE_SENTENCE)
+    const found = this.published.find((p) => p.bundleSha256 === bundleSha256)
+    if (!found) throw new KernelError('invalid_input', `the hub has no bundle ${bundleSha256}`)
+    return found.bundle
+  }
 }

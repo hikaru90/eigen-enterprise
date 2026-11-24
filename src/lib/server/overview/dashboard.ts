@@ -13,7 +13,9 @@ import { assignedTaskDeps } from '$lib/server/memory/assigned-tasks/live'
 import { needsYouTasks, type NeedsYouTasks } from '$lib/server/memory/assigned-tasks/service'
 import { reminderDeps } from '$lib/server/memory/reminders/live'
 import { needsYouReminders, type ReminderView } from '$lib/server/memory/reminders/service'
+import type { ModuleNotice } from '$lib/kernel/module-host/notices'
 import { buildOverview, type Overview } from '$lib/server/overview/overview'
+import { liveModuleNotices } from '../../../../modules/company-modules/notices-live'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 
 /** How many recent agent actions the dashboard shows; Assistant › Activity holds the rest. */
@@ -31,6 +33,8 @@ export type Dashboard = {
   coworkerNotices: CoworkerNotice[]
   /** Decision questions asked of this person: Jev was unsure, the person answers from the closed set (CB2, decisions.questions). */
   decisionQuestions: DecisionQuestionView[]
+  /** The company's own modules: a failed one (owner + admins), a deploy waiting for an admin's click, the owner's one-time sharing OK (U2). */
+  moduleNotices: ModuleNotice[]
 }
 
 /**
@@ -77,6 +81,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     reminders: await needsYouReminders(await reminderDeps(), userId),
     coworkerNotices: await needsYouNotices(await liveNoticeDeps(), userId),
     decisionQuestions: await needsYouDecisionQuestions(userId),
+    moduleNotices: await liveModuleNotices({ userId, isOwner: role === 'owner', isAdmin }),
   }
 }
 

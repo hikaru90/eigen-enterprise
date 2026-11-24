@@ -123,6 +123,17 @@ export class ModuleRepo {
     return out || null
   }
 
+  /** Whether the repo holds `commit` with a `<id>/` folder (a restore may lack it). */
+  async hasCommit(id: string, commit: string): Promise<boolean> {
+    try {
+      await this.requireCommit(id, commit)
+      return true
+    } catch (err) {
+      if (err instanceof KernelError) return false
+      throw err
+    }
+  }
+
   /** The files of `<id>/` at `commit` (paths relative to the module folder). */
   async files(id: string, commit: string): Promise<BundleFile[]> {
     await this.requireCommit(id, commit)
