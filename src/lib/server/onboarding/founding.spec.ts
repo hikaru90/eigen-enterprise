@@ -217,7 +217,7 @@ describe('recordFoundingInterview (onboarding founding endpoint logic)', () => {
     await fx.submit({ tone: 'warm', companyName: 'Kindred', positioning: 'company OS' })
 
     // The owner approves the pending publish; the wizard gets resubmitted
-    // (restart onboarding) with corrected answers.
+    // with corrected answers.
     const pending = await fx.approvals.listPending()
     await fx.approvals.decide(pending[0]!.id, 'approved', 'owner')
 

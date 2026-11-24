@@ -1611,11 +1611,10 @@ export async function exerciseAuthenticatedUi(page: Page): Promise<void> {
   await exerciseLegacyRedirects(page)
 }
 
-/** The shell's settings menu (sidebar footer): one Settings link, then sign out. */
+/** Settings is one main-nav entry; the personal menu (sidebar footer) holds sign out. */
 async function exerciseSettingsMenu(page: Page): Promise<void> {
   await page.goto('/m/memory/capture')
-  await page.getByTestId('home-settings-trigger').first().click()
-  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await page.getByRole('link', { name: 'Settings', exact: true }).first().click()
   await expect(page).toHaveURL(/\/settings$/)
 
   // Sign out ends the session through the same menu.

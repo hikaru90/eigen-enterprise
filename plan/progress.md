@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Shell: one Settings entry; personal prefs in one menu; "Restart onboarding" removed (reports 81319f0e, 68912711; branch only, not merged)
+
+- **81319f0e (Settings twice):** the menu next to the name no longer links to Settings — Settings is the main-nav entry only. That menu is now "Your preferences" (user-cog icon): theme, sound, assistant voice, audio devices, voice speed + volume, Install app, sign out. Design decision: personal per-device prefs stay together in this one menu (they are browser-local); company/admin settings stay in /settings.
+- **68912711 (Restart onboarding does nothing) — REMOVED (announced):** it only cleared the welcome-completed stamp and re-ran `invalidateAll()`; the wizard renders only on the homepage, so from any other page nothing visible happened. No user purpose (the founding answers are editable in Settings; the name is kept). Removed: the menu button, `POST /api/onboarding/welcome/reset` (+ spec, ui-parity `noEffect` entry, parity-debt count 367→366), `resetWelcomeOnboarding` (+ spec), the e2e journey "restarting onboarding brings the boot back". No registry tool/CLI used it.
+- release-helpers' settings journey now opens Settings from the main nav.
+
 ## 2026-11-24 — Release v0.5.40 (owner: "test commit release")
 
 - **Tagged** `v0.5.40` on `80e25c32`, through the full release gate for the first time:

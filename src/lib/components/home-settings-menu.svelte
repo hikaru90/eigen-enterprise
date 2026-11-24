@@ -1,20 +1,19 @@
 <script lang="ts">
-  import ErrorNotice from '$lib/components/error-notice.svelte'
   import AudioLines from '@lucide/svelte/icons/audio-lines'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
   import Download from '@lucide/svelte/icons/download'
   import LoaderCircle from '@lucide/svelte/icons/loader-circle'
   import LogOut from '@lucide/svelte/icons/log-out'
-  import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
-  import Settings from '@lucide/svelte/icons/settings'
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal'
   import Speech from '@lucide/svelte/icons/speech'
+  import UserCog from '@lucide/svelte/icons/user-cog'
   import Volume2 from '@lucide/svelte/icons/volume-2'
   import VolumeX from '@lucide/svelte/icons/volume-x'
-  import { goto, invalidateAll } from '$app/navigation'
+  import { goto } from '$app/navigation'
   import { resolve } from '$app/paths'
   import { requestSignOut } from '$lib/auth/sign-out'
   import AudioDevicesSettings from '$lib/components/audio-devices-settings.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as Popover from '$lib/components/ui/popover'
   import { isStandalone } from '$lib/pwa/install'
   import InstallAppDialog from '$lib/pwa/install-app-dialog.svelte'
@@ -24,21 +23,16 @@
   import ThemeSwitch from '$lib/theme/theme-switch.svelte'
 
   /**
-   * The homepage's settings entry point: a cog in the header, always reachable
-   * (chat, welcome wizard, and provider gate alike). Company settings, the
-   * extension roadmap, API keys and provider live on their pages; restarting
-   * onboarding clears the welcome stamp and reloads page data so the boot
-   * sequence takes over the homepage again. Theme (Light · Dark · System, this
-   * device) applies the moment it is picked. Sound (boot sequence, default on)
-   * and assistant voice toggle here; "Audio devices" opens the microphone + speaker choice
-   * (shared with calls) used by dictation, voice messages and the assistant's voice; "Voice speed
-   * and volume" opens the reading voice's speed and volume for this browser; sign out
-   * ends the session. "Install app"
-   * (hidden inside the installed app) installs eigenEnterprise on this device.
+   * The personal menu next to the signed-in name: this person's own quick
+   * preferences, in one place. Settings itself lives only in the main nav (one
+   * entry, 81319f0e); this menu holds what is per person / per device: theme
+   * (Light · Dark · System), sound (boot sequence), assistant voice on/off,
+   * audio devices (microphone + speaker, shared with calls), the reading voice's
+   * speed and volume, "Install app" (hidden inside the installed app), and
+   * sign out.
    */
 
   let menuOpen = $state(false)
-  let restarting = $state(false)
   let signingOut = $state(false)
   /** Why signing out was held back (it would end the only way back in); null when it wasn't. */
   let lockout = $state<string | null>(null)
@@ -73,25 +67,6 @@
     runningAsApp = isStandalone()
   }
 
-  async function restartOnboarding(): Promise<void> {
-    if (restarting) return
-    restarting = true
-    error = null
-    try {
-      const res = await fetch('/api/onboarding/welcome/reset', { method: 'POST' })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        throw new Error(body?.error ?? `Restarting onboarding failed (HTTP ${res.status}).`)
-      }
-      await invalidateAll()
-      menuOpen = false
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err)
-    } finally {
-      restarting = false
-    }
-  }
-
   async function signOut(confirmLockout = false): Promise<void> {
     if (signingOut) return
     signingOut = true
@@ -116,10 +91,10 @@
 <Popover.Root bind:open={menuOpen} onOpenChange={(open) => open && syncMenu()}>
   <Popover.Trigger
     class="text-muted-foreground hover:text-foreground flex size-8 cursor-pointer items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 -ring"
-    aria-label="Settings menu"
+    aria-label="Your preferences"
     data-testid="home-settings-trigger"
   >
-    <Settings class="pointer-events-none size-5 shrink-0" aria-hidden="true" strokeWidth={1.75} />
+    <UserCog class="pointer-events-none size-5 shrink-0" aria-hidden="true" strokeWidth={1.75} />
   </Popover.Trigger>
   <Popover.Content
     align="end"
@@ -127,13 +102,6 @@
     sideOffset={6}
     class="w-56 gap-1 overflow-hidden pt-2 pb-2"
   >
-    <a
-      href={resolve('/settings')}
-      class="flex items-center gap-2.5 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-    >
-      <Settings class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      Settings
-    </a>
     {#if !runningAsApp}
       <button
         type="button"
@@ -210,20 +178,6 @@
     <button
       type="button"
       class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
-      disabled={restarting}
-      onclick={() => void restartOnboarding()}
-      data-testid="restart-onboarding"
-    >
-      {#if restarting}
-        <LoaderCircle class="size-4 shrink-0 animate-spin" strokeWidth={1.75} />
-      {:else}
-        <RotateCcw class="size-4 shrink-0 opacity-80" strokeWidth={1.75} />
-      {/if}
-      Restart onboarding
-    </button>
-    <button
-      type="button"
-      class="flex w-full cursor-pointer items-center gap-2.5 rounded-sm px-2 py-1.5 text-left text-sm text-foreground hover:bg-white/25 disabled:opacity-50 dark:hover:bg-white/10"
       disabled={signingOut}
       onclick={() => void signOut()}
       data-testid="sign-out"
@@ -261,7 +215,7 @@
       <ErrorNotice
         class="mt-1 px-2 text-xs leading-relaxed"
         {error}
-        attempted="Signing out or restarting the app from the settings menu"
+        attempted="Signing out from your preferences menu"
       />
     {/if}
   </Popover.Content>

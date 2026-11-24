@@ -315,42 +315,4 @@ test.describe('welcome boot sequence', () => {
     await expectHomeVisible(page)
     await expect(page.getByTestId('welcome-wizard')).not.toBeVisible()
   })
-
-  test('restarting onboarding brings the boot back — and it knows your name', async ({
-    page,
-    context,
-  }) => {
-    await registerOwner(page, context, { emailDomain: 'test.eigenlabs.dev', profile: { firstName: 'Ada', lastName: 'Lovelace' } })
-
-    // First pass (the name came from the profile step): set up email, reach the mind
-    // gate, skip it — tour done.
-    await walkBoot(page, 'Ada')
-    await continueThroughLines(page)
-    await connectMailInBoot(page)
-    await expect(page.getByText(MIND_HEADING)).toBeVisible({ timeout: 20_000 })
-    await page.getByTestId('skip-onboarding').click()
-
-    // No provider yet: the hard gate takes over. Connect through the server contract.
-    await expect(page.getByText('Connect your AI provider.')).toBeVisible({ timeout: 15_000 })
-    await saveApiKeyViaApi(page)
-    await page.goto('/')
-    await expectHomeVisible(page)
-
-    // The cog is in the shell; restart brings the boot sequence back.
-    // A click that lands before hydration opens nothing: retry until the menu is up.
-    await expect(async () => {
-      await page.getByTestId('home-settings-trigger').click()
-      await expect(page.getByTestId('restart-onboarding')).toBeVisible({ timeout: 2_000 })
-    }).toPass({ timeout: 20_000 })
-    await page.getByTestId('restart-onboarding').click()
-    await expectWizard(page)
-
-    // Personalized greeting, no name ask — the name survived the restart.
-    await expect(page.getByText('Hello, Ada.')).toBeVisible()
-    await expect(page.getByRole('textbox', { name: 'Your name' })).not.toBeVisible()
-
-    // And the boot still completes into the app.
-    await page.getByTestId('skip-onboarding').click()
-    await expectHomeVisible(page)
-  })
 })
