@@ -31,6 +31,7 @@
     "test": "npm run test:unit:run && npm run test:e2e",
     "test:e2e": "npm run db:up && npm run db:wait && npm run db:migrate && playwright install && playwright test",
     "test:e2e:release:headed": "PW_SLOW_MO=300 playwright install chromium && PW_RELEASE=1 PW_SLOW_MO=300 playwright test src/routes/e2e/release.e2e.ts --headed",
+    "upgrade:rehearsal": "npm run db:up && npm run db:wait && node scripts/upgrade-rehearsal.mjs",
     "db:up": "docker compose up -d --build db",
     "db:wait": "node scripts/wait-for-db.mjs",
     "db:import-graph-export": "node scripts/import-graph-export-to-age.mjs --from-export",
