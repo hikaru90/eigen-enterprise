@@ -1,6 +1,14 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { parseSha256Sums, RELEASE_PUBLIC_KEY_PEM, sha256Hex, trustedManifest, verifyReleaseManifest } from './release-key.ts'
+import {
+  BACKUP_PLACEHOLDER,
+  parseSha256Sums,
+  RELEASE_BACKUP_PUBLIC_KEY_PEM,
+  RELEASE_PUBLIC_KEY_PEM,
+  sha256Hex,
+  trustedManifest,
+  verifyReleaseManifest,
+} from './release-key.ts'
 
 // A throwaway keypair: never a real release key in the repo.
 const pair = () => generateKeyPairSync('ed25519')
@@ -39,6 +47,38 @@ describe('verifyReleaseManifest', () => {
   it('refuses a non-Ed25519 key', () => {
     const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'pem' }).toString()
     expect(() => verifyReleaseManifest(MANIFEST, sigOf(MANIFEST), rsa)).toThrow(/not ed25519/)
+  })
+})
+
+describe('the backup release key (plan/phase-upgrades.md §6.2)', () => {
+  const backup = pair()
+  const BACKUP_PUB = backup.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  it('trusts the set {current, backup}: either signature passes, any other key fails', () => {
+    expect(verifyReleaseManifest(MANIFEST, sigOf(MANIFEST), PUB, BACKUP_PUB)).toBe(true)
+    expect(verifyReleaseManifest(MANIFEST, sigOf(MANIFEST, backup.privateKey), PUB, BACKUP_PUB)).toBe(true)
+    expect(verifyReleaseManifest(MANIFEST, sigOf(MANIFEST, pair().privateKey), PUB, BACKUP_PUB)).toBe(false)
+    expect(() => trustedManifest(MANIFEST, sigOf(MANIFEST, backup.privateKey), PUB, BACKUP_PUB)).not.toThrow()
+  })
+  it('skips the placeholder backup: only the current key is trusted', () => {
+    expect(verifyReleaseManifest(MANIFEST, sigOf(MANIFEST), PUB, BACKUP_PLACEHOLDER)).toBe(true)
+    expect(verifyReleaseManifest(MANIFEST, sigOf(MANIFEST, backup.privateKey), PUB, BACKUP_PLACEHOLDER)).toBe(false)
+  })
+  it('the backup never replaces the current key: a missing current key still fails loud', () => {
+    expect(() => verifyReleaseManifest(MANIFEST, sigOf(MANIFEST, backup.privateKey), 'PLACEHOLDER: no release signing key yet', BACKUP_PUB)).toThrow(
+      'this build has no release signing key (run scripts/release-key.sh)',
+    )
+  })
+  it('refuses a backup that is neither the placeholder nor a PEM, a non-Ed25519 backup, and a backup equal to the current key', () => {
+    expect(() => verifyReleaseManifest(MANIFEST, sigOf(MANIFEST), PUB, '')).toThrow(/backup release key/)
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    expect(() => verifyReleaseManifest(MANIFEST, sigOf(MANIFEST), PUB, rsa)).toThrow(/not ed25519/)
+    expect(() => verifyReleaseManifest(MANIFEST, sigOf(MANIFEST), PUB, PUB)).toThrow(/backup release key is the current key/)
+  })
+  it('the embedded backup is the placeholder or a real Ed25519 key distinct from the current one', () => {
+    if (RELEASE_BACKUP_PUBLIC_KEY_PEM === BACKUP_PLACEHOLDER) return
+    expect(RELEASE_BACKUP_PUBLIC_KEY_PEM).toContain('-----BEGIN PUBLIC KEY-----')
+    expect(RELEASE_BACKUP_PUBLIC_KEY_PEM).not.toBe(RELEASE_PUBLIC_KEY_PEM)
+    expect(verifyReleaseManifest(MANIFEST, sigOf(MANIFEST))).toBe(false)
   })
 })
 
