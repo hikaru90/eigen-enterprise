@@ -3,7 +3,7 @@
   import type { CallBrain } from './call-brain.svelte'
   import type { CallChat } from './call-chat.svelte'
   import type { CallTranscription } from './call-transcription.svelte'
-  import type { BrainClient, CallDto } from './client'
+  import type { BrainClient, CallDto, CallsClient } from './client'
   import Brain from '@lucide/svelte/icons/brain'
   import Captions from '@lucide/svelte/icons/captions'
   import CaptionsOff from '@lucide/svelte/icons/captions-off'
@@ -14,6 +14,7 @@
   import ScreenShare from '@lucide/svelte/icons/screen-share'
   import ScreenShareOff from '@lucide/svelte/icons/screen-share-off'
   import Settings2 from '@lucide/svelte/icons/settings-2'
+  import UserPlus from '@lucide/svelte/icons/user-plus'
   import Video from '@lucide/svelte/icons/video'
   import VideoOff from '@lucide/svelte/icons/video-off'
   import Volume2 from '@lucide/svelte/icons/volume-2'
@@ -27,6 +28,7 @@
   import DevicePicker from './device-picker.svelte'
   import { callClock } from './format'
   import { gridLayout, stageOf } from './layout'
+  import MeetingGuests from './meeting-guests.svelte'
 
   /**
    * The call tab's view of the live call (plan/video-calls.md §3). The call
@@ -72,6 +74,7 @@
     recapImportHref = null,
     chat = null,
     chatDictation = true,
+    invite = null,
   }: {
     active: ActiveCall
     call: CallDto
@@ -100,6 +103,12 @@
     chat?: CallChat | null
     /** The chat line takes dictation (false for a guest: no account to transcribe for). */
     chatDictation?: boolean
+    /**
+     * "Invite people from outside": the host of a call of our own invites guests
+     * by email from inside the live call (calls.invite_guests); null: not the host
+     * of such a call, no button.
+     */
+    invite?: Pick<CallsClient, 'inviteGuests' | 'revokeGuest'> | null
   } = $props()
 
   let brainOpen = $state(false)
@@ -126,6 +135,7 @@
   /** open() ran (in the browser): until then the page only says it is connecting. */
   let opened = $state(false)
   let devicesOpen = $state(false)
+  let inviteOpen = $state(false)
 
   const mine = $derived(active.call?.id === call.id)
   const busy = $derived(!mine && active.inCall)
@@ -187,6 +197,7 @@
 
   function toggleDevices() {
     devicesOpen = !devicesOpen
+    inviteOpen = false
     if (devicesOpen) void active.refreshDevices()
   }
 
@@ -571,7 +582,33 @@
 
   {#if mine && active.inCall}
     <div class="relative shrink-0">
-      {#if devicesOpen}
+      {#if inviteOpen && invite}
+        <div
+          class="absolute inset-x-2 bottom-full z-20 mb-2 sm:inset-x-auto sm:right-1/2 sm:w-96 sm:translate-x-1/2"
+          data-testid="call-invite-panel"
+        >
+          <div
+            class="w-full rounded-xl border border-white/10 bg-neutral-900 p-3 text-sm text-neutral-50 shadow-xl"
+          >
+            <div class="mb-2 flex items-center justify-between">
+              <p class="text-xs font-semibold tracking-wide text-neutral-400 uppercase">
+                Invite people from outside
+              </p>
+              <button
+                type="button"
+                class="grid size-7 place-items-center rounded-md text-neutral-400 hover:bg-white/10 hover:text-white"
+                aria-label="Close invitations"
+                onclick={() => (inviteOpen = false)}><X class="size-4" /></button
+              >
+            </div>
+            <MeetingGuests
+              call={active.call ?? call}
+              client={invite}
+              onchange={(c) => active.update(c)}
+            />
+          </div>
+        </div>
+      {:else if devicesOpen}
         <div
           class="absolute inset-x-2 bottom-full z-20 mb-2 sm:inset-x-auto sm:right-1/2 sm:w-80 sm:translate-x-1/2"
         >
@@ -666,6 +703,23 @@
                 aria-hidden="true"
                 data-testid="call-chat-unread">{unread > 99 ? '99+' : unread}</span
               >{/if}</button
+          >
+        {/if}
+        {#if invite}
+          <button
+            type="button"
+            class={[
+              'grid size-11 shrink-0 place-items-center rounded-full transition-colors sm:size-12',
+              inviteOpen
+                ? 'bg-white text-neutral-900 hover:bg-white/90'
+                : 'bg-white/15 text-white hover:bg-white/25',
+            ]}
+            aria-label="Invite people from outside"
+            title="Invite people from outside the company by email"
+            aria-expanded={inviteOpen}
+            data-testid="call-invite-toggle"
+            onclick={() => ((inviteOpen = !inviteOpen), (devicesOpen = false))}
+            ><UserPlus class="size-5" /></button
           >
         {/if}
         <button

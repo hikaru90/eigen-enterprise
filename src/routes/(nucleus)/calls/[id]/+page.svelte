@@ -170,6 +170,11 @@
       {transcription}
       {brain}
       {chat}
+      invite={data.call.startedBy === data.me &&
+      data.call.scheduledEnd !== null &&
+      !data.call.externalUrl
+        ? client
+        : null}
       brainRecap={brainApi}
       recapImportHref={data.shell?.assistant === true ? recapImportHref('/', data.call) : null}
       transcriptHref={resolve('/(nucleus)/calls/[id]/transcript', { id: data.call.id })}

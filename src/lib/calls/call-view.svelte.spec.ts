@@ -6,8 +6,8 @@ import { CallTranscription } from './call-transcription.svelte'
 import CallView from './call-view.svelte'
 import { CallRequestError, type CallDto, type CallTokenDto } from './client'
 import { DEVICES_KEY } from './devices'
-import { MEDIA_KEY } from './media-settings'
 import { FakeRoom, fakeCall, fakeEnv, fakeToken, memoryStorage, remotePerson } from './fake-room'
+import { MEDIA_KEY } from './media-settings'
 
 /** The live call as the call page holds it, over a fake room (no server). */
 function liveCall(
@@ -331,6 +331,52 @@ describe('device picker in the call controls', () => {
         (page.getByTestId('call-device-audioinput').element() as HTMLSelectElement).options,
       ).toHaveLength(3),
     )
+  })
+
+  it('the host of a call of our own can invite people from outside from inside the live call', async () => {
+    const l = liveCall()
+    const inviteGuests = vi.fn(async () => ({
+      call: fakeCall(),
+      invitations: [
+        {
+          guestId: 'g1',
+          email: 'kunde@example.org',
+          url: 'https://os.test/join/abc',
+          emailed: true,
+          error: null,
+        },
+      ],
+      mailConfigured: true,
+    }))
+    render(CallView, {
+      active: l.active,
+      call: fakeCall(),
+      me: 'ann',
+      leaveLabel: 'Close',
+      onleave: vi.fn(),
+      onhungup: vi.fn(),
+      onopen: vi.fn(),
+      invite: { inviteGuests, revokeGuest: vi.fn() },
+    })
+    await connected()
+    await page.getByTestId('call-invite-toggle').click()
+    await expect.element(page.getByTestId('call-invite-panel')).toBeVisible()
+    await page.getByLabelText('Invite more (email)').fill('kunde@example.org')
+    await page.getByRole('button', { name: 'Invite', exact: true }).click()
+    await vi.waitFor(() =>
+      expect(inviteGuests).toHaveBeenCalledWith(
+        'call-1',
+        ['kunde@example.org'],
+        expect.any(String),
+      ),
+    )
+    await expect.element(page.getByText('kunde@example.org · Emailed')).toBeVisible()
+  })
+
+  it('without an invite capability (a colleague, a call on another service) there is no invite button', async () => {
+    setup()
+    await connected()
+    expect(page.getByTestId('call-invite-toggle').elements()).toHaveLength(0)
   })
 
   it('video quality: Auto by default; a choice reaches the room and is remembered in this browser', async () => {
