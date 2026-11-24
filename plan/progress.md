@@ -46,9 +46,14 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - The current key is still required. A malformed backup, or a backup equal to the current key, fails loud.
   - `scripts/release-key.sh --backup` writes the key 0600, refuses to overwrite one, and says it must stay offline, never in CI.
   - ee tests: 532 passed.
-- **Left for the owner:**
-  1. Run `scripts/release-key.sh --backup`, commit the embedded public key, move the private key offline and delete the local copy.
-  2. GitHub protection: today `main` is unprotected and there are no rulesets. Protect `main` and the `v*` tags so only the owner can push them; the maintainer App joins in U8.
+- **Done with the owner, same day:**
+  - The owner ran `scripts/release-key.sh --backup`. The public key is embedded (`e7f2b756`). Still the owner's: move the private key offline and delete `~/.config/eigenenterprise/release-backup-signing.pem`.
+  - **GitHub rulesets (owner: "Yes, set rulesets"):**
+    - `27974026` on the default branch blocks updates, deletion and force-pushes;
+    - `27974029` on `refs/tags/v*` blocks creating, moving and deleting tags;
+    - both are active, and only the repository-admin role bypasses them (today the owner, `hikaru90`).
+    - The collaborator `CerberusBlue` (write) can no longer push `main` or release tags, only open PRs.
+    - The maintainer App gets added as a bypass actor in U8.
 - **Found:** `ee` tsc reports 13 existing type errors in `ee/src/daemon.spec.ts`. They were there before this round and are not in the gate.
 - **Gate:** `npm run ci:local` green on main (9402 unit, 908 component tests, 0 type errors).
 - **Next:** U1, `core-api` 1.0: the contract lock, deprecations with `howToMigrate`, the SDK, the migration lint, and the upgrade rehearsal.
