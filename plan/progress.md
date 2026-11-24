@@ -2,6 +2,24 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — AI Co-workers: screens checked in a real browser (e2e journey `1c88c50b`, fix `d9984716`, merge `e7973226`, not pushed, not on the box)
+
+- **Owner:** "Yes, check screens".
+- **New journey `src/routes/e2e/coworkers.e2e.ts`** (passes, ~47 s), as the owner through the UI:
+  - create a co-worker in Settings → Co-workers;
+  - org chart placement + AI mark;
+  - profile (role card, model, cap, run log, Would pick up; "notice new messages" persists);
+  - an @mention in a channel gets the co-worker's answer in the thread (real turn against the mock gateway);
+  - Settings → Members refuses role/remove for it.
+  - Any console error, page error or 5xx fails the journey (two narrow exceptions below).
+- **Fixed:** Messages highlighted a co-worker's display name as a mention, but only its handle triggers it. The highlight now uses the handle; the handle code is shared in `src/lib/coworkers/handle.ts`. Visible change: typing a co-worker's name no longer looks like a mention (it never was one).
+- **Found, not fixed (outside the co-worker screens):**
+  - the presence heartbeat logs a console error when a page load cuts it off (excused in the journey);
+  - the shared test DB holds other worktrees' avatars → 500 for those (excused);
+  - the rhythm timer ticks once before co-worker turns start at boot (a rhythm due at that moment runs a tick late);
+  - the pool's DeepSeek note names os.cerberusblue.com and is shown to every company.
+- **Product gaps:** a co-worker's @handle (e.g. `@nova-mwujrl74`) is shown nowhere and there is no @-autocomplete, so people can't know what to type; co-worker screens show initials, not pictures; the profile has no own edit form (it links to Settings → Co-workers).
+
 ## 2026-11-24 — AI Co-workers C7: each message routed once by the assistant (`03dbab8d`, migration 0177, merged into main, not pushed, not on the box)
 
 - **Owner decision:** "Classify every message, but do it once, and then spread the message to all agents that have to be woken up." The company's assistant is the one doing the routing: it reads each message once and routes it to the co-workers it belongs to. One Jev call per message is fine on cost.
