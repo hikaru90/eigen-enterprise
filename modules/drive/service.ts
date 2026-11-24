@@ -7,10 +7,22 @@ import { extractOfficeText } from '$lib/office/text'
 import { contentDateOf } from './content-date'
 import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
 import { isRevisioned, isTextDocument, isTextFile, mimeFor, officeKind } from './preview'
-import { SNAPSHOT_MAX_BYTES, SNAPSHOT_MAX_FILES, SNAPSHOT_SKIP_DIRS, webAppOf, type WebApp } from './web-app'
+import {
+  SNAPSHOT_MAX_BYTES,
+  SNAPSHOT_MAX_FILES,
+  SNAPSHOT_SKIP_DIRS,
+  webAppOf,
+  type WebApp,
+} from './web-app'
 
 /** One file of a folder snapshot (snapshotFiles): its path below the folder, and how to read its bytes. */
-export type SnapshotFile = { path: string; size: number; sha256: string; mtime: Date; read: () => Promise<Uint8Array> }
+export type SnapshotFile = {
+  path: string
+  size: number
+  sha256: string
+  mtime: Date
+  read: () => Promise<Uint8Array>
+}
 
 /**
  * Drive: folders and files, sharing, trash and text revisions. Every read and
@@ -48,7 +60,16 @@ export class DriveError extends Error {
      * app preview is running (app-preview.ts AppBusyError); `conflict`: an
      * upload's name is already taken in its folder (UploadConflictError).
      */
-    readonly code: 'not_found' | 'forbidden' | 'invalid' | 'too_large' | 'locked' | 'conflict' | 'unavailable' | 'upstream' | 'busy',
+    readonly code:
+      | 'not_found'
+      | 'forbidden'
+      | 'invalid'
+      | 'too_large'
+      | 'locked'
+      | 'conflict'
+      | 'unavailable'
+      | 'upstream'
+      | 'busy',
     message: string,
     /** For `locked`: who holds the edit lock now. */
     readonly holder?: LockHolder & { name: string },
@@ -91,7 +112,10 @@ export type DriveDeps = {
 }
 
 /** What an editor session learns about a file's edit lock. */
-export type LockView = { state: 'held'; since: Date } | { state: 'locked'; holder: LockHolder & { name: string } } | { state: 'free' }
+export type LockView =
+  | { state: 'held'; since: Date }
+  | { state: 'locked'; holder: LockHolder & { name: string } }
+  | { state: 'free' }
 
 export type ItemView = {
   type: ItemType
@@ -130,7 +154,11 @@ export type ItemDated = { at: Date; kind: 'taken' | 'created' | 'uploaded' | 'ad
  * A listing row's owner and sharing state (see describeItems); `readOnlyFrom`
  * names the source (its root folder's name) a read-only source item comes from.
  */
-export type ItemDescription = { ownerName: string | null; shared: boolean | null; readOnlyFrom: string | null }
+export type ItemDescription = {
+  ownerName: string | null
+  shared: boolean | null
+  readOnlyFrom: string | null
+}
 
 /** A source's root folder as the Drive rail lists it (its own section). */
 export type SourceRootView = { source: string; folderId: string; name: string; href: string }
@@ -167,7 +195,9 @@ export type BatchError = ItemRef & { error: string }
 export const MESSAGES_SYSTEM_OWNER = 'messages'
 
 /** A revision as listed: `restoredFrom` names the earlier revision a restore brought back. */
-export type ListedRevision = DriveRevision & { restoredFrom?: { id: string; authorId: string; createdAt: Date } }
+export type ListedRevision = DriveRevision & {
+  restoredFrom?: { id: string; authorId: string; createdAt: Date }
+}
 
 /**
  * Revisions as people see them (newest first): the empty first version of a
@@ -178,7 +208,9 @@ export function presentRevisions(revs: DriveRevision[]): ListedRevision[] {
   const list = revs.length > 0 && revs[revs.length - 1]!.size === 0 ? revs.slice(0, -1) : revs
   return list.map((r, i) => {
     const from = list.slice(i + 2).find((o) => o.sha256 === r.sha256)
-    return from ? { ...r, restoredFrom: { id: from.id, authorId: from.authorId, createdAt: from.createdAt } } : r
+    return from
+      ? { ...r, restoredFrom: { id: from.id, authorId: from.authorId, createdAt: from.createdAt } }
+      : r
   })
 }
 
@@ -189,7 +221,8 @@ export function resolveMaxUploadBytes(env: Record<string, string | undefined>): 
   const raw = env.DRIVE_MAX_UPLOAD_BYTES?.trim()
   if (!raw) return DEFAULT_MAX_UPLOAD_BYTES
   const n = Number(raw)
-  if (!Number.isSafeInteger(n) || n <= 0) throw new Error(`DRIVE_MAX_UPLOAD_BYTES must be a positive whole number of bytes, got "${raw}"`)
+  if (!Number.isSafeInteger(n) || n <= 0)
+    throw new Error(`DRIVE_MAX_UPLOAD_BYTES must be a positive whole number of bytes, got "${raw}"`)
   return n
 }
 
@@ -208,8 +241,10 @@ export function formatBytes(n: number): string {
 function cleanName(raw: string): string {
   const name = raw.trim()
   if (!name) throw new DriveError('invalid', 'Give it a name.')
-  if (name.length > 255) throw new DriveError('invalid', 'That name is too long (255 characters at most).')
-  if (/[/\\]/.test(name) || name === '.' || name === '..') throw new DriveError('invalid', 'A name can’t contain / or \\.')
+  if (name.length > 255)
+    throw new DriveError('invalid', 'That name is too long (255 characters at most).')
+  if (/[/\\]/.test(name) || name === '.' || name === '..')
+    throw new DriveError('invalid', 'A name can’t contain / or \\.')
   return name
 }
 
@@ -279,7 +314,11 @@ export function createDriveService(deps: DriveDeps) {
 
   async function requireEditable(actor: Actor, id: string): Promise<DriveFile> {
     const file = await requireFile(actor, id, 'edit')
-    if (!isRevisioned(file.name)) throw new DriveError('invalid', `Only documents, tables, PDF, Word and PowerPoint files are edited in place; “${file.name}” is not one.`)
+    if (!isRevisioned(file.name))
+      throw new DriveError(
+        'invalid',
+        `Only documents, tables, PDF, Word and PowerPoint files are edited in place; “${file.name}” is not one.`,
+      )
     return file
   }
 
@@ -289,12 +328,28 @@ export function createDriveService(deps: DriveDeps) {
    * the revision that session started (a take-over, a new session after the
    * lock was let go, or a restore starts a new one).
    */
-  async function saveContent(actor: Actor, file: DriveFile, bytes: Uint8Array, sessionId: string | undefined): Promise<{ file: ItemView; revision: DriveRevision }> {
+  async function saveContent(
+    actor: Actor,
+    file: DriveFile,
+    bytes: Uint8Array,
+    sessionId: string | undefined,
+  ): Promise<{ file: ItemView; revision: DriveRevision }> {
     await requireWriteTurn(actor, file.id, sessionId)
-    if (bytes.byteLength > deps.maxUploadBytes) throw new DriveError('too_large', `That is ${formatBytes(bytes.byteLength)}; files can be at most ${formatBytes(deps.maxUploadBytes)}.`)
+    if (bytes.byteLength > deps.maxUploadBytes)
+      throw new DriveError(
+        'too_large',
+        `That is ${formatBytes(bytes.byteLength)}; files can be at most ${formatBytes(deps.maxUploadBytes)}.`,
+      )
     // A file from before its format kept history: its current content becomes the first revision, so the save can be undone.
     if (file.size > 0 && (await store.listRevisions(file.id)).length === 0) {
-      await store.insertRevision({ id: randomUUID(), fileId: file.id, sha256: file.sha256, size: file.size, authorId: file.ownerId, createdAt: file.updatedAt })
+      await store.insertRevision({
+        id: randomUUID(),
+        fileId: file.id,
+        sha256: file.sha256,
+        size: file.size,
+        authorId: file.ownerId,
+        createdAt: file.updatedAt,
+      })
     }
     const blob = await blobs.put(bytes)
     const at = now()
@@ -302,7 +357,11 @@ export function createDriveService(deps: DriveDeps) {
     const ongoing = sessionId ? await sessionRevision(actor, file.id, sessionId) : null
     let revision: DriveRevision
     if (ongoing) {
-      await store.updateRevision(ongoing.id, { sha256: blob.sha256, size: blob.size, createdAt: at })
+      await store.updateRevision(ongoing.id, {
+        sha256: blob.sha256,
+        size: blob.size,
+        createdAt: at,
+      })
       revision = { ...ongoing, sha256: blob.sha256, size: blob.size, createdAt: at }
     } else revision = await storeRevision(file.id, blob.sha256, blob.size, actor, at)
     return { file: await view('file', file.id), revision }
@@ -314,7 +373,11 @@ export function createDriveService(deps: DriveDeps) {
    * without one (the agent, API calls) the file must not be locked by a
    * live session.
    */
-  async function requireWriteTurn(actor: Actor, fileId: string, sessionId: string | undefined): Promise<void> {
+  async function requireWriteTurn(
+    actor: Actor,
+    fileId: string,
+    sessionId: string | undefined,
+  ): Promise<void> {
     const at = now()
     const cur = await locks.get(fileId)
     if (sessionId) {
@@ -329,11 +392,19 @@ export function createDriveService(deps: DriveDeps) {
       }
       const now2 = await locks.get(fileId)
       const holder = now2 ? await namedHolder(now2) : undefined
-      throw new DriveError('locked', `${holder?.name ?? 'Someone'} took over editing; your changes were not saved.`, holder)
+      throw new DriveError(
+        'locked',
+        `${holder?.name ?? 'Someone'} took over editing; your changes were not saved.`,
+        holder,
+      )
     }
     if (isLive(cur, at, lockTtl)) {
       const holder = await namedHolder(cur)
-      throw new DriveError('locked', `${holder.name} is editing this file right now; try again when they are done.`, holder)
+      throw new DriveError(
+        'locked',
+        `${holder.name} is editing this file right now; try again when they are done.`,
+        holder,
+      )
     }
   }
 
@@ -356,45 +427,73 @@ export function createDriveService(deps: DriveDeps) {
   async function load(type: ItemType, id: string): Promise<DriveFolder | DriveFile | null> {
     return type === 'folder' ? store.getFolder(id) : store.getFile(id)
   }
-  const parentOf = (item: DriveFolder | DriveFile) => ('parentId' in item ? item.parentId : item.folderId)
+  const parentOf = (item: DriveFolder | DriveFile) =>
+    'parentId' in item ? item.parentId : item.folderId
 
   /**
    * The source root an item belongs to (itself, or the top of its chain), or
    * null for what people make. `chain` is nearest first. Source roots are
    * top-level folders, so the root is the chain's last folder.
    */
-  function sourceRootOf(item: DriveFolder | DriveFile, chain: readonly DriveFolder[]): DriveFolder | null {
+  function sourceRootOf(
+    item: DriveFolder | DriveFile,
+    chain: readonly DriveFolder[],
+  ): DriveFolder | null {
     const top = chain[chain.length - 1] ?? item
     if (top.source !== null && 'parentId' in top && top.parentId === null) return top
-    if (item.source !== null || chain.some((f) => f.source !== null)) throw new Error(`drive ${item.id} is a source item outside its source's root`)
+    if (item.source !== null || chain.some((f) => f.source !== null))
+      throw new Error(`drive ${item.id} is a source item outside its source's root`)
     return null
   }
 
-  const readOnlyMessage = (root: DriveFolder) => `This comes from ${root.name} and is read-only here. Change it on ${root.name}.`
+  const readOnlyMessage = (root: DriveFolder) =>
+    `This comes from ${root.name} and is read-only here. Change it on ${root.name}.`
 
   /**
    * Source items are read-only for everyone, the agent included (checked
    * before its bypass): no edit at all; manage stays (sharing, for the owner
    * and admins); the access contract decides the rest.
    */
-  async function allows(actor: Actor, type: ItemType, item: DriveFolder | DriveFile, level: AccessLevel): Promise<boolean> {
+  async function allows(
+    actor: Actor,
+    type: ItemType,
+    item: DriveFolder | DriveFile,
+    level: AccessLevel,
+  ): Promise<boolean> {
     const chain = await chainFrom(parentOf(item))
     if (level === 'edit' && sourceRootOf(item, chain)) return false
     if (actor.kind === 'agent') return true
-    return access.canAccess(actor.userId, { resourceType: type, resourceId: item.id, folderChain: chain.map((f) => f.id) }, level)
+    return access.canAccess(
+      actor.userId,
+      { resourceType: type, resourceId: item.id, folderChain: chain.map((f) => f.id) },
+      level,
+    )
   }
 
   /** Loads an item the actor holds `level` on; trashed items only when `trashed` is set. */
-  async function requireItem(actor: Actor, type: ItemType, id: string, level: AccessLevel, opts: { trashed?: boolean } = {}) {
+  async function requireItem(
+    actor: Actor,
+    type: ItemType,
+    id: string,
+    level: AccessLevel,
+    opts: { trashed?: boolean } = {},
+  ) {
     const item = await load(type, id)
-    if (!item || !(await allows(actor, type, item, 'view'))) throw new DriveError('not_found', `No such ${type}.`)
-    if (!opts.trashed && (item.trashedAt || (await inTrash(parentOf(item))))) throw new DriveError('not_found', `That ${type} is in the trash.`)
+    if (!item || !(await allows(actor, type, item, 'view')))
+      throw new DriveError('not_found', `No such ${type}.`)
+    if (!opts.trashed && (item.trashedAt || (await inTrash(parentOf(item)))))
+      throw new DriveError('not_found', `That ${type} is in the trash.`)
     if (level === 'edit') {
       const root = sourceRootOf(item, await chainFrom(parentOf(item)))
       if (root) throw new DriveError('forbidden', readOnlyMessage(root))
     }
     if (level !== 'view' && !(await allows(actor, type, item, level))) {
-      throw new DriveError('forbidden', level === 'manage' ? `You can’t manage this ${type}.` : `You can view this ${type} but not change it.`)
+      throw new DriveError(
+        'forbidden',
+        level === 'manage'
+          ? `You can’t manage this ${type}.`
+          : `You can view this ${type} but not change it.`,
+      )
     }
     return item
   }
@@ -421,7 +520,10 @@ export function createDriveService(deps: DriveDeps) {
   const SHARED: PathRoot = { label: 'Shared with me', href: '/drive/shared' }
   const MESSAGES: PathRoot = { label: 'Messages', href: '/messages' }
   /** A source folder's tree starts at its root folder (named by the source, e.g. "GitHub"). */
-  const sourcePathRoot = (root: DriveFolder): PathRoot => ({ label: root.name, href: `/drive/folder/${root.id}` })
+  const sourcePathRoot = (root: DriveFolder): PathRoot => ({
+    label: root.name,
+    href: `/drive/folder/${root.id}`,
+  })
 
   /**
    * The path to an item as the actor may see it: ancestors they can't open
@@ -429,7 +531,11 @@ export function createDriveService(deps: DriveDeps) {
    * the actor's own, "Messages" for conversation attachments, else
    * "Shared with me".
    */
-  async function pathFor(actor: Actor, chain: DriveFolder[], item: DriveFolder | DriveFile): Promise<{ root: PathRoot; path: Crumb[] }> {
+  async function pathFor(
+    actor: Actor,
+    chain: DriveFolder[],
+    item: DriveFolder | DriveFile,
+  ): Promise<{ root: PathRoot; path: Crumb[] }> {
     let start = 0
     while (start < chain.length && !(await allows(actor, 'folder', chain[start]!, 'view'))) start++
     let visibleChain = chain.slice(start)
@@ -445,12 +551,22 @@ export function createDriveService(deps: DriveDeps) {
       root = MESSAGES
       // The "Messages" folder itself is the root crumb, not a step after it.
       if (visibleChain[0] && visibleChain[0].parentId === null) visibleChain = visibleChain.slice(1)
-    } else root = actor.kind === 'user' && top.ownerId === actor.userId ? MY_DRIVE : actor.kind === 'agent' ? MY_DRIVE : SHARED
+    } else
+      root =
+        actor.kind === 'user' && top.ownerId === actor.userId
+          ? MY_DRIVE
+          : actor.kind === 'agent'
+            ? MY_DRIVE
+            : SHARED
     return { root, path: visibleChain.map((f) => ({ id: f.id, name: f.name })) }
   }
 
   /** The revision this editor session already started (same lock tenure, same author, not a restore), if any. */
-  async function sessionRevision(actor: Actor, fileId: string, sessionId: string): Promise<DriveRevision | null> {
+  async function sessionRevision(
+    actor: Actor,
+    fileId: string,
+    sessionId: string,
+  ): Promise<DriveRevision | null> {
     const lock = await locks.get(fileId)
     if (!lock || lock.sessionId !== sessionId) return null
     const revs = presentRevisions(await store.listRevisions(fileId))
@@ -459,16 +575,38 @@ export function createDriveService(deps: DriveDeps) {
     return latest.createdAt.getTime() >= lock.acquiredAt.getTime() ? latest : null
   }
 
-  async function storeRevision(fileId: string, sha256: string, size: number, actor: Actor, at: Date): Promise<DriveRevision> {
-    const rev: DriveRevision = { id: randomUUID(), fileId, sha256, size, authorId: ownerIdOf(actor), createdAt: at }
+  async function storeRevision(
+    fileId: string,
+    sha256: string,
+    size: number,
+    actor: Actor,
+    at: Date,
+  ): Promise<DriveRevision> {
+    const rev: DriveRevision = {
+      id: randomUUID(),
+      fileId,
+      sha256,
+      size,
+      authorId: ownerIdOf(actor),
+      createdAt: at,
+    }
     await store.insertRevision(rev)
     return rev
   }
 
-  async function addFile(actor: Actor, folderId: string | null, rawName: string, bytes: Uint8Array, mime: string | null): Promise<DriveFile> {
+  async function addFile(
+    actor: Actor,
+    folderId: string | null,
+    rawName: string,
+    bytes: Uint8Array,
+    mime: string | null,
+  ): Promise<DriveFile> {
     const name = cleanName(rawName)
     if (bytes.byteLength > deps.maxUploadBytes) {
-      throw new DriveError('too_large', `“${name}” is ${formatBytes(bytes.byteLength)}; files can be at most ${formatBytes(deps.maxUploadBytes)}.`)
+      throw new DriveError(
+        'too_large',
+        `“${name}” is ${formatBytes(bytes.byteLength)}; files can be at most ${formatBytes(deps.maxUploadBytes)}.`,
+      )
     }
     await requireTarget(actor, folderId)
     const blob = await blobs.put(bytes)
@@ -495,7 +633,8 @@ export function createDriveService(deps: DriveDeps) {
     await store.insertFile(file)
     await grantCreator(actor, 'file', file.id)
     // A new empty document has no history yet: its first revision is its first save.
-    if (isRevisioned(name) && blob.size > 0) await storeRevision(file.id, blob.sha256, blob.size, actor, at)
+    if (isRevisioned(name) && blob.size > 0)
+      await storeRevision(file.id, blob.sha256, blob.size, actor, at)
     return file
   }
 
@@ -509,7 +648,12 @@ export function createDriveService(deps: DriveDeps) {
   async function grantCreator(actor: Actor, type: ItemType, id: string): Promise<void> {
     if (actor.kind !== 'user') return
     await access.initializeGrants(actor.userId, type, id, [
-      { resourceType: type, resourceId: id, subject: { kind: 'user', userId: actor.userId }, level: 'manage' },
+      {
+        resourceType: type,
+        resourceId: id,
+        subject: { kind: 'user', userId: actor.userId },
+        level: 'manage',
+      },
     ])
   }
 
@@ -518,8 +662,16 @@ export function createDriveService(deps: DriveDeps) {
   }
 
   async function purgeFile(actor: Actor, file: DriveFile): Promise<void> {
-    const shas = new Set([file.sha256, ...(await store.listRevisions(file.id)).map((r) => r.sha256)])
-    await access.dropResource(ownerIdOf(actor), 'file', file.id, (await chainFrom(file.folderId)).map((f) => f.id))
+    const shas = new Set([
+      file.sha256,
+      ...(await store.listRevisions(file.id)).map((r) => r.sha256),
+    ])
+    await access.dropResource(
+      ownerIdOf(actor),
+      'file',
+      file.id,
+      (await chainFrom(file.folderId)).map((f) => f.id),
+    )
     await store.deleteFile(file.id)
     for (const sha of shas) await dropBlobIfUnused(sha)
   }
@@ -528,44 +680,71 @@ export function createDriveService(deps: DriveDeps) {
     const kids = await store.children(folder.id)
     for (const f of kids.files) await purgeFile(actor, f)
     for (const f of kids.folders) await purgeFolder(actor, f)
-    await access.dropResource(ownerIdOf(actor), 'folder', folder.id, (await chainFrom(folder.parentId)).map((f) => f.id))
+    await access.dropResource(
+      ownerIdOf(actor),
+      'folder',
+      folder.id,
+      (await chainFrom(folder.parentId)).map((f) => f.id),
+    )
     await store.deleteFolder(folder.id)
   }
 
   /** What the actor can view of these items, with their rights; archived ones only with `archived: 'include'`. */
-  async function visible(actor: Actor, items: { folders: DriveFolder[]; files: DriveFile[] }, opts: { archived: 'hide' | 'include' }) {
+  async function visible(
+    actor: Actor,
+    items: { folders: DriveFolder[]; files: DriveFile[] },
+    opts: { archived: 'hide' | 'include' },
+  ) {
     const out: ItemView[] = []
     const withRights = async (type: ItemType, f: DriveFolder | DriveFile, v: ItemView) => ({
       ...v,
       canEdit: await allows(actor, type, f, 'edit'),
       canManage: await allows(actor, type, f, 'manage'),
     })
-    const shown = (f: DriveFolder | DriveFile) => !f.trashedAt && (opts.archived === 'include' || !f.archivedAt)
-    for (const f of items.folders) if (shown(f) && !(await inTrash(f.parentId)) && (await allows(actor, 'folder', f, 'view'))) out.push(await withRights('folder', f, folderView(f)))
-    for (const f of items.files) if (shown(f) && !(await inTrash(f.folderId)) && (await allows(actor, 'file', f, 'view'))) out.push(await withRights('file', f, fileView(f)))
+    const shown = (f: DriveFolder | DriveFile) =>
+      !f.trashedAt && (opts.archived === 'include' || !f.archivedAt)
+    for (const f of items.folders)
+      if (shown(f) && !(await inTrash(f.parentId)) && (await allows(actor, 'folder', f, 'view')))
+        out.push(await withRights('folder', f, folderView(f)))
+    for (const f of items.files)
+      if (shown(f) && !(await inTrash(f.folderId)) && (await allows(actor, 'file', f, 'view')))
+        out.push(await withRights('file', f, fileView(f)))
     return out
   }
 
   /** The nearest folder from parentId up that is archived and that the actor can open, if any. */
   async function archivedAbove(actor: Actor, parentId: string | null): Promise<Crumb | null> {
     for (const f of await chainFrom(parentId)) {
-      if (f.archivedAt && (await allows(actor, 'folder', f, 'view'))) return { id: f.id, name: f.name }
+      if (f.archivedAt && (await allows(actor, 'folder', f, 'view')))
+        return { id: f.id, name: f.name }
     }
     return null
   }
 
-  async function setArchived(actor: Actor, type: ItemType, id: string, archived: boolean): Promise<DriveFolder | DriveFile> {
+  async function setArchived(
+    actor: Actor,
+    type: ItemType,
+    id: string,
+    archived: boolean,
+  ): Promise<DriveFolder | DriveFile> {
     const item = await requireItem(actor, type, id, 'edit')
-    if (archived && item.archivedAt) throw new DriveError('invalid', `“${item.name}” is already archived.`)
-    if (!archived && !item.archivedAt) throw new DriveError('invalid', `“${item.name}” is not archived.`)
-    const patch = archived ? { archivedAt: now(), archivedBy: ownerIdOf(actor) } : { archivedAt: null, archivedBy: null }
+    if (archived && item.archivedAt)
+      throw new DriveError('invalid', `“${item.name}” is already archived.`)
+    if (!archived && !item.archivedAt)
+      throw new DriveError('invalid', `“${item.name}” is not archived.`)
+    const patch = archived
+      ? { archivedAt: now(), archivedBy: ownerIdOf(actor) }
+      : { archivedAt: null, archivedBy: null }
     if (type === 'folder') await store.updateFolder(id, patch)
     else await store.updateFile(id, patch)
     return item
   }
 
   /** Runs an act per item: a DriveError becomes that item's sentence; anything else is a real failure. */
-  async function eachItem<T>(items: readonly ItemRef[], act: (ref: ItemRef) => Promise<T>): Promise<{ done: T[]; errors: BatchError[] }> {
+  async function eachItem<T>(
+    items: readonly ItemRef[],
+    act: (ref: ItemRef) => Promise<T>,
+  ): Promise<{ done: T[]; errors: BatchError[] }> {
     const done: T[] = []
     const errors: BatchError[] = []
     for (const ref of items) {
@@ -579,16 +758,32 @@ export function createDriveService(deps: DriveDeps) {
     return { done, errors }
   }
 
-  const sorted = <T extends ItemView>(items: T[]): T[] => [...items.filter((i) => i.type === 'folder').sort(byName), ...items.filter((i) => i.type === 'file').sort(byName)]
+  const sorted = <T extends ItemView>(items: T[]): T[] => [
+    ...items.filter((i) => i.type === 'folder').sort(byName),
+    ...items.filter((i) => i.type === 'file').sort(byName),
+  ]
 
   const service = {
     /** A folder's contents (null = the actor's own top level), with the path to it and what the actor may do there. */
     async listFolder(actor: Actor, folderId: string | null) {
       if (folderId === null) {
         const kids = await store.children(null)
-        const mine = (f: { ownerId: string }) => actor.kind === 'agent' || f.ownerId === actor.userId
-        const items = await visible(actor, { folders: kids.folders.filter(mine), files: kids.files.filter(mine) }, { archived: 'hide' })
-        return { folder: null, path: [] as Crumb[], root: MY_DRIVE, items: sorted(items), canEdit: true, canManage: false, archivedIn: null as Crumb | null }
+        const mine = (f: { ownerId: string }) =>
+          actor.kind === 'agent' || f.ownerId === actor.userId
+        const items = await visible(
+          actor,
+          { folders: kids.folders.filter(mine), files: kids.files.filter(mine) },
+          { archived: 'hide' },
+        )
+        return {
+          folder: null,
+          path: [] as Crumb[],
+          root: MY_DRIVE,
+          items: sorted(items),
+          canEdit: true,
+          canManage: false,
+          archivedIn: null as Crumb | null,
+        }
       }
       const folder = await requireFolder(actor, folderId, 'view')
       const { root, path } = await pathFor(actor, (await chainFrom(folder.id)).reverse(), folder)
@@ -611,17 +806,28 @@ export function createDriveService(deps: DriveDeps) {
       // contents of an archived shared folder don't surface on their own.
       // Source folders have their own rail section, so they are not listed here.
       const everything = await store.findByName('')
-      const people = { folders: everything.folders.filter((f) => f.source === null), files: everything.files.filter((f) => f.source === null) }
+      const people = {
+        folders: everything.folders.filter((f) => f.source === null),
+        files: everything.files.filter((f) => f.source === null),
+      }
       const all = await visible(actor, people, { archived: 'include' })
       const viewable = new Set(all.map((i) => `${i.type}:${i.id}`))
-      return sorted(all.filter((i) => !i.archivedAt && i.ownerId !== actor.userId && !(i.parentId && viewable.has(`folder:${i.parentId}`))))
+      return sorted(
+        all.filter(
+          (i) =>
+            !i.archivedAt &&
+            i.ownerId !== actor.userId &&
+            !(i.parentId && viewable.has(`folder:${i.parentId}`)),
+        ),
+      )
     },
 
     /** The source roots the actor can open, for the Drive rail (one section each), by name. */
     async sourceRoots(actor: Actor): Promise<SourceRootView[]> {
       const out: SourceRootView[] = []
       for (const r of await store.sourceRoots()) {
-        if (r.trashedAt || r.source === null || !(await allows(actor, 'folder', r, 'view'))) continue
+        if (r.trashedAt || r.source === null || !(await allows(actor, 'folder', r, 'view')))
+          continue
         out.push({ source: r.source, folderId: r.id, name: r.name, href: sourcePathRoot(r).href })
       }
       return out.sort((a, b) => a.name.localeCompare(b.name))
@@ -634,7 +840,9 @@ export function createDriveService(deps: DriveDeps) {
       for (const root of top.folders) {
         if (root.ownerId !== MESSAGES_SYSTEM_OWNER || root.trashedAt) continue
         const kids = await store.children(root.id)
-        out.push(...(await visible(actor, { folders: kids.folders, files: [] }, { archived: 'hide' })))
+        out.push(
+          ...(await visible(actor, { folders: kids.folders, files: [] }, { archived: 'hide' })),
+        )
       }
       return sorted(out)
     },
@@ -642,7 +850,8 @@ export function createDriveService(deps: DriveDeps) {
     /**
      * Unified Drive overview: every top-level accessible item across My drive,
      * Shared with me, Messages and read-only sources, tagged with its origin,
-     * deduplicated by `type:id` (preferring `'mine'`), sorted folders first then name.
+     * deduplicated by `type:id` (preferring `'mine'`), newest first (folders and files mixed, ties by
+     * name): what was just added stays on top instead of falling behind every shared folder.
      */
     async listOverview(actor: Actor): Promise<OverviewItemView[]> {
       const [mine, shared, messages, roots] = await Promise.all([
@@ -660,7 +869,11 @@ export function createDriveService(deps: DriveDeps) {
       for (const item of mine.items) {
         // For the agent, listFolder(agent, null) returns every top-level folder, including
         // source roots and the synthetic Messages container; let those land in their own origins.
-        if (item.type === 'folder' && (sourceRootIds.has(item.id) || item.ownerId === MESSAGES_SYSTEM_OWNER)) continue
+        if (
+          item.type === 'folder' &&
+          (sourceRootIds.has(item.id) || item.ownerId === MESSAGES_SYSTEM_OWNER)
+        )
+          continue
         add(item, 'mine', MY_DRIVE.label)
       }
       for (const item of messages) add(item, 'messages', MESSAGES.label)
@@ -679,10 +892,17 @@ export function createDriveService(deps: DriveDeps) {
       }
       for (const item of shared) {
         // The synthetic Messages container is surfaced via its conversation folders above, not as a shared item.
-        if (item.type === 'folder' && item.ownerId === MESSAGES_SYSTEM_OWNER && item.parentId === null) continue
+        if (
+          item.type === 'folder' &&
+          item.ownerId === MESSAGES_SYSTEM_OWNER &&
+          item.parentId === null
+        )
+          continue
         add(item, 'shared', SHARED.label)
       }
-      return sorted([...byKey.values()])
+      return [...byKey.values()].sort(
+        (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || byName(a, b),
+      )
     },
 
     /**
@@ -691,21 +911,36 @@ export function createDriveService(deps: DriveDeps) {
      * whether it is shared with anyone besides its owner — told only to those
      * who manage the item (they could open its Share dialog anyway), else null.
      */
-    async describeItems(actor: Actor, items: readonly ItemView[]): Promise<Record<string, ItemDescription>> {
-      const people = new Map((await access.shareTargets()).people.map((p) => [p.id, p.name || p.email]))
+    async describeItems(
+      actor: Actor,
+      items: readonly ItemView[],
+    ): Promise<Record<string, ItemDescription>> {
+      const people = new Map(
+        (await access.shareTargets()).people.map((p) => [p.id, p.name || p.email]),
+      )
       const out: Record<string, ItemDescription> = {}
       for (const item of items) {
         const loaded = await load(item.type, item.id)
         const source = loaded ? sourceRootOf(loaded, await chainFrom(parentOf(loaded))) : null
-        const ownerName = source ? source.name : item.ownerId === MESSAGES_SYSTEM_OWNER ? 'Messages' : (people.get(item.ownerId) ?? null)
+        const ownerName = source
+          ? source.name
+          : item.ownerId === MESSAGES_SYSTEM_OWNER
+            ? 'Messages'
+            : (people.get(item.ownerId) ?? null)
         const manages = loaded !== null && (await allows(actor, item.type, loaded, 'manage'))
         // A source root's company-wide view grant is how it is made, not sharing someone chose.
         const shared = manages
           ? (await access.listGrants(item.type, item.id)).some(
-              (g) => !(g.subject.kind === 'user' && g.subject.userId === item.ownerId) && !(source?.id === item.id && g.subject.kind === 'company' && g.level === 'view'),
+              (g) =>
+                !(g.subject.kind === 'user' && g.subject.userId === item.ownerId) &&
+                !(source?.id === item.id && g.subject.kind === 'company' && g.level === 'view'),
             )
           : null
-        out[`${item.type}:${item.id}`] = { ownerName, shared, readOnlyFrom: source ? source.name : null }
+        out[`${item.type}:${item.id}`] = {
+          ownerName,
+          shared,
+          readOnlyFrom: source ? source.name : null,
+        }
       }
       return out
     },
@@ -716,7 +951,11 @@ export function createDriveService(deps: DriveDeps) {
       // Archived items are still found, marked (inside an archived folder counts).
       const found = await visible(actor, await store.findByName(q), { archived: 'include' })
       const marked: ItemView[] = []
-      for (const i of found) marked.push({ ...i, inArchive: i.archivedAt !== null || (await archivedAbove(actor, i.parentId)) !== null })
+      for (const i of found)
+        marked.push({
+          ...i,
+          inArchive: i.archivedAt !== null || (await archivedAbove(actor, i.parentId)) !== null,
+        })
       return sorted(marked)
     },
 
@@ -725,10 +964,20 @@ export function createDriveService(deps: DriveDeps) {
       const all = await store.findByName('')
       const out: ItemView[] = []
       for (const f of all.folders) {
-        if (f.trashedAt && (await allows(actor, 'folder', f, 'edit'))) out.push({ ...folderView(f), canEdit: true, canManage: await allows(actor, 'folder', f, 'manage') })
+        if (f.trashedAt && (await allows(actor, 'folder', f, 'edit')))
+          out.push({
+            ...folderView(f),
+            canEdit: true,
+            canManage: await allows(actor, 'folder', f, 'manage'),
+          })
       }
       for (const f of all.files) {
-        if (f.trashedAt && (await allows(actor, 'file', f, 'edit'))) out.push({ ...fileView(f), canEdit: true, canManage: await allows(actor, 'file', f, 'manage') })
+        if (f.trashedAt && (await allows(actor, 'file', f, 'edit')))
+          out.push({
+            ...fileView(f),
+            canEdit: true,
+            canManage: await allows(actor, 'file', f, 'manage'),
+          })
       }
       return out.sort((a, b) => (b.trashedAt?.getTime() ?? 0) - (a.trashedAt?.getTime() ?? 0))
     },
@@ -770,21 +1019,37 @@ export function createDriveService(deps: DriveDeps) {
       await requireTarget(actor, folderId)
       const siblings = await filesIn(actor, folderId)
       const same = siblings.filter((f) => f.name === name)
-      if (same.length === 0) return { ...fileView(await addFile(actor, folderId, name, file.bytes, file.mime)), outcome: 'created' }
+      if (same.length === 0)
+        return {
+          ...fileView(await addFile(actor, folderId, name, file.bytes, file.mime)),
+          outcome: 'created',
+        }
       const where = folderId === null ? MY_DRIVE.label : (await store.getFolder(folderId))!.name
       if (onConflict === 'keep_both') {
         const free = keepBothName(name, new Set(siblings.map((f) => f.name)))
-        return { ...fileView(await addFile(actor, folderId, free, file.bytes, file.mime)), outcome: 'kept_both' }
+        return {
+          ...fileView(await addFile(actor, folderId, free, file.bytes, file.mime)),
+          outcome: 'kept_both',
+        }
       }
-      if (same.length > 1) throw new DriveError('invalid', `There are ${same.length} files named “${name}” in ${where}; rename one so it is clear which to replace.`)
+      if (same.length > 1)
+        throw new DriveError(
+          'invalid',
+          `There are ${same.length} files named “${name}” in ${where}; rename one so it is clear which to replace.`,
+        )
       const existing = same[0]!
-      if (onConflict === 'fail') throw new UploadConflictError(`“${name}” already exists in ${where}.`, fileView(existing))
+      if (onConflict === 'fail')
+        throw new UploadConflictError(`“${name}” already exists in ${where}.`, fileView(existing))
       const target = await requireFile(actor, existing.id, 'edit')
       await saveContent(actor, target, file.bytes, undefined)
       // The upload's own type and recorded date now describe the file.
       const type = mimeFor(name, file.mime)
       const recorded = await contentDateOf(file.bytes, type)
-      await store.updateFile(target.id, { mime: type, contentDate: recorded?.at ?? null, contentDateKind: recorded?.kind ?? null })
+      await store.updateFile(target.id, {
+        mime: type,
+        contentDate: recorded?.at ?? null,
+        contentDateKind: recorded?.kind ?? null,
+      })
       return { ...(await view('file', target.id)), outcome: 'replaced' }
     },
 
@@ -793,11 +1058,19 @@ export function createDriveService(deps: DriveDeps) {
      * first revision), or — with `content` (the agent's drive.create_document) —
      * a file with that text as its first revision.
      */
-    async createDocument(actor: Actor, folderId: string | null, kind: 'md' | 'csv', rawName?: string, content?: string): Promise<ItemView> {
+    async createDocument(
+      actor: Actor,
+      folderId: string | null,
+      kind: 'md' | 'csv',
+      rawName?: string,
+      content?: string,
+    ): Promise<ItemView> {
       const base = rawName?.trim() || (kind === 'md' ? 'Untitled document' : 'Untitled table')
       const name = base.toLowerCase().endsWith(`.${kind}`) ? base : `${base}.${kind}`
       const bytes = new TextEncoder().encode(content ?? '')
-      return fileView(await addFile(actor, folderId, name, bytes, kind === 'md' ? 'text/markdown' : 'text/csv'))
+      return fileView(
+        await addFile(actor, folderId, name, bytes, kind === 'md' ? 'text/markdown' : 'text/csv'),
+      )
     },
 
     async rename(actor: Actor, type: ItemType, id: string, rawName: string): Promise<ItemView> {
@@ -808,14 +1081,20 @@ export function createDriveService(deps: DriveDeps) {
       return view(type, id)
     },
 
-    async move(actor: Actor, type: ItemType, id: string, targetFolderId: string | null): Promise<ItemView> {
+    async move(
+      actor: Actor,
+      type: ItemType,
+      id: string,
+      targetFolderId: string | null,
+    ): Promise<ItemView> {
       await requireItem(actor, type, id, 'edit')
       await requireTarget(actor, targetFolderId)
       if (type === 'folder' && targetFolderId !== null) {
         const chain = [targetFolderId, ...(await chainFrom(targetFolderId)).map((f) => f.id)]
         if (chain.includes(id)) throw new DriveError('invalid', 'A folder can’t move into itself.')
       }
-      if (type === 'folder') await store.updateFolder(id, { parentId: targetFolderId, updatedAt: now() })
+      if (type === 'folder')
+        await store.updateFolder(id, { parentId: targetFolderId, updatedAt: now() })
       else await store.updateFile(id, { folderId: targetFolderId, updatedAt: now() })
       return view(type, id)
     },
@@ -831,7 +1110,8 @@ export function createDriveService(deps: DriveDeps) {
       const item = await requireItem(actor, type, id, 'edit', { trashed: true })
       if (!item.trashedAt) throw new DriveError('invalid', `That ${type} is not in the trash.`)
       const orphan = await inTrash(parentOf(item))
-      if (type === 'folder') await store.updateFolder(id, { trashedAt: null, ...(orphan ? { parentId: null } : {}) })
+      if (type === 'folder')
+        await store.updateFolder(id, { trashedAt: null, ...(orphan ? { parentId: null } : {}) })
       else await store.updateFile(id, { trashedAt: null, ...(orphan ? { folderId: null } : {}) })
       return view(type, id)
     },
@@ -846,7 +1126,11 @@ export function createDriveService(deps: DriveDeps) {
 
     async fileInfo(actor: Actor, id: string) {
       const file = await requireFile(actor, id, 'view')
-      const { root, path } = await pathFor(actor, file.folderId ? (await chainFrom(file.folderId)).reverse() : [], file)
+      const { root, path } = await pathFor(
+        actor,
+        file.folderId ? (await chainFrom(file.folderId)).reverse() : [],
+        file,
+      )
       return {
         file: fileView(file),
         path,
@@ -869,17 +1153,29 @@ export function createDriveService(deps: DriveDeps) {
      * path never leaves the folder; two items with the asked-for name fail
      * loud instead of picking one. Needs view access, like opening the file.
      */
-    async readAtPath(actor: Actor, folderId: string, segments: readonly string[]): Promise<{ file: DriveFile; bytes: Uint8Array }> {
+    async readAtPath(
+      actor: Actor,
+      folderId: string,
+      segments: readonly string[],
+    ): Promise<{ file: DriveFile; bytes: Uint8Array }> {
       if (segments.length === 0) throw new DriveError('not_found', 'No such file.')
       const bad = segments.find((s) => s === '' || s === '.' || s === '..')
-      if (bad !== undefined) throw new DriveError('invalid', `“${bad}” is not allowed in a Drive path.`)
+      if (bad !== undefined)
+        throw new DriveError('invalid', `“${bad}” is not allowed in a Drive path.`)
       let folder = await requireFolder(actor, folderId, 'view')
       for (const [i, name] of segments.entries()) {
         const kids = await store.children(folder.id)
         const last = i === segments.length - 1
-        const hits = (last ? kids.files : kids.folders).filter((k) => k.name === name && !k.trashedAt)
-        if (hits.length === 0) throw new DriveError('not_found', `No “${segments.slice(0, i + 1).join('/')}” here.`)
-        if (hits.length > 1) throw new DriveError('invalid', `There are ${hits.length} items named "${name}" here; rename one so the path is clear.`)
+        const hits = (last ? kids.files : kids.folders).filter(
+          (k) => k.name === name && !k.trashedAt,
+        )
+        if (hits.length === 0)
+          throw new DriveError('not_found', `No “${segments.slice(0, i + 1).join('/')}” here.`)
+        if (hits.length > 1)
+          throw new DriveError(
+            'invalid',
+            `There are ${hits.length} items named "${name}" here; rename one so the path is clear.`,
+          )
         if (last) {
           const file = await requireFile(actor, hits[0]!.id, 'view')
           return { file, bytes: await blobs.get(file.sha256) }
@@ -894,14 +1190,27 @@ export function createDriveService(deps: DriveDeps) {
      * package.json, not trashed. Two of them fail loud, like readAtPath.
      * Needs view access on the folder.
      */
-    async webApp(actor: Actor, folderId: string): Promise<{ folder: ItemView; webApp: WebApp | null }> {
+    async webApp(
+      actor: Actor,
+      folderId: string,
+    ): Promise<{ folder: ItemView; webApp: WebApp | null }> {
       const folder = await requireFolder(actor, folderId, 'view')
       const files = (await store.children(folder.id)).files.filter((f) => !f.trashedAt)
       const pkgs = files.filter((f) => f.name === 'package.json')
-      if (pkgs.length > 1) throw new DriveError('invalid', `There are ${pkgs.length} items named "package.json" in “${folder.name}”; rename one so it is clear which one runs.`)
+      if (pkgs.length > 1)
+        throw new DriveError(
+          'invalid',
+          `There are ${pkgs.length} items named "package.json" in “${folder.name}”; rename one so it is clear which one runs.`,
+        )
       if (pkgs.length === 0) return { folder: folderView(folder), webApp: null }
       const text = new TextDecoder().decode(await blobs.get(pkgs[0]!.sha256))
-      return { folder: folderView(folder), webApp: webAppOf(text, files.map((f) => f.name)) }
+      return {
+        folder: folderView(folder),
+        webApp: webAppOf(
+          text,
+          files.map((f) => f.name),
+        ),
+      }
     },
 
     /** A folder the actor can view (not trashed), as a listing shows it. */
@@ -919,24 +1228,50 @@ export function createDriveService(deps: DriveDeps) {
      * everything below it, so the files inside need no check of their own.
      * `read` returns a file's bytes.
      */
-    async snapshotFiles(actor: Actor, folderId: string): Promise<{ folder: ItemView; files: SnapshotFile[]; bytes: number }> {
+    async snapshotFiles(
+      actor: Actor,
+      folderId: string,
+    ): Promise<{ folder: ItemView; files: SnapshotFile[]; bytes: number }> {
       const root = await requireFolder(actor, folderId, 'view')
       const files: SnapshotFile[] = []
       let bytes = 0
       const walk = async (folder: DriveFolder, prefix: string): Promise<void> => {
         const kids = await store.children(folder.id)
-        const folders = kids.folders.filter((f) => !f.trashedAt && !SNAPSHOT_SKIP_DIRS.has(f.name)).sort((a, b) => a.name.localeCompare(b.name))
-        const live = kids.files.filter((f) => !f.trashedAt).sort((a, b) => a.name.localeCompare(b.name))
+        const folders = kids.folders
+          .filter((f) => !f.trashedAt && !SNAPSHOT_SKIP_DIRS.has(f.name))
+          .sort((a, b) => a.name.localeCompare(b.name))
+        const live = kids.files
+          .filter((f) => !f.trashedAt)
+          .sort((a, b) => a.name.localeCompare(b.name))
         const count = new Map<string, number>()
-        for (const n of [...folders.map((f) => f.name), ...live.map((f) => f.name)]) count.set(n, (count.get(n) ?? 0) + 1)
+        for (const n of [...folders.map((f) => f.name), ...live.map((f) => f.name)])
+          count.set(n, (count.get(n) ?? 0) + 1)
         for (const [name, n] of count) {
-          if (n > 1) throw new DriveError('invalid', `There are ${n} items named "${name}" in “${prefix ? `${root.name}/${prefix.slice(0, -1)}` : root.name}”; rename one so the app's files are clear.`)
+          if (n > 1)
+            throw new DriveError(
+              'invalid',
+              `There are ${n} items named "${name}" in “${prefix ? `${root.name}/${prefix.slice(0, -1)}` : root.name}”; rename one so the app's files are clear.`,
+            )
         }
         for (const f of live) {
           bytes += f.size
-          files.push({ path: `${prefix}${f.name}`, size: f.size, sha256: f.sha256, mtime: f.updatedAt, read: () => blobs.get(f.sha256) })
-          if (files.length > SNAPSHOT_MAX_FILES) throw new DriveError('too_large', `“${root.name}” has more than ${SNAPSHOT_MAX_FILES.toLocaleString('en')} files (node_modules and .git left out); an app can run with at most that many.`)
-          if (bytes > SNAPSHOT_MAX_BYTES) throw new DriveError('too_large', `“${root.name}” holds more than ${formatBytes(SNAPSHOT_MAX_BYTES)} (node_modules and .git left out); an app can run with at most that much.`)
+          files.push({
+            path: `${prefix}${f.name}`,
+            size: f.size,
+            sha256: f.sha256,
+            mtime: f.updatedAt,
+            read: () => blobs.get(f.sha256),
+          })
+          if (files.length > SNAPSHOT_MAX_FILES)
+            throw new DriveError(
+              'too_large',
+              `“${root.name}” has more than ${SNAPSHOT_MAX_FILES.toLocaleString('en')} files (node_modules and .git left out); an app can run with at most that many.`,
+            )
+          if (bytes > SNAPSHOT_MAX_BYTES)
+            throw new DriveError(
+              'too_large',
+              `“${root.name}” holds more than ${formatBytes(SNAPSHOT_MAX_BYTES)} (node_modules and .git left out); an app can run with at most that much.`,
+            )
         }
         for (const f of folders) await walk(f, `${prefix}${f.name}/`)
       }
@@ -945,10 +1280,17 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /** `maxBytes` caps the text returned (a text file by its size, before reading; an office file by its extracted text). */
-    async readText(actor: Actor, id: string, opts: { maxBytes?: number } = {}): Promise<{ file: ItemView; content: string }> {
+    async readText(
+      actor: Actor,
+      id: string,
+      opts: { maxBytes?: number } = {},
+    ): Promise<{ file: ItemView; content: string }> {
       const file = await requireFile(actor, id, 'view')
       const tooLarge = () =>
-        new DriveError('too_large', `“${file.name}” is too large to read as text (more than ${formatBytes(opts.maxBytes!)}); download it instead.`)
+        new DriveError(
+          'too_large',
+          `“${file.name}” is too large to read as text (more than ${formatBytes(opts.maxBytes!)}); download it instead.`,
+        )
       const office = officeKind(file.name, file.mime)
       if (office) {
         const bytes = await blobs.get(file.sha256)
@@ -956,22 +1298,42 @@ export function createDriveService(deps: DriveDeps) {
         try {
           content = await extractOfficeText(office, bytes)
         } catch (err) {
-          if (err instanceof OfficeNotSupportedError) throw new DriveError('invalid', err.message, undefined, { cause: err })
+          if (err instanceof OfficeNotSupportedError)
+            throw new DriveError('invalid', err.message, undefined, { cause: err })
           const why = err instanceof Error ? err.message : String(err)
-          throw new DriveError('invalid', `“${file.name}” could not be read: ${why}`, undefined, { cause: err })
+          throw new DriveError('invalid', `“${file.name}” could not be read: ${why}`, undefined, {
+            cause: err,
+          })
         }
-        if (opts.maxBytes !== undefined && new TextEncoder().encode(content).byteLength > opts.maxBytes) throw tooLarge()
+        if (
+          opts.maxBytes !== undefined &&
+          new TextEncoder().encode(content).byteLength > opts.maxBytes
+        )
+          throw tooLarge()
         return { file: fileView(file), content }
       }
-      if (!isTextFile(file.name, file.mime)) throw new DriveError('invalid', `“${file.name}” is not a text file.`)
+      if (!isTextFile(file.name, file.mime))
+        throw new DriveError('invalid', `“${file.name}” is not a text file.`)
       if (opts.maxBytes !== undefined && file.size > opts.maxBytes) throw tooLarge()
-      return { file: fileView(file), content: new TextDecoder().decode(await blobs.get(file.sha256)) }
+      return {
+        file: fileView(file),
+        content: new TextDecoder().decode(await blobs.get(file.sha256)),
+      }
     },
 
     /** Saves new text into a Markdown/CSV file (one revision per editing session, see saveContent). */
-    async writeText(actor: Actor, id: string, content: string, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
+    async writeText(
+      actor: Actor,
+      id: string,
+      content: string,
+      sessionId?: string,
+    ): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
-      if (!isTextDocument(file.name)) throw new DriveError('invalid', `Only Markdown (.md) and table (.csv) files are written as text; “${file.name}” is not one.`)
+      if (!isTextDocument(file.name))
+        throw new DriveError(
+          'invalid',
+          `Only Markdown (.md) and table (.csv) files are written as text; “${file.name}” is not one.`,
+        )
       return saveContent(actor, file, new TextEncoder().encode(content), sessionId)
     },
 
@@ -980,11 +1342,24 @@ export function createDriveService(deps: DriveDeps) {
      * or an office tool produced (one revision per editing session, see
      * saveContent). The bytes must be of the file's own format.
      */
-    async writeBytes(actor: Actor, id: string, bytes: Uint8Array, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
+    async writeBytes(
+      actor: Actor,
+      id: string,
+      bytes: Uint8Array,
+      sessionId?: string,
+    ): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
       const kind = officeKind(file.name, file.mime)
-      if (!kind) throw new DriveError('invalid', `Only PDF, Word (.docx) and PowerPoint (.pptx) files are saved as bytes; “${file.name}” is not one.`)
-      if (!hasOfficeSignature(kind, bytes)) throw new DriveError('invalid', `That content is not a ${OFFICE_LABEL[kind]}, so it was not saved into “${file.name}”.`)
+      if (!kind)
+        throw new DriveError(
+          'invalid',
+          `Only PDF, Word (.docx) and PowerPoint (.pptx) files are saved as bytes; “${file.name}” is not one.`,
+        )
+      if (!hasOfficeSignature(kind, bytes))
+        throw new DriveError(
+          'invalid',
+          `That content is not a ${OFFICE_LABEL[kind]}, so it was not saved into “${file.name}”.`,
+        )
       return saveContent(actor, file, bytes, sessionId)
     },
 
@@ -994,7 +1369,12 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /** Restoring a revision saves its text again as the newest revision (history is never rewritten). */
-    async restoreRevision(actor: Actor, id: string, revisionId: string, sessionId?: string): Promise<{ file: ItemView; revision: DriveRevision }> {
+    async restoreRevision(
+      actor: Actor,
+      id: string,
+      revisionId: string,
+      sessionId?: string,
+    ): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
       const rev = await store.getRevision(revisionId)
       if (!rev || rev.fileId !== file.id) throw new DriveError('not_found', 'No such revision.')
@@ -1006,7 +1386,11 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /** The text of one revision (viewing an older version). */
-    async readRevision(actor: Actor, id: string, revisionId: string): Promise<{ revision: DriveRevision; content: string }> {
+    async readRevision(
+      actor: Actor,
+      id: string,
+      revisionId: string,
+    ): Promise<{ revision: DriveRevision; content: string }> {
       const file = await requireFile(actor, id, 'view')
       const rev = await store.getRevision(revisionId)
       if (!rev || rev.fileId !== file.id) throw new DriveError('not_found', 'No such revision.')
@@ -1014,7 +1398,11 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /** The bytes of one revision (an earlier version of an office file, to download). */
-    async readRevisionBytes(actor: Actor, id: string, revisionId: string): Promise<{ file: DriveFile; revision: DriveRevision; bytes: Uint8Array }> {
+    async readRevisionBytes(
+      actor: Actor,
+      id: string,
+      revisionId: string,
+    ): Promise<{ file: DriveFile; revision: DriveRevision; bytes: Uint8Array }> {
       const file = await requireFile(actor, id, 'view')
       const rev = await store.getRevision(revisionId)
       if (!rev || rev.fileId !== file.id) throw new DriveError('not_found', 'No such revision.')
@@ -1025,18 +1413,27 @@ export function createDriveService(deps: DriveDeps) {
     async lockStatus(actor: Actor, id: string): Promise<LockView> {
       await requireFile(actor, id, 'view')
       const cur = await locks.get(id)
-      return isLive(cur, now(), lockTtl) ? { state: 'locked', holder: await namedHolder(cur) } : { state: 'free' }
+      return isLive(cur, now(), lockTtl)
+        ? { state: 'locked', holder: await namedHolder(cur) }
+        : { state: 'free' }
     },
 
     /** Opens a file for editing: takes the lock unless another live session holds it (`takeover` takes it anyway). */
-    async acquireLock(actor: Actor, id: string, sessionId: string, opts: { takeover?: boolean } = {}): Promise<LockView> {
+    async acquireLock(
+      actor: Actor,
+      id: string,
+      sessionId: string,
+      opts: { takeover?: boolean } = {},
+    ): Promise<LockView> {
       await requireEditable(actor, id)
       const at = now()
       const got = await locks.claim(
         { fileId: id, userId: ownerIdOf(actor), sessionId, acquiredAt: at, heartbeatAt: at },
         { staleBefore: new Date(at.getTime() - lockTtl), force: !!opts.takeover },
       )
-      return got.sessionId === sessionId ? { state: 'held', since: got.acquiredAt } : { state: 'locked', holder: await namedHolder(got) }
+      return got.sessionId === sessionId
+        ? { state: 'held', since: got.acquiredAt }
+        : { state: 'locked', holder: await namedHolder(got) }
     },
 
     /** Keeps a held lock alive; `locked` means someone took over (or it went stale and was taken). */
@@ -1063,13 +1460,20 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /** Back in the normal views; `stillIn` names an archived folder it is still inside. */
-    async unarchive(actor: Actor, type: ItemType, id: string): Promise<{ item: ItemView; stillIn: Crumb | null }> {
+    async unarchive(
+      actor: Actor,
+      type: ItemType,
+      id: string,
+    ): Promise<{ item: ItemView; stillIn: Crumb | null }> {
       const item = await setArchived(actor, type, id, false)
       return { item: await view(type, id), stillIn: await archivedAbove(actor, parentOf(item)) }
     },
 
     /** Archives each item it can (one confirmation in the UI, one approval for the agent) and says why for the rest. */
-    async archiveMany(actor: Actor, items: readonly ItemRef[]): Promise<{ archived: ItemView[]; errors: BatchError[] }> {
+    async archiveMany(
+      actor: Actor,
+      items: readonly ItemRef[],
+    ): Promise<{ archived: ItemView[]; errors: BatchError[] }> {
       const { done, errors } = await eachItem(items, async (r) => {
         await setArchived(actor, r.type, r.id, true)
         return view(r.type, r.id)
@@ -1080,10 +1484,16 @@ export function createDriveService(deps: DriveDeps) {
     async unarchiveMany(
       actor: Actor,
       items: readonly ItemRef[],
-    ): Promise<{ unarchived: Array<{ item: ItemView; stillIn: Crumb | null }>; errors: BatchError[] }> {
+    ): Promise<{
+      unarchived: Array<{ item: ItemView; stillIn: Crumb | null }>
+      errors: BatchError[]
+    }> {
       const { done, errors } = await eachItem(items, async (r) => {
         const item = await setArchived(actor, r.type, r.id, false)
-        return { item: await view(r.type, r.id), stillIn: await archivedAbove(actor, parentOf(item)) }
+        return {
+          item: await view(r.type, r.id),
+          stillIn: await archivedAbove(actor, parentOf(item)),
+        }
       })
       return { unarchived: done, errors }
     },
@@ -1094,7 +1504,9 @@ export function createDriveService(deps: DriveDeps) {
      * groups in path order, newest archived first within one.
      */
     async archived(actor: Actor): Promise<ArchiveGroup[]> {
-      const people = new Map((await access.shareTargets()).people.map((p) => [p.id, p.name || p.email]))
+      const people = new Map(
+        (await access.shareTargets()).people.map((p) => [p.id, p.name || p.email]),
+      )
       const all = await store.listArchived()
       const rows: Array<{ type: ItemType; item: DriveFolder | DriveFile; v: ItemView }> = [
         ...all.folders.map((f) => ({ type: 'folder' as const, item: f, v: folderView(f) })),
@@ -1103,14 +1515,25 @@ export function createDriveService(deps: DriveDeps) {
       const groups = new Map<string, { group: ArchiveGroup; label: string }>()
       for (const { type, item, v } of rows) {
         const parentId = parentOf(item)
-        if (item.trashedAt || (await inTrash(parentId)) || !(await allows(actor, type, item, 'view'))) continue
+        if (
+          item.trashedAt ||
+          (await inTrash(parentId)) ||
+          !(await allows(actor, type, item, 'view'))
+        )
+          continue
         const { root, path } = await pathFor(actor, (await chainFrom(parentId)).reverse(), item)
         const key = `${root.href}|${path.map((c) => c.id).join('/')}`
         let entry = groups.get(key)
         if (!entry) {
           const last = path[path.length - 1]
           entry = {
-            group: { key, folder: last && last.id === parentId ? last : null, root, path, items: [] },
+            group: {
+              key,
+              folder: last && last.id === parentId ? last : null,
+              root,
+              path,
+              items: [],
+            },
             label: [root.label, ...path.map((c) => c.name)].join(' / '),
           }
           groups.set(key, entry)
@@ -1122,7 +1545,8 @@ export function createDriveService(deps: DriveDeps) {
           archivedByName: item.archivedBy ? (people.get(item.archivedBy) ?? null) : null,
         })
       }
-      const newestFirst = (a: ItemView, b: ItemView) => (b.archivedAt?.getTime() ?? 0) - (a.archivedAt?.getTime() ?? 0)
+      const newestFirst = (a: ItemView, b: ItemView) =>
+        (b.archivedAt?.getTime() ?? 0) - (a.archivedAt?.getTime() ?? 0)
       return [...groups.values()]
         .sort((a, b) => a.label.localeCompare(b.label))
         .map(({ group }) => ({ ...group, items: group.items.sort(newestFirst) }))
@@ -1135,12 +1559,24 @@ export function createDriveService(deps: DriveDeps) {
      * folder), not a conversation's attachment nor a read-only source item; oldest first, at most
      * `limit` (`more` says there were others).
      */
-    async archiveCandidates(actor: Actor, opts: { changedBefore: Date; limit: number }): Promise<{ candidates: ArchiveCandidate[]; more: boolean }> {
+    async archiveCandidates(
+      actor: Actor,
+      opts: { changedBefore: Date; limit: number },
+    ): Promise<{ candidates: ArchiveCandidate[]; more: boolean }> {
       const candidates: ArchiveCandidate[] = []
       for (const f of await store.filesChangedBefore(opts.changedBefore)) {
         if (f.ownerId === MESSAGES_SYSTEM_OWNER || f.source !== null) continue
         const chain = await chainFrom(f.folderId)
-        if (chain.some((c) => c.trashedAt || c.archivedAt || c.ownerId === MESSAGES_SYSTEM_OWNER || c.source !== null)) continue
+        if (
+          chain.some(
+            (c) =>
+              c.trashedAt ||
+              c.archivedAt ||
+              c.ownerId === MESSAGES_SYSTEM_OWNER ||
+              c.source !== null,
+          )
+        )
+          continue
         if (!(await allows(actor, 'file', f, 'edit'))) continue
         if (candidates.length >= opts.limit) return { candidates, more: true }
         const { root, path } = await pathFor(actor, [...chain].reverse(), f)
@@ -1149,11 +1585,18 @@ export function createDriveService(deps: DriveDeps) {
           (k) => !k.trashedAt && !k.archivedAt && (f.folderId !== null || k.ownerId === f.ownerId),
         )
         candidates.push({
-          file: { ...fileView(f), canEdit: true, canManage: await allows(actor, 'file', f, 'manage') },
+          file: {
+            ...fileView(f),
+            canEdit: true,
+            canManage: await allows(actor, 'file', f, 'manage'),
+          },
           createdAt: f.createdAt,
           root,
           path,
-          folder: { files: beside.length, newestChange: new Date(Math.max(...beside.map((k) => k.updatedAt.getTime()))) },
+          folder: {
+            files: beside.length,
+            newestChange: new Date(Math.max(...beside.map((k) => k.updatedAt.getTime()))),
+          },
         })
       }
       return { candidates, more: false }
@@ -1164,21 +1607,39 @@ export function createDriveService(deps: DriveDeps) {
       return access.listGrants(type, id)
     },
 
-    async setGrants(actor: Actor, type: ItemType, id: string, entries: Array<{ subject: GrantSubject; level: AccessLevel }>): Promise<Grant[]> {
+    async setGrants(
+      actor: Actor,
+      type: ItemType,
+      id: string,
+      entries: Array<{ subject: GrantSubject; level: AccessLevel }>,
+    ): Promise<Grant[]> {
       const item = await requireItem(actor, type, id, 'manage')
       const seen = new Set<string>()
       const grants: Grant[] = []
       for (const e of entries) {
-        const key = e.subject.kind === 'user' ? `u:${e.subject.userId}` : e.subject.kind === 'group' ? `g:${e.subject.groupId}` : 'c'
-        if (seen.has(key)) throw new DriveError('invalid', 'Each person or group can be named once.')
+        const key =
+          e.subject.kind === 'user'
+            ? `u:${e.subject.userId}`
+            : e.subject.kind === 'group'
+              ? `g:${e.subject.groupId}`
+              : 'c'
+        if (seen.has(key))
+          throw new DriveError('invalid', 'Each person or group can be named once.')
         seen.add(key)
         grants.push({ resourceType: type, resourceId: id, subject: e.subject, level: e.level })
       }
       try {
-        await access.setGrants(ownerIdOf(actor), type, id, grants, (await chainFrom(parentOf(item))).map((f) => f.id))
+        await access.setGrants(
+          ownerIdOf(actor),
+          type,
+          id,
+          grants,
+          (await chainFrom(parentOf(item))).map((f) => f.id),
+        )
       } catch (err) {
         // The contract's validation (no such member/group): a plain sentence for the dialog.
-        if (err instanceof Error && (err as { code?: string }).code === 'invalid_grant') throw new DriveError('invalid', err.message)
+        if (err instanceof Error && (err as { code?: string }).code === 'invalid_grant')
+          throw new DriveError('invalid', err.message)
         throw err
       }
       return access.listGrants(type, id)

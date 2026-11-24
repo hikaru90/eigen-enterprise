@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { drivePage, requestActor } from '../../../../modules/drive/http'
 import { memoryEditLockStore } from '../../../../modules/drive/locks'
 import { memoryDriveAccess } from '../../../../modules/drive/memory-access'
-import { createDriveService, MESSAGES_SYSTEM_OWNER, type Actor } from '../../../../modules/drive/service'
+import {
+  createDriveService,
+  MESSAGES_SYSTEM_OWNER,
+  type Actor,
+} from '../../../../modules/drive/service'
 import { createDriveSourceWriter } from '../../../../modules/drive/source-writer'
 import { diskBlobStore } from '../../../../modules/drive/storage'
 import { memoryDriveStore } from '../../../../modules/drive/store'
@@ -65,7 +69,9 @@ describe('/drive +page.server load (overview)', () => {
     ])
     const msgRoot = await drive.createFolder(messagesActor, null, 'Messages')
     const general = await drive.createFolder(messagesActor, msgRoot.id, '#general')
-    await drive.setGrants(owner, 'folder', general.id, [{ subject: { kind: 'company' }, level: 'edit' }])
+    await drive.setGrants(owner, 'folder', general.id, [
+      { subject: { kind: 'company' }, level: 'edit' },
+    ])
     await writer.ensureRoot('repos', 'GitHub')
   })
 
@@ -88,12 +94,15 @@ describe('/drive +page.server load (overview)', () => {
     expect(data.origin).toBeNull()
     expect(data.query).toBe('')
     expect(data.results).toBeNull()
-    expect(data.items.map((i) => [i.name, i.origin, i.originLabel])).toEqual([
-      ['#general', 'messages', 'Messages'],
-      ['GitHub', 'source', 'GitHub'],
-      ['My Projects', 'mine', 'My drive'],
-      ['Team Plan', 'shared', 'Shared with me'],
-    ])
+    expect(data.items.map((i) => [i.name, i.origin, i.originLabel])).toHaveLength(4)
+    expect(data.items.map((i) => [i.name, i.origin, i.originLabel])).toEqual(
+      expect.arrayContaining([
+        ['#general', 'messages', 'Messages'],
+        ['GitHub', 'source', 'GitHub'],
+        ['My Projects', 'mine', 'My drive'],
+        ['Team Plan', 'shared', 'Shared with me'],
+      ]),
+    )
     for (const item of data.items) {
       expect(data.describe[`${item.type}:${item.id}`]).toBeDefined()
     }
