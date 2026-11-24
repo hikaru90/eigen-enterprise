@@ -178,6 +178,12 @@ export type ScheduleInput = {
   durationMinutes?: number | null
   /** Another provider's call link (Zoom, Teams, Google Meet …): no room of our own. */
   externalUrl?: string | null
+  /**
+   * "Call now": start an instant call of our own with nobody invited yet; the
+   * host invites guests and colleagues from inside the call (calls.invite_guests).
+   * Only for now and on our own server.
+   */
+  inviteLater?: boolean
   /** The host's IANA time zone: the invitation shows times in it. */
   timeZone: unknown
 }
@@ -846,11 +852,15 @@ export function createCallsService(d: CallsDeps) {
       const unknown: string[] = []
       for (const u of invitees) if (!people.has(u) || !(await d.directory.role(u))) unknown.push(u)
       if (unknown.length > 0) throw new CallsError('invalid', `unknown people: ${unknown.join(', ')}`)
-      if (invitees.length === 0 && emails.length === 0) throw new CallsError('invalid', 'invite at least one guest or colleague')
+      const alone = invitees.length === 0 && emails.length === 0
+      if (alone) {
+        if (!input.inviteLater) throw new CallsError('invalid', 'invite at least one guest or colleague')
+        if (externalUrl || input.startsAt) throw new CallsError('invalid', 'a call with nobody invited yet can only start now, on our own call server')
+      }
       const typed = (input.title ?? '').trim()
       if (typed.length > MAX_TITLE) throw new CallsError('invalid', `a meeting title is at most ${MAX_TITLE} characters`)
       const names = [...invitees.map((u) => displayName(people.get(u))!), ...emails]
-      const title = typed || `Meeting with ${names.join(', ')}`.slice(0, MAX_TITLE)
+      const title = typed || (alone ? 'Call' : `Meeting with ${names.join(', ')}`.slice(0, MAX_TITLE))
       const id = newId()
       const base = newCall({
         id,

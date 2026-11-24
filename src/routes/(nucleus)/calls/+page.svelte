@@ -12,6 +12,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { invalidate } from '$app/navigation'
   import { resolve } from '$app/paths'
+  import CallNowButton from '$lib/calls/call-now-button.svelte'
   import { getCallPresence } from '$lib/calls/call-presence.svelte'
   import { openCallTab, reserveCallTab } from '$lib/calls/call-tab'
   import {
@@ -208,9 +209,12 @@
       </p>
     {/snippet}
     {#snippet actions()}
-      <Button onclick={openNew} data-testid="calls-new-call">
-        <Video class="size-4" aria-hidden="true" /> New call
-      </Button>
+      <div class="flex items-start gap-2">
+        <CallNowButton schedule={scheduleCall} />
+        <Button onclick={openNew} data-testid="calls-new-call">
+          <Video class="size-4" aria-hidden="true" /> New call
+        </Button>
+      </div>
     {/snippet}
   </PageHeader>
 

@@ -78,6 +78,27 @@ describe('scheduling a meeting with guests', () => {
     ])
   })
 
+  it('call now: an instant call with nobody invited yet; guests are invited from inside it', async () => {
+    const f = fixture()
+    const out = await f.service.schedule(f.user('ann'), { inviteLater: true, timeZone: 'UTC' })
+    expect(out.call).toMatchObject({ contextKind: 'meeting', title: 'Call', guests: [], scheduledStart: f.clock.now().toISOString() })
+    expect(out.invitations).toEqual([])
+    expect(f.mail.sent).toEqual([])
+    const more = await f.service.inviteGuests('ann', out.call.id, { guests: ['kunde@example.org'], timeZone: 'UTC' })
+    expect(more.invitations).toHaveLength(1)
+    expect(more.invitations[0]!.url).toMatch(/\/join\//)
+  })
+
+  it('call now with nobody is only for an instant call on our own server', async () => {
+    const f = fixture()
+    const startsAt = new Date(f.clock.now().getTime() + min(60))
+    for (const input of [{ inviteLater: true, startsAt }, { inviteLater: true, externalUrl: 'https://zoom.us/j/1' }]) {
+      await expect(f.service.schedule(f.user('ann'), { ...input, timeZone: 'UTC' } as never)).rejects.toMatchObject({ code: 'invalid' })
+    }
+    await expect(f.service.schedule(f.user('ann'), { timeZone: 'UTC' })).rejects.toMatchObject({ code: 'invalid' })
+    expect(f.store.records.size).toBe(0)
+  })
+
   it('refuses bad input before anything is stored', async () => {
     const f = fixture()
     const bad = [

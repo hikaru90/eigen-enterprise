@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { ActiveCall } from './active-call.svelte'
   import type { DeviceKind } from './devices'
-  import { VIDEO_QUALITIES, VIDEO_QUALITY_LABEL, type VideoQuality } from './media-settings'
   import X from '@lucide/svelte/icons/x'
+  import { VIDEO_QUALITIES, VIDEO_QUALITY_LABEL, type VideoQuality } from './media-settings'
 
   /**
    * Microphone, speaker and camera for the live call (Contribute round 4).

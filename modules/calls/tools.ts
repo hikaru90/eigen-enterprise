@@ -61,6 +61,10 @@ const scheduleInput = z
       .url()
       .optional()
       .describe('another provider’s call link (Zoom, Teams, Meet …): no room of our own'),
+    invite_later: z
+      .boolean()
+      .optional()
+      .describe('call now with nobody invited yet (instant call on our own server): invite people afterwards with calls.invite_guests'),
     time_zone: timeZone,
   })
   .strict()
@@ -192,6 +196,7 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
           startsAt: i.starts_at ? new Date(i.starts_at) : null,
           durationMinutes: i.duration_minutes ?? null,
           externalUrl: i.external_url ?? null,
+          inviteLater: i.invite_later,
           timeZone: i.time_zone,
         })
       },

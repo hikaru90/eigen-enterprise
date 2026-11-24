@@ -42,6 +42,8 @@ export type ScheduleCall = {
   startsAt: string | null
   durationMinutes: number
   externalUrl: string | null
+  /** Call now with nobody invited yet: people are invited from inside the call. */
+  inviteLater?: boolean
   timeZone: string
 }
 export type StartCall =
