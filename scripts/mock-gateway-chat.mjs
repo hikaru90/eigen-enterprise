@@ -94,9 +94,15 @@ export function mockChatCompletion(body, env) {
   const toolMarker = userText.match(/\[mock-tool:([A-Za-z0-9_.-]+)\]/)
   const wanted = toolMarker ? toolMarker[1] : DEFAULT_MOCK_TOOL
   const offered = (Array.isArray(body?.tools) ? body.tools : []).map((t) => t?.function?.name)
+  const encodedWanted = wanted.replace(/\./g, '__')
+  const matchedTool = offered.includes(wanted)
+    ? wanted
+    : offered.includes(encodedWanted)
+      ? encodedWanted
+      : null
   const last = messages[messages.length - 1]
 
-  if (last?.role === 'user' && wanted !== 'none' && offered.includes(wanted)) {
+  if (last?.role === 'user' && wanted !== 'none' && matchedTool !== null) {
     callSeq += 1
     return {
       delayMs,
@@ -108,7 +114,7 @@ export function mockChatCompletion(body, env) {
             {
               id: `call_mock_${Date.now()}_${callSeq}`,
               type: 'function',
-              function: { name: wanted, arguments: '{}' },
+              function: { name: matchedTool, arguments: '{}' },
             },
           ],
         },

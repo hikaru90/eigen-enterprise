@@ -11,7 +11,7 @@ import { gatewayReportedCostUsdForLog, reportedTokenCount, type TokenUsage } fro
 import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
 import { assertGatewayCallWithinMemberDailyCap } from '$lib/server/llm/member-daily-cap'
-import { assertPoolModel } from '$lib/server/llm/model-pool'
+import { assertPoolModel, modelSupportsTemperature } from '$lib/server/llm/model-pool'
 import { companySlotSource, resolveSlot, type SlotTarget } from '$lib/server/llm/slots'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
@@ -787,7 +787,9 @@ async function llmChatCompletionInner(input: {
             model: routing.model,
             ...(routing.provider ? { provider: routing.provider } : {}),
             messages: messages.map(toWireMessage),
-            ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+            ...(input.temperature !== undefined && modelSupportsTemperature(routing.model)
+              ? { temperature: input.temperature }
+              : {}),
             max_tokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
             ...(input.responseFormat === 'json_object'
               ? { response_format: { type: 'json_object' } }
