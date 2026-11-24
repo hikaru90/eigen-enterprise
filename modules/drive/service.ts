@@ -118,6 +118,11 @@ export type ItemView = {
   canManage?: boolean
 }
 
+/** Where an item in the unified Drive overview comes from. */
+export type DriveOrigin = 'mine' | 'shared' | 'messages' | 'source'
+/** One row of the unified Drive overview (`listOverview`), tagged with its origin. */
+export type OverviewItemView = ItemView & { origin: DriveOrigin; originLabel: string }
+
 /** When a file is from, and what kind of date that is (see ItemView.dated). */
 export type ItemDated = { at: Date; kind: 'taken' | 'created' | 'uploaded' | 'added' }
 
@@ -574,9 +579,9 @@ export function createDriveService(deps: DriveDeps) {
     return { done, errors }
   }
 
-  const sorted = (items: ItemView[]) => [...items.filter((i) => i.type === 'folder').sort(byName), ...items.filter((i) => i.type === 'file').sort(byName)]
+  const sorted = <T extends ItemView>(items: T[]): T[] => [...items.filter((i) => i.type === 'folder').sort(byName), ...items.filter((i) => i.type === 'file').sort(byName)]
 
-  return {
+  const service = {
     /** A folder's contents (null = the actor's own top level), with the path to it and what the actor may do there. */
     async listFolder(actor: Actor, folderId: string | null) {
       if (folderId === null) {
@@ -632,6 +637,52 @@ export function createDriveService(deps: DriveDeps) {
         out.push(...(await visible(actor, { folders: kids.folders, files: [] }, { archived: 'hide' })))
       }
       return sorted(out)
+    },
+
+    /**
+     * Unified Drive overview: every top-level accessible item across My drive,
+     * Shared with me, Messages and read-only sources, tagged with its origin,
+     * deduplicated by `type:id` (preferring `'mine'`), sorted folders first then name.
+     */
+    async listOverview(actor: Actor): Promise<OverviewItemView[]> {
+      const [mine, shared, messages, roots] = await Promise.all([
+        service.listFolder(actor, null),
+        service.sharedWithMe(actor),
+        service.messagesFolders(actor),
+        service.sourceRoots(actor),
+      ])
+      const sourceRootIds = new Set(roots.map((r) => r.folderId))
+      const byKey = new Map<string, OverviewItemView>()
+      const add = (item: ItemView, origin: DriveOrigin, originLabel: string) => {
+        const key = `${item.type}:${item.id}`
+        if (!byKey.has(key)) byKey.set(key, { ...item, origin, originLabel })
+      }
+      for (const item of mine.items) {
+        // For the agent, listFolder(agent, null) returns every top-level folder, including
+        // source roots and the synthetic Messages container; let those land in their own origins.
+        if (item.type === 'folder' && (sourceRootIds.has(item.id) || item.ownerId === MESSAGES_SYSTEM_OWNER)) continue
+        add(item, 'mine', MY_DRIVE.label)
+      }
+      for (const item of messages) add(item, 'messages', MESSAGES.label)
+      for (const r of roots) {
+        const folder = await store.getFolder(r.folderId)
+        if (!folder || folder.trashedAt || folder.archivedAt) continue
+        add(
+          {
+            ...folderView(folder),
+            canEdit: await allows(actor, 'folder', folder, 'edit'),
+            canManage: await allows(actor, 'folder', folder, 'manage'),
+          },
+          'source',
+          r.name,
+        )
+      }
+      for (const item of shared) {
+        // The synthetic Messages container is surfaced via its conversation folders above, not as a shared item.
+        if (item.type === 'folder' && item.ownerId === MESSAGES_SYSTEM_OWNER && item.parentId === null) continue
+        add(item, 'shared', SHARED.label)
+      }
+      return sorted([...byKey.values()])
     },
 
     /**
@@ -1137,6 +1188,7 @@ export function createDriveService(deps: DriveDeps) {
 
     storageBytes: () => store.storageBytes(),
   }
+  return service
 
   async function view(type: ItemType, id: string): Promise<ItemView> {
     const item = await load(type, id)

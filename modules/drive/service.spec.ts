@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { memoryEditLockStore } from './locks'
 import { memoryDriveAccess } from './memory-access'
-import { createDriveService, DriveError, resolveMaxUploadBytes, type Actor } from './service'
+import { createDriveService, DriveError, MESSAGES_SYSTEM_OWNER, resolveMaxUploadBytes, type Actor } from './service'
+import { createDriveSourceWriter } from './source-writer'
 import { diskBlobStore } from './storage'
 import { memoryDriveStore } from './store'
 
@@ -628,5 +629,140 @@ describe('drive: uploading a name that is already there (bug f45acdef)', () => {
     await drive.upload(alice, folder.id, { name: 'a.txt', bytes: text('a'), mime: 'text/plain' }, 'fail')
     await share(drive, 'folder', folder.id, [{ subject: { kind: 'user', userId: 'bob' }, level: 'view' }])
     await expectCode(drive.upload(bob, folder.id, { name: 'a.txt', bytes: text('b'), mime: 'text/plain' }, 'replace'), 'forbidden')
+  })
+})
+
+describe('drive: unified overview (listOverview)', () => {
+  it('aggregates My drive, Shared with me, Messages and source roots with origin tags, sorted folders first then name', async () => {
+    const { drive, store, blobs, access } = await setup()
+    const writer = createDriveSourceWriter({ store, blobs, access })
+
+    // My drive
+    const projects = await drive.createFolder(alice, null, 'Projects')
+    const notes = await drive.createDocument(alice, null, 'md', 'notes')
+
+    // Shared with me (from bob -> alice)
+    const team = await drive.createFolder(bob, null, 'Team')
+    await drive.setGrants(bob, 'folder', team.id, [
+      { subject: { kind: 'user', userId: 'bob' }, level: 'manage' },
+      { subject: { kind: 'user', userId: 'alice' }, level: 'view' },
+    ])
+    const spec = await drive.upload(bob, null, { name: 'spec.pdf', bytes: text('%PDF'), mime: 'application/pdf' }, 'fail')
+    await drive.setGrants(bob, 'file', spec.id, [
+      { subject: { kind: 'user', userId: 'bob' }, level: 'manage' },
+      { subject: { kind: 'user', userId: 'alice' }, level: 'view' },
+    ])
+
+    // Messages folders (#general open to company, #private only carol)
+    const messagesActor: Actor = { kind: 'agent', id: MESSAGES_SYSTEM_OWNER }
+    const msgRoot = await drive.createFolder(messagesActor, null, 'Messages')
+    const general = await drive.createFolder(messagesActor, msgRoot.id, '#general')
+    const priv = await drive.createFolder(messagesActor, msgRoot.id, '#private')
+    await drive.setGrants(owner, 'folder', general.id, [{ subject: { kind: 'company' }, level: 'edit' }])
+    await drive.setGrants(owner, 'folder', priv.id, [{ subject: { kind: 'user', userId: 'carol' }, level: 'edit' }])
+
+    // Source roots
+    const ghRoot = await writer.ensureRoot('repos', 'GitHub')
+    const wikiRoot = await writer.ensureRoot('wiki', 'Team wiki')
+
+    const overview = await drive.listOverview(alice)
+    expect(overview.map((i) => ({ type: i.type, name: i.name, origin: i.origin, originLabel: i.originLabel }))).toEqual([
+      { type: 'folder', name: '#general', origin: 'messages', originLabel: 'Messages' },
+      { type: 'folder', name: 'GitHub', origin: 'source', originLabel: 'GitHub' },
+      { type: 'folder', name: 'Projects', origin: 'mine', originLabel: 'My drive' },
+      { type: 'folder', name: 'Team', origin: 'shared', originLabel: 'Shared with me' },
+      { type: 'folder', name: 'Team wiki', origin: 'source', originLabel: 'Team wiki' },
+      { type: 'file', name: 'notes.md', origin: 'mine', originLabel: 'My drive' },
+      { type: 'file', name: 'spec.pdf', origin: 'shared', originLabel: 'Shared with me' },
+    ])
+
+    expect(overview.find((i) => i.id === projects.id)).toMatchObject({ canEdit: true, canManage: true })
+    expect(overview.find((i) => i.id === team.id)).toMatchObject({ canEdit: false, canManage: false })
+    expect(overview.find((i) => i.id === ghRoot.folderId)).toMatchObject({ canEdit: false, canManage: false })
+    expect(overview.find((i) => i.id === wikiRoot.folderId)).toMatchObject({ canEdit: false, canManage: false })
+    expect(overview.find((i) => i.id === notes.id)).toMatchObject({ canEdit: true, canManage: true })
+    expect(overview.some((i) => i.id === priv.id)).toBe(false)
+  })
+
+  it('deduplicates across origins (preferring mine and keeping Messages/sources out of shared) for members, owner and agent', async () => {
+    const { drive, store, blobs, access } = await setup()
+    const writer = createDriveSourceWriter({ store, blobs, access })
+
+    const projects = await drive.createFolder(alice, null, 'Projects')
+    await share(drive, 'folder', projects.id, [{ subject: { kind: 'user', userId: 'bob' }, level: 'view' }])
+
+    const messagesActor: Actor = { kind: 'agent', id: MESSAGES_SYSTEM_OWNER }
+    const msgRoot = await drive.createFolder(messagesActor, null, 'Messages')
+    const general = await drive.createFolder(messagesActor, msgRoot.id, '#general')
+    const priv = await drive.createFolder(messagesActor, msgRoot.id, '#private')
+    await drive.setGrants(owner, 'folder', general.id, [{ subject: { kind: 'company' }, level: 'edit' }])
+    await drive.setGrants(owner, 'folder', priv.id, [{ subject: { kind: 'user', userId: 'carol' }, level: 'edit' }])
+
+    const ghRoot = await writer.ensureRoot('repos', 'GitHub')
+
+    // Alice: #general appears once as messages (not duplicated in shared), Projects appears once as mine
+    const forAlice = await drive.listOverview(alice)
+    expect(forAlice.filter((i) => i.id === general.id)).toHaveLength(1)
+    expect(forAlice.find((i) => i.id === general.id)?.origin).toBe('messages')
+    expect(forAlice.filter((i) => i.id === projects.id)).toHaveLength(1)
+    expect(forAlice.find((i) => i.id === projects.id)?.origin).toBe('mine')
+
+    // Bob: sees Projects as shared
+    const forBob = await drive.listOverview(bob)
+    expect(forBob.find((i) => i.id === projects.id)).toMatchObject({ origin: 'shared', originLabel: 'Shared with me' })
+
+    // Owner: sees #general & #private as messages (never synthetic Messages root), GitHub as source (canEdit: false, canManage: true), Projects as shared
+    const forOwner = await drive.listOverview(owner)
+    expect(forOwner.some((i) => i.id === msgRoot.id)).toBe(false)
+    expect(forOwner.find((i) => i.id === general.id)?.origin).toBe('messages')
+    expect(forOwner.find((i) => i.id === priv.id)?.origin).toBe('messages')
+    expect(forOwner.find((i) => i.id === ghRoot.folderId)).toMatchObject({
+      origin: 'source',
+      originLabel: 'GitHub',
+      canEdit: false,
+      canManage: true,
+    })
+    expect(forOwner.find((i) => i.id === projects.id)?.origin).toBe('shared')
+
+    // Agent: GitHub is source, #general/#private are messages, synthetic Messages root is omitted, Projects is not duplicated
+    const forAgent = await drive.listOverview(agent)
+    expect(forAgent.some((i) => i.id === msgRoot.id)).toBe(false)
+    expect(forAgent.filter((i) => i.id === ghRoot.folderId).map((i) => i.origin)).toEqual(['source'])
+    expect(forAgent.filter((i) => i.id === general.id).map((i) => i.origin)).toEqual(['messages'])
+    expect(forAgent.filter((i) => i.id === projects.id).map((i) => i.origin)).toEqual(['mine'])
+  })
+
+  it('omits trashed, archived and revoked items, and works with describeItems', async () => {
+    const { drive, store, blobs, access } = await setup()
+    const writer = createDriveSourceWriter({ store, blobs, access })
+
+    const active = await drive.createFolder(alice, null, 'Active')
+    const trashedFolder = await drive.createFolder(alice, null, 'TrashedFolder')
+    await drive.moveToTrash(alice, 'folder', trashedFolder.id)
+    const trashedFile = await drive.createDocument(alice, null, 'md', 'trashed')
+    await drive.moveToTrash(alice, 'file', trashedFile.id)
+
+    const archivedFolder = await drive.createFolder(alice, null, 'ArchivedFolder')
+    await drive.archive(alice, 'folder', archivedFolder.id)
+    const archivedFile = await drive.createDocument(alice, null, 'md', 'archived')
+    await drive.archive(alice, 'file', archivedFile.id)
+
+    const bobShared = await drive.createFolder(bob, null, 'BobArchived')
+    await drive.setGrants(bob, 'folder', bobShared.id, [
+      { subject: { kind: 'user', userId: 'bob' }, level: 'manage' },
+      { subject: { kind: 'user', userId: 'alice' }, level: 'edit' },
+    ])
+    await drive.archive(bob, 'folder', bobShared.id)
+
+    const ghRoot = await writer.ensureRoot('repos', 'GitHub')
+    const wikiRoot = await writer.ensureRoot('wiki', 'Team wiki')
+    await drive.setGrants(owner, 'folder', wikiRoot.folderId, [])
+
+    const overview = await drive.listOverview(alice)
+    expect(overview.map((i) => i.id)).toEqual([active.id, ghRoot.folderId])
+
+    const described = await drive.describeItems(alice, overview)
+    expect(described[`folder:${ghRoot.folderId}`]).toMatchObject({ readOnlyFrom: 'GitHub', ownerName: 'GitHub' })
+    expect(described[`folder:${active.id}`]).toBeDefined()
   })
 })

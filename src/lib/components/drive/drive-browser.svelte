@@ -4,12 +4,15 @@
   import FileIcon from '@lucide/svelte/icons/file'
   import FileTextIcon from '@lucide/svelte/icons/file-text'
   import FolderIcon from '@lucide/svelte/icons/folder'
+  import FolderLockIcon from '@lucide/svelte/icons/folder-lock'
   import FolderPlusIcon from '@lucide/svelte/icons/folder-plus'
   import FolderUpIcon from '@lucide/svelte/icons/folder-up'
+  import HardDriveIcon from '@lucide/svelte/icons/hard-drive'
   import ImageIcon from '@lucide/svelte/icons/image'
   import LayoutGridIcon from '@lucide/svelte/icons/layout-grid'
   import ListIcon from '@lucide/svelte/icons/list'
   import LockIcon from '@lucide/svelte/icons/lock'
+  import MessageSquareIcon from '@lucide/svelte/icons/message-square'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import PresentationIcon from '@lucide/svelte/icons/presentation'
   import SearchIcon from '@lucide/svelte/icons/search'
@@ -21,7 +24,13 @@
   import { resolve } from '$app/paths'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
-  import { driveApi, formatSize, type DriveItem, type ItemDescription } from '$lib/drive/api'
+  import {
+    driveApi,
+    formatSize,
+    type DriveItem,
+    type DriveOrigin,
+    type ItemDescription,
+  } from '$lib/drive/api'
   import {
     datedLabel,
     driveItemKind,
@@ -70,6 +79,7 @@
     path = [],
     items,
     canEdit,
+    origin = null,
     query = '',
     results = null,
     describe = {},
@@ -84,6 +94,8 @@
     path?: Array<{ id: string; name: string }>
     items: Listed[]
     canEdit: boolean
+    /** Initial origin filter selected via URL (e.g. `?origin=mine` on `/drive`). */
+    origin?: string | null
     query?: string
     results?: Listed[] | null
     /** Owner names and sharing per item, keyed `type:id` (the server's describeItems). */
@@ -103,7 +115,18 @@
   /** Large source folders stay responsive: render one page, not thousands of rows. */
   const PAGE_SIZE = 200
   type View = 'list' | 'grid'
-  type Listed = DriveItem & { canEdit?: boolean; canManage?: boolean }
+  type Listed = DriveItem & {
+    canEdit?: boolean
+    canManage?: boolean
+    origin?: DriveOrigin
+    originLabel?: string
+  }
+  type KindFilter = 'all' | 'folder' | 'file'
+  const KIND_FILTERS: ReadonlyArray<{ id: KindFilter; label: string }> = [
+    { id: 'all', label: 'All' },
+    { id: 'folder', label: 'Folders' },
+    { id: 'file', label: 'Files' },
+  ]
   /** The type a Drive row's drag carries (moves within Drive, never an upload). */
   const ITEM_DRAG = 'application/x-ee-drive-item'
 
@@ -132,8 +155,97 @@
   let view = $state<View>('list')
   /** The page asked for, and the listing it was asked for in: new results (or a new folder) start at page 1. */
   let paging = $state.raw<{ of: Listed[] | null; page: number }>({ of: null, page: 1 })
+  /** User-selected origin pill tied to the `origin` prop it was chosen under (resets when `origin` changes). */
+  let pickedOrigin = $state.raw<{ forProp: string | null; value: string } | null>(null)
+  let kindFilter = $state<KindFilter>('all')
 
-  const shown = $derived(results ?? items)
+  const hasOverviewOrigins = $derived(
+    !trashView && !results && items.some((i) => i.origin !== undefined),
+  )
+  const sourceLabels = $derived(
+    [
+      ...new Set(
+        items.filter((i) => i.origin === 'source' && i.originLabel).map((i) => i.originLabel!),
+      ),
+    ].sort((a, b) => a.localeCompare(b)),
+  )
+  function normalizeOrigin(raw: string | null): string {
+    if (raw === 'mine' || raw === 'shared' || raw === 'messages' || raw === 'source') return raw
+    if (raw?.startsWith('source:') && sourceLabels.includes(raw.slice('source:'.length))) return raw
+    return 'all'
+  }
+  const activeOrigin = $derived(
+    pickedOrigin !== null && pickedOrigin.forProp === origin
+      ? pickedOrigin.value
+      : normalizeOrigin(origin),
+  )
+  const matchesOrigin = (item: Listed, selected: string) => {
+    if (selected === 'all') return true
+    if (selected.startsWith('source:')) {
+      return item.origin === 'source' && item.originLabel === selected.slice('source:'.length)
+    }
+    return item.origin === selected
+  }
+  const slugify = (label: string) =>
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'item'
+  const originPills = $derived.by(() => {
+    if (!hasOverviewOrigins) return []
+    const countFor = (key: string) => items.filter((i) => matchesOrigin(i, key)).length
+    const pills: Array<{
+      key: string
+      label: string
+      kind: DriveOrigin | 'all'
+      count: number
+      testid: string
+    }> = [
+      { key: 'all', label: 'All', kind: 'all', count: items.length, testid: 'drive-filter-all' },
+      {
+        key: 'mine',
+        label: 'My drive',
+        kind: 'mine',
+        count: countFor('mine'),
+        testid: 'drive-filter-mine',
+      },
+      {
+        key: 'shared',
+        label: 'Shared with me',
+        kind: 'shared',
+        count: countFor('shared'),
+        testid: 'drive-filter-shared',
+      },
+      {
+        key: 'messages',
+        label: 'Messages',
+        kind: 'messages',
+        count: countFor('messages'),
+        testid: 'drive-filter-messages',
+      },
+    ]
+    for (const label of sourceLabels) {
+      pills.push({
+        key: `source:${label}`,
+        label,
+        kind: 'source',
+        count: countFor(`source:${label}`),
+        testid: `drive-filter-source-${slugify(label)}`,
+      })
+    }
+    return pills
+  })
+  const filteredItems = $derived.by(() => {
+    if (!hasOverviewOrigins) return items
+    return items.filter(
+      (item) =>
+        matchesOrigin(item, activeOrigin) && (kindFilter === 'all' || item.type === kindFilter),
+    )
+  })
+  const shown = $derived(results ?? filteredItems)
+  const isFiltered = $derived(
+    hasOverviewOrigins && (activeOrigin !== 'all' || kindFilter !== 'all'),
+  )
   const pageCount = $derived(Math.max(1, Math.ceil(shown.length / PAGE_SIZE)))
   const requestedPage = $derived(paging.of === shown ? paging.page : 1)
   const currentPage = $derived(Math.min(requestedPage, pageCount))
@@ -141,7 +253,15 @@
   const visible = $derived(shown.slice(firstShown, firstShown + PAGE_SIZE))
   const dropEnabled = $derived(canEdit && !trashView)
   const dragging = $derived(dragDepth > 0)
-  const here = $derived(path.length > 0 ? path[path.length - 1]!.name : root.label)
+  const dropDestination = $derived(
+    dropFolder
+      ? dropFolder.name
+      : path.length > 0
+        ? path[path.length - 1]!.name
+        : hasOverviewOrigins || root.label === 'Overview'
+          ? 'My drive'
+          : root.label,
+  )
   /** A folder row that takes drops: one the person may edit, never the item being dragged itself. */
   const takesDrops = (item: Listed) =>
     dropEnabled && item.type === 'folder' && item.canEdit === true && item.id !== draggedItem?.id
@@ -171,6 +291,22 @@
 
   function nextPage() {
     paging = { of: shown, page: Math.min(pageCount, currentPage + 1) }
+  }
+
+  function selectOrigin(next: string) {
+    pickedOrigin = { forProp: origin, value: next }
+    paging = { of: null, page: 1 }
+  }
+
+  function selectKind(next: KindFilter) {
+    kindFilter = next
+    paging = { of: null, page: 1 }
+  }
+
+  function resetFilters() {
+    pickedOrigin = { forProp: origin, value: 'all' }
+    kindFilter = 'all'
+    paging = { of: null, page: 1 }
   }
 
   const folderHref = (id: string) => resolve(`/drive/folder/${id}`)
@@ -389,13 +525,74 @@
   /** Kind tiles in the brand palette (docs/brand-palette.md): tinted square, foreground icon. */
   const TILE: Record<DriveItemKind, string> = {
     folder: 'bg-primary/10 text-primary',
-    document: 'bg-[#A3D8F4]/45 text-foreground/80',
-    table: 'bg-[#B8E9D0]/70 text-foreground/80',
-    image: 'bg-[#FE86B1]/30 text-foreground/80',
-    pdf: 'bg-[#FF4632]/15 text-foreground/80',
-    word: 'bg-[#A3D8F4]/45 text-foreground/80',
-    slides: 'bg-[#FFC107]/25 text-foreground/80',
+    document: 'bg-[#A3D8F4]/45 text-foreground/80 dark:bg-[#A3D8F4]/20',
+    table: 'bg-[#B8E9D0]/70 text-foreground/80 dark:bg-[#B8E9D0]/20',
+    image: 'bg-[#FE86B1]/30 text-foreground/80 dark:bg-[#FE86B1]/20',
+    pdf: 'bg-[#FF4632]/15 text-foreground/80 dark:bg-[#FF4632]/20',
+    word: 'bg-[#A3D8F4]/45 text-foreground/80 dark:bg-[#A3D8F4]/20',
+    slides: 'bg-[#FFC107]/25 text-foreground/80 dark:bg-[#FFC107]/20',
     file: 'bg-muted text-muted-foreground',
+  }
+  /** Brand CI color-coded origin styles (docs/brand-palette.md), contrast-safe in light and dark modes. */
+  const ORIGIN_STYLE: Record<
+    DriveOrigin,
+    {
+      badge: string
+      tile: string
+      tileRing: string
+      pillActive: string
+      dot: string
+      icon: typeof HardDriveIcon
+      fallbackLabel: string
+    }
+  > = {
+    mine: {
+      badge: 'bg-primary/12 text-primary border-primary/25',
+      tile: 'bg-primary/12 text-primary ring-1 ring-inset ring-primary/20',
+      tileRing: 'ring-1 ring-inset ring-primary/25',
+      pillActive: 'border-primary bg-primary text-primary-foreground',
+      dot: 'bg-primary',
+      icon: HardDriveIcon,
+      fallbackLabel: 'My drive',
+    },
+    shared: {
+      badge:
+        'bg-[#A3D8F4]/40 text-[#0B4F71] border-[#0062E6]/25 dark:bg-[#A3D8F4]/18 dark:text-[#A3D8F4] dark:border-[#A3D8F4]/35',
+      tile: 'bg-[#A3D8F4]/45 text-[#0B4F71] dark:bg-[#A3D8F4]/20 dark:text-[#A3D8F4]',
+      tileRing: 'ring-1 ring-inset ring-[#0062E6]/35 dark:ring-[#A3D8F4]/40',
+      pillActive:
+        'border-[#0062E6]/45 bg-[#A3D8F4]/55 text-[#0B4F71] dark:border-[#A3D8F4]/50 dark:bg-[#A3D8F4]/25 dark:text-[#A3D8F4]',
+      dot: 'bg-[#0062E6] dark:bg-[#A3D8F4]',
+      icon: UsersIcon,
+      fallbackLabel: 'Shared with me',
+    },
+    messages: {
+      badge:
+        'bg-[#B8E9D0]/55 text-[#005A24] border-[#007E33]/25 dark:bg-[#B8E9D0]/16 dark:text-[#B8E9D0] dark:border-[#B8E9D0]/35',
+      tile: 'bg-[#B8E9D0]/60 text-[#005A24] dark:bg-[#B8E9D0]/20 dark:text-[#B8E9D0]',
+      tileRing: 'ring-1 ring-inset ring-[#007E33]/35 dark:ring-[#B8E9D0]/40',
+      pillActive:
+        'border-[#007E33]/45 bg-[#B8E9D0]/70 text-[#005A24] dark:border-[#B8E9D0]/50 dark:bg-[#B8E9D0]/25 dark:text-[#B8E9D0]',
+      dot: 'bg-[#007E33] dark:bg-[#B8E9D0]',
+      icon: MessageSquareIcon,
+      fallbackLabel: 'Messages',
+    },
+    source: {
+      badge:
+        'bg-[#FFC107]/25 text-[#7A3200] border-[#FF4632]/30 dark:bg-[#FFC107]/16 dark:text-[#FFD65C] dark:border-[#FF4632]/40',
+      tile: 'bg-[#FFC107]/25 text-[#7A3200] dark:bg-[#FFC107]/20 dark:text-[#FFD65C]',
+      tileRing: 'ring-1 ring-inset ring-[#FF4632]/35 dark:ring-[#FFD65C]/40',
+      pillActive:
+        'border-[#FF4632]/45 bg-[#FFC107]/35 text-[#7A3200] dark:border-[#FF4632]/50 dark:bg-[#FFC107]/25 dark:text-[#FFD65C]',
+      dot: 'bg-[#FF4632] dark:bg-[#FFD65C]',
+      icon: FolderLockIcon,
+      fallbackLabel: 'Source',
+    },
+  }
+  function tileClass(item: Listed, kind: DriveItemKind): string {
+    if (!item.origin) return TILE[kind]
+    const style = ORIGIN_STYLE[item.origin]
+    return kind === 'folder' ? style.tile : `${TILE[kind]} ${style.tileRing}`
   }
   const KIND_LABEL: Record<DriveItemKind, string> = {
     folder: 'Folder',
@@ -435,6 +632,22 @@
     data-testid="drive-drop-target"
     data-name={item.name}>{draggedItem ? 'Move here' : 'Upload here'}</span
   >
+{/snippet}
+
+{#snippet originBadge(item: Listed)}
+  {#if item.origin}
+    {@const style = ORIGIN_STYLE[item.origin]}
+    {@const OriginIcon = style.icon}
+    {@const label = item.originLabel ?? style.fallbackLabel}
+    <span
+      class="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px text-xs font-medium {style.badge}"
+      data-testid="drive-origin-badge"
+      data-origin={item.origin}
+    >
+      <OriginIcon class="size-3 shrink-0" aria-hidden="true" />
+      {label}
+    </span>
+  {/if}
 {/snippet}
 
 <section
@@ -618,6 +831,77 @@
     </div>
   </header>
 
+  {#if hasOverviewOrigins}
+    <div
+      class="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/15 px-4 py-2.5 sm:px-6"
+      data-testid="drive-filter-bar"
+    >
+      <div
+        class="flex flex-wrap items-center gap-1.5"
+        role="group"
+        aria-label="Filter by origin"
+        data-testid="drive-origin-filters"
+      >
+        {#each originPills as pill (pill.key)}
+          {@const active = activeOrigin === pill.key}
+          <button
+            type="button"
+            class="inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors {active
+              ? pill.kind === 'all'
+                ? 'border-primary bg-primary text-primary-foreground'
+                : ORIGIN_STYLE[pill.kind].pillActive
+              : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'}"
+            aria-pressed={active}
+            data-testid={pill.testid}
+            data-origin={pill.kind === 'all' ? undefined : pill.kind}
+            onclick={() => selectOrigin(pill.key)}
+          >
+            {#if pill.kind !== 'all'}
+              <span
+                class="size-2 shrink-0 rounded-full {active
+                  ? 'bg-current'
+                  : ORIGIN_STYLE[pill.kind].dot}"
+                aria-hidden="true"
+              ></span>
+            {/if}
+            <span>{pill.label}</span>
+            <span class="tabular-nums opacity-75">{pill.count}</span>
+          </button>
+        {/each}
+      </div>
+      <div class="flex items-center gap-2">
+        <div
+          class="flex items-center rounded-full border border-border bg-background p-0.5"
+          role="group"
+          aria-label="Filter by type"
+          data-testid="drive-type-filter"
+        >
+          {#each KIND_FILTERS as kindOpt (kindOpt.id)}
+            <button
+              type="button"
+              class="rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors {kindFilter ===
+              kindOpt.id
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:text-foreground'}"
+              aria-pressed={kindFilter === kindOpt.id}
+              data-testid="drive-type-{kindOpt.id}"
+              onclick={() => selectKind(kindOpt.id)}
+            >
+              {kindOpt.label}
+            </button>
+          {/each}
+        </div>
+        <span class="text-xs text-muted-foreground tabular-nums" data-testid="drive-visible-count">
+          {isFiltered ? `${shown.length} of ${items.length}` : shown.length} item{(isFiltered
+            ? items.length
+            : shown.length) === 1
+            ? ''
+            : 's'}
+        </span>
+      </div>
+    </div>
+  {/if}
+
   <div class="flex flex-col gap-2 px-4 pt-3 empty:hidden sm:px-6">
     {#if note}
       <p class="text-sm text-muted-foreground" data-testid="drive-note">{note}</p>
@@ -700,11 +984,30 @@
             <FolderIcon class="size-6 text-muted-foreground" aria-hidden="true" />
           {/if}
         </div>
-        <p class="text-sm font-medium">{results ? 'No file or folder by that name.' : emptyText}</p>
-        {#if !results && emptyHint}
+        <p class="text-sm font-medium">
+          {#if results}
+            No file or folder by that name.
+          {:else if isFiltered && items.length > 0}
+            {activeOrigin === 'mine' && kindFilter === 'all'
+              ? 'Nothing in My drive yet.'
+              : 'No items match this filter.'}
+          {:else}
+            {emptyText}
+          {/if}
+        </p>
+        {#if !results && isFiltered && items.length > 0}
+          <Button
+            size="sm"
+            variant="outline"
+            onclick={resetFilters}
+            data-testid="drive-filter-reset"
+          >
+            Show all
+          </Button>
+        {:else if !results && emptyHint}
           <p class="max-w-sm text-sm text-muted-foreground">{emptyHint}</p>
         {/if}
-        {#if !results && dropEnabled}
+        {#if !results && dropEnabled && (!isFiltered || activeOrigin === 'mine')}
           <p class="text-sm text-muted-foreground">Drop files or folders here, or</p>
           <div class="flex gap-2">
             <Button
@@ -771,6 +1074,7 @@
                 data-testid="drive-row"
                 data-name={item.name}
                 data-type={item.type}
+                data-origin={item.origin}
                 data-drop-folder={takesDrops(item) ? item.id : undefined}
                 draggable={draggable(item) ? 'true' : undefined}
                 ondragstart={(e) => draggable(item) && onRowDragStart(e, item)}
@@ -781,7 +1085,7 @@
                     <span
                       class="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md {thumb
                         ? 'bg-muted/40'
-                        : TILE[kind]}"
+                        : tileClass(item, kind)}"
                       title={KIND_LABEL[kind]}
                     >
                       {#if thumb}
@@ -810,6 +1114,7 @@
                     {#if dropFolder?.id === item.id}
                       {@render dropBadge(item)}
                     {/if}
+                    {@render originBadge(item)}
                     {#if desc?.readOnlyFrom}
                       <span
                         class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-muted-foreground"
@@ -817,7 +1122,9 @@
                         data-testid="drive-readonly-badge"
                       >
                         <LockIcon class="size-3" aria-hidden="true" />
-                        {desc.readOnlyFrom} · read-only
+                        {item.origin === 'source' && item.originLabel === desc.readOnlyFrom
+                          ? 'Read-only'
+                          : `${desc.readOnlyFrom} · read-only`}
                       </span>
                     {/if}
                     {#if desc?.shared}
@@ -900,6 +1207,7 @@
             data-testid="drive-row"
             data-name={item.name}
             data-type={item.type}
+            data-origin={item.origin}
             data-drop-folder={takesDrops(item) ? item.id : undefined}
             draggable={draggable(item) ? 'true' : undefined}
             ondragstart={(e) => draggable(item) && onRowDragStart(e, item)}
@@ -911,7 +1219,7 @@
                 ? 'bg-muted/40'
                 : textPreview
                   ? 'border-b border-border/60 bg-background'
-                  : TILE[kind]}"
+                  : tileClass(item, kind)}"
               tabindex="-1"
               aria-hidden="true"
             >
@@ -969,6 +1277,11 @@
                 />
               {/if}
             </div>
+            {#if item.origin}
+              <div class="flex flex-wrap items-center gap-1.5 px-3 pb-1.5">
+                {@render originBadge(item)}
+              </div>
+            {/if}
             <div
               class="flex items-center justify-between gap-2 px-3 pb-2 text-xs text-muted-foreground"
             >
@@ -1027,7 +1340,7 @@
       data-testid="drive-drop-overlay"
     >
       <UploadIcon class="size-8 text-primary" aria-hidden="true" />
-      <p class="text-sm font-medium">Drop to upload to {dropFolder ? dropFolder.name : here}</p>
+      <p class="text-sm font-medium">Drop to upload to {dropDestination}</p>
     </div>
   {/if}
 </section>

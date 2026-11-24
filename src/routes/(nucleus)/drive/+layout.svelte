@@ -4,6 +4,7 @@
   import ArchiveIcon from '@lucide/svelte/icons/archive'
   import FolderLockIcon from '@lucide/svelte/icons/folder-lock'
   import HardDriveIcon from '@lucide/svelte/icons/hard-drive'
+  import LayersIcon from '@lucide/svelte/icons/layers'
   import MessageSquareIcon from '@lucide/svelte/icons/message-square'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import TrashIcon from '@lucide/svelte/icons/trash-2'
@@ -38,10 +39,12 @@
       | '/drive/trash'
       | '/drive/github'
       | `/drive/folder/${string}`
+    query?: string
     icon: typeof HardDriveIcon
   }
   const before: Section[] = [
-    { id: 'mine', label: 'My drive', href: '/drive', icon: HardDriveIcon },
+    { id: 'overview', label: 'Overview', href: '/drive', icon: LayersIcon },
+    { id: 'mine', label: 'My drive', href: '/drive', query: 'origin=mine', icon: HardDriveIcon },
     { id: 'shared', label: 'Shared with me', href: '/drive/shared', icon: UsersIcon },
     { id: 'messages', label: 'Messages', href: '/drive/messages', icon: MessageSquareIcon },
   ]
@@ -64,7 +67,7 @@
     ...after,
   ])
   const rootHref = $derived((page.data as { root?: { href: string } }).root?.href ?? null)
-  const current = $derived(driveSection(page.url.pathname, rootHref, data.sources))
+  const current = $derived(driveSection(page.url.pathname, rootHref, data.sources, page.url.search))
 </script>
 
 <div class="flex min-h-0 w-full flex-1 flex-col md:flex-row" data-testid="drive-page">
@@ -87,8 +90,11 @@
     >
       {#each sections as section (section.id)}
         {@const Icon = section.icon}
+        <!-- eslint-disable svelte/no-navigation-without-resolve -- section.href goes through resolve() before appending section.query -->
         <a
-          href={resolve(section.href)}
+          href={section.query
+            ? `${resolve(section.href)}?${section.query}`
+            : resolve(section.href)}
           aria-current={current === section.id ? 'page' : undefined}
           class="flex shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors {current ===
           section.id
@@ -99,6 +105,7 @@
           <Icon class="size-4 shrink-0" aria-hidden="true" />
           {section.label}
         </a>
+        <!-- eslint-enable svelte/no-navigation-without-resolve -->
       {/each}
     </nav>
     <div class="hidden flex-col gap-1 px-2 text-xs text-muted-foreground md:mt-auto md:flex">

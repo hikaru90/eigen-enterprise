@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
-import type { DriveItem } from '$lib/drive/api'
+import type { DriveItem, DriveOrigin } from '$lib/drive/api'
 import DriveBrowser from './drive-browser.svelte'
 
 const { gotoMock, invalidateAllMock, api } = vi.hoisted(() => ({
@@ -496,5 +496,199 @@ describe('drive-browser: the full-width listing', () => {
       ['f0', 'plan.md', 'fail'],
     ])
     expect(page.getByTestId('drive-upload-conflict').elements()).toHaveLength(0)
+  })
+})
+
+describe('drive-browser: unified overview origins and filter pills', () => {
+  type OverviewListed = DriveItem & {
+    canEdit: boolean
+    canManage: boolean
+    origin: DriveOrigin
+    originLabel: string
+  }
+
+  const overviewItems: OverviewListed[] = [
+    {
+      ...folder,
+      id: 'f-mine',
+      name: 'Projects',
+      origin: 'mine',
+      originLabel: 'My drive',
+    },
+    {
+      ...image,
+      id: 'd-mine',
+      name: 'notes.md',
+      mime: 'text/markdown',
+      canEdit: true,
+      canManage: true,
+      origin: 'mine',
+      originLabel: 'My drive',
+    },
+    {
+      ...folder,
+      id: 'f-shared',
+      name: 'Team',
+      ownerId: 'u2',
+      canEdit: false,
+      canManage: false,
+      origin: 'shared',
+      originLabel: 'Shared with me',
+    },
+    {
+      ...folder,
+      id: 'f-msg',
+      name: '#general',
+      ownerId: 'messages',
+      canEdit: true,
+      canManage: false,
+      origin: 'messages',
+      originLabel: 'Messages',
+    },
+    {
+      ...folder,
+      id: 'f-gh',
+      name: 'GitHub',
+      ownerId: 'repos',
+      canEdit: false,
+      canManage: false,
+      origin: 'source',
+      originLabel: 'GitHub',
+    },
+  ]
+
+  const overviewDescribe = {
+    'folder:f-mine': { ownerName: 'Ada Owner', shared: false, readOnlyFrom: null },
+    'file:d-mine': { ownerName: 'Ada Owner', shared: false, readOnlyFrom: null },
+    'folder:f-shared': { ownerName: 'Ben Member', shared: null, readOnlyFrom: null },
+    'folder:f-msg': { ownerName: 'Messages', shared: null, readOnlyFrom: null },
+    'folder:f-gh': { ownerName: 'GitHub', shared: false, readOnlyFrom: 'GitHub' },
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    vi.resetAllMocks()
+  })
+
+  it('renders filter pills, color-coded origin badges in list and grid, and updates visible count', async () => {
+    render(DriveBrowser, {
+      props: {
+        folderId: null,
+        root: { label: 'Overview', href: '/drive' },
+        items: overviewItems,
+        canEdit: true,
+        describe: overviewDescribe,
+      },
+    })
+
+    await expect.element(page.getByTestId('drive-filter-bar')).toBeInTheDocument()
+    await expect.element(page.getByTestId('drive-filter-all')).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(page.getByTestId('drive-filter-mine')).toBeInTheDocument()
+    await expect.element(page.getByTestId('drive-filter-shared')).toBeInTheDocument()
+    await expect.element(page.getByTestId('drive-filter-messages')).toBeInTheDocument()
+    await expect.element(page.getByTestId('drive-filter-source-github')).toBeInTheDocument()
+    await expect.element(page.getByTestId('drive-visible-count')).toHaveTextContent('5 items')
+
+    const badges = page.getByTestId('drive-origin-badge')
+    expect(badges.elements()).toHaveLength(5)
+    expect(badges.elements().map((el) => [el.getAttribute('data-origin'), el.textContent?.trim()])).toEqual([
+      ['mine', 'My drive'],
+      ['mine', 'My drive'],
+      ['shared', 'Shared with me'],
+      ['messages', 'Messages'],
+      ['source', 'GitHub'],
+    ])
+
+    await page.getByTestId('drive-filter-mine').click()
+    await expect.element(page.getByTestId('drive-filter-mine')).toHaveAttribute('aria-pressed', 'true')
+    expect(page.getByTestId('drive-row').elements().map((el) => el.getAttribute('data-name'))).toEqual([
+      'Projects',
+      'notes.md',
+    ])
+    await expect.element(page.getByTestId('drive-visible-count')).toHaveTextContent('2 of 5 items')
+
+    await page.getByTestId('drive-type-file').click()
+    await expect.element(page.getByTestId('drive-type-file')).toHaveAttribute('aria-pressed', 'true')
+    expect(page.getByTestId('drive-row').elements().map((el) => el.getAttribute('data-name'))).toEqual(['notes.md'])
+    await expect.element(page.getByTestId('drive-visible-count')).toHaveTextContent('1 of 5 items')
+
+    await page.getByTestId('drive-type-all').click()
+    await page.getByTestId('drive-filter-source-github').click()
+    expect(page.getByTestId('drive-row').elements().map((el) => el.getAttribute('data-name'))).toEqual(['GitHub'])
+    await expect.element(page.getByTestId('drive-readonly-badge')).toHaveTextContent('Read-only')
+
+    await page.getByTestId('drive-filter-all').click()
+    expect(page.getByTestId('drive-row').elements()).toHaveLength(5)
+
+    // Grid cards also display the origin badges.
+    await page.getByTestId('drive-view-grid').click()
+    await expect.element(page.getByTestId('drive-grid')).toBeInTheDocument()
+    expect(page.getByTestId('drive-origin-badge').elements().map((el) => el.getAttribute('data-origin'))).toEqual([
+      'mine',
+      'mine',
+      'shared',
+      'messages',
+      'source',
+    ])
+  })
+
+  it('syncs initial origin prop without $effect, allows resetting empty filtered views, and follows rerenders', async () => {
+    const sharedOnly = [overviewItems[2]!]
+    const view = render(DriveBrowser, {
+      props: {
+        folderId: null,
+        root: { label: 'Overview', href: '/drive' },
+        items: sharedOnly,
+        canEdit: true,
+        origin: 'mine',
+      },
+    })
+
+    await expect.element(page.getByTestId('drive-filter-bar')).toBeInTheDocument()
+    await expect.element(page.getByTestId('drive-filter-mine')).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(page.getByTestId('drive-empty')).toHaveTextContent('Nothing in My drive yet.')
+    await page.getByTestId('drive-filter-reset').click()
+    await expect.element(page.getByTestId('drive-filter-all')).toHaveAttribute('aria-pressed', 'true')
+    expect(page.getByTestId('drive-row').elements().map((el) => el.getAttribute('data-name'))).toEqual(['Team'])
+
+    await view.rerender({
+      folderId: null,
+      root: { label: 'Overview', href: '/drive' },
+      items: overviewItems,
+      canEdit: true,
+      origin: 'shared',
+    })
+    await expect.element(page.getByTestId('drive-filter-shared')).toHaveAttribute('aria-pressed', 'true')
+    expect(page.getByTestId('drive-row').elements().map((el) => el.getAttribute('data-name'))).toEqual(['Team'])
+  })
+
+  it('creates new folders and drops uploads into My drive from the overview', async () => {
+    api.createFolder.mockResolvedValue({ ...folder, id: 'f-inbox', name: 'Inbox' })
+    render(DriveBrowser, {
+      props: {
+        folderId: null,
+        root: { label: 'Overview', href: '/drive' },
+        items: overviewItems,
+        canEdit: true,
+      },
+    })
+
+    const pane = page.getByTestId('drive-browser').element()
+    fire(pane, 'dragenter', desktopFiles('a.txt'))
+    await expect.element(page.getByTestId('drive-drop-overlay')).toHaveTextContent('Drop to upload to My drive')
+    fire(pane, 'dragleave', desktopFiles('a.txt'))
+
+    await page.getByTestId('drive-new-folder-button').click()
+    await page.getByTestId('drive-name-input').fill('Inbox')
+    await page.getByTestId('drive-name-save').click()
+    expect(api.createFolder).toHaveBeenCalledWith(null, 'Inbox')
+  })
+
+  it('keeps filter bar and origin badges hidden on non-overview listings', async () => {
+    render(DriveBrowser, {
+      props: { folderId: null, items: [folder, image], canEdit: true, describe: describe_ },
+    })
+    expect(page.getByTestId('drive-filter-bar').elements()).toHaveLength(0)
+    expect(page.getByTestId('drive-origin-badge').elements()).toHaveLength(0)
   })
 })
