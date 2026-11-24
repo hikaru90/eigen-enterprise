@@ -472,13 +472,13 @@ describe('AgentRuntime — tool surface + execution path (the person\'s rights, 
     fx.runtime.registerAgent(agentConfig())
 
     fx.run.mockImplementation(async (_sid, _input, ctx: EngineContext) => {
-      await ctx.emit({ type: 'custom.engine_event', payload: { step: 1 } })
+      await ctx.emit({ type: 'harness.turn_failed', payload: { step: 1 } })
       return 'ok'
     })
 
     await fx.runtime.dispatch('agent-1', 's', 'hi', undefined, asAnn)
 
-    const event = fx.sink.events.find((e) => e.type === 'custom.engine_event')
+    const event = fx.sink.events.find((e) => e.type === 'harness.turn_failed')
     expect(event).toBeDefined()
     expect(event!.principalId).toBe('ann')
     expect(event!.source).toBe('urn:eigenenterprise:kernel')

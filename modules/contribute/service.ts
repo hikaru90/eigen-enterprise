@@ -1,5 +1,6 @@
 import type { ContributeStore, ContributionWithVotes, Directory } from './store'
 import { randomUUID } from 'node:crypto'
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import { ContributeError } from './errors'
 import { judgeProposal, type JudgeChat } from './judge'
 import {
@@ -29,7 +30,7 @@ import {
 /** How many open proposals the judge compares a draft against (newest first). */
 export const JUDGE_CANDIDATES = 40
 
-export type ContributeAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type ContributeAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 export type ContributeDeps = {
   store: ContributeStore

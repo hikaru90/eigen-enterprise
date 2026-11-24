@@ -1,6 +1,7 @@
 import type { AccessLevel, AccessPort, GrantInput } from './access-port'
 import { randomUUID } from 'node:crypto'
 import { mentionHandleOf } from '$lib/coworkers/handle'
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import { isSingleEmoji } from '$lib/messages/emoji'
 import { attachmentMarker, quoteSnippet, type ReplyQuote } from '$lib/messages/quote'
 import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
@@ -31,7 +32,7 @@ export const MAX_VOICE_CLIP_MS = 5 * 60 * 1000 + 10_000
 export const REACTION_EMOJI = ['👍', '❤️', '😂', '🎉', '😮', '😢', '🙏', '👀', '✅', '🔥'] as const
 
 /** Kernel audit for moderation (an owner/admin deleting someone else's message). */
-export type MessagesAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type MessagesAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 export type DriveFileInfo = { id: string; name: string; mime: string; size: number; folderId: string | null; ownerId: string }
 

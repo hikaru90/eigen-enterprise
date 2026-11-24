@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import { MemberError, type Actor } from './service'
 
 /**
@@ -25,7 +26,7 @@ export type GroupStore = {
   existingMemberIds(ids: string[]): Promise<Set<string>>
 }
 
-export type GroupAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type GroupAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 export type GroupDeps = { groups: GroupStore; audit: GroupAudit }
 

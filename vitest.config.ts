@@ -17,6 +17,7 @@ export default mergeConfig(
         'evals/graph-scale/**/*.{test,spec}.{js,ts}',
         'evals/brain/**/*.{test,spec}.{js,ts}',
         'scripts/**/*.{test,spec}.{js,ts}',
+        'contracts/**/*.{test,spec}.{js,ts}',
       ],
       exclude: [
         'src/routes/demo/playwright/**/*.ts',

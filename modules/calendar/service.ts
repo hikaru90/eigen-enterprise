@@ -1,5 +1,6 @@
 import type { AttendeeRow, CalendarStore, EventPatch, EventRow } from './store'
 import { randomUUID } from 'node:crypto'
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { CalendarError } from './errors'
 import { expandSeries, formatRrule, isInstanceStart, parseRrule, RecurrenceError, seriesEnd, type Recurrence, type SeriesTiming } from './recurrence'
@@ -40,7 +41,7 @@ import {
 
 export type Actor = { kind: 'user'; userId: string } | { kind: 'agent'; id: string }
 
-export type CalendarAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type CalendarAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 export type CalendarMember = { id: string; name: string; email: string }
 

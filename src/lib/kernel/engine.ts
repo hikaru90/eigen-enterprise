@@ -1,4 +1,5 @@
 import type { AgentConfig } from './agent'
+import type { CoreEventType } from './event-catalog'
 import type { KernelEvent } from './events'
 import type { ToolContext } from './types'
 
@@ -69,7 +70,7 @@ export type EngineContext = EngineStreamSinks & {
    */
   listTools(): EngineToolListing[]
   /** Emit a harness event; `id`/`ts`/`principalId`/`source` are defaulted by the runtime. */
-  emit(event: Partial<KernelEvent> & { type: string; payload?: unknown }): Promise<void>
+  emit(event: Omit<Partial<KernelEvent>, 'type'> & { type: CoreEventType; payload?: unknown }): Promise<void>
   /**
    * USD spend for this agent: the in-memory accumulator for a person-acting agent; for a
    * self-acting agent, the cost ledger's sum for its principal today (UTC), read at dispatch.

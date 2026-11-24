@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import type { BackupRun, BackupStatus } from '$lib/server/ee/client'
 
 /**
@@ -35,7 +36,7 @@ export function incidentKey(status: BackupStatus): string | null {
 export type BackupHealthDeps = {
   status(): Promise<BackupStatus | null> // null: not running under ee
   hasEvent(id: string): Promise<boolean>
-  emit(e: { id: string; type: string; payload: Record<string, unknown> }): Promise<void>
+  emit(e: { id: string; type: CoreEventType; payload: Record<string, unknown> }): Promise<void>
   ownerId(): Promise<string | null>
   push(userId: string, p: { title: string; body: string; url: string; tag: string }): Promise<void>
 }

@@ -33,6 +33,8 @@ const config = {
           '../drizzle.config.ts',
           '../modules/**/*.ts',
           '../modules/**/*.svelte',
+          // contracts/** (plan/phase-upgrades.md U1): the core-api lock tooling and the generated SDK.
+          '../contracts/**/*.ts',
         ],
       }),
     },

@@ -1,4 +1,5 @@
 import type { AddressRow, AttachmentRow, FolderCount, InboxStore, LabelRow, ListedMessage, ListQuery, MailboxRow, MessageRow, MessageSummary } from './store'
+import type { CoreEventType } from '$lib/kernel/event-catalog'
 import type { MemberRole } from '$lib/server/auth/user-role'
 import { InboxError } from './errors'
 import {
@@ -32,7 +33,7 @@ import {
 export type InboxMember = { id: string; name: string; email: string; firstName: string | null; lastName: string | null }
 export type InboxGroup = { id: string; name: string; memberIds: string[] }
 export type InboxDomain = { id: string; name: string }
-export type InboxAudit = (event: { type: string; principalId: string; payload: Record<string, unknown> }) => Promise<void>
+export type InboxAudit = (event: { type: CoreEventType; principalId: string; payload: Record<string, unknown> }) => Promise<void>
 
 export type InboxDeps = {
   store: InboxStore
