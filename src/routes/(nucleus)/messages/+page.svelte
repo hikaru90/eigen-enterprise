@@ -26,9 +26,9 @@
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import AiMark from '$lib/coworkers/ai-mark.svelte'
   import { mentionNamesOf } from '$lib/coworkers/handle'
-  import { m as msg } from '$lib/paraglide/messages.js'
   import type { ShownError } from '$lib/errors/agent-report'
   import { createDrafts } from '$lib/messages/drafts'
+  import type { Mentionable } from '$lib/messages/mention'
   import MessageComposer from '$lib/messages/message-composer.svelte'
   import MessageRow, { type RowPerson } from '$lib/messages/message-row.svelte'
   import {
@@ -62,6 +62,7 @@
     type MessageView,
   } from '$lib/messages/view'
   import { uploadVoiceRecording } from '$lib/messages/voice-upload'
+  import { m as msg } from '$lib/paraglide/messages.js'
   import { syncAppBadge, totalUnread } from '$lib/pwa/badge'
   import NotificationsBanner from '$lib/pwa/notifications-banner.svelte'
   import { docTitle } from '$lib/shell/title'
@@ -126,7 +127,7 @@
   let dmsOpen = $state(true)
 
   // Header: who is in the conversation.
-  let members = $state<Person[] | null>(null)
+  let members = $state<Array<Person & { handle: string }> | null>(null)
   let membersError = $state<PageError | null>(null)
   let membersOpen = $state(false)
 
@@ -170,6 +171,10 @@
   const peopleById = $derived(new Map(people.map((p) => [p.id, p])))
   const others = $derived(people.filter((p) => p.id !== data.me))
   const myself = $derived(peopleById.get(data.me) ?? null)
+  /** Who the composers' @ suggestions offer: the open conversation's members, each by the handle that reaches them. */
+  const mentionables = $derived<Mentionable[]>(
+    (members ?? []).map((p) => ({ id: p.id, name: p.name.trim() || p.email, handle: p.handle, kind: p.kind ?? 'human', image: p.image ?? null })),
+  )
   const uploading = $derived(pendingFiles.some((f) => f.status === 'uploading'))
   const readyFiles = $derived(
     pendingFiles
@@ -274,7 +279,7 @@
 
   async function loadMembers(id: string) {
     try {
-      const { members: list } = await api<{ members: Person[] }>(
+      const { members: list } = await api<{ members: Array<Person & { handle: string }> }>(
         `/api/messages/conversations/${id}/members`,
       )
       if (selectedId === id) members = list
@@ -1341,6 +1346,8 @@
         emoji={data.reactionEmoji}
         inputTestid="messages-composer"
         sendTestid="messages-send"
+        {mentionables}
+        me={data.me}
         formTestid="messages-composer-form"
         {dragging}
         onsend={send}
@@ -1490,6 +1497,8 @@
         emoji={data.reactionEmoji}
         inputTestid="thread-composer"
         sendTestid="thread-send"
+        {mentionables}
+        me={data.me}
         hint={false}
         onsend={sendReply}
       >

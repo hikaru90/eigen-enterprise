@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import Bold from '@lucide/svelte/icons/bold'
   import Code from '@lucide/svelte/icons/code'
   import Italic from '@lucide/svelte/icons/italic'
@@ -8,13 +9,16 @@
   import SendHorizontal from '@lucide/svelte/icons/send-horizontal'
   import Smile from '@lucide/svelte/icons/smile'
   import Strikethrough from '@lucide/svelte/icons/strikethrough'
-  import type { Snippet } from 'svelte'
   import { tick } from 'svelte'
-  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import UserAvatar from '$lib/components/user-avatar.svelte'
+  import AiMark from '$lib/coworkers/ai-mark.svelte'
+  import { m } from '$lib/paraglide/messages.js'
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
+  import VoiceDictation from '$lib/voice/voice-dictation.svelte'
   import type { VoiceRecording } from '$lib/voice/voice-message'
   import { applyFormat, insertAt, type Edit, type Format } from './composer'
   import EmojiPicker from './emoji-picker.svelte'
+  import { insertMention, matchMentions, mentionAt, type Mentionable } from './mention'
 
   /**
    * The message box, Slack-style: a bordered box with a formatting row
@@ -23,6 +27,9 @@
    * Shift+Enter is a new line. Dictation appends its transcript to the text
    * and hands the recording to `onrecording` (the box sending it keeps it for
    * playback); while a voice message exists the bar takes the bottom row.
+   * Given `mentionables`, typing @ and letters lists the matching members
+   * (./mention.ts): ↑/↓ move, Enter/Tab insert their handle, Esc closes — the
+   * box is then a combobox over that listbox.
    */
   let {
     value = $bindable(''),
@@ -45,6 +52,8 @@
     ondrop,
     onrecording,
     above,
+    mentionables,
+    me,
   }: {
     value?: string
     textarea?: HTMLTextAreaElement | null
@@ -70,7 +79,69 @@
     onrecording?: (recording: VoiceRecording) => void
     /** Pending files, errors: inside the box, above the text. */
     above?: Snippet
+    /** Who can be @mentioned here (the conversation's members): typing @ and letters lists the matches. */
+    mentionables?: readonly Mentionable[] | null
+    /** The writer, never suggested. */
+    me?: string
   } = $props()
+
+  const uid = $props.id()
+  const listId = `${uid}-mentions`
+  /** The @word at the caret, while the box has focus; null otherwise. */
+  let mention = $state<{ start: number; query: string } | null>(null)
+  /** The @word Esc closed the list for (by where its @ is): it stays closed until another one starts. */
+  let dismissedAt = $state<number | null>(null)
+  let activeIndex = $state(0)
+  const suggestions = $derived(
+    mention && mentionables && mention.start !== dismissedAt ? matchMentions(mentionables, mention.query, { exclude: me }) : [],
+  )
+  const suggesting = $derived(suggestions.length > 0)
+  const optionId = (i: number) => `${uid}-mention-${i}`
+
+  /** Reads the @word at the caret after the text or the caret moved. */
+  function syncMention() {
+    const el = textarea
+    if (!mentionables || !el) return
+    const next = el.selectionStart === el.selectionEnd ? mentionAt(el.value, el.selectionStart) : null
+    if (next?.start !== mention?.start || next?.query !== mention?.query) activeIndex = 0
+    if (next?.start !== dismissedAt) dismissedAt = null
+    mention = next
+  }
+
+  function closeMentions() {
+    mention = null
+  }
+
+  function pickMention(member: Mentionable) {
+    const at = mention
+    if (!at) return
+    const el = textarea
+    mention = null
+    void apply(insertMention(value, at.start, el?.selectionStart ?? value.length, member))
+  }
+
+  /** Keys while the list is open: ↑/↓ move, Enter/Tab insert, Esc closes. True when the key was the list's. */
+  function mentionKey(e: KeyboardEvent): boolean {
+    if (!suggesting || e.isComposing) return false
+    const n = suggestions.length
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      activeIndex = (activeIndex + (e.key === 'ArrowDown' ? 1 : n - 1)) % n
+      return true
+    }
+    if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+      e.preventDefault()
+      pickMention(suggestions[Math.min(activeIndex, n - 1)])
+      return true
+    }
+    if (e.key === 'Escape') {
+      // The page's own Esc (closing a picker, cancelling a reply) waits for the next one.
+      e.preventDefault()
+      dismissedAt = mention?.start ?? null
+      return true
+    }
+    return false
+  }
 
   let emojiOpen = $state(false)
   /** The full picker instead of the quick row ("More emoji"). */
@@ -118,6 +189,7 @@
   }
 
   function onKey(e: KeyboardEvent) {
+    if (mentionKey(e)) return
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault()
       if (canSend) onsend()
@@ -172,18 +244,70 @@
       {/each}
     </div>
     {@render above?.()}
-    <textarea
-      bind:this={textarea}
-      bind:value
-      rows="1"
-      class="field-sizing-content block max-h-60 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground"
-      {placeholder}
-      aria-label={label}
-      data-testid={inputTestid}
-      onkeydown={onKey}
-      oninput={(e) => ondraft?.(e.currentTarget.value)}
-      {onpaste}
-    ></textarea>
+    <div class="relative">
+      {#if suggesting}
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label={m.messages_mention_list()}
+          class="absolute bottom-full left-1.5 z-20 mb-1 max-h-80 w-80 max-w-[calc(100%-0.75rem)] overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-md"
+          data-testid="{inputTestid}-mentions"
+        >
+          {#each suggestions as s, i (s.id)}
+            <li
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === activeIndex}
+              class={[
+                'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm',
+                i === activeIndex ? 'bg-foreground/[0.06]' : 'hover:bg-foreground/[0.04]',
+              ]}
+              data-testid="composer-mention"
+              data-id={s.id}
+              data-kind={s.kind}
+              onmousedown={(e) => e.preventDefault()}
+              onmouseenter={() => (activeIndex = i)}
+              onclick={() => pickMention(s)}
+            >
+              <UserAvatar name={s.name} image={s.image ?? null} size="sm" />
+              <span class="min-w-0 flex-1">
+                <span class="flex items-center gap-1.5">
+                  <span class="truncate font-medium">{s.name}</span>
+                  {#if s.kind === 'coworker'}<AiMark />{/if}
+                </span>
+                <span class="block truncate text-xs text-muted-foreground">@{s.handle}</span>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <textarea
+        bind:this={textarea}
+        bind:value
+        rows="1"
+        class="field-sizing-content block max-h-60 min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground"
+        {placeholder}
+        role={mentionables ? 'combobox' : undefined}
+        aria-label={label}
+        aria-autocomplete={mentionables ? 'list' : undefined}
+        aria-haspopup={mentionables ? 'listbox' : undefined}
+        aria-expanded={mentionables ? suggesting : undefined}
+        aria-controls={suggesting ? listId : undefined}
+        aria-activedescendant={suggesting ? optionId(activeIndex) : undefined}
+        data-testid={inputTestid}
+        onkeydown={onKey}
+        onkeyup={(e) => {
+          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) syncMention()
+        }}
+        oninput={(e) => {
+          ondraft?.(e.currentTarget.value)
+          syncMention()
+        }}
+        onclick={syncMention}
+        onblur={closeMentions}
+        {onpaste}
+      ></textarea>
+    </div>
     <div class="relative flex items-center gap-0.5 px-1.5 pb-1.5">
       {#if !voiceActive}
       {#if onattach}

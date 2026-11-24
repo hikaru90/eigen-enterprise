@@ -176,6 +176,13 @@ describe('conversation members (the header)', () => {
     expect(await ids('carl', dm.id)).toEqual(['bea', 'carl'])
     await expect(conversationMembers(deps, 'carl', side.id)).rejects.toMatchObject({ code: 'not_found' })
   })
+
+  it('each member carries the @handle that reaches them (what the composer inserts, what mentionedIds matches)', async () => {
+    const { deps } = fixture()
+    const general = await createChannel(deps, 'bea', { name: 'general', private: false })
+    const members = await conversationMembers(deps, 'bea', general.id)
+    expect(members.map((p) => `${p.id}:${p.handle}`)).toEqual(['owner:olga', 'bea:bea', 'carl:carl'])
+  })
 })
 
 describe('author profile (P-5)', () => {

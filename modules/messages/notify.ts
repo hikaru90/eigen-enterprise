@@ -1,5 +1,5 @@
 import type { Conversation, Person } from './store'
-import { coworkerSlugFromEmail } from '$lib/server/coworkers/handle'
+import { coworkerSlugFromEmail, mentionHandleOf } from '$lib/coworkers/handle'
 import { canUse, listConversations, type MessageDto, type MessagesDeps } from './service'
 
 /**
@@ -18,12 +18,7 @@ import { canUse, listConversations, type MessageDto, type MessagesDeps } from '.
 export const VIEWING_WINDOW_MS = 60_000
 
 /** The one handle people write to reach someone: a co-worker's slug, a person's email local part. */
-export function primaryHandle(p: Person): string {
-  if (p.kind === 'coworker') return coworkerSlugFromEmail(p.email, p.id)
-  const local = p.email.split('@')[0]?.toLowerCase()
-  if (!local) throw new Error(`member ${p.id} has no email local part to mention them by`)
-  return local
-}
+export const primaryHandle = (p: Person): string => mentionHandleOf(p)
 
 export function handlesOf(p: Person): string[] {
   if (p.kind === 'coworker') return [coworkerSlugFromEmail(p.email, p.id)]
