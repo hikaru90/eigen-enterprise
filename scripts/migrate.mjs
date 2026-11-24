@@ -1,44 +1,54 @@
 /**
  * Programmatic Drizzle migration runner.
  *
- * Uses drizzle-orm's migrate() which reads SQL files from drizzle/ and applies
- * any that have not yet been recorded in the drizzle.__drizzle_migrations table.
- * Fully non-interactive — safe for Docker / CI / non-TTY environments.
+ * Applies every journal entry of drizzle/ whose SQL hash is not yet in
+ * drizzle.__drizzle_migrations. Fully non-interactive — safe for Docker / CI / non-TTY environments.
+ *
+ * Transactions (plan/phase-upgrades.md §6.4 step 3)
+ * -------------------------------------------------
+ * Each file runs in its OWN transaction together with its bookkeeping row: BEGIN, the file's
+ * statements (drizzle's `--> statement-breakpoint` chunks), INSERT into __drizzle_migrations,
+ * COMMIT. Any error rolls that file back whole and stops the run, loudly; later files are not
+ * attempted. (Before, every chunk ran in autocommit, so a failure left a half-applied file.)
+ * Not one transaction for the whole run: a release's earlier, good files stay applied and a
+ * retry resumes at the failed file.
+ *
+ * A file whose first line is `-- ee:no-transaction` runs outside a transaction, one statement at
+ * a time, then gets its row; it may hold only statements that cannot run inside one (CREATE/DROP
+ * INDEX CONCURRENTLY, REINDEX … CONCURRENTLY, ALTER TYPE … ADD VALUE — scripts/check-migrations.mjs).
+ * Every pending file is planned before the first one runs, so such a file with anything else in
+ * it is refused before the database changes.
  *
  * Push-to-migrate transition
  * --------------------------
  * This project was previously managed with `drizzle-kit push`, which never creates
- * the `drizzle.__drizzle_migrations` tracking table. On the first run of this script
- * on an existing production DB:
- *   - drizzle migrate() sees an empty migrations table and tries to apply ALL files
- *     starting from 0000, which immediately fails because those tables already exist.
- *
- * The bootstrap step below detects this condition (thought table exists but migrations
- * table is empty/missing) and pre-seeds migration records for 0000-0008 so that
- * migrate() only applies the genuinely missing files (0009+).
+ * the `drizzle.__drizzle_migrations` tracking table. The bootstrap step below detects that
+ * condition (thought table exists but migrations table is empty/missing) and pre-seeds migration
+ * records for 0000-0008 so that only the genuinely missing files (0009+) are applied.
  *
  * The hash stored per entry is SHA-256 of the raw SQL file content — the same
  * computation drizzle-orm/postgres-js/migrator uses internally.
  *
  * Usage: node scripts/migrate.mjs
  */
-import './load-env.mjs'
-import { createHash } from 'crypto'
-import { readFileSync, readdirSync } from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import postgres from 'postgres'
-import { getDatabaseUrl } from './db-urls.mjs'
+import { createHash } from 'node:crypto'
+import { readFileSync, readdirSync, realpathSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { planMigration } from './check-migrations.mjs'
 
-const urlString = getDatabaseUrl()
+const repoMigrationsFolder = path.join(path.dirname(fileURLToPath(import.meta.url)), '../drizzle')
 
-const migrationsFolder = path.join(path.dirname(fileURLToPath(import.meta.url)), '../drizzle')
+// Index of the last migration that was applied via drizzle-kit push (never tracked).
+// Any entry with idx <= LAST_PUSH_IDX on a push-managed DB is treated as already applied.
+const LAST_PUSH_IDX = 8 // 0008_chat_message_metadata
 
-const journalPath = path.join(migrationsFolder, 'meta/_journal.json')
-const journal = JSON.parse(readFileSync(journalPath, 'utf-8'))
+function migrationHash(sqlContent) {
+  return createHash('sha256').update(sqlContent).digest('hex')
+}
 
 /** Fail fast when a .sql file exists but is absent from the journal (never applied on deploy). */
-function assertJournalCoversAllMigrationFiles() {
+function assertJournalCoversAllMigrationFiles(migrationsFolder, journal) {
   const journalTags = new Set(journal.entries.map((e) => e.tag))
   const diskTags = readdirSync(migrationsFolder)
     .filter((name) => /^\d{4}_.+\.sql$/.test(name))
@@ -52,29 +62,7 @@ function assertJournalCoversAllMigrationFiles() {
   }
 }
 
-// Index of the last migration that was applied via drizzle-kit push (never tracked).
-// Any entry with idx <= LAST_PUSH_IDX on a push-managed DB is treated as already applied.
-const LAST_PUSH_IDX = 8 // 0008_chat_message_metadata
-
-const client = postgres(urlString, { max: 1 })
-
-function migrationHash(sqlContent) {
-  return createHash('sha256').update(sqlContent).digest('hex')
-}
-
-function splitStatements(sqlContent) {
-  return sqlContent
-    .split('--> statement-breakpoint')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-}
-
-/**
- * Apply journal migrations missing from drizzle.__drizzle_migrations (hash-based).
- * Drizzle's built-in migrate() only runs files newer than the latest created_at stamp,
- * which skips older idx entries when a later migration was applied out of order (push / manual).
- */
-async function applyPendingMigrationsByHash() {
+async function ensureBookkeeping(client) {
   await client`CREATE SCHEMA IF NOT EXISTS drizzle`
   await client`
 		CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
@@ -83,64 +71,18 @@ async function applyPendingMigrationsByHash() {
 			created_at bigint
 		)
 	`
-
   // Pin DDL to public schema.  The DB-level search_path includes ag_catalog
   // where AGE's internal label tables live — without this SET, unqualified
   // CREATE TABLE could resolve to ag_catalog and collide with AGE labels.
   await client.unsafe('SET search_path TO public')
-
-  const applied = await client`SELECT hash FROM drizzle.__drizzle_migrations`
-  const appliedSet = new Set(applied.map((r) => r.hash))
-
-  let appliedCount = 0
-  for (const entry of journal.entries) {
-    const sqlPath = path.join(migrationsFolder, `${entry.tag}.sql`)
-    const sqlContent = readFileSync(sqlPath, 'utf-8')
-    const hash = migrationHash(sqlContent)
-    if (appliedSet.has(hash)) continue
-
-    console.log(`[eigen] Applying ${entry.tag}...`)
-    const statements = splitStatements(sqlContent)
-    for (const stmt of statements) {
-      await client.unsafe(stmt)
-    }
-    await client`
-			INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
-			VALUES (${hash}, ${entry.when})
-		`
-    appliedSet.add(hash)
-    appliedCount += 1
-  }
-
-  if (appliedCount === 0) {
-    console.log('[eigen] No pending migrations.')
-  } else {
-    console.log(`[eigen] Applied ${appliedCount} migration(s).`)
-  }
 }
 
 /**
  * Detects a DB previously managed by drizzle-kit push and pre-seeds the
- * drizzle.__drizzle_migrations table so migrate() skips already-applied files.
+ * drizzle.__drizzle_migrations table so already-applied files are skipped.
  */
-async function bootstrapIfPushManaged() {
-  // Ensure the drizzle schema exists (drizzle-orm creates it, but we need it first).
-  await client`CREATE SCHEMA IF NOT EXISTS drizzle`
-
-  // Create the migrations tracking table if absent (drizzle-orm will do this too,
-  // but we need to check it before calling migrate()).
-  await client`
-		CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
-			id      SERIAL PRIMARY KEY,
-			hash    text   NOT NULL,
-			created_at bigint
-		)
-	`
-
-  // Pin DDL to public schema (same reason as applyPendingMigrationsByHash).
-  await client.unsafe('SET search_path TO public')
-
-  // If the table already has records, migrate() has run before — nothing to do.
+async function bootstrapIfPushManaged(client, migrationsFolder, journal, log) {
+  // If the table already has records, migrations have run before — nothing to do.
   const [{ count }] = await client`SELECT COUNT(*) AS count FROM drizzle.__drizzle_migrations`
   if (parseInt(count, 10) > 0) return
 
@@ -151,39 +93,113 @@ async function bootstrapIfPushManaged() {
 			WHERE table_schema = 'public' AND table_name = 'thought'
 		) AS exists
 	`
-  if (!exists) {
-    // Fresh database — let migrate() apply everything from 0000.
-    return
-  }
+  if (!exists) return // Fresh database — apply everything from 0000.
 
-  // Push-managed DB: seed history for all migrations up through LAST_PUSH_IDX.
-  console.log(
-    '[eigen] Detected push-managed DB. Seeding migration history for idx 0–' +
-      LAST_PUSH_IDX +
-      '...',
-  )
+  log(`[eigen] Detected push-managed DB. Seeding migration history for idx 0–${LAST_PUSH_IDX}...`)
   for (const entry of journal.entries) {
     if (entry.idx > LAST_PUSH_IDX) break
-    const sqlPath = path.join(migrationsFolder, `${entry.tag}.sql`)
-    const sqlContent = readFileSync(sqlPath, 'utf-8')
-    const hash = createHash('sha256').update(sqlContent).digest('hex')
+    const sqlContent = readFileSync(path.join(migrationsFolder, `${entry.tag}.sql`), 'utf-8')
     await client`
 			INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
-			VALUES (${hash}, ${entry.when})
+			VALUES (${migrationHash(sqlContent)}, ${entry.when})
 		`
   }
-  console.log('[eigen] Migration history seeded. migrate() will apply idx 9+.')
+  log(`[eigen] Migration history seeded. Applying idx ${LAST_PUSH_IDX + 1}+.`)
 }
 
-try {
-  assertJournalCoversAllMigrationFiles()
-  console.log('[eigen] Running migrations from', migrationsFolder)
-  await bootstrapIfPushManaged()
-  await applyPendingMigrationsByHash()
-  console.log('[eigen] Migrations complete.')
-} catch (err) {
-  console.error('[eigen] Migration failed:', err)
-  process.exit(1)
-} finally {
-  await client.end()
+async function applyOne(client, { entry, hash, plan }) {
+  const record = (sql) => sql`
+		INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+		VALUES (${hash}, ${entry.when})
+	`
+  if (plan.mode === 'transaction') {
+    try {
+      await client.begin(async (tx) => {
+        for (const stmt of plan.statements) await tx.unsafe(stmt)
+        await record(tx)
+      })
+    } catch (err) {
+      throw new Error(
+        `${entry.tag} failed and was rolled back (nothing of it is applied); later migrations were not run: ${err.message}`,
+        { cause: err },
+      )
+    }
+    return
+  }
+  for (const [i, stmt] of plan.statements.entries()) {
+    try {
+      await client.unsafe(stmt)
+    } catch (err) {
+      throw new Error(
+        `${entry.tag} (-- ee:no-transaction) failed at statement ${i + 1} of ${plan.statements.length}; ` +
+          `statements before it stay applied and the file is not recorded, so it runs again from the top next time; ` +
+          `later migrations were not run: ${err.message}`,
+        { cause: err },
+      )
+    }
+  }
+  await record(client)
+}
+
+/**
+ * Applies the journal entries of `migrationsFolder` missing from drizzle.__drizzle_migrations
+ * (by hash, so an entry applied out of order is not skipped), each file in its own transaction.
+ * @param {{ client: import('postgres').Sql, migrationsFolder?: string, log?: (line: string) => void }} input
+ * @returns {Promise<number>} how many files were applied
+ */
+export async function applyMigrations({
+  client,
+  migrationsFolder = repoMigrationsFolder,
+  log = console.log,
+}) {
+  const journal = JSON.parse(
+    readFileSync(path.join(migrationsFolder, 'meta/_journal.json'), 'utf-8'),
+  )
+  assertJournalCoversAllMigrationFiles(migrationsFolder, journal)
+  log(`[eigen] Running migrations from ${migrationsFolder}`)
+  await ensureBookkeeping(client)
+  await bootstrapIfPushManaged(client, migrationsFolder, journal, log)
+
+  const applied = new Set(
+    (await client`SELECT hash FROM drizzle.__drizzle_migrations`).map((r) => r.hash),
+  )
+  const pending = []
+  for (const entry of journal.entries) {
+    const sqlContent = readFileSync(path.join(migrationsFolder, `${entry.tag}.sql`), 'utf-8')
+    const hash = migrationHash(sqlContent)
+    if (applied.has(hash)) continue
+    applied.add(hash)
+    pending.push({ entry, hash, plan: planMigration(sqlContent, entry.tag) })
+  }
+
+  for (const item of pending) {
+    log(
+      `[eigen] Applying ${item.entry.tag}${item.plan.mode === 'no-transaction' ? ' (no transaction)' : ''}...`,
+    )
+    await applyOne(client, item)
+  }
+  log(
+    pending.length === 0
+      ? '[eigen] No pending migrations.'
+      : `[eigen] Applied ${pending.length} migration(s).`,
+  )
+  return pending.length
+}
+
+const isMain =
+  process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+if (isMain) {
+  await import('./load-env.mjs')
+  const { default: postgres } = await import('postgres')
+  const { getDatabaseUrl } = await import('./db-urls.mjs')
+  const client = postgres(getDatabaseUrl(), { max: 1 })
+  try {
+    await applyMigrations({ client })
+    console.log('[eigen] Migrations complete.')
+  } catch (err) {
+    console.error('[eigen] Migration failed:', err)
+    process.exitCode = 1
+  } finally {
+    await client.end()
+  }
 }

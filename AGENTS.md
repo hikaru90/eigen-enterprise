@@ -24,7 +24,7 @@
 
 ## Engineering guardrails (carried from eigen — still binding)
 
-- **Drizzle migrations:** every schema change needs BOTH `drizzle/NNNN_name.sql` AND a journal entry in `drizzle/meta/_journal.json` (idx sequential, tag = filename without `.sql`), plus schema update in `src/lib/server/db/`. `scripts/migrate.mjs` fails fast on mismatch.
+- **Drizzle migrations:** every schema change needs BOTH `drizzle/NNNN_name.sql` AND a journal entry in `drizzle/meta/_journal.json` (idx sequential, tag = filename without `.sql`), plus schema update in `src/lib/server/db/`. `scripts/migrate.mjs` fails fast on mismatch. Migrations only add (expand/contract, `npm run lint:migrations` in the gate): a drop/rename/retype/SET NOT NULL goes one release later in a file whose first line is `-- ee:contract` (it moves the downgrade floor); each file runs in its own transaction unless its first line is `-- ee:no-transaction` (only CREATE/DROP INDEX CONCURRENTLY, REINDEX CONCURRENTLY, ALTER TYPE … ADD VALUE).
 - **TDD:** tests first for features/fixes (vitest unit; Playwright headed for e2e). No weakening assertions to green a build — fix root causes, never work around them.
 - **No fallbacks / no silent degradation:** no `|| 'localhost'` default envs, no bypass paths, no temporary shims. Fail loud with explicit errors.
 - **No silent removals:** removing or replacing working functionality (a workflow, an option, a page, a tool) is announced to the owner BEFORE it ships — in the session summary and `plan/progress.md`. Regressions of working flows are treated as bugs, not refactor side effects.
