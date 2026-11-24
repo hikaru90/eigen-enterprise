@@ -2,6 +2,14 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Make-a-wish round (one.eigenenterprise.app): 12 wishes integrated by low-effort subagents (owner: "look at the contributions … integrate them with subagents on lower thinking")
+
+- **Shipped to main (merged branches):** model_error fix for gpt-5-mini co-worker runs (c69349eb, `6835e46f`); tasks To do → Overdue → Done, clear tick-off vs edit, Undo (7f44bcfa, ea945d0b, `a2ccd151`); Drive unified overview with My drive / Shared tags + filter pills (497c8358, `944523eb`); AI Co-workers sidebar tab with org diagram + "New co-worker" modal (db3eef35, 89ec3538, `94a071ad`); Drive folder links in chat, paste images, file viewer returns to Messages (50f6e8db, 3a795090, b55709f1, `61c54b4a`); more insistent ringtone + horizontal sidebar slide (604b8ddb, 8f506079, `be8b47fa`); one Settings entry + "Your preferences" menu, "Restart onboarding" removed (81319f0e, 68912711, `46b49fb6`); co-workers report to several people + avatar picker/upload, migration 0182 `org_position_report` (955e5f85, 8cdc80d8, `082e1e83`); `coworkers.avatar_upload` tool so CLI + agent can upload avatars (`d6c02f22`); co-worker typing indicator + fact-based presence (14aea69d, `c65e264a`).
+- **Removed (announced):** "Restart onboarding" button + `POST /api/onboarding/welcome/reset` + its e2e journey (see entry below). Settings link in the name menu (Settings stays in main nav).
+- **Decisions:** typing state is in-memory per process (like presence) — during a blue-green overlap the indicator can briefly be missing. AI Co-workers nav entry is visible to every member, after Messages. Multi-report keeps `reports_to` column in sync with the first manager (expand/contract; drop later).
+- **Gate fixes on merge:** a11y guard caught faded icons (timeline) + missing focus ring (folder picker) — fixed in code; nucleus nav specs updated for the new entry.
+- **Open:** db-store multi-report has no pg spec yet; typing not shown for scheduled/assigned work runs; ringtone not listened to. Not started (big product features): questions board for staff (057cd4d5), Company Brain handoff page (b92e6ba5), demo without login (1f8fdfd5), decks (7478dbe4).
+
 ## 2026-11-24 — Shell: one Settings entry; personal prefs in one menu; "Restart onboarding" removed (reports 81319f0e, 68912711; branch only, not merged)
 
 - **81319f0e (Settings twice):** the menu next to the name no longer links to Settings — Settings is the main-nav entry only. That menu is now "Your preferences" (user-cog icon): theme, sound, assistant voice, audio devices, voice speed + volume, Install app, sign out. Design decision: personal per-device prefs stay together in this one menu (they are browser-local); company/admin settings stay in /settings.

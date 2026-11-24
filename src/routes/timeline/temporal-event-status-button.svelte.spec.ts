@@ -54,7 +54,7 @@ describe('Task row completion control (Contribute d5e61e1f)', () => {
 
     const circle = button.element().querySelector('span')
     expect(circle).not.toBeNull()
-    expect(circle?.className).toContain('text-muted-foreground/45')
+    expect(circle?.className).toMatch(/(^| )text-muted-foreground( |$)/)
     expect(circle?.className).not.toContain('text-transparent')
     expect(circle?.querySelector('svg')).not.toBeNull()
 
