@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — Make-a-wish board on one.eigenenterprise.app: integrated wishes marked shipped (owner: "mark the contributions that were integrated as done in the mcp")
+
+- **Shipped (26, via `contribute.update` on the eigen MCP):** the v0.5.41 round (c69349eb, 7f44bcfa, ea945d0b, 497c8358, db3eef35, 89ec3538, 50f6e8db, 3a795090, b55709f1, 604b8ddb, 8f506079, 81319f0e, 68912711, 955e5f85, 8cdc80d8, 14aea69d) and the v0.5.38 round (593f7e08, 6b91931f, 74cbc486, f45acdef, bb05b451, fba4abf3, 3668d181, de821eda, 3786cf54, bcd930e2). Notes now say which release carries each instead of "comes with the next release".
+- **Kept in progress (only part 1 built):** 30a8d920 (cost/budget shown; "what the brain has taken in" still open), 11f05e24 (one input done; decision-model sorting still to come).
+- **Not checked:** whether one.eigenenterprise.app already runs v0.5.41 — `kernel.release_status` needs a person and the MCP call runs as none. If it isn't installed yet, install it (Settings → Updates).
+
 ## 2026-11-24 — Release v0.5.41 (owner: "yes" to releasing the make-a-wish round)
 
 - **Tagged** `v0.5.41` on `eedc2ee4` through the full release gate: CI gate (10338 unit, 947 component), upgrade rehearsal from v0.5.40 GREEN, e2e 75 passed. Contents: the make-a-wish round below.
