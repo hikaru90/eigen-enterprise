@@ -179,13 +179,66 @@ export type DurableLoopEngineOptions = {
   instructions: string
 }
 
+const MAX_RUN_ERROR_DETAIL_LENGTH = 240
+const SENSITIVE_DETAIL_KEY = /(?:key|token|secret)$/i
+const SENSITIVE_DETAIL_EXACT = new Set(['authorization', 'credentials'])
+
+function isSensitiveDetailKey(key: string): boolean {
+  const lower = key.toLowerCase()
+  return (
+    SENSITIVE_DETAIL_EXACT.has(lower) ||
+    lower.includes('password') ||
+    SENSITIVE_DETAIL_KEY.test(lower)
+  )
+}
+
+function redactDetailValue(value: unknown, seen: WeakSet<object>): unknown {
+  if (value === null || value === undefined || typeof value !== 'object') return value
+  if (seen.has(value)) return '[Circular]'
+  seen.add(value)
+  if (Array.isArray(value)) return value.map((item) => redactDetailValue(item, seen))
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = isSensitiveDetailKey(k) ? '[REDACTED]' : redactDetailValue(v, seen)
+  }
+  return out
+}
+
+function truncateRunErrorDetail(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= MAX_RUN_ERROR_DETAIL_LENGTH) return trimmed
+  return `${trimmed.slice(0, MAX_RUN_ERROR_DETAIL_LENGTH - 3)}...`
+}
+
+function formatDurableRunDetail(detail: unknown): string {
+  if (typeof detail === 'string') return truncateRunErrorDetail(detail)
+  if (detail && typeof detail === 'object' && 'message' in detail) {
+    const msg = (detail as { message?: unknown }).message
+    if (typeof msg === 'string' && msg.trim().length > 0) {
+      return truncateRunErrorDetail(msg)
+    }
+  }
+  try {
+    const redacted = redactDetailValue(detail, new WeakSet())
+    const serialized = JSON.stringify(redacted)
+    return truncateRunErrorDetail(serialized ?? String(detail))
+  } catch {
+    return truncateRunErrorDetail(String(detail))
+  }
+}
+
 /** The durable run ended without an answer (pi-durable unanswered reason). */
 export class DurableRunError extends Error {
   readonly reason: string
   readonly detail: unknown
 
   constructor(reason: string, detail?: unknown) {
-    super(`durable agent run ended without an answer: ${reason}`)
+    const formatted = detail === undefined ? '' : formatDurableRunDetail(detail)
+    super(
+      formatted
+        ? `durable agent run ended without an answer: ${reason}: ${formatted}`
+        : `durable agent run ended without an answer: ${reason}`,
+    )
     this.name = 'DurableRunError'
     this.reason = reason
     this.detail = detail

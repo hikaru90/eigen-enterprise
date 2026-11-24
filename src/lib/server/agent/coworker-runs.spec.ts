@@ -158,7 +158,7 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
       expect(request.modelOverride).toBe('anthropic/claude-sonnet-5.5')
       expect(request.system).toContain('ROLE: Marketing Manager. Trigger: plan the launch')
       expect(request.system).not.toContain(BRAIN_PROMPT)
-      expect(request.tools).toContain(DEFAULT_MOCK_TOOL)
+      expect(request.tools).toContain(DEFAULT_MOCK_TOOL.replace(/\./g, '__'))
     }
     for (const request of byUser('cw-gtm')) {
       expect(request.modelOverride).toBe('google/gemini-3.8-flash')

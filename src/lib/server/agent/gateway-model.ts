@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
-import { poolFor } from '$lib/server/llm/model-pool'
+import { modelMaxTools, poolFor } from '$lib/server/llm/model-pool'
 import {
   createAssistantMessageEventStream,
   createModels,
@@ -65,13 +66,129 @@ export type GatewayModelDeps = {
 
 const GATEWAY_TEMPERATURE = 0
 const GATEWAY_LOG_CONTEXT = 'durable_agent'
+const VALID_WIRE_TOOL_NAME = /^[a-zA-Z0-9_-]{1,64}$/
+const MAX_WIRE_TOOL_NAME_LEN = 64
+
+/** Everyday namespaces prioritized when a model caps the number of tool declarations per request. */
+const PRIORITY_TOOL_NAMESPACES = [
+  'messages.',
+  'drive.',
+  'tasks.',
+  'memory.',
+  'coworkers.',
+  'org.',
+  'contacts.',
+  'email.',
+  'calendar.',
+] as const
+
+const TOOLS_CAPPED_SYSTEM_NOTE =
+  'Additional company tools beyond the direct tool list are available through `ee`.'
+
+/** Reversible per-request mapping between kernel tool names (e.g. `messages.post`) and OpenAI wire names (`^[a-zA-Z0-9_-]{1,64}$`). */
+export type ToolNameCodec = {
+  toWire(original: string): string
+  fromWire(wire: string): string
+}
+
+/**
+ * Build a bijective tool-name codec for the given kernel tool names.
+ * Already-valid names (`ee`, `a__b`) keep their exact name; dotted or invalid
+ * names map to `^[a-zA-Z0-9_-]{1,64}$` with hash disambiguation on collision or truncation.
+ */
+export function buildToolNameCodec(names: Iterable<string>): ToolNameCodec {
+  const unique = [...new Set(names)]
+  const toWireMap = new Map<string, string>()
+  const fromWireMap = new Map<string, string>()
+
+  const encodeDisallowed = (name: string): string => {
+    const sanitized = name.replace(/\./g, '__').replace(/[^a-zA-Z0-9_-]/g, '_')
+    const base = sanitized.length > 0 ? sanitized : 'tool'
+    if (base.length <= MAX_WIRE_TOOL_NAME_LEN && !fromWireMap.has(base)) {
+      return base
+    }
+    const hash = createHash('sha256').update(name).digest('hex').slice(0, 8)
+    for (let attempt = 1; ; attempt++) {
+      const suffix = attempt === 1 ? hash : `${hash}_${attempt}`
+      const prefixLen = Math.max(0, MAX_WIRE_TOOL_NAME_LEN - 1 - suffix.length)
+      const candidate =
+        prefixLen > 0 ? `${base.slice(0, prefixLen)}_${suffix}` : suffix.slice(0, MAX_WIRE_TOOL_NAME_LEN)
+      if (!fromWireMap.has(candidate)) return candidate
+    }
+  }
+
+  // Pass 1: preserve already-valid wire names so encoded dotted names cannot collide with them.
+  for (const name of unique) {
+    if (VALID_WIRE_TOOL_NAME.test(name)) {
+      toWireMap.set(name, name)
+      fromWireMap.set(name, name)
+    }
+  }
+
+  // Pass 2: encode remaining names uniquely within 64 chars.
+  for (const name of unique) {
+    if (toWireMap.has(name)) continue
+    const wire = encodeDisallowed(name)
+    toWireMap.set(name, wire)
+    fromWireMap.set(wire, name)
+  }
+
+  return {
+    toWire(original: string): string {
+      const existing = toWireMap.get(original)
+      if (existing !== undefined) return existing
+      const wire =
+        VALID_WIRE_TOOL_NAME.test(original) && !fromWireMap.has(original)
+          ? original
+          : encodeDisallowed(original)
+      toWireMap.set(original, wire)
+      fromWireMap.set(wire, original)
+      return wire
+    },
+    fromWire(wire: string): string {
+      return fromWireMap.get(wire) ?? wire
+    },
+  }
+}
+
+function collectContextToolNames(context: TranscriptContext): string[] {
+  const names = getCurrentTools(context.messages).map((t) => t.name)
+  for (const message of context.messages as readonly PiMessage[]) {
+    if (message.role !== 'assistant') continue
+    for (const block of message.content) {
+      if (block.type === 'toolCall') names.push(block.name)
+    }
+  }
+  return names
+}
+
+function toolPriorityRank(name: string): number {
+  if (name === 'ee') return 0
+  const nsIdx = PRIORITY_TOOL_NAMESPACES.findIndex((prefix) => name.startsWith(prefix))
+  if (nsIdx >= 0) return nsIdx + 1
+  return PRIORITY_TOOL_NAMESPACES.length + 1
+}
+
+function capToolsForModel(
+  tools: readonly PiTool[],
+  maxTools: number | null,
+): { tools: PiTool[]; truncated: boolean } {
+  if (maxTools === null || tools.length <= maxTools) {
+    return { tools: [...tools], truncated: false }
+  }
+  if (maxTools <= 0) {
+    return { tools: [], truncated: tools.length > 0 }
+  }
+  const prioritized = [...tools].sort((a, b) => toolPriorityRank(a.name) - toolPriorityRank(b.name))
+  return { tools: prioritized.slice(0, maxTools), truncated: true }
+}
 
 /** OpenAI chat-completions `tools` entry for one pi-ai tool declaration. */
-function toOpenAiTool(tool: PiTool): Record<string, unknown> {
+function toOpenAiTool(tool: PiTool, codec?: ToolNameCodec): Record<string, unknown> {
   return {
     type: 'function',
     function: {
-      name: tool.name,
+      name: codec ? codec.toWire(tool.name) : tool.name,
       description: tool.description,
       parameters: tool.parameters,
     },
@@ -92,7 +209,8 @@ function textOfContent(content: string | ReadonlyArray<TextContent | { type: 'im
  * (toolCall blocks → `tool_calls`, arguments JSON-stringified) / toolResult
  * (role "tool" + tool_call_id) history.
  */
-export function toOpenAiMessages(context: TranscriptContext): ChatMessage[] {
+export function toOpenAiMessages(context: TranscriptContext, codec?: ToolNameCodec): ChatMessage[] {
+  const wireCodec = codec ?? buildToolNameCodec(collectContextToolNames(context))
   const out: ChatMessage[] = []
   const systemPrompt = getCurrentSystemPrompt(context.messages)
   if (systemPrompt.trim()) out.push({ role: 'system', content: systemPrompt })
@@ -124,7 +242,7 @@ export function toOpenAiMessages(context: TranscriptContext): ChatMessage[] {
               tool_calls: toolCalls.map((call) => ({
                 id: call.id,
                 type: 'function' as const,
-                function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+                function: { name: wireCodec.toWire(call.name), arguments: JSON.stringify(call.arguments) },
               })),
             }
           : {}),
@@ -166,6 +284,7 @@ export function assistantMessageFromGatewayResponse(
   raw: unknown,
   model: Model<string>,
   _providerSessionId: string | undefined,
+  codec?: ToolNameCodec,
 ): AssistantMessage {
   const choice = (raw as { choices?: Array<Record<string, unknown>> })?.choices?.[0]
   if (!choice) throw new Error('gateway response has no choices[0]')
@@ -180,7 +299,8 @@ export function assistantMessageFromGatewayResponse(
     content.push({ type: 'text', text: message.content })
   }
   for (const call of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
-    const name = typeof call.function?.name === 'string' ? call.function.name : ''
+    const rawName = typeof call.function?.name === 'string' ? call.function.name : ''
+    const name = codec ? codec.fromWire(rawName) : rawName
     const rawArguments = call.function?.arguments
     let args: ToolCall['arguments'] = {}
     let argumentsError: string | undefined
@@ -342,8 +462,18 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
           throw new Error('durable gateway model call has no provider sessionId — cannot attribute billing')
         }
         const userId = await deps.resolveUserId(providerSessionId)
-        const messages = toOpenAiMessages(context)
-        const tools = getCurrentTools(context.messages).map(toOpenAiTool)
+        const currentTools = getCurrentTools(context.messages)
+        const codec = buildToolNameCodec(collectContextToolNames(context))
+        const { tools: selectedTools, truncated } = capToolsForModel(currentTools, modelMaxTools(model.id))
+        const messages = toOpenAiMessages(context, codec)
+        if (truncated) {
+          if (messages[0]?.role === 'system') {
+            messages[0] = { ...messages[0], content: `${messages[0].content}\n\n${TOOLS_CAPPED_SYSTEM_NOTE}` }
+          } else {
+            messages.unshift({ role: 'system', content: TOOLS_CAPPED_SYSTEM_NOTE })
+          }
+        }
+        const tools = selectedTools.map((tool) => toOpenAiTool(tool, codec))
         const raw = await deps.complete({
           userId,
           messages,
@@ -355,7 +485,7 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
           ...(model.id === GATEWAY_MODEL_ID ? {} : { modelOverride: model.id }),
         })
         if (ended) return
-        const message = assistantMessageFromGatewayResponse(raw, model, providerSessionId)
+        const message = assistantMessageFromGatewayResponse(raw, model, providerSessionId, codec)
         ended = true
         if (message.stopReason === 'error') {
           const error = errorAssistantMessage(model, message.errorMessage ?? 'gateway error')

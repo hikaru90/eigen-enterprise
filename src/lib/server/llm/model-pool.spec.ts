@@ -6,6 +6,8 @@ import {
   ModelNotInPoolError,
   assertPoolModel,
   isPoolModel,
+  modelMaxTools,
+  modelSupportsTemperature,
   poolFor,
   recommendedModel,
 } from './model-pool'
@@ -67,5 +69,20 @@ describe('the model pool', () => {
 
   it('keeps the chat recommendation where it was: the widened pool adds choices, not a new default', () => {
     expect(recommendedModel('chat')).toBe('~deepseek/deepseek-flash-latest')
+  })
+
+  it('declares supportsTemperature: false and maxTools: 128 on openai/gpt-5-mini and defaults others to true / null', () => {
+    const gpt5Mini = MODEL_POOL.find((m) => m.id === 'openai/gpt-5-mini')
+    expect(gpt5Mini).toMatchObject({ supportsTemperature: false, maxTools: 128 })
+
+    expect(modelSupportsTemperature('openai/gpt-5-mini')).toBe(false)
+    expect(modelSupportsTemperature('~deepseek/deepseek-flash-latest')).toBe(true)
+    expect(modelSupportsTemperature('anthropic/claude-sonnet-5.5')).toBe(true)
+    expect(modelSupportsTemperature('custom/unlisted')).toBe(true)
+
+    expect(modelMaxTools('openai/gpt-5-mini')).toBe(128)
+    expect(modelMaxTools('~deepseek/deepseek-flash-latest')).toBeNull()
+    expect(modelMaxTools('anthropic/claude-sonnet-5.5')).toBeNull()
+    expect(modelMaxTools('custom/unlisted')).toBeNull()
   })
 })

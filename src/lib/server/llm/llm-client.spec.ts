@@ -857,6 +857,48 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
     ).rejects.toBeInstanceOf(ModelNotInPoolError)
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('openai/gpt-5-mini omits temperature even when caller passes temperature: 0', async () => {
+    const fetchMock = okFetch()
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'hi' }],
+      modelOverride: 'openai/gpt-5-mini',
+      temperature: 0,
+    })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
+    expect(body.model).toBe('openai/gpt-5-mini')
+    expect('temperature' in body).toBe(false)
+    expect(body.temperature).toBeUndefined()
+  })
+
+  it('openai/gpt-5-mini omits temperature when resolved from company chat slot as well', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+    companyPicks.chat = 'openai/gpt-5-mini'
+    const fetchMock = okFetch()
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'hi' }],
+      temperature: 0,
+    })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
+    expect(body.model).toBe('openai/gpt-5-mini')
+    expect('temperature' in body).toBe(false)
+  })
+
+  it('DeepSeek keeps temperature: 0 when passed', async () => {
+    const fetchMock = okFetch()
+    await llmChatCompletion({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'hi' }],
+      modelOverride: '~deepseek/deepseek-flash-latest',
+      temperature: 0,
+    })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
+    expect(body.model).toBe('~deepseek/deepseek-flash-latest')
+    expect(body.temperature).toBe(0)
+  })
 })
 
 describe('llmChatCompletion attachments (files the model reads)', () => {

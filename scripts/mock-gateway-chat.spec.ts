@@ -164,4 +164,28 @@ describe('mockChatCompletion', () => {
       /MOCK_GATEWAY_DELAY_MS/,
     )
   })
+
+  it('matches wire-encoded dotted tool names (website__list_pages and [mock-tool:messages.post])', () => {
+    const defaultWire = mockChatCompletion(
+      {
+        model: 'mock-chat-model',
+        tools: [tool('website__list_pages')],
+        messages: [{ role: 'user', content: 'hi' }],
+      },
+      {},
+    )
+    expect(defaultWire.response.choices[0].finish_reason).toBe('tool_calls')
+    expect(defaultWire.response.choices[0].message.tool_calls[0].function.name).toBe('website__list_pages')
+
+    const explicitWire = mockChatCompletion(
+      {
+        model: 'mock-chat-model',
+        tools: [tool('messages__post'), tool('website__list_pages')],
+        messages: [{ role: 'user', content: 'post [mock-tool:messages.post]' }],
+      },
+      {},
+    )
+    expect(explicitWire.response.choices[0].finish_reason).toBe('tool_calls')
+    expect(explicitWire.response.choices[0].message.tool_calls[0].function.name).toBe('messages__post')
+  })
 })

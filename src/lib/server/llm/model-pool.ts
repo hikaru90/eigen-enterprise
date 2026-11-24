@@ -25,6 +25,10 @@ export type PoolModel = {
   note: string
   /** The pool's pick for the slot: what a company runs on until it chooses. Exactly one per slot. */
   recommended?: true
+  /** False when the upstream model rejects custom `temperature` values (e.g. OpenAI GPT-5 reasoning family). */
+  supportsTemperature?: false
+  /** Maximum number of tool declarations the upstream model accepts per request (e.g. OpenAI's 128-tool cap). */
+  maxTools?: number
 }
 
 export const MODEL_POOL: readonly PoolModel[] = [
@@ -40,6 +44,8 @@ export const MODEL_POOL: readonly PoolModel[] = [
     slot: 'chat',
     vettedOn: '2026-11-20',
     note: 'The hosted platform AI chat model the control plane provisions today.',
+    supportsTemperature: false,
+    maxTools: 128,
   },
   // AI Co-workers (plan/phase-ai-coworkers.md §5): different model families, so co-workers in
   // different seats do not all think alike. Pinned ids (no moving `~…-latest` aliases). Vetted on
@@ -153,4 +159,16 @@ export function recommendedModel(slot: ModelSlot): string {
     throw new Error(`The model pool must recommend exactly one model for the ${slot} slot (found ${picks.length}).`)
   }
   return picks[0]!.id
+}
+
+/** Whether a model accepts a `temperature` parameter in chat completions (true unless declared false in the pool). */
+export function modelSupportsTemperature(modelId: string): boolean {
+  const entry = MODEL_POOL.find((m) => m.id === modelId)
+  return entry?.supportsTemperature !== false
+}
+
+/** Maximum number of tools a model accepts per request, or null when the pool declares no cap. */
+export function modelMaxTools(modelId: string): number | null {
+  const entry = MODEL_POOL.find((m) => m.id === modelId)
+  return entry?.maxTools ?? null
 }
