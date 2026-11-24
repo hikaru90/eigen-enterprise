@@ -72,15 +72,19 @@ describe('plugin route map', () => {
     expect(Object.keys(PLUGIN_ROUTES).sort()).toEqual(plugins.map((m) => m.id).sort())
   })
 
-  it('every sidebar entry but Settings leads to a page of its own plugin', () => {
+  it('every sidebar entry leads to a page of its own plugin, except core entries (coworkers, settings)', () => {
     const nav = buildShellNav(plugins, new Map(plugins.map((m) => [m.id, true])), owner)
-    const entries = nav.items.filter((i) => i.id !== 'settings')
+    const coreIds = new Set(['coworkers', 'settings'])
+    const entries = nav.items.filter((i) => !coreIds.has(i.id))
     const inShell: readonly string[] = IN_SHELL
     expect(entries.map((i) => i.id).sort()).toEqual(
       plugins.map((m) => m.id).filter((id) => !(id in NESTED_IN) && !inShell.includes(id)).sort(),
     )
     for (const item of entries) {
       expect(routeOwner(item.href), item.href).toEqual({ owner: 'plugin', plugin: item.id, surface: 'page' })
+    }
+    for (const coreItem of nav.items.filter((i) => coreIds.has(i.id))) {
+      expect(routeOwner(coreItem.href), coreItem.href).toEqual({ owner: 'core' })
     }
   })
 
@@ -117,6 +121,10 @@ describe('plugin route map', () => {
   it('keeps Settings (with Settings → Plugins) core: a switched-off plugin can always be switched back on', () => {
     expect(routeOwner('/settings/modules')).toEqual({ owner: 'core' })
     expect(routeOwner('/settings')).toEqual({ owner: 'core' })
+  })
+
+  it('keeps /coworkers core: every member opens AI Co-workers regardless of plugin switches', () => {
+    expect(routeOwner('/coworkers')).toEqual({ owner: 'core' })
   })
 
   it.each([

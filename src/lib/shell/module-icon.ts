@@ -10,12 +10,14 @@ import MessagesSquare from '@lucide/svelte/icons/messages-square'
 import Palette from '@lucide/svelte/icons/palette'
 import Settings from '@lucide/svelte/icons/settings'
 import Sparkles from '@lucide/svelte/icons/sparkles'
+import UsersRound from '@lucide/svelte/icons/users-round'
 import Video from '@lucide/svelte/icons/video'
 import WandSparkles from '@lucide/svelte/icons/wand-sparkles'
 
 /** Presentation only: an icon per known module id; any other module gets the generic box. */
 const ICONS: Record<string, Component> = {
   messages: MessagesSquare,
+  coworkers: UsersRound,
   settings: Settings,
   website: Globe,
   email: Mail,

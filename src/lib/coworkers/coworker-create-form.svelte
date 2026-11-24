@@ -20,11 +20,13 @@
     models,
     seats,
     feedback = null,
+    oncreated,
   }: {
     templates: TemplateLike[]
     models: ChatModelOption[]
     seats: { id: string; name: string; kind: 'human' | 'coworker' }[]
     feedback?: Feedback | null
+    oncreated?: () => void
   } = $props()
 
   /** '' = blank (no template). */
@@ -43,6 +45,7 @@
     if (result.type === 'success' && result.data?.ok === true) {
       templateId = ''
       card = emptyDraft()
+      oncreated?.()
     }
   }
 </script>

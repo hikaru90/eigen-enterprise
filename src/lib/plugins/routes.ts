@@ -145,6 +145,7 @@ export const CORE_ROUTES: readonly string[] = [
   // The company activity log (every plugin's and agent's actions, and spend) inside the Assistant's area.
   '/assistant/activity',
   '/contribute',
+  '/coworkers',
   '/settings',
   // The generic module page; each plugin's /m/<id> belongs to that plugin.
   '/m',
