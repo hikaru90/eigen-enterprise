@@ -5,7 +5,8 @@ import { Marked, type Token, type TokenizerAndRendererExtension, type TokensList
 /**
  * Team messages are Markdown written by people: render GFM, then sanitize to a
  * small allowlist. Raw HTML in a message is shown as text, never rendered;
- * links open in a new tab and only http(s)/mailto targets survive.
+ * external http(s)/mailto links open in a new tab, while internal
+ * `/drive/folder/<id>` and `/drive/file/<id>` links stay in-app.
  * @mentions of people in the company are highlighted (yours more strongly).
  */
 
@@ -106,17 +107,27 @@ function markedFor(mentions?: MentionOptions): Marked {
   return cached.marked
 }
 
+const DRIVE_LINK_RE = /^\/drive\/(folder|file)\/[A-Za-z0-9_-]+$/
+
 const PURIFY: Config = {
   ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 's', 'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'a', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span'],
   ALLOWED_ATTR: ['href', 'title', 'data-mention'],
-  ALLOWED_URI_REGEXP: /^(?:https?:|mailto:)/i,
+  ALLOWED_URI_REGEXP: /^(?:(?:https?:|mailto:)|\/drive\/(?:folder|file)\/[A-Za-z0-9_-]+$)/i,
 }
 
 function markLink(node: Element) {
-  if (node.tagName === 'A' && node.hasAttribute('href')) {
-    node.setAttribute('target', '_blank')
-    node.setAttribute('rel', 'noopener noreferrer nofollow')
+  if (node.tagName !== 'A' || !node.hasAttribute('href')) return
+  const href = node.getAttribute('href') ?? ''
+  const drive = DRIVE_LINK_RE.exec(href)
+  if (drive) {
+    node.setAttribute('data-drive-link', drive[1]!)
+    node.removeAttribute('target')
+    node.removeAttribute('rel')
+    return
   }
+  node.removeAttribute('data-drive-link')
+  node.setAttribute('target', '_blank')
+  node.setAttribute('rel', 'noopener noreferrer nofollow')
 }
 
 export function renderMessageMarkdown(source: string, mentions?: MentionOptions): string {

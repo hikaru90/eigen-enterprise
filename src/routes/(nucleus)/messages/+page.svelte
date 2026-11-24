@@ -31,6 +31,7 @@
   import type { Mentionable } from '$lib/messages/mention'
   import MessageComposer from '$lib/messages/message-composer.svelte'
   import MessageRow, { type RowPerson } from '$lib/messages/message-row.svelte'
+  import { clipboardFiles, matchUploadedAttachments } from '$lib/messages/paste'
   import {
     applyPresence,
     presenceLabel,
@@ -121,6 +122,7 @@
   let listEl = $state<HTMLDivElement | null>(null)
   let composerEl = $state<HTMLTextAreaElement | null>(null)
   let fileInput = $state<HTMLInputElement | null>(null)
+  let threadFileInput = $state<HTMLInputElement | null>(null)
 
   // Sidebar sections (collapsible).
   let channelsOpen = $state(true)
@@ -148,10 +150,21 @@
     status: 'uploading' | 'ready'
     file?: AttachmentView
     voiceMs?: number
+    previewUrl?: string
   }
   let pendingFiles = $state<PendingFile[]>([])
   let dragging = $state(false)
+  let threadPendingFiles = $state<PendingFile[]>([])
+  let threadDragging = $state(false)
   let nextKey = 0
+
+  function revokePreview(p: PendingFile) {
+    if (p.previewUrl) URL.revokeObjectURL(p.previewUrl)
+  }
+
+  function clearPending(list: readonly PendingFile[]) {
+    for (const p of list) revokePreview(p)
+  }
 
   // Quoted replies (Contribute 2a58bcc8): what the composer (or the thread's) is replying to, and the jump target.
   let replyingTo = $state<MessageView | null>(null)
@@ -192,6 +205,17 @@
     !sending &&
       !uploading &&
       (draft.trim().length > 0 || readyFiles.length > 0 || readyVoice.length > 0),
+  )
+  const threadUploading = $derived(threadPendingFiles.some((f) => f.status === 'uploading'))
+  const threadReadyFiles = $derived(
+    threadPendingFiles
+      .filter((f) => f.status === 'ready' && f.file && f.voiceMs === undefined)
+      .map((f) => f.file as AttachmentView),
+  )
+  const canSendReply = $derived(
+    !threadSending &&
+      !threadUploading &&
+      (threadDraft.trim().length > 0 || threadReadyFiles.length > 0),
   )
 
   /** @mention highlighting: people's full and first names, a co-worker's @handle; yours marked as "me". */
@@ -238,6 +262,12 @@
     replaceState(`${resolve('/messages')}?c=${encodeURIComponent(conversationId)}${t}`, {})
   }
 
+  const returnHref = $derived.by(() => {
+    if (!selectedId) return resolve('/messages')
+    const t = thread ? `&t=${encodeURIComponent(thread.parent.id)}` : ''
+    return `${resolve('/messages')}?c=${encodeURIComponent(selectedId)}${t}`
+  })
+
   // ── conversation selection ──────────────────────────────────────────────
   async function openConversation(id: string, updateUrl = true) {
     selectedId = id
@@ -248,7 +278,10 @@
     thread = null
     editingId = null
     pickerFor = null
+    clearPending(pendingFiles)
     pendingFiles = []
+    clearPending(threadPendingFiles)
+    threadPendingFiles = []
     replyingTo = null
     threadReplyingTo = null
     highlightId = null
@@ -292,6 +325,10 @@
   function closeConversation() {
     selectedId = null
     thread = null
+    clearPending(pendingFiles)
+    pendingFiles = []
+    clearPending(threadPendingFiles)
+    threadPendingFiles = []
     setUrl(null, null)
     void reportViewing()
   }
@@ -334,6 +371,8 @@
     sending = true
     errorText = null
     try {
+      const attachmentIds = readyFiles.map((f) => f.fileId)
+      const voiceClips = readyVoice
       const { message: posted } = await api<{ message: MessageView }>(
         `/api/messages/conversations/${id}/messages`,
         {
@@ -341,15 +380,22 @@
           body: JSON.stringify({
             body,
             replyToId: replyingTo?.id ?? null,
-            attachmentIds: readyFiles.map((f) => f.fileId),
-            voiceClips: readyVoice,
+            attachmentIds,
+            voiceClips,
           }),
         },
       )
       drafts.clear(id)
       // Switched away while sending: that conversation's restored draft stays.
       if (selectedId === id) draft = ''
-      pendingFiles = []
+      const sentIds = new Set([...attachmentIds, ...voiceClips.map((v) => v.fileId)])
+      pendingFiles = pendingFiles.filter((p) => {
+        if (p.file && sentIds.has(p.file.fileId)) {
+          revokePreview(p)
+          return false
+        }
+        return true
+      })
       replyingTo = null
       now = new Date()
       messages = mergeMessages(messages, [posted])
@@ -363,16 +409,44 @@
     }
   }
 
+  function getPending(target: 'log' | 'thread'): PendingFile[] {
+    return target === 'thread' ? threadPendingFiles : pendingFiles
+  }
+
+  function setPending(target: 'log' | 'thread', next: PendingFile[]) {
+    if (target === 'thread') threadPendingFiles = next
+    else pendingFiles = next
+  }
+
+  function setTargetError(target: 'log' | 'thread', err: PageError | null) {
+    if (target === 'thread') threadError = err
+    else errorText = err
+  }
+
+  function removePending(key: number, target: 'log' | 'thread') {
+    const list = getPending(target)
+    const item = list.find((x) => x.key === key)
+    if (item) revokePreview(item)
+    setPending(
+      target,
+      list.filter((x) => x.key !== key),
+    )
+  }
+
   /** Uploads into the conversation's Drive folder; each file succeeds or fails on its own. */
-  async function attach(files: File[]) {
+  async function attach(files: File[], target: 'log' | 'thread' = 'log') {
     const id = selectedId
-    if (!id || files.length === 0) return
-    errorText = null
-    const keys = files.map((f) => {
-      const key = ++nextKey
-      pendingFiles = [...pendingFiles, { key, name: f.name, status: 'uploading' }]
-      return key
-    })
+    const parentId = target === 'thread' ? (thread?.parent.id ?? null) : null
+    if (!id || files.length === 0 || (target === 'thread' && !parentId)) return
+    setTargetError(target, null)
+    const batch: PendingFile[] = files.map((f) => ({
+      key: ++nextKey,
+      name: f.name,
+      status: 'uploading',
+      previewUrl: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined,
+    }))
+    const keys = batch.map((b) => b.key)
+    setPending(target, [...getPending(target), ...batch])
     const form = new FormData()
     for (const f of files) form.append('file', f)
     try {
@@ -386,25 +460,33 @@
         error?: string
       }
       if (!res.ok) throw new MessagesRequestError(body, `upload failed (${res.status})`)
-      if (selectedId !== id) return
-      const uploaded = [...(body.uploaded ?? [])]
-      pendingFiles = pendingFiles.flatMap((p) => {
-        if (!keys.includes(p.key)) return [p]
-        const i = uploaded.findIndex((u) => u.name === p.name)
-        if (i < 0) return []
-        const [file] = uploaded.splice(i, 1)
-        return [{ ...p, status: 'ready' as const, file }]
-      })
+      if (selectedId !== id || (target === 'thread' && thread?.parent.id !== parentId)) {
+        clearPending(batch)
+        return
+      }
+      const { next, dropped } = matchUploadedAttachments(
+        getPending(target),
+        keys,
+        body.uploaded ?? [],
+      )
+      clearPending(dropped)
+      setPending(target, next)
       if (body.errors?.length) {
-        errorText = {
+        setTargetError(target, {
           error: body.errors.join(' '),
           agent: null,
           attempted: 'Uploading attachments in Messages',
-        }
+        })
       }
     } catch (err) {
-      pendingFiles = pendingFiles.filter((p) => !keys.includes(p.key))
-      errorText = failure(err, 'Uploading attachments in Messages')
+      clearPending(batch)
+      if (selectedId === id && (target !== 'thread' || thread?.parent.id === parentId)) {
+        setPending(
+          target,
+          getPending(target).filter((p) => !keys.includes(p.key)),
+        )
+        setTargetError(target, failure(err, 'Uploading attachments in Messages'))
+      }
     }
   }
 
@@ -432,30 +514,32 @@
     }
   }
 
-  function onPickFiles(e: Event) {
+  function onPickFiles(e: Event, target: 'log' | 'thread' = 'log') {
     const input = e.currentTarget as HTMLInputElement
-    void attach([...(input.files ?? [])])
+    void attach([...(input.files ?? [])], target)
     input.value = ''
   }
 
-  function onDragOver(e: DragEvent) {
+  function onDragOver(e: DragEvent, target: 'log' | 'thread' = 'log') {
     if (e.dataTransfer?.types.includes('Files')) {
       e.preventDefault()
-      dragging = true
+      if (target === 'thread') threadDragging = true
+      else dragging = true
     }
   }
 
-  function onDrop(e: DragEvent) {
+  function onDrop(e: DragEvent, target: 'log' | 'thread' = 'log') {
     e.preventDefault()
-    dragging = false
-    void attach([...(e.dataTransfer?.files ?? [])])
+    if (target === 'thread') threadDragging = false
+    else dragging = false
+    void attach([...(e.dataTransfer?.files ?? [])], target)
   }
 
-  function onPaste(e: ClipboardEvent) {
-    const files = [...(e.clipboardData?.files ?? [])]
+  function onPaste(e: ClipboardEvent, target: 'log' | 'thread' = 'log') {
+    const files = clipboardFiles(e.clipboardData)
     if (files.length === 0) return
     e.preventDefault()
-    void attach(files)
+    void attach(files, target)
   }
 
   // ── threads ─────────────────────────────────────────────────────────────
@@ -463,6 +547,8 @@
     threadError = null
     threadDraft = ''
     threadReplyingTo = null
+    clearPending(threadPendingFiles)
+    threadPendingFiles = []
     pickerFor = null
     try {
       const t = await api<{ parent: MessageView; replies: MessageView[] }>(
@@ -480,14 +566,17 @@
   function closeThread() {
     thread = null
     threadReplyingTo = null
+    clearPending(threadPendingFiles)
+    threadPendingFiles = []
     setUrl(selectedId, null)
   }
 
   async function sendReply() {
-    if (!thread || !selectedId || !threadDraft.trim() || threadSending) return
+    if (!thread || !selectedId || !canSendReply) return
     threadSending = true
     threadError = null
     const parentId = thread.parent.id
+    const attachmentIds = threadReadyFiles.map((f) => f.fileId)
     try {
       const { message: reply, parent } = await api<{
         message: MessageView
@@ -498,10 +587,19 @@
           body: threadDraft,
           parentId,
           replyToId: threadReplyingTo?.id ?? null,
+          attachmentIds,
         }),
       })
       threadDraft = ''
       threadReplyingTo = null
+      const sentIds = new Set(attachmentIds)
+      threadPendingFiles = threadPendingFiles.filter((p) => {
+        if (p.file && sentIds.has(p.file.fileId)) {
+          revokePreview(p)
+          return false
+        }
+        return true
+      })
       now = new Date()
       applyLocal({ action: 'created', message: reply, parent, unread: 0 })
       await tick()
@@ -780,6 +878,8 @@
   })
 
   onDestroy(() => {
+    clearPending(pendingFiles)
+    clearPending(threadPendingFiles)
     stream?.close()
     if (heartbeat) clearInterval(heartbeat)
     if (clock) clearInterval(clock)
@@ -1310,6 +1410,7 @@
                 repliers={m.replierIds.map(rowPerson)}
                 {mentions}
                 {now}
+                {returnHref}
                 highlighted={highlightId === m.id}
                 onquote={() => startQuote(m, 'log')}
                 onopenquote={() => m.replyTo && jumpToQuote(m.replyTo)}
@@ -1355,6 +1456,7 @@
           if (selectedId) drafts.write(selectedId, text)
         }}
         onattach={() => fileInput?.click()}
+        driveFolders
         onpaste={onPaste}
         ondragover={onDragOver}
         ondragleave={() => (dragging = false)}
@@ -1387,45 +1489,7 @@
               attempted={errorText.attempted}
             />
           {/if}
-          {#if pendingFiles.length > 0}
-            <ul class="flex flex-wrap gap-2 px-3 pt-2.5" data-testid="messages-pending">
-              {#each pendingFiles as p (p.key)}
-                <li
-                  class="flex max-w-60 items-center gap-2 rounded-lg border border-border bg-foreground/[0.03] py-1.5 pr-1 pl-2 text-xs"
-                  data-testid="messages-pending-file"
-                  data-status={p.status}
-                  data-name={p.name}
-                  data-voice={p.voiceMs !== undefined}
-                >
-                  {#if p.status === 'uploading'}<LoaderCircle
-                      class="size-4 shrink-0 animate-spin text-muted-foreground"
-                      aria-label="Uploading"
-                    />{:else if p.voiceMs !== undefined}<Mic
-                      class="size-4 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />{:else}<Paperclip
-                      class="size-4 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />{/if}
-                  <span class="min-w-0">
-                    <span class="block truncate font-medium">{p.name}</span>
-                    {#if p.voiceMs !== undefined}<span class="block text-xs text-muted-foreground"
-                        >{formatVoiceTimer(p.voiceMs)} · plays with the text</span
-                      >{:else if p.file}<span class="block text-xs text-muted-foreground"
-                        >{formatSize(p.file.size)}</span
-                      >{/if}
-                  </span>
-                  <button
-                    type="button"
-                    class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
-                    aria-label="Remove {p.name}"
-                    onclick={() => (pendingFiles = pendingFiles.filter((x) => x.key !== p.key))}
-                    ><X class="size-3.5" /></button
-                  >
-                </li>
-              {/each}
-            </ul>
-          {/if}
+          {@render pendingList(pendingFiles, 'log')}
         {/snippet}
       </MessageComposer>
     {:else}
@@ -1488,19 +1552,36 @@
           attempted={threadError.attempted}
         />
       {/if}
+      <input
+        bind:this={threadFileInput}
+        type="file"
+        multiple
+        class="hidden"
+        data-testid="thread-file-input"
+        onchange={(e) => onPickFiles(e, 'thread')}
+      />
       <MessageComposer
         bind:value={threadDraft}
         bind:textarea={threadComposerEl}
         placeholder="Reply…"
         label="Reply"
-        canSend={!threadSending && threadDraft.trim().length > 0}
+        canSend={canSendReply}
         emoji={data.reactionEmoji}
         inputTestid="thread-composer"
         sendTestid="thread-send"
         {mentionables}
         me={data.me}
         hint={false}
+        dragging={threadDragging}
         onsend={sendReply}
+        onattach={() => threadFileInput?.click()}
+        attachTestid="thread-attach"
+        driveFolders
+        driveFolderTestid="thread-drive-folder"
+        onpaste={(e) => onPaste(e, 'thread')}
+        ondragover={(e) => onDragOver(e, 'thread')}
+        ondragleave={() => (threadDragging = false)}
+        ondrop={(e) => onDrop(e, 'thread')}
       >
         {#snippet above()}
           {#if threadReplyingTo}
@@ -1510,11 +1591,73 @@
               ondismiss={() => (threadReplyingTo = null)}
             />
           {/if}
+          {@render pendingList(threadPendingFiles, 'thread')}
         {/snippet}
       </MessageComposer>
     </aside>
   {/if}
 </div>
+
+{#snippet pendingList(items: PendingFile[], target: 'log' | 'thread')}
+  {#if items.length > 0}
+    <ul
+      class="flex flex-wrap gap-2 px-3 pt-2.5"
+      data-testid={target === 'thread' ? 'thread-pending' : 'messages-pending'}
+    >
+      {#each items as p (p.key)}
+        <li
+          class="flex max-w-60 items-center gap-2 rounded-lg border border-border bg-foreground/[0.03] py-1.5 pr-1 pl-2 text-xs"
+          data-testid={target === 'thread' ? 'thread-pending-file' : 'messages-pending-file'}
+          data-status={p.status}
+          data-name={p.name}
+          data-voice={p.voiceMs !== undefined}
+        >
+          {#if p.previewUrl}
+            <span class="relative size-10 shrink-0 overflow-hidden rounded border border-border">
+              <img
+                src={p.previewUrl}
+                alt={p.name}
+                class="size-10 rounded object-cover"
+                data-testid="messages-pending-preview"
+              />
+              {#if p.status === 'uploading'}
+                <span
+                  class="absolute inset-0 grid place-items-center bg-background/60"
+                  aria-label="Uploading"
+                >
+                  <LoaderCircle class="size-4 animate-spin text-foreground" aria-hidden="true" />
+                </span>
+              {/if}
+            </span>
+          {:else if p.status === 'uploading'}
+            <LoaderCircle
+              class="size-4 shrink-0 animate-spin text-muted-foreground"
+              aria-label="Uploading"
+            />
+          {:else if p.voiceMs !== undefined}
+            <Mic class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          {:else}
+            <Paperclip class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          {/if}
+          <span class="min-w-0">
+            <span class="block truncate font-medium">{p.name}</span>
+            {#if p.voiceMs !== undefined}<span class="block text-xs text-muted-foreground"
+                >{formatVoiceTimer(p.voiceMs)} · plays with the text</span
+              >{:else if p.file}<span class="block text-xs text-muted-foreground"
+                >{formatSize(p.file.size)}</span
+              >{/if}
+          </span>
+          <button
+            type="button"
+            class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+            aria-label="Remove {p.name}"
+            onclick={() => removePending(p.key, target)}><X class="size-3.5" /></button
+          >
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
 
 {#snippet threadRow(m: MessageView, grouped: boolean)}
   <MessageRow
@@ -1529,6 +1672,7 @@
     reactionEmoji={data.reactionEmoji}
     {mentions}
     {now}
+    {returnHref}
     highlighted={highlightId === m.id}
     onquote={() => startQuote(m, 'thread')}
     onopenquote={() => m.replyTo && jumpToQuote(m.replyTo)}

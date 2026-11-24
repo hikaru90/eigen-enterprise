@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte'
   import Bold from '@lucide/svelte/icons/bold'
   import Code from '@lucide/svelte/icons/code'
+  import Folder from '@lucide/svelte/icons/folder'
   import Italic from '@lucide/svelte/icons/italic'
   import Link from '@lucide/svelte/icons/link'
   import Paperclip from '@lucide/svelte/icons/paperclip'
@@ -16,7 +17,8 @@
   import { appendVoiceTranscript } from '$lib/voice/transcribe-voice-clip'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
   import type { VoiceRecording } from '$lib/voice/voice-message'
-  import { applyFormat, insertAt, type Edit, type Format } from './composer'
+  import { applyFormat, formatDriveFolderLink, insertAt, type DriveFolderOption, type Edit, type Format } from './composer'
+  import DriveFolderPicker from './drive-folder-picker.svelte'
   import EmojiPicker from './emoji-picker.svelte'
   import { insertMention, matchMentions, mentionAt, type Mentionable } from './mention'
 
@@ -46,6 +48,10 @@
     onsend,
     ondraft,
     onattach,
+    attachTestid = 'messages-attach',
+    driveFolders = false,
+    driveFolderTestid = 'composer-drive-folder',
+    loadDriveFolders,
     onpaste,
     ondragover,
     ondragleave,
@@ -71,6 +77,11 @@
     ondraft?: (value: string) => void
     /** Shows the attach button. */
     onattach?: () => void
+    attachTestid?: string
+    /** Shows the Drive folder link picker button. */
+    driveFolders?: boolean
+    driveFolderTestid?: string
+    loadDriveFolders?: (query: string, signal?: AbortSignal) => Promise<DriveFolderOption[]>
     onpaste?: (e: ClipboardEvent) => void
     ondragover?: (e: DragEvent) => void
     ondragleave?: (e: DragEvent) => void
@@ -146,6 +157,7 @@
   let emojiOpen = $state(false)
   /** The full picker instead of the quick row ("More emoji"). */
   let emojiFull = $state(false)
+  let folderOpen = $state(false)
   let voiceActive = $state(false)
 
   async function addTranscript(text: string, recording: VoiceRecording) {
@@ -171,6 +183,7 @@
   }
 
   function toggleEmoji() {
+    folderOpen = false
     emojiFull = false
     emojiOpen = !emojiOpen
   }
@@ -186,6 +199,30 @@
     emojiFull = false
     const el = textarea
     void apply(insertAt(value, el?.selectionStart ?? value.length, el?.selectionEnd ?? value.length, e))
+  }
+
+  function toggleFolder() {
+    emojiOpen = false
+    emojiFull = false
+    folderOpen = !folderOpen
+  }
+
+  function closeFolder() {
+    folderOpen = false
+    textarea?.focus()
+  }
+
+  function addDriveFolder(folder: DriveFolderOption) {
+    folderOpen = false
+    const el = textarea
+    void apply(
+      insertAt(
+        value,
+        el?.selectionStart ?? value.length,
+        el?.selectionEnd ?? value.length,
+        formatDriveFolderLink(folder),
+      ),
+    )
   }
 
   function onKey(e: KeyboardEvent) {
@@ -316,8 +353,19 @@
           class="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
           aria-label="Attach files"
           title="Attach files (they’re saved to the Drive)"
-          data-testid="messages-attach"
+          data-testid={attachTestid}
           onclick={onattach}><Paperclip class="size-4" /></button
+        >
+      {/if}
+      {#if driveFolders}
+        <button
+          type="button"
+          class="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+          aria-label="Link Drive folder"
+          title="Link a Drive folder"
+          aria-expanded={folderOpen}
+          data-testid={driveFolderTestid}
+          onclick={toggleFolder}><Folder class="size-4" /></button
         >
       {/if}
       <button
@@ -329,6 +377,15 @@
         data-testid="composer-emoji"
         onclick={toggleEmoji}><Smile class="size-4" /></button
       >
+      {#if folderOpen}
+        <div class="absolute bottom-full left-1.5 z-20 mb-1">
+          <DriveFolderPicker
+            load={loadDriveFolders}
+            onpick={addDriveFolder}
+            onclose={closeFolder}
+          />
+        </div>
+      {/if}
       {#if emojiOpen && emojiFull}
         <div class="absolute bottom-full left-1.5 z-20 mb-1">
           <EmojiPicker label="Insert emoji" onpick={addEmoji} onclose={closeEmoji} />

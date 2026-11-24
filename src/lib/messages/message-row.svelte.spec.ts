@@ -81,6 +81,32 @@ describe('message-row.svelte', () => {
     expect(page.getByTestId('messages-author-ai').elements()).toHaveLength(0)
   })
 
+  it('appends ?from= to Drive attachment links when returnHref is provided, and leaves plain links otherwise', async () => {
+    const attachments = [
+      { fileId: 'img-1', name: 'snap.png', mime: 'image/png', size: 1024, image: true },
+      { fileId: 'doc-1', name: 'notes.md', mime: 'text/markdown', size: 512, image: false },
+    ]
+    const r = render(MessageRow, props({ message: { ...base, attachments }, returnHref: '/messages?c=c1&t=m1' }))
+    await expect
+      .element(page.getByTestId('messages-attachment-image'))
+      .toHaveAttribute('href', '/drive/file/img-1?from=%2Fmessages%3Fc%3Dc1%26t%3Dm1')
+    await expect
+      .element(page.getByTestId('messages-attachment-file'))
+      .toHaveAttribute('href', '/drive/file/doc-1?from=%2Fmessages%3Fc%3Dc1%26t%3Dm1')
+    r.unmount()
+    render(MessageRow, props({ message: { ...base, attachments } }))
+    await expect.element(page.getByTestId('messages-attachment-image')).toHaveAttribute('href', '/drive/file/img-1')
+    await expect.element(page.getByTestId('messages-attachment-file')).toHaveAttribute('href', '/drive/file/doc-1')
+  })
+
+  it('renders Drive folder links in message body with data-drive-link and no target attribute', async () => {
+    render(MessageRow, props({ message: { ...base, body: 'See [Design](/drive/folder/f-1)' } }))
+    const link = page.getByTestId('messages-body').getByRole('link', { name: 'Design' })
+    await expect.element(link).toHaveAttribute('href', '/drive/folder/f-1')
+    await expect.element(link).toHaveAttribute('data-drive-link', 'folder')
+    expect(link.element().hasAttribute('target')).toBe(false)
+  })
+
   it('a grouped row has no avatar or name, only the time in the gutter', async () => {
     render(MessageRow, props({ grouped: true }))
     await expect.element(page.getByTestId('messages-item')).toHaveAttribute('data-grouped', 'true')

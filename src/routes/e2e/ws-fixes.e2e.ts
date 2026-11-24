@@ -165,7 +165,7 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   await expect(card).toBeVisible()
   await card.click()
   await expect(b).toHaveURL(/\/drive\/file\//)
-  const agendaId = b.url().split('/').pop()!
+  const agendaId = new URL(b.url()).pathname.split('/').pop()!
   await expect(mode(b)).toHaveAttribute('data-mode', 'reading')
   // 3. One current sidebar item: Drive.
   expect(await highlightedNav(b)).toEqual(['shell-nav-drive'])

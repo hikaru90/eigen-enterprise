@@ -36,6 +36,13 @@ const FILES: Record<string, () => ReturnType<typeof file>> = {
   'replaced-image': () => file(2048, 'logo.png', 'image/png'),
 }
 
+const makeEvent = (id: string, search = '') =>
+  ({
+    locals: { user: { id: 'alice' } },
+    params: { id },
+    url: new URL(`https://ee.test/drive/file/${id}${search}`),
+  }) as never
+
 describe('/drive/file/[id] text previews', () => {
   beforeEach(() => {
     holder.readText = vi.fn(async () => ({ file: file(TEXT_PREVIEW_MAX_BYTES), content: 'export const answer = 42\n' }))
@@ -58,7 +65,7 @@ describe('/drive/file/[id] text previews', () => {
   })
 
   it('refuses to read a text file over 2 MB and offers a clear download explanation', async () => {
-    const result = (await load({ locals: { user: { id: 'alice' } }, params: { id: 'too-large' } } as never)) as {
+    const result = (await load(makeEvent('too-large'))) as {
       text: string | null
       textError: string | null
     }
@@ -68,7 +75,7 @@ describe('/drive/file/[id] text previews', () => {
   })
 
   it('still reads a text file at the 2 MB boundary', async () => {
-    const result = (await load({ locals: { user: { id: 'alice' } }, params: { id: 'source-code' } } as never)) as {
+    const result = (await load(makeEvent('source-code'))) as {
       text: string | null
       textError: string | null
     }
@@ -78,7 +85,7 @@ describe('/drive/file/[id] text previews', () => {
   })
 
   it.each(['huge-md', 'huge-csv', 'huge-html'])('caps every previewed text kind at 2 MB, the editor included (%s)', async (id) => {
-    const result = (await load({ locals: { user: { id: 'alice' } }, params: { id } } as never)) as {
+    const result = (await load(makeEvent(id))) as {
       text: string | null
       html: string | null
       table: unknown
@@ -95,7 +102,7 @@ describe('/drive/file/[id] text previews', () => {
   })
 
   it('fails loud when a previewed file has no size', async () => {
-    await expect(load({ locals: { user: { id: 'alice' } }, params: { id: 'no-size' } } as never)).rejects.toThrow(/no size/)
+    await expect(load(makeEvent('no-size'))).rejects.toThrow(/no size/)
     expect(holder.readText).not.toHaveBeenCalled()
   })
 
@@ -107,7 +114,7 @@ describe('/drive/file/[id] text previews', () => {
     ]
     d.listRevisions.mockResolvedValue(revs)
     d.shareTargets.mockResolvedValue({ people: [{ id: 'alice', name: 'Alice', email: 'a@x' }, { id: 'bob', name: '', email: 'bob@x' }], groups: [] })
-    const result = (await load({ locals: { user: { id: 'alice' } }, params: { id: 'replaced-image' } } as never)) as {
+    const result = (await load(makeEvent('replaced-image'))) as {
       revisions: unknown[]
       authors: Record<string, string>
       editable: boolean
@@ -115,5 +122,53 @@ describe('/drive/file/[id] text previews', () => {
     expect(result.revisions).toEqual(revs)
     expect(result.authors).toEqual({ alice: 'Alice', bob: 'bob@x' })
     expect(result.editable).toBe(false)
+  })
+})
+
+describe('/drive/file/[id] returnTo from ?from=', () => {
+  beforeEach(() => {
+    holder.readText = vi.fn(async () => ({ file: file(TEXT_PREVIEW_MAX_BYTES), content: 'export const answer = 42\n' }))
+    holder.drive = {
+      fileInfo: vi.fn(async (_actor: unknown, id: string) => ({
+        file: FILES[id]!(),
+        path: [],
+        root: { label: 'Messages', href: '/messages' },
+        canEdit: false,
+        canManage: false,
+        archivedIn: null,
+      })),
+      readText: holder.readText,
+      describeItems: vi.fn(async () => ({
+        'file:source-code': { ownerName: 'Messages', shared: null, readOnlyFrom: null },
+      })),
+      listRevisions: vi.fn(async () => []),
+      shareTargets: vi.fn(async () => ({ people: [], groups: [] })),
+    }
+  })
+
+  it('returns validated returnTo when ?from= is a valid /messages target', async () => {
+    const result = (await load(makeEvent('replaced-image', '?from=%2Fmessages%3Fc%3Dc1%26t%3Dm1'))) as {
+      returnTo: { href: string; label: string } | null
+    }
+    expect(result.returnTo).toEqual({ href: '/messages?c=c1&t=m1', label: 'Messages' })
+  })
+
+  it('returns null when ?from= is absent', async () => {
+    const result = (await load(makeEvent('replaced-image'))) as {
+      returnTo: { href: string; label: string } | null
+    }
+    expect(result.returnTo).toBeNull()
+  })
+
+  it.each([
+    '?from=https%3A%2F%2Fevil.test',
+    '?from=%2F%2Fevil.test',
+    '?from=%2Fdrive%2Ffolder%2Fx',
+    '?from=%2Fmessages%2F..%2Fsettings',
+  ])('rejects unsafe ?from= value (%s)', async (search) => {
+    const result = (await load(makeEvent('replaced-image', search))) as {
+      returnTo: { href: string; label: string } | null
+    }
+    expect(result.returnTo).toBeNull()
   })
 })

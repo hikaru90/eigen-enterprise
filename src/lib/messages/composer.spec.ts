@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyFormat, insertAt } from './composer'
+import { applyFormat, formatDriveFolderLink, insertAt } from './composer'
 
 describe('composer formatting', () => {
   it('wraps the selection and keeps it selected', () => {
@@ -25,5 +25,18 @@ describe('composer formatting', () => {
 
   it('inserts an emoji at the caret, replacing a selection', () => {
     expect(insertAt('hi there', 3, 8, '👋')).toEqual({ text: 'hi 👋', selectionStart: 5, selectionEnd: 5 })
+  })
+
+  it('formats a Drive folder link as Markdown and escapes brackets/newlines in the name', () => {
+    expect(formatDriveFolderLink({ id: 'f1', name: 'Q4 Planning', href: '/drive/folder/f1' })).toBe(
+      '[Q4 Planning](/drive/folder/f1)',
+    )
+    expect(
+      formatDriveFolderLink({
+        id: 'f2',
+        name: 'Budget [2026]\nQ1',
+        href: '/drive/folder/f2',
+      }),
+    ).toBe('[Budget \\[2026\\] Q1](/drive/folder/f2)')
   })
 })

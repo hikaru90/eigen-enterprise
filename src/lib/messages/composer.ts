@@ -8,6 +8,13 @@ export type Format = 'bold' | 'italic' | 'strike' | 'code' | 'link'
 
 export type Edit = { text: string; selectionStart: number; selectionEnd: number }
 
+export type DriveFolderOption = {
+  id: string
+  name: string
+  pathLabel: string
+  href: string
+}
+
 const MARKS: Record<Exclude<Format, 'link'>, string> = { bold: '**', italic: '_', strike: '~~', code: '`' }
 
 /** Wraps the selection (or inserts an empty pair with the caret inside). */
@@ -38,4 +45,17 @@ export function insertAt(text: string, start: number, end: number, insert: strin
   const b = Math.min(text.length, Math.max(start, end))
   const caret = a + insert.length
   return { text: text.slice(0, a) + insert + text.slice(b), selectionStart: caret, selectionEnd: caret }
+}
+
+/** Formats a Drive folder link as Markdown (`[FolderName](/drive/folder/<id>)`). */
+export function formatDriveFolderLink(
+  folder: Pick<DriveFolderOption, 'id' | 'name' | 'href'>,
+): string {
+  const label = folder.name
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\[|\]/g, '\\$&')
+  const safeLabel = label || 'Drive folder'
+  const href = folder.href || `/drive/folder/${folder.id}`
+  return `[${safeLabel}](${href})`
 }
