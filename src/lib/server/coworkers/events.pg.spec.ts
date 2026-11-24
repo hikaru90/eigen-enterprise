@@ -77,6 +77,10 @@ describe.skipIf(!url)('co-worker event reactions (Postgres) + Jev on the mock de
       db.transaction(async (tx) => {
         const handle = tx as unknown as AppDatabase
         await appDbAsyncLocal.run(handle, async () => {
+          // The shared test DB keeps what other runs committed (the co-worker browser journey
+          // subscribes its own co-workers). This spec counts subscribers, so it starts from none,
+          // inside this transaction only — the rollback below puts them back.
+          await handle.execute('delete from "coworker_event_subscription"')
           await handle.execute(
             `insert into "user" (id, name, email, email_verified, onboarding_completed, role, kind) values ('${cw}', 'Marketing', '${cw}@coworker.invalid', true, true, 'member', 'coworker'), ('${cw2}', 'GTM', '${cw2}@coworker.invalid', true, true, 'member', 'coworker'), ('${admin}', 'Ari Admin', '${admin}@test.local', true, true, 'admin', 'human')`,
           )

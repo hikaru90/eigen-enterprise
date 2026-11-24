@@ -120,6 +120,12 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   kernel_approvals: full,
   kernel_approval_mode: full,
   kernel_module_activations: full,
+  // Company modules (plan/phase-upgrades-u2.md §4.6): the owner sees them on Settings → Modules.
+  // The module token hash lives in kernel_principals (api_key_hash, secret).
+  kernel_modules: full,
+  kernel_module_versions: full,
+  kernel_module_event_cursor: full,
+  kernel_module_sharing: full,
   kernel_journeys: full,
   kernel_gateway_allowlist: full,
   kernel_gateway_sessions: excluded('live chat-gateway sessions; they reconnect'),
