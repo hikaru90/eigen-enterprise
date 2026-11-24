@@ -13,9 +13,11 @@ import { completeProfileViaApi, gotoHydrated, profileNames, registerUser } from 
  *   3. Its profile: role card, model, daily cap, empty run log and "Would pick
  *      up"; a cap edit (Settings → Co-workers) shows on it; "notice new
  *      messages" saved and still ticked after a reload.
- *   4. Messages: @mentioning it in a channel gets its answer in the thread (the
- *      mock gateway answers the model call), with the AI mark; its run log
- *      then lists the turn.
+ *      Its "Mention as @handle" line copies the handle.
+ *   4. Messages: typing @nov lists it in the composer's @ suggestions (AI mark,
+ *      handle); Enter inserts the handle and the message is sent. It answers in
+ *      the thread (the mock gateway answers the model call), with the AI mark;
+ *      its run log then lists the turn.
  *   5. Settings → Members: its row has the AI mark and a link to Co-workers,
  *      no role or remove control, and the role action refuses it.
  * A full-page screenshot of every screen goes to test-results/coworkers/.
@@ -172,6 +174,8 @@ test('owner creates an AI co-worker and meets it in the org chart, its profile, 
     await expect(card).toContainText(cwTitle)
     await expect(card.getByTestId('ai-mark')).toHaveAttribute('data-family', familyShown)
     await expect(card.getByTestId('coworker-status')).toHaveText(/on/i)
+    await expect(card.getByTestId('coworker-handle')).toHaveAttribute('data-handle', cwHandle)
+    await expect(card.getByTestId('coworker-handle')).toContainText(`@${cwHandle}`)
     await expect(card).toContainText(ownerName)
     // The form is cleared for the next one.
     await expect(form.getByTestId('new-coworker-name')).toHaveValue('')
@@ -208,6 +212,13 @@ test('owner creates an AI co-worker and meets it in the org chart, its profile, 
     await expect(page.getByTestId('profile-model')).toContainText(familyShown)
     await expect(profile).toContainText('3.00')
     await expect(page.getByTestId('profile-lens')).toContainText('Push back on vague messaging')
+    // How to reach it in Messages: its handle, copyable.
+    await expect(page.getByTestId('profile-handle')).toHaveAttribute('data-handle', cwHandle)
+    await expect(page.getByTestId('profile-handle')).toContainText(`@${cwHandle}`)
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.getByTestId('profile-handle-copy').click()
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`@${cwHandle}`)
+    await page.getByTestId('profile-handle').screenshot({ path: `${SHOTS}/05b-profile-handle.png` })
     // The empty states: no runs yet, nothing it would have picked up.
     await expect(page.getByTestId('run-log-empty')).toBeVisible()
     await expect(page.getByTestId('would-pick-up')).toBeVisible()
@@ -253,9 +264,32 @@ test('owner creates an AI co-worker and meets it in the org chart, its profile, 
     await page.getByTestId('channel-create').click()
     await expect(page.getByTestId('messages-title')).toContainText(channel)
 
-    const ask = `@${cwHandle} what is our one-sentence story for the launch?`
-    await page.getByTestId('messages-composer').fill(ask)
-    await page.getByTestId('messages-composer').press('Enter')
+    // The handle is picked, not known: typing @nov lists it (with its AI mark), Enter inserts it.
+    const composer = page.getByRole('combobox', { name: 'Message' })
+    await expect(composer).toHaveAttribute('data-testid', 'messages-composer')
+    await composer.click()
+    await composer.pressSequentially('@nov')
+    const list = page.getByRole('listbox', { name: 'People and co-workers to mention' })
+    await expect(list).toBeVisible()
+    const option = list.getByRole('option').filter({ hasText: cwName })
+    // The shared test DB keeps other runs' Novas, and the list shows eight: type on into the handle until this one is listed.
+    for (let typed = 'nov'.length; typed < cwHandle.length && (await option.count()) === 0; typed++) {
+      await composer.press(cwHandle.charAt(typed))
+    }
+    await expect(option).toHaveCount(1)
+    await expect(option.getByTestId('ai-mark')).toBeVisible()
+    await expect(option).toContainText(`@${cwHandle}`)
+    await expect(composer).toHaveAttribute('aria-expanded', 'true')
+    // Walk the list to this one (↓), then Enter inserts it.
+    for (let i = 0; i < 8 && (await option.getAttribute('aria-selected')) !== 'true'; i++) await composer.press('ArrowDown')
+    await expect(option).toHaveAttribute('aria-selected', 'true')
+    await shot(page, '09a-messages-mention-suggestions', { grow: false })
+    await list.screenshot({ path: `${SHOTS}/09b-mention-list.png` })
+    await composer.press('Enter')
+    await expect(list).toHaveCount(0)
+    await expect(composer).toHaveValue(`@${cwHandle} `)
+    await composer.pressSequentially('what is our one-sentence story for the launch?')
+    await composer.press('Enter')
     const root = page.getByTestId('messages-item').filter({ hasText: 'one-sentence story for the launch' })
     await expect(root).toHaveCount(1)
     // The whole handle is highlighted as a mention — the token that asks it, not its first name alone.

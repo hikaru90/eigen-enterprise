@@ -32,6 +32,7 @@ const people = [
 ]
 const coworker = {
   id: 'cw1',
+  slug: 'mia-mwujrl74',
   lens: 'Reach first.',
   modelId: 'anthropic/claude-sonnet-5.5',
   enabled: true,
@@ -143,6 +144,7 @@ describe('profile load', () => {
     expect(data.runs).toEqual([{ id: 'run-1', triggerKind: 'rhythm', status: 'done' }])
     expect(data.manager).toEqual({ id: 'owner', name: 'Olga' })
     expect(data.coworker).toEqual({
+      handle: 'mia-mwujrl74',
       lens: 'Reach first.',
       modelId: 'anthropic/claude-sonnet-5.5',
       enabled: true,

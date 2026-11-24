@@ -4,6 +4,7 @@
   import { resolve } from '$app/paths'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import AiMark from '$lib/coworkers/ai-mark.svelte'
+  import MentionHandle from '$lib/coworkers/mention-handle.svelte'
   import MessageButton from '$lib/coworkers/message-button.svelte'
   import { modelFamily, modelName } from '$lib/coworkers/model-family'
   import RunLog from '$lib/coworkers/run-log.svelte'
@@ -45,6 +46,7 @@
         {#if c && !c.enabled}<span class="text-sm font-normal text-muted-foreground">{m.coworkers_off()}</span>{/if}
       </h2>
       <p class="text-sm text-muted-foreground" data-testid="profile-title">{p.title ?? m.org_no_title()}</p>
+      {#if c}<MentionHandle handle={c.handle} testid="profile-handle" />{/if}
     </div>
   </header>
 

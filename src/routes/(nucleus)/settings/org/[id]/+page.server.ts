@@ -85,7 +85,10 @@ export const _profileDeps: { run: PersonRunner; role: (userId: string) => Promis
 export type CoworkerCard = Pick<
   CoworkerView,
   'lens' | 'modelId' | 'enabled' | 'dailyCapUsd' | 'accountableHuman'
->
+> & {
+  /** Its @handle, the token that asks it for a turn in Messages (its slug). */
+  handle: string
+}
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   const user = locals.user
@@ -100,6 +103,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (person.kind === 'coworker') {
     const c = await _profileDeps.run<CoworkerView>(user, 'coworkers.get', { user_id: person.id })
     coworker = {
+      handle: c.slug,
       lens: c.lens,
       modelId: c.modelId,
       enabled: c.enabled,

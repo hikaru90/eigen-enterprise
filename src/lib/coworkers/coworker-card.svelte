@@ -10,7 +10,8 @@
   import AiMark from './ai-mark.svelte'
   import { draftFromCoworker, type CardDraft, type CoworkerLike } from './card-draft'
   import CoworkerFields from './coworker-fields.svelte'
-  import CoworkerRhythms, { type RhythmItem, type RhythmTargetItem } from './coworker-rhythms.svelte'
+  import CoworkerRhythms,{ type RhythmItem, type RhythmTargetItem } from './coworker-rhythms.svelte'
+  import MentionHandle from './mention-handle.svelte'
   import { modelFamily, modelName, type ChatModelOption } from './model-family'
 
   /**
@@ -22,6 +23,8 @@
    */
   type Coworker = CoworkerLike & {
     id: string
+    /** Its @handle in Messages. */
+    slug: string
     enabled: boolean
     accountableHuman: { id: string; name: string } | null
   }
@@ -90,6 +93,7 @@
         {managerName ? m.coworkers_reports_to_name({ name: managerName }) : m.coworkers_reports_to_owner()}
         {#if c.accountableHuman}· {m.coworkers_answers_to({ name: c.accountableHuman.name })}{/if}
       </p>
+      <MentionHandle handle={c.slug} />
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <Button
