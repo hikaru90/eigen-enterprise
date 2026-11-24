@@ -37,7 +37,14 @@ const people: OrgPerson[] = [
     enabled: true,
     modelId: 'anthropic/claude-sonnet-5.5',
   }),
-  seat('dana', { name: 'Dana', kind: 'coworker', reportsToUserId: 'mara', title: 'Designer', enabled: false, modelId: 'qwen/qwen3.8-flash' }),
+  seat('dana', {
+    name: 'Dana',
+    kind: 'coworker',
+    reportsToUserId: 'mara',
+    title: 'Designer',
+    enabled: false,
+    modelId: 'qwen/qwen3.8-flash',
+  }),
 ]
 
 type Submitted = { action: string; fields: Record<string, string> }
@@ -55,13 +62,19 @@ beforeEach(() => {
 })
 afterEach(() => document.removeEventListener('submit', catchSubmits, true))
 
-const seatEl = (id: string) => document.querySelector(`[data-testid="org-seat"][data-id="${id}"]`) as HTMLElement
+const seatEl = (id: string) =>
+  document.querySelector(`[data-testid="org-seat"][data-id="${id}"]`) as HTMLElement
 
 describe('org-chart-tree.svelte', () => {
   it('nests each seat under its manager, as lists screen readers announce by level', async () => {
     render(OrgChartTree, { people, me: { id: 'ony', canManage: false } })
     await expect.element(page.getByRole('list', { name: 'Org chart' })).toBeInTheDocument()
-    expect([...document.querySelectorAll('[data-testid="org-seat"]')].map((e) => [e.getAttribute('data-id'), e.getAttribute('data-depth')])).toEqual([
+    expect(
+      [...document.querySelectorAll('[data-testid="org-seat"]')].map((e) => [
+        e.getAttribute('data-id'),
+        e.getAttribute('data-depth'),
+      ]),
+    ).toEqual([
       ['olga', '0'],
       ['ony', '1'],
       ['mara', '1'],
@@ -76,14 +89,31 @@ describe('org-chart-tree.svelte', () => {
     const mark = mara.querySelector('[data-testid="ai-mark"]')!
     expect(mark.getAttribute('data-family')).toBe('Anthropic')
     expect(mark.textContent).toContain('AI')
-    await expect.element(page.getByRole('list', { name: 'Accountabilities of Mara' })).toHaveTextContent('PipelineLaunches')
+    await expect
+      .element(page.getByRole('list', { name: 'Accountabilities of Mara' }))
+      .toHaveTextContent('PipelineLaunches')
     expect(seatEl('dana').querySelector('[data-testid="org-seat-off"]')?.textContent).toBe('Off')
     expect(seatEl('ony').querySelector('[data-testid="ai-mark"]')).toBeNull()
   })
 
   it('each name links to the seat profile', async () => {
     render(OrgChartTree, { people, me: { id: 'ony', canManage: false } })
-    await expect.element(page.getByRole('link', { name: 'Mara' })).toHaveAttribute('href', expect.stringContaining('/settings/org/'))
+    await expect
+      .element(page.getByRole('link', { name: 'Mara', exact: true }))
+      .toHaveAttribute('href', expect.stringContaining('/settings/org/'))
+  })
+
+  it("every seat has a visible Profile link next to Edit (the profile holds a co-worker's runs and Would pick up)", async () => {
+    render(OrgChartTree, { people, me: { id: 'ony', canManage: false } })
+    expect(document.querySelectorAll('[data-testid="org-seat-profile"]')).toHaveLength(
+      people.length,
+    )
+    const profile = seatEl('mara').querySelector('[data-testid="org-seat-profile"]')!
+    expect(profile.tagName).toBe('A')
+    expect(profile.textContent).toBe('Profile: Mara')
+    expect(profile.getAttribute('href')).toBe(
+      seatEl('mara').querySelector('[data-testid="org-seat-name"]')!.getAttribute('href'),
+    )
   })
 
   it('a member may edit only their own seat: title and accountabilities, no reports-to', async () => {
@@ -95,10 +125,16 @@ describe('org-chart-tree.svelte', () => {
     await expect.element(edit).toHaveAttribute('aria-expanded', 'true')
     expect(seatEl('ony').querySelector('[data-testid="org-seat-manager"]')).toBeNull()
     await userEvent.fill(page.getByLabelText('Title', { exact: true }), 'Operations Lead')
-    await userEvent.fill(page.getByLabelText('Accountabilities', { exact: true }), 'Payroll\nVendors')
+    await userEvent.fill(
+      page.getByLabelText('Accountabilities', { exact: true }),
+      'Payroll\nVendors',
+    )
     await page.getByTestId('org-seat-save').click()
     expect(submitted).toEqual([
-      { action: '?/setPosition', fields: { user_id: 'ony', title: 'Operations Lead', accountabilities: 'Payroll\nVendors' } },
+      {
+        action: '?/setPosition',
+        fields: { user_id: 'ony', title: 'Operations Lead', accountabilities: 'Payroll\nVendors' },
+      },
     ])
   })
 
@@ -111,7 +147,11 @@ describe('org-chart-tree.svelte', () => {
     expect(options).toEqual(['Nobody', 'Olga Owner', 'Ony'])
     await userEvent.selectOptions(select, 'Ony')
     await page.getByTestId('org-seat-save').click()
-    expect(submitted[0]!.fields).toMatchObject({ user_id: 'mara', reports_to_user_id: 'ony', title: 'Marketing Manager' })
+    expect(submitted[0]!.fields).toMatchObject({
+      user_id: 'mara',
+      reports_to_user_id: 'ony',
+      title: 'Marketing Manager',
+    })
   })
 
   it('shows a waiting-for-approval answer under the seat it is about', async () => {
