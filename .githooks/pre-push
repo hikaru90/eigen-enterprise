@@ -1,18 +1,31 @@
 #!/usr/bin/env bash
-# Pre-push: every pushed commit must be covered by a green local CI gate.
+# Pre-push: every pushed commit must be covered by a green local CI gate, and
+# every pushed v* tag by a green release gate.
 #
-# Covered = the commit the gate last passed on (stamped by scripts/ci-gate.sh in
-# <git common dir>/ee-gate/passed) or one of its ancestors. Uncovered → run the
-# gate here (it stamps HEAD). Note: git already holds the remote connection while
-# this runs; a long gate can let it idle out (push exit 141). The stamp makes the
-# retry instant — or push with `npm run push -- …`, which gates first.
+# CI gate: covered = the commit the gate last passed on (stamped by
+# scripts/ci-gate.sh in <git common dir>/ee-gate/passed) or one of its
+# ancestors. Uncovered → run the gate here (it stamps HEAD). Note: git already
+# holds the remote connection while this runs; a long gate can let it idle out
+# (push exit 141). The stamp makes the retry instant — or push with
+# `npm run push -- …`, which gates first.
+#
+# Release gate (plan/phase-upgrades.md §8 U1): a pushed refs/tags/v* must point
+# at exactly the commit scripts/tag-gate.sh stamped in ee-gate/tag-passed (the
+# upgrade rehearsal + e2e green there). Not stamped and the tag is on HEAD →
+# run it here; elsewhere → refused. Branch pushes never run it.
 set -euo pipefail
 
 zero=0000000000000000000000000000000000000000
 stamp_file="$(git rev-parse --git-common-dir)/ee-gate/passed"
+tag_stamp_file="$(git rev-parse --git-common-dir)/ee-gate/tag-passed"
 pushed=()
-while read -r _local_ref local_sha _remote_ref _remote_sha; do
-  [ "$local_sha" = "$zero" ] || pushed+=("$local_sha") # zero = deleting a remote ref
+release_tags=() # "<remote ref> <commit>"
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # zero = deleting a remote ref
+  pushed+=("$local_sha")
+  case "$remote_ref" in
+    refs/tags/v*) release_tags+=("$remote_ref $(git rev-parse "$local_sha^{commit}")") ;;
+  esac
 done
 
 uncovered() {
@@ -25,19 +38,46 @@ uncovered() {
   done
 }
 
+# Release tags whose commit the release gate has not passed on: "<ref> <commit>" lines.
+ungated_tags() {
+  local gated entry
+  gated="$(cat "$tag_stamp_file" 2>/dev/null || true)"
+  for entry in "${release_tags[@]+"${release_tags[@]}"}"; do
+    [ "${entry#* }" = "$gated" ] || echo "$entry"
+  done
+}
+
 if [ -z "$(uncovered)" ]; then
   echo "pre-push: local CI gate already green for $(cut -c1-12 "$stamp_file" 2>/dev/null || echo 'nothing to push')"
-  exit 0
+else
+  echo "pre-push: running local CI gate (scripts/ci-gate.sh) …"
+  echo "pre-push: if the push then fails with a dropped connection (exit 141), run it again — the green gate is stamped. Next time: npm run push -- <args>."
+  "$(git rev-parse --show-toplevel)/scripts/ci-gate.sh" </dev/null
+
+  left="$(uncovered)"
+  if [ -n "$left" ]; then
+    echo "pre-push: the gate ran on HEAD $(git rev-parse --short HEAD), which doesn't contain these pushed commits:" >&2
+    echo "$left" >&2
+    echo "pre-push: check them out and push from there." >&2
+    exit 1
+  fi
 fi
 
-echo "pre-push: running local CI gate (scripts/ci-gate.sh) …"
-echo "pre-push: if the push then fails with a dropped connection (exit 141), run it again — the green gate is stamped. Next time: npm run push -- <args>."
-"$(git rev-parse --show-toplevel)/scripts/ci-gate.sh" </dev/null
-
-left="$(uncovered)"
-if [ -n "$left" ]; then
-  echo "pre-push: the gate ran on HEAD $(git rev-parse --short HEAD), which doesn't contain these pushed commits:" >&2
-  echo "$left" >&2
-  echo "pre-push: check them out and push from there." >&2
-  exit 1
+if [ -n "$(ungated_tags)" ]; then
+  head="$(git rev-parse HEAD)"
+  while read -r ref commit; do
+    if [ "$commit" != "$head" ]; then
+      echo "pre-push: $ref points at $commit, not HEAD; the release gate (upgrade rehearsal + e2e) runs on HEAD only." >&2
+      echo "pre-push: check out $commit, run scripts/tag-gate.sh, then push the tag." >&2
+      exit 1
+    fi
+  done <<<"$(ungated_tags)"
+  echo "pre-push: release tag → running the release gate (scripts/tag-gate.sh: upgrade rehearsal + e2e) …"
+  echo "pre-push: if the push then fails with a dropped connection (exit 141), run it again — the green gate is stamped. Next time: npm run push -- <args>."
+  "$(git rev-parse --show-toplevel)/scripts/tag-gate.sh" </dev/null
+  if [ -n "$(ungated_tags)" ]; then
+    echo "pre-push: the release gate did not stamp the tagged commit:" >&2
+    ungated_tags >&2
+    exit 1
+  fi
 fi
