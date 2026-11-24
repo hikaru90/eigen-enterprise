@@ -38,13 +38,17 @@ const seats = [
   { id: 'mara', name: 'Mara', kind: 'coworker' as const },
 ]
 
-type Submitted = { action: string; fields: Record<string, string> }
+type Submitted = { action: string; fields: Record<string, string | string[]> }
 let submitted: Submitted[] = []
 function catchSubmits(event: SubmitEvent) {
   event.preventDefault()
   const form = event.target as HTMLFormElement
-  const fields: Record<string, string> = {}
-  for (const [k, v] of new FormData(form, event.submitter).entries()) fields[k] = String(v)
+  const fd = new FormData(form, event.submitter)
+  const fields: Record<string, string | string[]> = {}
+  for (const k of new Set(fd.keys())) {
+    const all = fd.getAll(k).map(String)
+    fields[k] = k === 'reports_to_user_ids' ? all : all.length > 1 ? all : all[0]!
+  }
   submitted.push({ action: form.getAttribute('action') ?? '', fields })
 }
 beforeEach(() => {
@@ -70,22 +74,26 @@ describe('coworker-create-form.svelte', () => {
     await expect.element(page.getByTestId('new-coworker-model-note')).toHaveTextContent('Careful tool use.')
   })
 
-  it('switching template replaces the card but keeps who it reports to', async () => {
+  it('switching template replaces the card but keeps who it reports to and the picked avatar', async () => {
     render(CoworkerCreateForm, { templates, models, seats })
     await page.getByRole('radio', { name: /Marketing Manager/ }).click()
-    await userEvent.selectOptions(page.getByLabelText('Reports to', { exact: true }), 'Olga Owner')
+    await page.getByTestId('new-coworker-manager').getByRole('checkbox', { name: 'Olga Owner' }).click()
+    await page.getByTestId('new-coworker-avatar-preset-prism').click()
     await page.getByRole('radio', { name: /Designer/ }).click()
     expect(value('new-coworker-title')).toBe('Designer')
     expect(value('new-coworker-model')).toBe('qwen/qwen3.8-flash')
-    expect(value('new-coworker-manager')).toBe('olga')
+    await expect.element(page.getByTestId('new-coworker-manager').getByRole('checkbox', { name: 'Olga Owner' })).toBeChecked()
+    await expect.element(page.getByTestId('new-coworker-avatar-preset-prism')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('posts the edited card with the template to ?/create', async () => {
+  it('posts the edited card, multi-manager checkboxes, and avatar preset with the template to ?/create', async () => {
     render(CoworkerCreateForm, { templates, models, seats })
     await page.getByRole('radio', { name: /Designer/ }).click()
     await userEvent.fill(page.getByLabelText('Name', { exact: true }), 'Dana')
     await userEvent.selectOptions(page.getByLabelText('Model', { exact: true }), 'Anthropic · claude-sonnet-5.5')
-    await userEvent.selectOptions(page.getByLabelText('Reports to', { exact: true }), 'Mara (AI)')
+    await page.getByTestId('new-coworker-manager').getByRole('checkbox', { name: 'Olga Owner' }).click()
+    await page.getByTestId('new-coworker-manager').getByRole('checkbox', { name: 'Mara (AI)' }).click()
+    await page.getByTestId('new-coworker-avatar-preset-orbit').click()
     await page.getByTestId('coworker-create').click()
     expect(submitted).toEqual([
       {
@@ -97,8 +105,12 @@ describe('coworker-create-form.svelte', () => {
           accountabilities: 'Look and feel',
           lens: 'Taste first.',
           model_id: 'anthropic/claude-sonnet-5.5',
-          reports_to_user_id: 'mara',
+          reports_to_sent: '1',
+          reports_to_user_ids: ['olga', 'mara'],
           daily_cap_usd: '1',
+          avatar_sent: '1',
+          avatar_preset: 'orbit',
+          avatar_sha256: '',
         },
       },
     ])

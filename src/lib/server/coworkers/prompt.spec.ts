@@ -151,4 +151,37 @@ describe('assembleCoworkerPrompt', () => {
     expect(() => assembleCoworkerPrompt(input({ conversation: null, trigger: { kind: 'rhythm', from: ann, body: 'x' } }))).toThrow('needs its conversation')
     expect(() => assembleCoworkerPrompt(input({ turnsLeft: null }))).toThrow("needs the thread's turns left")
   })
+
+  it('lists multiple managers and multiple accountable humans when present', () => {
+    const bea: PromptPerson = { id: 'bea', name: 'Bea Member', kind: 'human', handle: 'bea' }
+    const p = assembleCoworkerPrompt(
+      input({
+        self: {
+          ...input().self,
+          reportsTo: { name: 'Ann Owner', kind: 'human' },
+          reportsToList: [
+            { name: 'Ann Owner', kind: 'human' },
+            { name: 'GTM', kind: 'coworker' },
+          ],
+          accountableHuman: ann,
+          accountableHumans: [ann, bea],
+        },
+        org: [
+          { ...ann, title: 'CEO', accountabilities: ['Everything'], reportsToName: null, reportsToNames: [] },
+          {
+            ...marketing,
+            title: 'Marketing Manager',
+            accountabilities: ['Pipeline from campaigns'],
+            reportsToName: 'Ann Owner',
+            reportsToNames: ['Ann Owner', 'GTM'],
+          },
+          { ...gtm, title: 'Go-to-Market Manager', accountabilities: ['Pricing', 'Channels'], reportsToName: 'Ann Owner', reportsToNames: ['Ann Owner'] },
+        ],
+      }),
+    )
+    expect(p).toContain('You report to: Ann Owner (person); GTM (AI co-worker).')
+    expect(p).toContain('The people you answer to: Ann Owner (@ann, person); Bea Member (@bea, person).')
+    expect(p).toContain('Marketing (@marketing, AI co-worker): Marketing Manager, reports to Ann Owner, GTM;')
+    expect(p).toContain('before Ann Owner (@ann) or Bea Member (@bea) have to step in')
+  })
 })

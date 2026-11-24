@@ -81,6 +81,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   // The org chart and the AI co-workers (0170, plan/phase-ai-coworkers.md): every member sees
   // them in the app (titles, accountabilities, reports-to, role cards, run log), so all in full.
   org_position: full,
+  org_position_report: full,
   coworker_profile: full,
   coworker_run: full,
   // C6 (0173): a co-worker's rhythms (schedule, instruction, target conversation) and the

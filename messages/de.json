@@ -626,5 +626,14 @@
   "coworkers_notice_seen": "Verstanden",
   "coworkers_mention_as": "Erwähnen als",
   "coworkers_mention_copy": "{handle} kopieren",
-  "messages_mention_list": "Personen und KI-Kolleg:innen zum Erwähnen"
+  "messages_mention_list": "Personen und KI-Kolleg:innen zum Erwähnen",
+  "coworkers_field_avatar": "Avatar",
+  "coworkers_avatar_presets_label": "Abstrakte CI-Avatare",
+  "coworkers_avatar_upload": "Eigenes Bild hochladen",
+  "coworkers_avatar_uploading": "Wird hochgeladen…",
+  "coworkers_avatar_clear": "Initialen verwenden",
+  "coworkers_avatar_hint": "Wähle ein eigenEnterprise-CI-Emblem oder lade ein Bild hoch (wird quadratisch auf 256×256 WebP zugeschnitten).",
+  "coworkers_reports_to_multi_hint": "Wähle eine oder mehrere Leitungen. Ist niemand gewählt, antwortet sie der Inhaber:in.",
+  "org_also_reports_to": "Berichtet außerdem an {names}",
+  "org_reports_to_multi_hint": "Wähle eine oder mehrere Leitungen (alle abwählen für niemandem)."
 }

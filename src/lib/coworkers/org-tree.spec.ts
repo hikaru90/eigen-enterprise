@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { chatModelOption, modelFamily, modelName } from './model-family'
-import { accountabilityLines, buildOrgTree, managerName, managerOptions, type OrgNode, type OrgPerson } from './org-tree'
+import {
+  accountabilityLines,
+  buildOrgTree,
+  managerIdsOf,
+  managerName,
+  managerNames,
+  managerOptions,
+  type OrgNode,
+  type OrgPerson,
+} from './org-tree'
 
 const seat = (id: string, over: Partial<OrgPerson> = {}): OrgPerson => ({
   id,
@@ -46,6 +55,23 @@ describe('managerOptions / managerName', () => {
   it('names the manager, null at the top', () => {
     expect(managerName(people, people[2]!)).toBe('m')
     expect(managerName(people, people[0]!)).toBeNull()
+  })
+})
+
+describe('multi-manager org tree helpers', () => {
+  it('places multi-manager seats once under their primary manager and excludes descendants across all branches', () => {
+    const people = [
+      seat('o', { role: 'owner' }),
+      seat('m1', { reportsToUserId: 'o', reportsToUserIds: ['o'] }),
+      seat('m2', { reportsToUserId: 'o', reportsToUserIds: ['o'] }),
+      seat('cw', { kind: 'coworker', reportsToUserId: 'm1', reportsToUserIds: ['m1', 'm2'] }),
+      seat('leaf', { kind: 'coworker', reportsToUserId: 'cw', reportsToUserIds: ['cw'] }),
+    ]
+    expect(managerIdsOf(people[3]!)).toEqual(['m1', 'm2'])
+    expect(managerNames(people, people[3]!)).toEqual(['m1', 'm2'])
+    expect(shape(buildOrgTree(people))).toEqual([['o', [['m1', [['cw', ['leaf']]]], 'm2']]])
+    // m2 is an ancestor of cw and leaf via cw's secondary manager edge, so m2 cannot report to cw or leaf.
+    expect(managerOptions(people, 'm2').map((p) => p.id)).toEqual(['o', 'm1'])
   })
 })
 

@@ -146,6 +146,64 @@ describe('actions', () => {
     })
   })
 
+  it('supports multi-manager checkboxes (reports_to_sent) and avatar presets / uploaded SHAs on create and update', async () => {
+    const SHA = 'b'.repeat(64)
+    const createBody = new URLSearchParams([
+      ['template_id', 'designer'],
+      ['name', 'Dana'],
+      ['title', 'Designer'],
+      ['accountabilities', 'Look and feel'],
+      ['lens', 'Taste first.'],
+      ['model_id', 'qwen/qwen3.8-flash'],
+      ['reports_to_sent', '1'],
+      ['reports_to_user_ids', 'owner'],
+      ['reports_to_user_ids', 'ari'],
+      ['daily_cap_usd', '1.5'],
+      ['avatar_sent', '1'],
+      ['avatar_preset', 'prism'],
+      ['avatar_sha256', ''],
+    ])
+    await actions.create({ locals, request: new Request('http://x/settings/coworkers', { method: 'POST', body: createBody }) } as never)
+    expect(calls[0]!.input).toEqual({
+      template_id: 'designer',
+      name: 'Dana',
+      title: 'Designer',
+      lens: 'Taste first.',
+      model_id: 'qwen/qwen3.8-flash',
+      accountabilities: ['Look and feel'],
+      reports_to_user_ids: ['owner', 'ari'],
+      daily_cap_usd: 1.5,
+      avatar_preset: 'prism',
+    })
+
+    const updateBody = new URLSearchParams([
+      ['user_id', 'cw1'],
+      ['reports_to_sent', '1'],
+      ['avatar_sent', '1'],
+      ['avatar_preset', ''],
+      ['avatar_sha256', SHA],
+    ])
+    await actions.update({ locals, request: new Request('http://x/settings/coworkers', { method: 'POST', body: updateBody }) } as never)
+    expect(calls[1]!.input).toEqual({
+      user_id: 'cw1',
+      reports_to_user_ids: [],
+      avatar_sha256: SHA,
+    })
+
+    const clearBody = new URLSearchParams([
+      ['user_id', 'cw1'],
+      ['avatar_sent', '1'],
+      ['avatar_preset', ''],
+      ['avatar_sha256', ''],
+    ])
+    await actions.update({ locals, request: new Request('http://x/settings/coworkers', { method: 'POST', body: clearBody }) } as never)
+    expect(calls[2]!.input).toEqual({
+      user_id: 'cw1',
+      avatar_preset: null,
+      avatar_sha256: null,
+    })
+  })
+
   it('update → coworkers.update with the co-worker and its card', async () => {
     const out = await actions.update(ev({ user_id: 'cw1', name: 'Mara', title: 'Marketing Manager', accountabilities: 'Pipeline', lens: 'Reach', model_id: 'google/gemini-3.8-flash', reports_to_user_id: '', daily_cap_usd: '3' }))
     expect(calls[0]).toMatchObject({

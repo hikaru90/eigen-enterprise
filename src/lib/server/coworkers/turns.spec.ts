@@ -234,5 +234,29 @@ describe('what a turn carries', () => {
     for (const reason of ['thread_budget', 'daily_cap', 'model_error', 'post_error', 'turn_error', 'interrupted'] as const) {
       expect(stopNote({ reason, humanHandle: 'olga', budget: 8, dailyCapUsd: 2.5, detail: 'x' })).toContain('@olga')
     }
+    const multi = stopNote({ reason: 'daily_cap', humanHandle: 'olga', humanHandles: ['olga', 'bea'], budget: 8, dailyCapUsd: 2.5 })
+    expect(multi).toContain('@olga @bea')
+  })
+
+  it('mentions all accountable humans in stop notes when a coworker reports to multiple humans', async () => {
+    const fx = turnsFixture({
+      script: () => {
+        throw new Error('upstream 503')
+      },
+    })
+    const mkt = fx.coworkers.get('cw-mkt')!
+    mkt.reportsToUserId = 'owner'
+    mkt.reportsToUserIds = ['owner', 'bea']
+    mkt.accountableHumans = [
+      { id: 'owner', name: 'Olga Owner', reason: 'chain' },
+      { id: 'bea', name: 'Bea Member', reason: 'chain' },
+    ]
+    await fx.handle.reload()
+    const general = await createChannel(fx.deps, 'owner', { name: 'general', private: false })
+    const { message } = await postMessage(fx.deps, 'carl', general.id, '@marketing check this')
+    await fx.settle()
+    const note = (await fx.thread(message.id)).at(-1)!
+    expect(note.body).toContain('@olga')
+    expect(note.body).toContain('@bea')
   })
 })

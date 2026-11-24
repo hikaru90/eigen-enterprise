@@ -34,7 +34,8 @@
   function pickTemplate(id: string) {
     templateId = id
     const t = templates.find((x) => x.id === id)
-    card = t ? draftFromTemplate(t, { reportsTo: card.reportsTo }) : { ...emptyDraft(), reportsTo: card.reportsTo }
+    const keep = { reportsTo: card.reportsTo, avatarPreset: card.avatarPreset, avatarSha256: card.avatarSha256 }
+    card = t ? draftFromTemplate(t, keep) : { ...emptyDraft(), ...keep }
   }
 
   /** A created co-worker clears the form (the list above shows it); a refusal keeps what was typed. */

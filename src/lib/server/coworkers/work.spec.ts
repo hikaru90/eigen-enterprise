@@ -154,6 +154,29 @@ describe('assignments: a task given to a co-worker', () => {
     expect(t.comments[0]!.body).toContain("I couldn't answer this: my model call failed (upstream 502). @olga")
     expect(fx.runs.rows[0]).toMatchObject({ status: 'failed', stopReason: 'model_error' })
   })
+
+  it('sends Needs you notices and stop notes to all accountable humans when a coworker reports to multiple managers', async () => {
+    const fx = turnsFixture({
+      script: () => {
+        throw new Error('upstream 502')
+      },
+    })
+    const mkt = fx.coworkers.get('cw-mkt')!
+    mkt.reportsToUserId = 'owner'
+    mkt.reportsToUserIds = ['owner', 'bea']
+    mkt.accountableHumans = [
+      { id: 'owner', name: 'Olga Owner', reason: 'chain' },
+      { id: 'bea', name: 'Bea Member', reason: 'chain' },
+    ]
+    await fx.handle.reload()
+    const task = (await fx.registry.execute('tasks.assign', { assignee_id: 'cw-mkt', title: 'Multi-manager check' }, human('carl'))) as { id: string }
+    await fx.settle()
+
+    const { getTask } = await import('$lib/server/memory/assigned-tasks/service')
+    const t = await getTask(fx.taskDeps, 'carl', task.id)
+    expect(t.comments[0]!.body).toContain('@olga @bea')
+    expect(fx.runs.notices.map((n) => n.userId).sort()).toEqual(['bea', 'carl', 'owner'])
+  })
 })
 
 describe('rhythms: scheduled check-ins', () => {

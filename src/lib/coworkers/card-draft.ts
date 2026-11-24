@@ -1,3 +1,5 @@
+import { avatarShaFromUrl, presetIdFromAvatarUrl, type CoworkerAvatarPresetId } from './avatar-presets'
+
 /**
  * The role card as the Settings → Co-workers forms edit it
  * (plan/phase-ai-coworkers.md C5): what a template prefills and what an
@@ -11,9 +13,11 @@ export type CardDraft = {
   accountabilities: string
   lens: string
   modelId: string
-  /** '' = reports to nobody (answers to the owner). */
-  reportsTo: string
+  /** Checked manager user ids (empty = answers to the owner). */
+  reportsTo: string[]
   dailyCapUsd: string
+  avatarPreset: CoworkerAvatarPresetId | null
+  avatarSha256: string | null
 }
 
 export type TemplateLike = {
@@ -32,6 +36,8 @@ export type CoworkerLike = {
   lens: string
   modelId: string
   reportsToUserId: string | null
+  reportsToUserIds?: string[]
+  image?: string | null
   dailyCapUsd: number
 }
 
@@ -41,31 +47,46 @@ export const emptyDraft = (): CardDraft => ({
   accountabilities: '',
   lens: '',
   modelId: '',
-  reportsTo: '',
+  reportsTo: [],
   dailyCapUsd: '',
+  avatarPreset: null,
+  avatarSha256: null,
 })
 
-/** A template's card; the name starts as its title (the person may rename it), reports-to is kept. */
-export function draftFromTemplate(t: TemplateLike, keep: Pick<CardDraft, 'reportsTo'>): CardDraft {
+/** A template's card; the name starts as its title (the person may rename it), reports-to and avatar are kept. */
+export function draftFromTemplate(
+  t: TemplateLike,
+  keep: Pick<CardDraft, 'reportsTo' | 'avatarPreset' | 'avatarSha256'>,
+): CardDraft {
   return {
     name: t.title,
     title: t.title,
     accountabilities: t.accountabilities.join('\n'),
     lens: t.lens,
     modelId: t.suggestedModelId,
-    reportsTo: keep.reportsTo,
+    reportsTo: [...keep.reportsTo],
     dailyCapUsd: String(t.suggestedDailyCapUsd),
+    avatarPreset: keep.avatarPreset,
+    avatarSha256: keep.avatarSha256,
   }
 }
 
 export function draftFromCoworker(c: CoworkerLike): CardDraft {
+  const reportsTo =
+    c.reportsToUserIds && c.reportsToUserIds.length > 0
+      ? [...c.reportsToUserIds]
+      : c.reportsToUserId
+        ? [c.reportsToUserId]
+        : []
   return {
     name: c.name,
     title: c.title ?? '',
     accountabilities: c.accountabilities.join('\n'),
     lens: c.lens,
     modelId: c.modelId,
-    reportsTo: c.reportsToUserId ?? '',
+    reportsTo,
     dailyCapUsd: String(c.dailyCapUsd),
+    avatarPreset: presetIdFromAvatarUrl(c.image),
+    avatarSha256: avatarShaFromUrl(c.image),
   }
 }

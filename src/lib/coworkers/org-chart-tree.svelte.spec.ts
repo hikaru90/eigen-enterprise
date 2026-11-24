@@ -47,13 +47,17 @@ const people: OrgPerson[] = [
   }),
 ]
 
-type Submitted = { action: string; fields: Record<string, string> }
+type Submitted = { action: string; fields: Record<string, string | string[]> }
 let submitted: Submitted[] = []
 function catchSubmits(event: SubmitEvent) {
   event.preventDefault()
   const form = event.target as HTMLFormElement
-  const fields: Record<string, string> = {}
-  for (const [k, v] of new FormData(form, event.submitter).entries()) fields[k] = String(v)
+  const fd = new FormData(form, event.submitter)
+  const fields: Record<string, string | string[]> = {}
+  for (const k of new Set(fd.keys())) {
+    const all = fd.getAll(k).map(String)
+    fields[k] = k === 'reports_to_user_ids' ? all : all.length > 1 ? all : all[0]!
+  }
   submitted.push({ action: form.getAttribute('action') ?? '', fields })
 }
 beforeEach(() => {
@@ -138,20 +142,37 @@ describe('org-chart-tree.svelte', () => {
     ])
   })
 
-  it('an admin edits anyone, reports-to included, and is never offered a seat below the one edited', async () => {
+  it('an admin edits anyone, multi-manager reports-to included, and is never offered a seat below the one edited', async () => {
     render(OrgChartTree, { people, me: { id: 'olga', canManage: true } })
     expect(document.querySelectorAll('[data-testid="org-seat-edit"]')).toHaveLength(4)
     await page.getByRole('button', { name: 'Edit seat: Mara' }).click()
-    const select = page.getByLabelText('Reports to', { exact: true })
-    const options = [...(select.element() as HTMLSelectElement).options].map((o) => o.textContent)
-    expect(options).toEqual(['Nobody', 'Olga Owner', 'Ony'])
-    await userEvent.selectOptions(select, 'Ony')
+    const fieldset = page.getByTestId('org-seat-manager')
+    const options = [...fieldset.element().querySelectorAll('label')].map((l) => l.textContent?.trim())
+    expect(options).toEqual(['Olga Owner', 'Ony'])
+    await fieldset.getByRole('checkbox', { name: 'Ony' }).click()
     await page.getByTestId('org-seat-save').click()
     expect(submitted[0]!.fields).toMatchObject({
       user_id: 'mara',
-      reports_to_user_id: 'ony',
+      reports_to_sent: '1',
+      reports_to_user_ids: ['olga', 'ony'],
       title: 'Marketing Manager',
     })
+  })
+
+  it('renders seat avatar images and secondary manager badges for multi-manager seats', async () => {
+    const multi = people.map((p) =>
+      p.id === 'dana'
+        ? { ...p, image: '/avatars/coworkers/prism.svg', reportsToUserIds: ['mara', 'ony'] }
+        : p,
+    )
+    render(OrgChartTree, { people: multi, me: { id: 'olga', canManage: true } })
+    const dana = seatEl('dana')
+    expect(dana.querySelector('[data-testid="org-seat-avatar"] img')?.getAttribute('src')).toBe('/avatars/coworkers/prism.svg')
+    expect(dana.querySelector('[data-testid="org-seat-also-reports"]')?.textContent).toContain('Ony')
+    // Ony is a secondary manager of Dana, so Ony cannot report to Dana.
+    await page.getByRole('button', { name: 'Edit seat: Ony' }).click()
+    const onyOptions = [...page.getByTestId('org-seat-manager').element().querySelectorAll('label')].map((l) => l.textContent?.trim())
+    expect(onyOptions).toEqual(['Olga Owner', 'Mara (AI)'])
   })
 
   it('shows a waiting-for-approval answer under the seat it is about', async () => {

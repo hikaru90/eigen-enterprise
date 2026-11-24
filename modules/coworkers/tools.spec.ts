@@ -24,10 +24,16 @@ const person = (id: string, role: OrgMember['role'], minutesBefore: number): Org
 
 const roleOf: Record<string, OrgMember['role']> = { olga: 'owner', ari: 'admin', mo: 'member' }
 
-function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
+function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', opts: { avatars?: Set<string> } = {}) {
   const store = memoryCoworkerStore([person('olga', 'owner', 3), person('ari', 'admin', 2), person('mo', 'member', 1)])
   let n = 0
-  const deps = { store, now: () => at, newId: () => `cw${String(++n).padStart(6, '0')}abcdef` }
+  const avatars = opts.avatars ?? new Set<string>()
+  const deps = {
+    store,
+    now: () => at,
+    newId: () => `cw${String(++n).padStart(6, '0')}abcdef`,
+    avatarExists: async (sha: string) => avatars.has(sha),
+  }
   const runs = new MemoryCoworkerRunStore()
   /** Which conversations each reader may see (Messages decides this live). */
   const sees: Record<string, string[]> = { olga: ['conv-launch', 'conv-dm'], mo: ['conv-launch'] }
@@ -359,5 +365,56 @@ describe('event subscriptions (C7)', () => {
 
     expect(await registry.execute('coworkers.event_subscriptions_set', { user_id: cw.id, event_kinds: [] }, ownerCtx)).toMatchObject({ kinds: [{ kind: 'channel_message', on: false }] })
     await expect(registry.execute('coworkers.event_subscriptions_get', { user_id: 'nobody' }, memberCtx)).rejects.toMatchObject({ code: 'not_found' })
+  })
+})
+
+describe('multi-manager and avatar tool inputs (WS6)', () => {
+  const SHA = 'a'.repeat(64)
+
+  it('coworkers.create and coworkers.update accept reports_to_user_ids, avatar_preset, and avatar_sha256', async () => {
+    const { registry, ownerCtx, approved } = setup('allow_all', { avatars: new Set([SHA]) })
+    const cw = (await approved(
+      'coworkers.create',
+      { template_id: 'designer', name: 'Dana', reports_to_user_ids: ['ari', 'mo'], avatar_preset: 'prism' },
+      ownerCtx,
+    )) as Record<string, unknown>
+    expect(cw).toMatchObject({
+      image: '/avatars/coworkers/prism.svg',
+      reportsToUserId: 'ari',
+      reportsToUserIds: ['ari', 'mo'],
+      accountableHumans: [
+        { id: 'ari', name: 'ari', reason: 'chain' },
+        { id: 'mo', name: 'mo', reason: 'chain' },
+      ],
+    })
+
+    const updated = (await registry.execute(
+      'coworkers.update',
+      { user_id: cw.id, reports_to_user_ids: ['mo', 'olga'], avatar_sha256: SHA },
+      ownerCtx,
+    )) as Record<string, unknown>
+    expect(updated).toMatchObject({
+      image: `/api/people/avatar/${SHA}`,
+      reportsToUserId: 'mo',
+      reportsToUserIds: ['mo', 'olga'],
+    })
+
+    const chart = (await registry.execute('org.chart', {}, ownerCtx)) as { people: Array<Record<string, unknown>> }
+    expect(chart.people.find((p) => p.id === cw.id)).toMatchObject({
+      image: `/api/people/avatar/${SHA}`,
+      reportsToUserIds: ['mo', 'olga'],
+    })
+  })
+
+  it('org.set_position accepts reports_to_user_ids', async () => {
+    const { registry, ownerCtx } = setup('allow_all')
+    const seat = (await registry.execute('org.set_position', { user_id: 'mo', reports_to_user_ids: ['ari', 'olga'] }, ownerCtx)) as Record<
+      string,
+      unknown
+    >
+    expect(seat).toMatchObject({
+      reportsToUserId: 'ari',
+      reportsToUserIds: ['ari', 'olga'],
+    })
   })
 })

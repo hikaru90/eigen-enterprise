@@ -23,6 +23,9 @@
   const p = $derived(data.person)
   const c = $derived(data.coworker)
   const family = $derived(c ? modelFamily(c.modelId) : null)
+  const accountables = $derived(
+    c ? (c.accountableHumans.length > 0 ? c.accountableHumans : c.accountableHuman ? [c.accountableHuman] : []) : [],
+  )
   const profileHref = (id: string) => resolve('/(nucleus)/settings/org/[id]', { id })
 </script>
 
@@ -38,7 +41,7 @@
   >
 
   <header class="flex items-start gap-4">
-    <UserAvatar name={p.name} size="lg" />
+    <UserAvatar name={p.name} image={p.image ?? null} size="lg" />
     <div class="min-w-0 flex-1 space-y-1">
       <h2 class="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
         <span>{p.name}</span>
@@ -70,8 +73,14 @@
 
       <dt class="font-medium">{m.org_field_reports_to()}</dt>
       <dd data-testid="profile-manager">
-        {#if data.manager}
-          <a class="underline-offset-4 hover:underline" href={profileHref(data.manager.id)}>{data.manager.name ?? data.manager.id}</a>
+        {#if data.managers.length > 0}
+          <ul class="flex flex-wrap gap-x-2 gap-y-1">
+            {#each data.managers as mgr, idx (mgr.id)}
+              <li>
+                <a class="underline-offset-4 hover:underline" href={profileHref(mgr.id)}>{mgr.name ?? mgr.id}</a>{#if idx < data.managers.length - 1}<span aria-hidden="true">,</span>{/if}
+              </li>
+            {/each}
+          </ul>
         {:else}
           <span class="text-muted-foreground">{m.org_reports_to_nobody()}</span>
         {/if}
@@ -94,8 +103,14 @@
       {#if c}
         <dt class="font-medium">{m.coworkers_accountable_human()}</dt>
         <dd data-testid="profile-accountable">
-          {#if c.accountableHuman}
-            <a class="underline-offset-4 hover:underline" href={profileHref(c.accountableHuman.id)}>{c.accountableHuman.name}</a>
+          {#if accountables.length > 0}
+            <ul class="flex flex-wrap gap-x-2 gap-y-1">
+              {#each accountables as human, idx (human.id)}
+                <li>
+                  <a class="underline-offset-4 hover:underline" href={profileHref(human.id)}>{human.name}</a>{#if idx < accountables.length - 1}<span aria-hidden="true">,</span>{/if}
+                </li>
+              {/each}
+            </ul>
           {/if}
           <p class="text-xs text-muted-foreground">{m.coworkers_accountable_hint()}</p>
         </dd>

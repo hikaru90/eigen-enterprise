@@ -1,5 +1,12 @@
 import { randomUUID } from 'node:crypto'
+import {
+  coworkerAvatarPresetUrl,
+  isCoworkerAvatarPresetId,
+  isCoworkerAvatarPresetUrl,
+  type CoworkerAvatarPresetId,
+} from '$lib/coworkers/avatar-presets'
 import { coworkerEmail } from '$lib/coworkers/handle'
+import { avatarUrl, isAvatarSha } from '$lib/profile/profile'
 import { isAdminRole, type MemberRole } from '$lib/server/auth/roles'
 import type { UserKind } from '$lib/server/db/auth.schema'
 import { assertPoolModel, ModelNotInPoolError } from '$lib/server/llm/model-pool'
@@ -39,12 +46,15 @@ export type OrgMember = {
   role: MemberRole
   kind: UserKind
   createdAt: Date
+  image?: string | null
+  avatarSha256?: string | null
 }
 
 export type OrgPositionRow = {
   userId: string
   title: string | null
   reportsToUserId: string | null
+  reportsToUserIds: string[]
   accountabilities: string[]
   updatedAt: Date
   updatedBy: string
@@ -66,13 +76,14 @@ export type CoworkerProfileRow = {
 }
 
 export type NewCoworker = {
-  user: { id: string; name: string; email: string; createdAt: Date }
+  user: { id: string; name: string; email: string; image: string | null; avatarSha256: string | null; createdAt: Date }
   profile: CoworkerProfileRow
   position: OrgPositionRow
 }
 
 export type CoworkerPatch = {
   name?: string
+  avatar?: { image: string | null; avatarSha256: string | null }
   profile?: Partial<Pick<CoworkerProfileRow, 'lens' | 'modelId' | 'dailyCapUsd' | 'enabled'>> & { updatedAt: Date }
   position?: OrgPositionRow
 }
@@ -83,15 +94,15 @@ export type CoworkerStore = {
   listPositions(): Promise<OrgPositionRow[]>
   /** Every co-worker profile, removed ones included. */
   listProfiles(): Promise<CoworkerProfileRow[]>
-  /** The user row behind a co-worker, removed ones included (name, email). */
-  coworkerUser(userId: string): Promise<{ id: string; name: string; email: string } | null>
+  /** The user row behind a co-worker, removed ones included (name, email, avatar). */
+  coworkerUser(userId: string): Promise<{ id: string; name: string; email: string; image?: string | null; avatarSha256?: string | null } | null>
   slugTaken(slug: string): Promise<boolean>
   /** User row (kind coworker, role member, no account) + profile + org position, together. */
   insertCoworker(input: NewCoworker): Promise<void>
   updateCoworker(userId: string, patch: CoworkerPatch): Promise<void>
   upsertPosition(row: OrgPositionRow): Promise<void>
   /** Marks the co-worker removed (and off) and moves its direct reports to `reparentTo`. */
-  markRemoved(userId: string, at: Date, by: string, reparentTo: string | null): Promise<void>
+  markRemoved(userId: string, at: Date, by: string, reparentTo: string[]): Promise<void>
   /**
    * Runs `fn` as one transaction over a store that sees the org chart
    * serialized against every other org write (cycle checks stay true).
@@ -101,6 +112,7 @@ export type CoworkerStore = {
 
 export type CoworkerDeps = {
   store: CoworkerStore
+  avatarExists?: (sha256: string) => Promise<boolean>
   now?: () => Date
   newId?: () => string
 }
@@ -165,6 +177,7 @@ export type CoworkerView = {
   name: string
   email: string
   slug: string
+  image: string | null
   title: string | null
   accountabilities: string[]
   lens: string
@@ -173,8 +186,10 @@ export type CoworkerView = {
   dailyCapUsd: number
   templateId: string | null
   reportsToUserId: string | null
+  reportsToUserIds: string[]
   /** Null only for a removed co-worker (it is out of the chart). */
   accountableHuman: AccountableHuman | null
+  accountableHumans: AccountableHuman[]
   agentId: string
   createdBy: string
   createdAt: string
@@ -185,13 +200,17 @@ export type CoworkerView = {
 export type OrgChartEntry = {
   id: string
   name: string
+  image: string | null
   kind: UserKind
   role: MemberRole
   title: string | null
   accountabilities: string[]
   reportsToUserId: string | null
+  reportsToUserIds: string[]
   /** Co-workers only: the person they answer to (nearest human up the chain, else the owner). */
   accountableHuman: AccountableHuman | null
+  /** Co-workers only: all nearest humans across reporting branches, else [owner]. */
+  accountableHumans: AccountableHuman[]
   /** Co-workers only: whether it currently works. */
   enabled: boolean | null
 }
@@ -211,18 +230,38 @@ async function loadChart(store: CoworkerStore): Promise<Chart> {
   }
 }
 
-/** The reports-to chain above `userId` (nearest first). Fails loud on a cycle in stored data. */
-function chainAbove(chart: Chart, userId: string): string[] {
-  const out: string[] = []
-  const seen = new Set([userId])
-  let next = chart.positions.get(userId)?.reportsToUserId ?? null
-  while (next) {
-    if (seen.has(next)) throw new CoworkerError('org_cycle', `The org chart has a reporting cycle through ${next}.`)
-    seen.add(next)
-    out.push(next)
-    next = chart.positions.get(next)?.reportsToUserId ?? null
+function memberImageOf(u: { image?: string | null; avatarSha256?: string | null }): string | null {
+  if (isAvatarSha(u.avatarSha256)) return avatarUrl(u.avatarSha256)
+  if (isCoworkerAvatarPresetUrl(u.image)) return u.image
+  return null
+}
+
+function positionManagers(pos: OrgPositionRow | undefined): string[] {
+  if (!pos) return []
+  return pos.reportsToUserIds.length > 0 ? pos.reportsToUserIds : pos.reportsToUserId ? [pos.reportsToUserId] : []
+}
+
+/** Every reachable manager above `userId` (DAG-safe). Fails loud on a cycle in stored data. */
+function ancestorsOf(chart: Chart, userId: string): Set<string> {
+  const ancestors = new Set<string>()
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+
+  const dfs = (current: string, isRoot: boolean): void => {
+    visiting.add(current)
+    for (const next of positionManagers(chart.positions.get(current))) {
+      if (visiting.has(next)) {
+        throw new CoworkerError('org_cycle', `The org chart has a reporting cycle through ${next}.`)
+      }
+      ancestors.add(next)
+      if (!visited.has(next)) dfs(next, false)
+    }
+    visiting.delete(current)
+    if (!isRoot) visited.add(current)
   }
-  return out
+
+  dfs(userId, true)
+  return ancestors
 }
 
 function ownerOf(chart: Chart): OrgMember {
@@ -231,22 +270,45 @@ function ownerOf(chart: Chart): OrgMember {
   return owner
 }
 
-function accountableIn(chart: Chart, coworkerId: string): AccountableHuman {
-  for (const id of chainAbove(chart, coworkerId)) {
+function accountableHumansIn(chart: Chart, coworkerId: string): AccountableHuman[] {
+  ancestorsOf(chart, coworkerId)
+  const queue = [...positionManagers(chart.positions.get(coworkerId))]
+  const seen = new Set<string>([coworkerId])
+  const humans: AccountableHuman[] = []
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i]!
+    if (seen.has(id)) continue
+    seen.add(id)
     const m = chart.members.get(id)
-    if (m && m.kind === 'human') return { id: m.id, name: m.name, reason: 'chain' }
+    if (!m) continue
+    if (m.kind === 'human') {
+      humans.push({ id: m.id, name: m.name, reason: 'chain' })
+      // Nearest person on this reporting branch: stop traversing above a human.
+      continue
+    }
+    for (const next of positionManagers(chart.positions.get(id))) {
+      if (!seen.has(next)) queue.push(next)
+    }
   }
+  if (humans.length > 0) return humans
   const owner = ownerOf(chart)
-  return { id: owner.id, name: owner.name, reason: 'owner' }
+  return [{ id: owner.id, name: owner.name, reason: 'owner' }]
 }
 
-function coworkerView(chart: Chart, profile: CoworkerProfileRow, user: { id: string; name: string; email: string }): CoworkerView {
+function coworkerView(
+  chart: Chart,
+  profile: CoworkerProfileRow,
+  user: { id: string; name: string; email: string; image?: string | null; avatarSha256?: string | null },
+): CoworkerView {
   const position = chart.positions.get(profile.userId)
+  const reportsToUserIds = positionManagers(position).filter((id) => chart.members.has(id))
+  const accountableHumans = profile.removedAt ? [] : accountableHumansIn(chart, profile.userId)
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     slug: profile.slug,
+    image: memberImageOf(user),
     title: position?.title ?? null,
     accountabilities: position?.accountabilities ?? [],
     lens: profile.lens,
@@ -254,8 +316,10 @@ function coworkerView(chart: Chart, profile: CoworkerProfileRow, user: { id: str
     enabled: profile.enabled,
     dailyCapUsd: profile.dailyCapUsd,
     templateId: profile.templateId,
-    reportsToUserId: position?.reportsToUserId ?? null,
-    accountableHuman: profile.removedAt ? null : accountableIn(chart, profile.userId),
+    reportsToUserId: reportsToUserIds[0] ?? null,
+    reportsToUserIds,
+    accountableHuman: accountableHumans[0] ?? null,
+    accountableHumans,
     agentId: coworkerAgentId(profile.userId),
     createdBy: profile.createdBy,
     createdAt: profile.createdAt.toISOString(),
@@ -295,13 +359,18 @@ export async function getCoworker(store: CoworkerStore, userId: string): Promise
   return viewOf(store, await loadChart(store), userId)
 }
 
-/** The person a co-worker answers to: the nearest human up its reports-to chain, else the owner. */
-export async function accountableHumanFor(store: CoworkerStore, coworkerUserId: string): Promise<AccountableHuman> {
+/** The person(s) a co-worker answers to: the nearest human(s) up each reporting branch, else [owner]. */
+export async function accountableHumansFor(store: CoworkerStore, coworkerUserId: string): Promise<AccountableHuman[]> {
   const chart = await loadChart(store)
   const profile = chart.profiles.get(coworkerUserId)
   if (!profile) throw new CoworkerError('not_found', `No AI co-worker ${coworkerUserId}.`)
   if (profile.removedAt) throw new CoworkerError('removed', `The AI co-worker ${coworkerUserId} was removed.`)
-  return accountableIn(chart, coworkerUserId)
+  return accountableHumansIn(chart, coworkerUserId)
+}
+
+/** The primary person a co-worker answers to: the nearest human up its reports-to chain, else the owner. */
+export async function accountableHumanFor(store: CoworkerStore, coworkerUserId: string): Promise<AccountableHuman> {
+  return (await accountableHumansFor(store, coworkerUserId))[0]!
 }
 
 /** Everyone in the company — people and co-workers — with their seat in the org chart. */
@@ -313,16 +382,20 @@ export async function orgChart(store: CoworkerStore): Promise<{ people: OrgChart
       const position = chart.positions.get(m.id)
       const profile = m.kind === 'coworker' ? chart.profiles.get(m.id) : undefined
       // A manager who left (a removed co-worker) is not shown as anyone's manager.
-      const reportsTo = position?.reportsToUserId ?? null
+      const reportsToUserIds = positionManagers(position).filter((id) => chart.members.has(id))
+      const accountableHumans = m.kind === 'coworker' ? accountableHumansIn(chart, m.id) : []
       return {
         id: m.id,
         name: m.name,
+        image: memberImageOf(m),
         kind: m.kind,
         role: m.role,
         title: position?.title ?? null,
         accountabilities: position?.accountabilities ?? [],
-        reportsToUserId: reportsTo && chart.members.has(reportsTo) ? reportsTo : null,
-        accountableHuman: m.kind === 'coworker' ? accountableIn(chart, m.id) : null,
+        reportsToUserId: reportsToUserIds[0] ?? null,
+        reportsToUserIds,
+        accountableHuman: accountableHumans[0] ?? null,
+        accountableHumans,
         enabled: profile ? profile.enabled : null,
       }
     })
@@ -364,13 +437,64 @@ function dailyCap(value: number): number {
   return value
 }
 
-/** Refuses self-reporting, an unknown manager and any change that would close a reporting cycle. */
-function assertManager(chart: Chart, userId: string, managerId: string | null): void {
-  if (managerId === null) return
-  if (managerId === userId) throw new CoworkerError('org_cycle', 'Nobody can report to themselves.')
-  if (!chart.members.has(managerId)) throw new CoworkerError('not_found', `No member ${managerId} to report to.`)
-  if (chainAbove(chart, managerId).includes(userId)) {
-    throw new CoworkerError('org_cycle', `That would make a reporting cycle: ${managerId} already reports, through the chain, to ${userId}.`)
+function normalizeManagerIds(ids: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of ids) {
+    const id = raw.trim()
+    if (!id) throw new CoworkerError('invalid_input', 'Manager user id cannot be empty.')
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+function resolveManagersInput(input: { reportsToUserId?: string | null; reportsToUserIds?: string[] }): string[] | undefined {
+  if (input.reportsToUserIds !== undefined) return normalizeManagerIds(input.reportsToUserIds)
+  if (input.reportsToUserId !== undefined) {
+    return input.reportsToUserId === null ? [] : normalizeManagerIds([input.reportsToUserId])
+  }
+  return undefined
+}
+
+async function resolveAvatar(
+  input: { avatarPreset?: CoworkerAvatarPresetId | null; avatarSha256?: string | null },
+  deps: CoworkerDeps,
+): Promise<{ image: string | null; avatarSha256: string | null } | undefined> {
+  const { avatarPreset, avatarSha256 } = input
+  if (avatarPreset === undefined && avatarSha256 === undefined) return undefined
+  if (avatarPreset != null && avatarSha256 != null) {
+    throw new CoworkerError('invalid_input', 'Choose either an avatar preset or an uploaded avatar, not both.')
+  }
+  if (avatarPreset !== undefined && avatarPreset !== null) {
+    if (!isCoworkerAvatarPresetId(avatarPreset)) {
+      throw new CoworkerError('invalid_input', `Unknown co-worker avatar preset "${avatarPreset}".`)
+    }
+    return { image: coworkerAvatarPresetUrl(avatarPreset), avatarSha256: null }
+  }
+  if (avatarSha256 !== undefined && avatarSha256 !== null) {
+    const sha = avatarSha256.trim().toLowerCase()
+    if (!isAvatarSha(sha)) {
+      throw new CoworkerError('invalid_input', 'The uploaded avatar id must be a 64-character SHA-256 hex digest.')
+    }
+    const exists = deps.avatarExists ? await deps.avatarExists(sha) : false
+    if (!exists) {
+      throw new CoworkerError('invalid_input', `Uploaded avatar ${sha} does not exist. Upload it first.`)
+    }
+    return { image: avatarUrl(sha), avatarSha256: sha }
+  }
+  return { image: null, avatarSha256: null }
+}
+
+/** Refuses self-reporting, unknown managers and any change that would close a reporting cycle. */
+function assertManagers(chart: Chart, userId: string, managerIds: readonly string[]): void {
+  for (const managerId of managerIds) {
+    if (managerId === userId) throw new CoworkerError('org_cycle', 'Nobody can report to themselves.')
+    if (!chart.members.has(managerId)) throw new CoworkerError('not_found', `No member ${managerId} to report to.`)
+    if (ancestorsOf(chart, managerId).has(userId)) {
+      throw new CoworkerError('org_cycle', `That would make a reporting cycle: ${managerId} already reports, through the chain, to ${userId}.`)
+    }
   }
 }
 
@@ -384,7 +508,10 @@ export type CreateCoworkerInput = {
   accountabilities?: string[]
   modelId?: string
   reportsToUserId?: string | null
+  reportsToUserIds?: string[]
   dailyCapUsd?: number
+  avatarPreset?: CoworkerAvatarPresetId | null
+  avatarSha256?: string | null
 }
 
 function fromTemplate(input: CreateCoworkerInput): CoworkerTemplate | undefined {
@@ -420,15 +547,16 @@ export async function createCoworker(actor: CoworkerActor, input: CreateCoworker
   const accountabilities = cleanAccountabilities(required(input.accountabilities ?? template?.accountabilities, 'accountabilities'), 1)
   const modelId = chatModel(required(input.modelId ?? template?.suggestedModelId, 'a model (model_id)'))
   const capUsd = dailyCap(required(input.dailyCapUsd ?? template?.suggestedDailyCapUsd, 'a daily cap (daily_cap_usd)'))
+  const avatar = (await resolveAvatar(input, deps)) ?? { image: null, avatarSha256: null }
+  const reportsToUserIds = resolveManagersInput(input) ?? []
   const now = deps.now?.() ?? new Date()
   const id = deps.newId?.() ?? randomUUID().replaceAll('-', '')
   return deps.store.transaction(async (store) => {
     const chart = await loadChart(store)
-    const reportsTo = input.reportsToUserId ?? null
-    assertManager(chart, id, reportsTo)
+    assertManagers(chart, id, reportsToUserIds)
     const slug = await freeSlug(store, name)
     await store.insertCoworker({
-      user: { id, name, email: coworkerEmail(slug, id), createdAt: now },
+      user: { id, name, email: coworkerEmail(slug, id), image: avatar.image, avatarSha256: avatar.avatarSha256, createdAt: now },
       profile: {
         userId: id,
         slug,
@@ -443,7 +571,15 @@ export async function createCoworker(actor: CoworkerActor, input: CreateCoworker
         removedAt: null,
         removedBy: null,
       },
-      position: { userId: id, title, reportsToUserId: reportsTo, accountabilities, updatedAt: now, updatedBy: actor.id },
+      position: {
+        userId: id,
+        title,
+        reportsToUserId: reportsToUserIds[0] ?? null,
+        reportsToUserIds,
+        accountabilities,
+        updatedAt: now,
+        updatedBy: actor.id,
+      },
     })
     return getCoworker(store, id)
   })
@@ -457,7 +593,10 @@ export type UpdateCoworkerInput = {
   accountabilities?: string[]
   modelId?: string
   reportsToUserId?: string | null
+  reportsToUserIds?: string[]
   dailyCapUsd?: number
+  avatarPreset?: CoworkerAvatarPresetId | null
+  avatarSha256?: string | null
 }
 
 async function liveProfile(chart: Chart, userId: string): Promise<CoworkerProfileRow> {
@@ -467,9 +606,11 @@ async function liveProfile(chart: Chart, userId: string): Promise<CoworkerProfil
   return profile
 }
 
-/** Changes a co-worker's name, role card, model, cap or seat (only the fields given). */
+/** Changes a co-worker's name, role card, model, cap, avatar or seat (only the fields given). */
 export async function updateCoworker(actor: CoworkerActor, input: UpdateCoworkerInput, deps: CoworkerDeps): Promise<CoworkerView> {
   assertAdmin(actor)
+  const avatar = await resolveAvatar(input, deps)
+  const nextManagers = resolveManagersInput(input)
   const now = deps.now?.() ?? new Date()
   return deps.store.transaction(async (store) => {
     const chart = await loadChart(store)
@@ -477,18 +618,20 @@ export async function updateCoworker(actor: CoworkerActor, input: UpdateCoworker
     const position = chart.positions.get(input.userId)
     const patch: CoworkerPatch = { profile: { updatedAt: now } }
     if (input.name !== undefined) patch.name = cleanText(input.name, 'The name', NAME_MAX)
+    if (avatar !== undefined) patch.avatar = avatar
     if (input.lens !== undefined) patch.profile!.lens = cleanText(input.lens, 'The lens', LENS_MAX)
     if (input.modelId !== undefined) patch.profile!.modelId = chatModel(input.modelId)
     if (input.dailyCapUsd !== undefined) patch.profile!.dailyCapUsd = dailyCap(input.dailyCapUsd)
-    if (input.title !== undefined || input.accountabilities !== undefined || input.reportsToUserId !== undefined) {
-      const reportsTo = input.reportsToUserId === undefined ? (position?.reportsToUserId ?? null) : input.reportsToUserId
-      if (input.reportsToUserId !== undefined) assertManager(chart, input.userId, reportsTo)
+    if (input.title !== undefined || input.accountabilities !== undefined || nextManagers !== undefined) {
+      if (nextManagers !== undefined) assertManagers(chart, input.userId, nextManagers)
+      const reportsToUserIds = nextManagers ?? positionManagers(position)
       patch.position = {
         userId: input.userId,
         title: input.title === undefined ? (position?.title ?? null) : cleanText(input.title, 'The title', TITLE_MAX),
         accountabilities:
           input.accountabilities === undefined ? (position?.accountabilities ?? []) : cleanAccountabilities(input.accountabilities, 1),
-        reportsToUserId: reportsTo,
+        reportsToUserId: reportsToUserIds[0] ?? null,
+        reportsToUserIds,
         updatedAt: now,
         updatedBy: actor.id,
       }
@@ -517,7 +660,7 @@ export async function setCoworkerEnabled(
  * Removes a co-worker for good, keeping everything it wrote: its user row stays
  * (messages, thoughts and the cost ledger keep their author), it is switched
  * off, it leaves the member list and the org chart, and whoever reported to it
- * now reports to its manager.
+ * now reports to its manager(s).
  */
 export async function removeCoworker(actor: CoworkerActor, input: { userId: string }, deps: CoworkerDeps): Promise<CoworkerView> {
   assertAdmin(actor)
@@ -525,8 +668,8 @@ export async function removeCoworker(actor: CoworkerActor, input: { userId: stri
   return deps.store.transaction(async (store) => {
     const chart = await loadChart(store)
     await liveProfile(chart, input.userId)
-    const manager = chart.positions.get(input.userId)?.reportsToUserId ?? null
-    await store.markRemoved(input.userId, now, actor.id, manager)
+    const reparentTo = positionManagers(chart.positions.get(input.userId))
+    await store.markRemoved(input.userId, now, actor.id, reparentTo)
     return getCoworker(store, input.userId)
   })
 }
@@ -537,6 +680,8 @@ export type SetOrgPositionInput = {
   accountabilities?: string[]
   /** Admins only. */
   reportsToUserId?: string | null
+  /** Admins only. */
+  reportsToUserIds?: string[]
 }
 
 /** Sets a seat in the org chart. An admin sets anyone's; a member only their own title and accountabilities. */
@@ -547,17 +692,18 @@ export async function setOrgPosition(actor: CoworkerActor, input: SetOrgPosition
   const admin = isAdminRole(actor.role)
   if (!admin) {
     if (input.userId !== actor.id) throw new CoworkerError('forbidden', 'You can only change your own title and accountabilities.')
-    if (input.reportsToUserId !== undefined) {
+    if (input.reportsToUserId !== undefined || input.reportsToUserIds !== undefined) {
       throw new CoworkerError('forbidden', 'Only the owner or an admin decides who reports to whom.')
     }
   }
+  const nextManagers = resolveManagersInput(input)
   const now = deps.now?.() ?? new Date()
   return deps.store.transaction(async (store) => {
     const chart = await loadChart(store)
     if (!chart.members.has(input.userId)) throw new CoworkerError('not_found', `No member ${input.userId}.`)
     const current = chart.positions.get(input.userId)
-    const reportsTo = input.reportsToUserId === undefined ? (current?.reportsToUserId ?? null) : input.reportsToUserId
-    if (input.reportsToUserId !== undefined) assertManager(chart, input.userId, reportsTo)
+    if (nextManagers !== undefined) assertManagers(chart, input.userId, nextManagers)
+    const reportsToUserIds = nextManagers ?? positionManagers(current)
     const isCoworker = chart.members.get(input.userId)!.kind === 'coworker'
     const title =
       input.title === undefined
@@ -569,7 +715,8 @@ export async function setOrgPosition(actor: CoworkerActor, input: SetOrgPosition
     await store.upsertPosition({
       userId: input.userId,
       title,
-      reportsToUserId: reportsTo,
+      reportsToUserId: reportsToUserIds[0] ?? null,
+      reportsToUserIds,
       accountabilities:
         input.accountabilities === undefined
           ? (current?.accountabilities ?? [])

@@ -11,7 +11,7 @@
   import { feedbackFor } from './action-result'
   import AiMark from './ai-mark.svelte'
   import { modelFamily } from './model-family'
-  import { buildOrgTree, managerOptions, type OrgNode, type OrgPerson } from './org-tree'
+  import { buildOrgTree, managerIdsOf, managerNames, managerOptions, type OrgNode, type OrgPerson } from './org-tree'
 
   /**
    * The org chart as nested lists (plan/phase-ai-coworkers.md C5): each seat a
@@ -37,11 +37,27 @@
 
   const tree = $derived(buildOrgTree(people))
   let editing = $state<string | null>(null)
+  let draftManagers = $state<string[]>([])
 
   const canEdit = (p: OrgPerson) => me.canManage || (p.kind === 'human' && p.id === me.id)
 
   function toggle(id: string) {
-    editing = editing === id ? null : id
+    if (editing === id) {
+      editing = null
+      draftManagers = []
+    } else {
+      const target = people.find((x) => x.id === id)
+      editing = id
+      draftManagers = target ? [...managerIdsOf(target)] : []
+    }
+  }
+
+  function toggleManager(id: string) {
+    if (draftManagers.includes(id)) {
+      draftManagers = draftManagers.filter((mId) => mId !== id)
+    } else {
+      draftManagers = [...draftManagers, id]
+    }
   }
 
   /** Close the form once the seat is saved (not when it waits or is refused). */
@@ -56,12 +72,13 @@
 
 {#snippet seat(node: OrgNode, depth: number)}
   {@const p = node.person}
+  {@const extraManagers = managerNames(people, p).slice(1)}
   {@const formId = `seat-form-${p.id}`}
   {@const feedback = feedbackFor(form, 'setPosition', p.id)}
   <li data-testid="org-seat" data-id={p.id} data-kind={p.kind} data-depth={depth}>
     <article class="rounded-lg border border-border bg-card p-3" aria-labelledby="seat-name-{p.id}">
       <div class="flex items-start gap-3">
-        <UserAvatar name={p.name} size="md" testid="org-seat-avatar" />
+        <UserAvatar name={p.name} image={p.image ?? null} size="md" testid="org-seat-avatar" />
         <div class="min-w-0 flex-1">
           <h3
             id="seat-name-{p.id}"
@@ -87,6 +104,11 @@
           <p class="text-sm text-muted-foreground" data-testid="org-seat-title">
             {p.title ?? m.org_no_title()}
           </p>
+          {#if extraManagers.length > 0}
+            <p class="mt-0.5 text-xs text-muted-foreground" data-testid="org-seat-also-reports">
+              {m.org_also_reports_to({ names: extraManagers.join(', ') })}
+            </p>
+          {/if}
         </div>
         <Button
           href={resolve('/(nucleus)/settings/org/[id]', { id: p.id })}
@@ -157,27 +179,25 @@
             </p>
           </div>
           {#if me.canManage}
-            <div class="space-y-1">
-              <label class="text-sm font-medium" for="seat-manager-{p.id}"
-                >{m.org_field_reports_to()}</label
-              >
-              <select
-                id="seat-manager-{p.id}"
-                name="reports_to_user_id"
-                class="h-9 w-full rounded-md border border-input bg-card px-2 text-sm"
-                value={p.reportsToUserId ?? ''}
-                data-testid="org-seat-manager"
-              >
-                <option value="">{m.org_reports_to_nobody()}</option>
+            <fieldset class="space-y-1.5" data-testid="org-seat-manager">
+              <legend class="text-sm font-medium">{m.org_field_reports_to()}</legend>
+              <input type="hidden" name="reports_to_sent" value="1" />
+              <div class="flex flex-wrap gap-2">
                 {#each managerOptions(people, p.id) as o (o.id)}
-                  <option value={o.id}
-                    >{o.kind === 'coworker'
-                      ? m.org_option_coworker({ name: o.name })
-                      : o.name}</option
-                  >
+                  <label class="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-card px-2.5 py-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      name="reports_to_user_ids"
+                      value={o.id}
+                      checked={draftManagers.includes(o.id)}
+                      onchange={() => toggleManager(o.id)}
+                    />
+                    <span>{o.kind === 'coworker' ? m.org_option_coworker({ name: o.name }) : o.name}</span>
+                  </label>
                 {/each}
-              </select>
-            </div>
+              </div>
+              <p class="text-xs text-muted-foreground">{m.org_reports_to_multi_hint()}</p>
+            </fieldset>
           {/if}
           <div class="flex flex-wrap gap-2">
             <Button type="submit" size="sm" data-testid="org-seat-save">{m.org_save_seat()}</Button>

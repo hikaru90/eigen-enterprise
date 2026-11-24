@@ -628,5 +628,14 @@
   "coworkers_notice_seen": "Got it",
   "coworkers_mention_as": "Mention as",
   "coworkers_mention_copy": "Copy {handle}",
-  "messages_mention_list": "People and co-workers to mention"
+  "messages_mention_list": "People and co-workers to mention",
+  "coworkers_field_avatar": "Avatar",
+  "coworkers_avatar_presets_label": "Abstract CI avatars",
+  "coworkers_avatar_upload": "Upload own image",
+  "coworkers_avatar_uploading": "Uploading…",
+  "coworkers_avatar_clear": "Use initials",
+  "coworkers_avatar_hint": "Pick an eigenEnterprise CI emblem or upload a square image (cropped to 256×256 WebP).",
+  "coworkers_reports_to_multi_hint": "Select one or more managers. If none are checked, it answers to the owner.",
+  "org_also_reports_to": "Also reports to {names}",
+  "org_reports_to_multi_hint": "Select one or more managers (leave all unchecked for nobody)."
 }

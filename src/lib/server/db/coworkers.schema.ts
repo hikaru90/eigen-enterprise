@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, check, index, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { assignedTasks } from './assigned-tasks.schema'
 import { user } from './auth.schema'
 import { messageConversations, messages } from './messages.schema'
@@ -27,6 +27,28 @@ export const orgPosition = pgTable(
   (t) => [
     index('org_position_reports_to_idx').on(t.reportsToUserId),
     check('org_position_not_self', sql`${t.reportsToUserId} IS NULL OR ${t.reportsToUserId} <> ${t.userId}`),
+  ],
+)
+
+/**
+ * Ordered reporting edges for multi-manager reporting (migration 0182).
+ * org_position.reports_to_user_id stays synced to position 0.
+ */
+export const orgPositionReport = pgTable(
+  'org_position_report',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    reportsToUserId: text('reports_to_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    position: integer('position').default(0).notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'org_position_report_pk', columns: [t.userId, t.reportsToUserId] }),
+    index('org_position_report_manager_idx').on(t.reportsToUserId),
+    check('org_position_report_not_self', sql`${t.userId} <> ${t.reportsToUserId}`),
   ],
 )
 
