@@ -30,13 +30,19 @@ export type ToolPrincipal = {
   id: string
   kind: PrincipalKind
   roles: string[]
-  /** Set only when the company brain acts as this person (provenance; never a permission). */
-  via?: 'brain'
   /**
-   * The brain's agent id when `via` is set; a co-worker's own agent id (kind
-   * 'coworker', never with `via`). Absent otherwise.
+   * Set only when something acts as this person (provenance; never a
+   * permission): `brain` = the company brain; `module` = a company module
+   * (plan/phase-upgrades-u2.md §4.3), with `moduleId`.
+   */
+  via?: 'brain' | 'module'
+  /**
+   * The brain's agent id when `via` is brain; a co-worker's own agent id (kind
+   * 'coworker', never with `via` brain). Absent otherwise.
    */
   agentId?: string
+  /** The company module (its local id, `hello`) when `via` is module. Absent otherwise. */
+  moduleId?: string
 }
 
 export type ToolContext = {

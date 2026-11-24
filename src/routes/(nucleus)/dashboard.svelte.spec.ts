@@ -27,6 +27,7 @@ const dashboard: Dashboard = {
   reminders: [],
   coworkerNotices: [],
   decisionQuestions: [],
+  moduleNotices: [],
   overview: {
     modules: [
       {
@@ -75,6 +76,7 @@ function renderDashboard(
     coworkerNotices?: Dashboard['coworkerNotices']
     decisionQuestions?: Dashboard['decisionQuestions']
     update?: Dashboard['update']
+    moduleNotices?: Dashboard['moduleNotices']
   } = {},
 ) {
   return render(Harness, {
@@ -88,6 +90,7 @@ function renderDashboard(
       ...(notices.coworkerNotices ? { coworkerNotices: notices.coworkerNotices } : {}),
       ...(notices.decisionQuestions ? { decisionQuestions: notices.decisionQuestions } : {}),
       ...(notices.update ? { update: notices.update } : {}),
+      ...(notices.moduleNotices ? { moduleNotices: notices.moduleNotices } : {}),
     },
     greetingName: 'Alex',
     companyName: 'Kindred',
@@ -311,5 +314,28 @@ describe('dashboard.svelte', () => {
     expect(form.querySelector<HTMLInputElement>('input[name=decision_id]')!.value).toBe('q-1')
     // 1 approval + 1 question waiting.
     await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
+  })
+
+  it('Needs you holds a switched-off company module with its sentence, and the owner\'s sharing OK posting modules.accept_sharing — U2', async () => {
+    renderDashboard(controller(), {}, {
+      moduleNotices: [
+        {
+          kind: 'module_failed',
+          moduleId: 'invoices',
+          name: 'Invoices',
+          sentence: 'Invoices is switched off because it stopped answering. Its data is kept.',
+          since: '2026-11-24T10:00:00.000Z',
+        },
+        { kind: 'module_sharing', sentence: 'Modules you build here are open source (Apache-2.0) and shared with eigenEnterprise.' },
+      ],
+    })
+    const rows = page.getByTestId('dashboard-module-notice')
+    await expect.element(rows.nth(0)).toHaveTextContent(/Invoices is switched off because it stopped answering\. Its data is kept\./)
+    await expect.element(rows.nth(0).getByTestId('dashboard-module-open')).toHaveAttribute('href', '/settings/modules/company')
+    await expect.element(rows.nth(1)).toHaveAttribute('data-kind', 'module_sharing')
+    const form = rows.nth(1).element().querySelector('form')!
+    expect(form.getAttribute('action')).toBe('/settings/modules/company?/acceptSharing')
+    // 1 approval + 2 module notices waiting.
+    await expect.element(page.getByText('3 waiting on you')).toBeInTheDocument()
   })
 })

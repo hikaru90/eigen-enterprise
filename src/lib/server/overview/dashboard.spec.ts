@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { InMemoryApprovalStore } from '$lib/kernel/approvals'
 import { InMemoryActivationStore } from '$lib/kernel/modules'
 
-const { kernelHolder, roleMock, backupsMock, upgradeMock, eventRows, journeyRows, assignedTasks, reminders, notices, decisions } = vi.hoisted(() => ({
+const { kernelHolder, roleMock, backupsMock, upgradeMock, eventRows, journeyRows, assignedTasks, reminders, notices, decisions, companyModules } = vi.hoisted(() => ({
+  companyModules: { records: [] as unknown[], sharing: null as unknown },
   assignedTasks: { deps: null as unknown },
   decisions: { questions: null as unknown as (userId: string) => Promise<unknown[]> },
   notices: { deps: null as unknown },
@@ -65,6 +66,13 @@ vi.mock('$lib/server/memory/assigned-tasks/live', () => ({ assignedTaskDeps: asy
 vi.mock('$lib/server/memory/reminders/live', () => ({ reminderDeps: async () => reminders.deps }))
 vi.mock('$lib/server/coworkers/rhythm-live', () => ({ liveNoticeDeps: async () => notices.deps }))
 vi.mock('$lib/server/decisions/live', () => ({ needsYouDecisionQuestions: (userId: string) => decisions.questions(userId) }))
+vi.mock('../../../../modules/company-modules/notices-live', async () => {
+  const { moduleNotices } = await import('$lib/kernel/module-host/notices')
+  return {
+    liveModuleNotices: async (viewer: Parameters<typeof moduleNotices>[2]) =>
+      moduleNotices(companyModules.records as never, companyModules.sharing as never, viewer),
+  }
+})
 
 import { MemoryCoworkerRunStore } from '$lib/server/coworkers/run-store'
 import { memoryAssignedTaskStore } from '$lib/server/memory/assigned-tasks/memory-store'
@@ -332,5 +340,39 @@ describe('the dashboard at / (loadDashboard)', () => {
     expect((await loadDashboard('ony')).decisionQuestions).toEqual([])
     await decisionPort.answer('owner', q.decisionId, 'keep')
     expect((await loadDashboard('owner')).decisionQuestions).toEqual([])
+  })
+
+  it("Needs you holds a failed company module for its owner and the admins, and the owner's sharing OK (U2)", async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    companyModules.records = [
+      {
+        id: 'invoices',
+        ownerUserId: 'ony',
+        manifest: { name: 'Invoices' },
+        state: 'failed',
+        reason: 'Invoices is switched off because it stopped answering. Its data is kept.',
+        stateSince: '2026-11-24T10:00:00.000Z',
+        pendingDeploy: null,
+      },
+    ]
+    companyModules.sharing = null
+    roleMock.mockResolvedValueOnce('owner')
+    const { SubstrateUnavailableError } = await import('$lib/server/ee/client')
+    backupsMock.mockRejectedValueOnce(new SubstrateUnavailableError('ENOENT'))
+    expect((await loadDashboard('owner')).moduleNotices).toEqual([
+      {
+        kind: 'module_failed',
+        moduleId: 'invoices',
+        name: 'Invoices',
+        sentence: 'Invoices is switched off because it stopped answering. Its data is kept.',
+        since: '2026-11-24T10:00:00.000Z',
+      },
+      { kind: 'module_sharing', sentence: 'Modules you build here are open source (Apache-2.0) and shared with eigenEnterprise.' },
+    ])
+    roleMock.mockResolvedValueOnce('member')
+    expect((await loadDashboard('someone')).moduleNotices).toEqual([])
+    roleMock.mockResolvedValueOnce('member')
+    expect((await loadDashboard('ony')).moduleNotices).toHaveLength(1)
+    companyModules.records = []
   })
 })

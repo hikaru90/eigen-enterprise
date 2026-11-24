@@ -25,6 +25,14 @@ export const CORE_EVENTS = {
   'approval.mode_changed': { module: 'kernel', payload: null },
   'harness.turn_failed': { module: 'kernel', payload: null },
   'tool.executed': { module: 'kernel', payload: null },
+  // The module host (plan/phase-upgrades-u2.md §4.6): the company's own modules.
+  'module.deployed': { module: 'kernel', payload: null },
+  'module.failed': { module: 'kernel', payload: null },
+  'module.published': { module: 'kernel', payload: null },
+  'module.recovered': { module: 'kernel', payload: null },
+  'module.removed': { module: 'kernel', payload: null },
+  'module.switched_off': { module: 'kernel', payload: null },
+  'module.switched_on': { module: 'kernel', payload: null },
   // The orchestrator: journeys and the agent's repo hands.
   'journey.abandoned': { module: 'orchestrator', payload: null },
   'journey.completed': { module: 'orchestrator', payload: null },

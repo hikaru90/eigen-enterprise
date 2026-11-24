@@ -23,7 +23,10 @@ vi.mock('../../../modules/index', () => ({
   bootstrapChatGateway: mocks.bootstrapChatGateway,
   bootstrapRecap: mocks.bootstrapRecap,
   ensureSystemModulesActive: async () => {},
+  providePublishPort: () => {},
+  startCompanyModules: async () => {},
 }))
+vi.mock('$lib/server/module-hub/publish-port', () => ({ livePublishPort: () => ({}) }))
 vi.mock('../../../modules/orchestrator/bootstrap', () => ({
   bootstrapOrchestrator: mocks.bootstrapOrchestrator,
 }))

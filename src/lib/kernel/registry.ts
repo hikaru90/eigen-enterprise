@@ -12,6 +12,7 @@ import {
 import { moduleSource } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'
+import { isCompanyModuleName } from './manifest-schema'
 import { moduleInactiveError, type ActivationStore } from './modules'
 import { assertWellFormedPrincipal, attributionOf, provenanceOf } from './principals'
 
@@ -74,6 +75,7 @@ function parseOutput(schema: ZodType, output: unknown, toolName: string): unknow
  */
 export class KernelRegistry {
   private readonly tools = new Map<string, ToolDescriptor>()
+  private readonly dynamicallyGated = new Set<string>()
   private readonly eventSink: EventSink
   private readonly activationStore: ActivationStore | undefined
   private readonly approvalPolicy: ApprovalPolicy
@@ -90,7 +92,12 @@ export class KernelRegistry {
     this.principalScope = options.principalScope
   }
 
-  register(descriptor: ToolDescriptor): void {
+  /**
+   * Registers a tool. `gated` puts it on the approval-gated list for its
+   * lifetime (a company module's `approval: mode` tool, §4.5) — the same gate
+   * the policy applies to the compiled-in gated tools.
+   */
+  register(descriptor: ToolDescriptor, options: { gated?: boolean } = {}): void {
     if (this.tools.has(descriptor.name)) {
       throw new KernelError('duplicate_tool', `tool already registered: ${descriptor.name}`)
     }
@@ -111,8 +118,37 @@ export class KernelRegistry {
         )
       }
     }
+    if (options.gated === true) {
+      if (descriptor.auditClass === 'read') {
+        throw new Error(`tool ${descriptor.name} is a read tool; only a tool that changes something can be approval-gated`)
+      }
+      if (descriptor.approvalRisk === undefined) {
+        throw new Error(`approval-gated tool ${descriptor.name} declares no approvalRisk; every gated tool must declare one`)
+      }
+    }
     this.approvalPolicy.validateTool?.(descriptor)
     this.tools.set(descriptor.name, descriptor)
+    if (options.gated === true) this.dynamicallyGated.add(descriptor.name)
+  }
+
+  /**
+   * Removes a tool (a company module redeployed with other tools, or removed).
+   * Only tools registered as removable — a company module's proxies — may go;
+   * the compiled-in surface never shrinks at runtime.
+   */
+  unregister(name: string): void {
+    const descriptor = this.tools.get(name)
+    if (!descriptor) throw new KernelError('unknown_tool', `unknown tool: ${name}`)
+    if (!isCompanyModuleName(descriptor.module)) {
+      throw new Error(`tool ${name} belongs to core module ${descriptor.module}; only a company module's tools can be unregistered`)
+    }
+    this.tools.delete(name)
+    this.dynamicallyGated.delete(name)
+  }
+
+  /** True when the tool waits on the approval mode because it was registered gated. */
+  isDynamicallyGated(name: string): boolean {
+    return this.dynamicallyGated.has(name)
   }
 
   get(name: string): ToolDescriptor | undefined {
@@ -166,7 +202,7 @@ export class KernelRegistry {
     const decision =
       descriptor.auditClass === 'read' || descriptor.approvalAlways === true
         ? 'pass'
-        : await this.approvalPolicy.decide(descriptor, ctx)
+        : await this.approvalPolicy.decide(descriptor, ctx, { gated: this.dynamicallyGated.has(name) })
     if (decision === 'auto_approved') {
       await emitKernelEvent(this.eventSink, {
         type: 'approval.auto_approved',
