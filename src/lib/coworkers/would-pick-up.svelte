@@ -18,7 +18,6 @@
   let {
     coworkerId,
     noticing,
-    hourlyLimit,
     lastDay,
     agreement,
     items,
@@ -27,7 +26,6 @@
     coworkerId: string
     /** Switched on for channel messages. */
     noticing: boolean
-    hourlyLimit: number
     lastDay: PickupCounts
     /** From decisions.kinds: Jev against people's marks; null while nothing was compared. */
     agreement: { agreed: number; compared: number } | null
@@ -57,9 +55,8 @@
   <p class="mt-3 text-xs text-muted-foreground" data-testid="pickup-counts">
     {m.coworkers_pickup_counts({
       decided: String(lastDay.observed + lastDay.queued),
-      rate: String(lastDay.skipped_rate_limit),
-      hourly: String(hourlyLimit),
       cap: String(lastDay.skipped_daily_cap),
+      author: String(lastDay.skipped_author_cap),
       failed: String(lastDay.failed),
     })}
   </p>

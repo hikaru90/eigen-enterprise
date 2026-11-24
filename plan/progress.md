@@ -2,6 +2,32 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-24 — AI Co-workers C7: each message routed once by the assistant (migration 0177, not pushed, not on the box)
+
+- **Owner decision:** "Classify every message, but do it once, and then spread the message to all agents that have to be woken up." The company's assistant is the one doing the routing: it reads each message once and routes it to the co-workers it belongs to. One Jev call per message is fine on cost.
+- **Built:**
+  - **`decideMany()`** (`src/lib/server/decisions/decide.ts`): many inputs of one kind about one state, answered in **one** Jev call. A kind opts in with `batch: { state, question }` (`kind.ts`). Each input still gets its own `decision_log` row and the same per-status handling as `decide()` (shadow none / shadow with judge / enforced, including Needs-you questions and re-asks). `decide()` now uses the same `settle` step, and its behaviour is unchanged.
+  - **`coworkers.event_mine` is a batch kind.** The shared state is the event, and each candidate co-worker gets a yes/no question with its role card as context.
+  - **`CoworkerEventRouter`** replaces the per-co-worker `CoworkerEventObserver` (`src/lib/server/coworkers/events.ts`):
+    - Candidates are the enabled co-workers switched on for `channel_message` for whom the message is an event (`channelMessageEvent` rules unchanged). No candidates means no call.
+    - The message is claimed once across processes (new table `coworker_event_route`, unique on kind + event id), with one `coworker_event_observation` per candidate linked by `route_id`.
+    - `ChannelMessageSource.onMessage(message)` also dedupes every co-worker's hub frame of one message inside the process. `CoworkerTriggerListener` hands over the message only.
+    - `subscribers(kind)` means one read per message instead of one per co-worker.
+  - **Billing (decided, owner may veto):** the routing call is billed to the **message's author** (`requestedBy`), and the decision runs in the author's DB session.
+    - Author's member daily cap spent: nothing is asked, every candidate is counted `skipped_author_cap` (new outcome), and it is logged loud.
+    - A co-worker whose own daily cap is spent is left out of the question set (`skipped_daily_cap`).
+    - Decision rows are requested by the author, about (subject) the co-worker. "Would pick up", labels and agreement are unchanged.
+    - The call's cost is split evenly over its rows, so per-kind cost sums stay the call's cost.
+  - Shadow/enforced semantics are unchanged per kind. An enforced "yes" still queues that co-worker's `event` run. A failed `queueRun` for one co-worker marks only that co-worker failed.
+- **Removed (announced):** the per-co-worker limit of 20 event decisions per hour (`EVENT_DECISIONS_PER_HOUR`, `hourlyLimit` in the store claim, the advisory lock, `hourlyLimit` in `coworkers.event_subscriptions_get` and on "Would pick up"). The owner said one call per message is fine. The outcome value `skipped_rate_limit` **stays** in the enum and the check constraint for rows from before 0177, but it is no longer produced. The "Would pick up" count line now shows skipped-because-author-cap instead of skipped-over-the-limit. Owner may veto.
+- **Docs:** events.ts and decision-kinds.ts headers, `plan/phase-ai-coworkers.md` C7, tool summaries of `coworkers.event_subscriptions_get/set`, export rules (`coworker_event_route: full`). No new UI action, so no parity change.
+- **Gaps:**
+  - a route left `claimed` by a dying process stays claimed and is not retried (as before, now per message);
+  - a co-worker switched on after a message was routed does not get that message;
+  - with many candidates, one call carries many questions, and there is no cap on questions per call;
+  - no browser check.
+- **Unrelated, found and not fixed:** `src/lib/server/decisions/decisions.pg.spec.ts` "decide in shadow writes the row…" fails on main too (checked with main's `decide.ts`). The rows inserted in one rolled-back transaction share `created_at = now()`, so the newest-first log order is not deterministic. It runs only with `DATABASE_URL` set in the environment, so the unit gate skips it.
+
 ## 2026-11-23 — AI Co-workers C7: event reactions in shadow (`68e40fc6`, merge `a7873a7b`, migration 0176, not pushed, not on the box)
 
 - **Built:**

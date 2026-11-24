@@ -39,7 +39,7 @@ const coworker = {
   accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },
 }
 
-const counts = { claimed: 0, observed: 0, queued: 0, skipped_rate_limit: 0, skipped_daily_cap: 0, failed: 0 }
+const counts = { claimed: 0, observed: 0, queued: 0, skipped_rate_limit: 0, skipped_daily_cap: 0, skipped_author_cap: 0, failed: 0 }
 const pickupRow = {
   id: 'd1',
   kind: 'coworkers.event_mine',
@@ -58,7 +58,7 @@ const run = (async (user: { id: string }, tool: string, input: unknown) => {
   if (tool === 'coworkers.runs') return { runs: [{ id: 'run-1', triggerKind: 'rhythm', status: 'done' }] }
   if (tool === 'coworkers.notice_seen') return { runId: 'run-1', seen: true }
   if (tool === 'coworkers.event_subscriptions_get') {
-    return { userId: 'cw1', kinds: [{ kind: 'channel_message', on: true }], hourlyLimit: 20, lastHour: counts, lastDay: { ...counts, observed: 3, skipped_rate_limit: 1 } }
+    return { userId: 'cw1', kinds: [{ kind: 'channel_message', on: true }], lastHour: counts, lastDay: { ...counts, observed: 3, skipped_author_cap: 1 } }
   }
   if (tool === 'decisions.log') return { decisions: [pickupRow] }
   if (tool === 'decisions.kinds') return { kinds: [{ id: 'coworkers.event_mine', humanCompared: 4, humanAgreed: 3 }] }
@@ -187,8 +187,7 @@ describe('profile load', () => {
     expect(calls[5]!.input).toEqual({ kind: 'coworkers.event_mine', subject_user_id: 'cw1', limit: 20 })
     expect(data.wouldPickUp).toEqual({
       noticing: true,
-      hourlyLimit: 20,
-      lastDay: { ...counts, observed: 3, skipped_rate_limit: 1 },
+      lastDay: { ...counts, observed: 3, skipped_author_cap: 1 },
       agreement: { agreed: 3, compared: 4 },
       items: [
         {

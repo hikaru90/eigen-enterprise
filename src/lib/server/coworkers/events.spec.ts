@@ -2,7 +2,7 @@ import type { Conversation, Person } from '../../../../modules/messages/store'
 import type { CoworkerView } from './service'
 import type { HeardMessage } from './turns'
 import { describe, expect, it, vi } from 'vitest'
-import { decide, type DecideDeps } from '$lib/server/decisions/decide'
+import { decideMany, type DecideDeps } from '$lib/server/decisions/decide'
 import { defineDecisionKind } from '$lib/server/decisions/kind'
 import { inMemoryDecisionStore } from '$lib/server/decisions/store'
 import type { LlmDecideResult } from '$lib/server/llm/llm-decide'
@@ -10,21 +10,21 @@ import { COWORKER_EVENT_MINE_DEF, coworkerEventMine } from '../../../../modules/
 import {
   ChannelMessageSource,
   channelMessageEvent,
-  CoworkerEventObserver,
-  EVENT_DECISIONS_PER_HOUR,
+  CoworkerEventRouter,
   eventRunKey,
   MemoryEventStores,
   type ChannelMessageEvent,
   type CoworkerEventMineInput,
-  type EventDecide,
+  type EventDecideMany,
 } from './events'
 import { MemoryCoworkerRunStore } from './run-store'
 import { coworkerEmail } from './service'
 
 /**
- * C7 · event reactions (plan/phase-ai-coworkers.md §8): which messages are a co-worker's
- * events (structure), the subscription, one Jev decision per co-worker and event, the cap and
- * the hourly limit counted and visible, and acting only behind the kind's status.
+ * C7 · event reactions, routed once (plan/phase-ai-coworkers.md §8, owner 2026-11-24): which
+ * messages are a co-worker's events (structure), the subscription, ONE Jev call per message for
+ * every co-worker it could be for (billed to the author), one decision row and one counted
+ * outcome per co-worker, the caps counted and visible, and acting only behind the kind's status.
  */
 
 const people: Person[] = [
@@ -79,41 +79,62 @@ const view = (over: Partial<CoworkerView> = {}): CoworkerView => ({
   ...over,
 })
 
-function jevSays(choice: 'yes' | 'no', confidence = 0.9): DecideDeps['ask'] {
+const mkt = view()
+const gtm = view({ id: 'cw-gtm', name: 'GTM', email: coworkerEmail('gtm', 'cw-gtm'), slug: 'gtm', title: 'GTM Lead', accountabilities: ['Pricing'], lens: 'Does it sell?', agentId: 'coworker-cw-gtm' })
+
+/** Jev answers the call's questions q0, q1, … in order (the default: every question "yes"). */
+function jevSays(...answers: Array<['yes' | 'no', number]>): DecideDeps['ask'] {
   return vi.fn(
-    async (): Promise<LlmDecideResult> => ({
+    async (input: { questions: Record<string, unknown> }): Promise<LlmDecideResult> => ({
       model: 'typesafe/jev-1.13-20260917',
-      answers: { decision: { choice, confidence, distribution: { yes: choice === 'yes' ? confidence : 1 - confidence, no: choice === 'no' ? confidence : 1 - confidence } } },
+      answers: Object.fromEntries(
+        Object.keys(input.questions).map((id, n) => {
+          const [choice, confidence] = answers[n] ?? answers[0] ?? ['yes', 0.9]
+          return [id, { choice, confidence, distribution: { yes: choice === 'yes' ? confidence : 1 - confidence, no: choice === 'no' ? confidence : 1 - confidence } }]
+        }),
+      ),
       costUsd: 0.000017,
       durationMs: 120,
     }),
-  )
+  ) as unknown as DecideDeps['ask']
 }
 
-function setup(opts: { ask?: DecideDeps['ask']; enforced?: boolean; spent?: number; hourlyLimit?: number; coworker?: Partial<CoworkerView> } = {}) {
+function setup(
+  opts: {
+    ask?: DecideDeps['ask']
+    enforced?: boolean
+    spent?: Record<string, number>
+    spentFails?: boolean
+    authorRefusal?: string
+    views?: Record<string, Partial<CoworkerView>>
+  } = {},
+) {
   const stores = new MemoryEventStores()
   const decisions = inMemoryDecisionStore()
   const runs = new MemoryCoworkerRunStore()
-  const ask = opts.ask ?? jevSays('yes')
+  const ask = opts.ask ?? jevSays()
   const started: string[] = []
   const kind = opts.enforced ? defineDecisionKind({ ...COWORKER_EVENT_MINE_DEF, status: 'enforced' }) : coworkerEventMine
-  let clock = new Date('2026-11-23T09:00:00Z')
-  const decideFn: EventDecide = (k, input, o) => decide(k, input, o, { ask, store: decisions })
+  const clock = new Date('2026-11-23T09:00:00Z')
+  const decideFn: EventDecideMany = (k, items, o) => decideMany(k, items, o, { ask, store: decisions })
   const make = () =>
-    new CoworkerEventObserver({
+    new CoworkerEventRouter({
       kind,
       subscriptions: stores,
       observations: stores,
-      coworkers: { get: async () => view(opts.coworker) },
-      spentToday: async () => opts.spent ?? 0,
-      decide: decideFn,
+      coworkers: { listEnabled: async () => [mkt, gtm].map((v) => ({ ...v, ...opts.views?.[v.id] })) },
+      spentToday: async (id) => {
+        if (opts.spentFails) throw new Error('ledger down')
+        return opts.spent?.[id] ?? 0
+      },
+      authorCapRefusal: async () => opts.authorRefusal ?? null,
+      decideMany: decideFn,
       queueRun: async (run) => {
         const row = await runs.enqueue(run)
         if (row) started.push(row.id)
         return row
       },
       now: () => clock,
-      ...(opts.hourlyLimit === undefined ? {} : { hourlyLimit: opts.hourlyLimit }),
     })
   return {
     stores,
@@ -121,11 +142,12 @@ function setup(opts: { ask?: DecideDeps['ask']; enforced?: boolean; spent?: numb
     runs,
     ask,
     started,
-    observer: make(),
-    /** A second app process: its own observer over the same stores. */
+    router: make(),
+    /** A second app process: its own router over the same stores. */
     otherProcess: make(),
-    tick: (ms: number) => (clock = new Date(clock.getTime() + ms)),
-    subscribe: () => stores.set('cw-mkt', ['channel_message'], 'bea', clock),
+    subscribe: async (...ids: string[]) => {
+      for (const id of ids) await stores.set(id, ['channel_message'], 'bea', clock)
+    },
   }
 }
 
@@ -168,6 +190,19 @@ describe('coworkers.event_mine (the kind)', () => {
     event: e,
   })
 
+  it('routed (batch): the event is the one shared state, the role card each co-worker’s question', () => {
+    const batch = coworkerEventMine.batch!
+    const state = batch.state(input(ev('m1')))
+    expect(state).toContain('#launch')
+    expect(state).toContain('We need the launch post drafted by Friday.')
+    expect(state).not.toContain('Marketing Manager')
+    expect(batch.state({ ...input(ev('m1')), coworker: { ...input(ev('m1')).coworker, id: 'cw-gtm', title: 'GTM Lead' } })).toBe(state)
+    const question = batch.question(input(ev('m1')))
+    expect(question).toContain('Title: Marketing Manager')
+    expect(question).toContain('- Launch communication')
+    expect(question).not.toContain('Friday')
+  })
+
   it('Jev reads the role card and the event', () => {
     const state = coworkerEventMine.state(input(ev('m1')))
     expect(state).toContain('Title: Marketing Manager')
@@ -187,87 +222,132 @@ describe('coworkers.event_mine (the kind)', () => {
   })
 })
 
-describe('CoworkerEventObserver', () => {
-  it('a co-worker not switched on for the kind: no decision, no row', async () => {
+describe('CoworkerEventRouter: the assistant routes each event once', () => {
+  it('nobody switched on: nothing listens, nothing is asked', async () => {
     const s = setup()
-    expect(await s.observer.observe('cw-mkt', ev('m1'))).toEqual({ outcome: 'not_subscribed' })
-    expect(s.ask).not.toHaveBeenCalled()
-    expect(s.decisions.rows()).toHaveLength(0)
-    expect(s.stores.observations).toHaveLength(0)
-  })
-
-  it('a switched-off co-worker decides nothing', async () => {
-    const s = setup({ coworker: { enabled: false } })
-    await s.subscribe()
-    expect(await s.observer.observe('cw-mkt', ev('m1'))).toEqual({ outcome: 'unavailable' })
+    expect(await s.router.listening('channel_message')).toEqual([])
     expect(s.ask).not.toHaveBeenCalled()
   })
 
-  it('shadow: Jev’s "yes" is logged as observed — no run is queued', async () => {
-    const s = setup({ ask: jevSays('yes', 0.82) })
-    await s.subscribe()
-    const out = await s.observer.observe('cw-mkt', ev('m1'))
-    expect(out).toMatchObject({ outcome: 'observed', runId: null })
-    const [row] = s.decisions.rows()
-    expect(row).toMatchObject({ kind: 'coworkers.event_mine', status: 'shadow', outcome: 'observed', jevChoice: 'yes', jevConfidence: 0.82, requestedBy: 'cw-mkt', subjectUserId: 'cw-mkt', usedChoice: null })
-    expect(row!.input).toMatchObject({ eventId: 'm1', excerpt: 'We need the launch post drafted by Friday.' })
-    expect(s.stores.observations[0]).toMatchObject({ outcome: 'observed', decisionId: row!.id })
+  it('listening: only the enabled co-workers switched on for the kind', async () => {
+    const s = setup({ views: { 'cw-gtm': { enabled: false } } })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    expect((await s.router.listening('channel_message')).map((v) => v.id)).toEqual(['cw-mkt'])
+  })
+
+  it('shadow: ONE Jev call for every candidate, billed to the author; one observed decision row per co-worker; nothing queued', async () => {
+    const s = setup({ ask: jevSays(['yes', 0.82], ['no', 0.7]) })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    const out = await s.router.route(ev('m1'), [mkt, gtm])
+    expect(out).toMatchObject({ outcome: 'decided', coworkers: { 'cw-mkt': { outcome: 'observed', runId: null }, 'cw-gtm': { outcome: 'observed', runId: null } } })
+    expect(s.ask).toHaveBeenCalledTimes(1)
+    const call = (s.ask as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { userId: string; state: string; questions: Record<string, { instructions: string }> }
+    expect(call.userId).toBe('bea')
+    expect(call.state).toContain('We need the launch post drafted by Friday.')
+    expect(call.state).not.toContain('Marketing Manager')
+    expect(Object.keys(call.questions)).toEqual(['q0', 'q1'])
+    expect(call.questions.q0!.instructions).toContain('Title: Marketing Manager')
+    expect(call.questions.q1!.instructions).toContain('Title: GTM Lead')
+
+    const rows = s.decisions.rows()
+    expect(rows).toEqual([
+      expect.objectContaining({ kind: 'coworkers.event_mine', status: 'shadow', outcome: 'observed', jevChoice: 'yes', jevConfidence: 0.82, requestedBy: 'bea', subjectUserId: 'cw-mkt', usedChoice: null }),
+      expect.objectContaining({ kind: 'coworkers.event_mine', status: 'shadow', outcome: 'observed', jevChoice: 'no', requestedBy: 'bea', subjectUserId: 'cw-gtm' }),
+    ])
+    expect(rows[0]!.input).toMatchObject({ coworkerUserId: 'cw-mkt', eventId: 'm1', excerpt: 'We need the launch post drafted by Friday.' })
+    expect(s.stores.routes).toEqual([expect.objectContaining({ eventId: 'm1', authorUserId: 'bea', outcome: 'decided', candidates: 2, questions: 2 })])
+    expect(s.stores.observations.map((o) => [o.coworkerUserId, o.outcome, o.decisionId, o.routeId])).toEqual([
+      ['cw-mkt', 'observed', rows[0]!.id, s.stores.routes[0]!.id],
+      ['cw-gtm', 'observed', rows[1]!.id, s.stores.routes[0]!.id],
+    ])
     expect(s.runs.rows).toHaveLength(0)
     expect(s.started).toHaveLength(0)
   })
 
-  it('one decision per co-worker per event, across two processes and redeliveries', async () => {
-    const s = setup()
-    await s.subscribe()
-    const [a, b] = await Promise.all([s.observer.observe('cw-mkt', ev('m1')), s.otherProcess.observe('cw-mkt', ev('m1'))])
-    expect([a.outcome, b.outcome].sort()).toEqual(['duplicate', 'observed'])
-    expect(await s.observer.observe('cw-mkt', ev('m1'))).toEqual({ outcome: 'duplicate' })
+  it('once across two processes and redeliveries: one route, one call, one row per co-worker', async () => {
+    const s = setup({ ask: jevSays(['yes', 0.9], ['no', 0.9]) })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    const [a, b] = await Promise.all([s.router.route(ev('m1'), [mkt, gtm]), s.otherProcess.route(ev('m1'), [mkt, gtm])])
+    expect([a.outcome, b.outcome].sort()).toEqual(['decided', 'duplicate'])
+    expect(await s.router.route(ev('m1'), [mkt, gtm])).toEqual({ outcome: 'duplicate' })
     expect(s.ask).toHaveBeenCalledTimes(1)
-    expect(s.decisions.rows()).toHaveLength(1)
+    expect(s.decisions.rows()).toHaveLength(2)
+    expect(s.stores.observations).toHaveLength(2)
   })
 
-  it('past the hourly limit an event is skipped with a counted reason, and the next hour decides again', async () => {
-    expect(EVENT_DECISIONS_PER_HOUR).toBe(20)
-    const s = setup({ hourlyLimit: 2 })
-    await s.subscribe()
-    await s.observer.observe('cw-mkt', ev('m1'))
-    await s.observer.observe('cw-mkt', ev('m2'))
-    expect(await s.observer.observe('cw-mkt', ev('m3'))).toMatchObject({ outcome: 'skipped_rate_limit', decisionId: null })
-    expect(s.ask).toHaveBeenCalledTimes(2)
-    expect(s.stores.observations.find((r) => r.eventId === 'm3')).toMatchObject({ outcome: 'skipped_rate_limit', error: 'over 2 event decisions in the last hour' })
-    expect(await s.stores.counts('cw-mkt', new Date(0))).toMatchObject({ observed: 2, skipped_rate_limit: 1 })
-    s.tick(3_600_001)
-    expect(await s.observer.observe('cw-mkt', ev('m4'))).toMatchObject({ outcome: 'observed' })
+  it('there is no hourly limit any more: every message is routed', async () => {
+    const s = setup({ ask: jevSays(['no', 0.9]) })
+    await s.subscribe('cw-mkt')
+    for (let n = 0; n < 25; n++) expect(await s.router.route(ev(`m${n}`), [mkt])).toMatchObject({ outcome: 'decided' })
+    expect(s.ask).toHaveBeenCalledTimes(25)
+    expect(await s.stores.counts('cw-mkt', new Date(0))).toMatchObject({ observed: 25, skipped_rate_limit: 0 })
   })
 
-  it('a spent daily cap: no decision, counted skipped_daily_cap, logged loud, never retried', async () => {
+  it('a co-worker whose own daily cap is spent is left out of the question set and counted skipped_daily_cap', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const s = setup({ spent: 2.5 })
-    await s.subscribe()
-    expect(await s.observer.observe('cw-mkt', ev('m1'))).toMatchObject({ outcome: 'skipped_daily_cap', decisionId: null })
-    expect(s.ask).not.toHaveBeenCalled()
-    expect(s.decisions.rows()).toHaveLength(0)
-    expect(s.stores.observations[0]).toMatchObject({ outcome: 'skipped_daily_cap', error: 'the daily AI budget is spent (2.5 >= 2 USD today, UTC)' })
+    const s = setup({ ask: jevSays(['yes', 0.9]), spent: { 'cw-mkt': 2.5 } })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    const out = await s.router.route(ev('m1'), [mkt, gtm])
+    expect(out).toMatchObject({ outcome: 'decided', coworkers: { 'cw-mkt': { outcome: 'skipped_daily_cap', decisionId: null }, 'cw-gtm': { outcome: 'observed' } } })
+    const call = (s.ask as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { questions: Record<string, { instructions: string }> }
+    expect(Object.keys(call.questions)).toEqual(['q0'])
+    expect(call.questions.q0!.instructions).toContain('GTM Lead')
+    expect(s.decisions.rows().map((r) => r.subjectUserId)).toEqual(['cw-gtm'])
+    expect(s.stores.observations.find((o) => o.coworkerUserId === 'cw-mkt')).toMatchObject({ outcome: 'skipped_daily_cap', error: 'the daily AI budget is spent (2.5 >= 2 USD today, UTC)' })
+    expect(s.stores.routes[0]).toMatchObject({ candidates: 2, questions: 1 })
     expect(error).toHaveBeenCalled()
-    expect(await s.observer.observe('cw-mkt', ev('m1'))).toEqual({ outcome: 'duplicate' })
     error.mockRestore()
   })
 
-  it('a Jev failure in shadow is logged in the decision log and counted failed', async () => {
+  it('every candidate capped: no call, each counted, the route says why; never retried', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const s = setup({ spent: { 'cw-mkt': 9, 'cw-gtm': 9 } })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    expect(await s.router.route(ev('m1'), [mkt, gtm])).toMatchObject({ outcome: 'skipped_daily_cap' })
+    expect(s.ask).not.toHaveBeenCalled()
+    expect(s.stores.observations.map((o) => o.outcome)).toEqual(['skipped_daily_cap', 'skipped_daily_cap'])
+    expect(await s.router.route(ev('m1'), [mkt, gtm])).toEqual({ outcome: 'duplicate' })
+    error.mockRestore()
+  })
+
+  it('the author’s daily AI cap spent: the route is skipped, every candidate counted skipped_author_cap, logged loud', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const s = setup({ authorRefusal: 'today’s 1 USD are spent' })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    expect(await s.router.route(ev('m1'), [mkt, gtm])).toMatchObject({ outcome: 'skipped_author_cap', coworkers: { 'cw-mkt': { outcome: 'skipped_author_cap' }, 'cw-gtm': { outcome: 'skipped_author_cap' } } })
+    expect(s.ask).not.toHaveBeenCalled()
+    expect(s.decisions.rows()).toHaveLength(0)
+    expect(s.stores.routes[0]).toMatchObject({ outcome: 'skipped_author_cap', error: 'the author’s daily AI budget is spent: today’s 1 USD are spent' })
+    expect(s.stores.observations.every((o) => o.error === 'the author’s daily AI budget is spent: today’s 1 USD are spent')).toBe(true)
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+  })
+
+  it('a Jev failure in shadow is logged on every co-worker’s decision row and counted failed', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const s = setup({ ask: vi.fn(async () => { throw new Error('gateway down') }) })
-    await s.subscribe()
-    expect(await s.observer.observe('cw-mkt', ev('m1'))).toMatchObject({ outcome: 'failed' })
-    expect(s.decisions.rows()[0]).toMatchObject({ outcome: 'observed', jevError: 'Error: gateway down' })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    expect(await s.router.route(ev('m1'), [mkt, gtm])).toMatchObject({ outcome: 'decided', coworkers: { 'cw-mkt': { outcome: 'failed' }, 'cw-gtm': { outcome: 'failed' } } })
+    expect(s.decisions.rows().map((r) => [r.outcome, r.jevError])).toEqual([['observed', 'Error: gateway down'], ['observed', 'Error: gateway down']])
     expect(s.runs.rows).toHaveLength(0)
     error.mockRestore()
   })
 
-  it('enforced (the promotion): a "yes" queues exactly one event run in the event’s thread', async () => {
-    const s = setup({ enforced: true, ask: jevSays('yes') })
-    await s.subscribe()
-    const out = await s.observer.observe('cw-mkt', ev('m1'))
-    expect(out).toMatchObject({ outcome: 'queued' })
+  it('a failure outside the decision (the store, the ledger) marks every unfinished co-worker and the route failed', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const s = setup({ spentFails: true })
+    await s.subscribe('cw-mkt')
+    expect(await s.router.route(ev('m1'), [mkt])).toMatchObject({ outcome: 'failed', coworkers: { 'cw-mkt': { outcome: 'failed' } } })
+    expect(s.stores.routes[0]).toMatchObject({ outcome: 'failed', error: 'ledger down' })
+    expect(s.stores.observations[0]).toMatchObject({ outcome: 'failed', error: 'ledger down' })
+    error.mockRestore()
+  })
+
+  it('enforced (the promotion): each "yes" queues exactly one event run in the event’s thread; a "no" queues nothing', async () => {
+    const s = setup({ enforced: true, ask: jevSays(['yes', 0.9], ['no', 0.9]) })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    const out = await s.router.route(ev('m1'), [mkt, gtm])
+    expect(out).toMatchObject({ outcome: 'decided', coworkers: { 'cw-mkt': { outcome: 'queued' }, 'cw-gtm': { outcome: 'observed' } } })
     expect(s.runs.rows).toHaveLength(1)
     expect(s.runs.rows[0]).toMatchObject({
       coworkerUserId: 'cw-mkt',
@@ -280,44 +360,61 @@ describe('CoworkerEventObserver', () => {
       status: 'queued',
     })
     expect(s.started).toEqual([s.runs.rows[0]!.id])
-    expect(s.decisions.rows()[0]).toMatchObject({ status: 'enforced', outcome: 'decided', usedChoice: 'yes', usedSource: 'jev' })
+    expect(s.decisions.rows().map((r) => [r.subjectUserId, r.status, r.outcome, r.usedChoice, r.usedSource])).toEqual([
+      ['cw-mkt', 'enforced', 'decided', 'yes', 'jev'],
+      ['cw-gtm', 'enforced', 'decided', 'no', 'jev'],
+    ])
   })
 
-  it('enforced: a "no" queues nothing', async () => {
-    const s = setup({ enforced: true, ask: jevSays('no') })
-    await s.subscribe()
-    expect(await s.observer.observe('cw-mkt', ev('m1'))).toMatchObject({ outcome: 'observed' })
-    expect(s.runs.rows).toHaveLength(0)
+  it('refuses an event with no candidate (the source routes only when someone could be its)', async () => {
+    const s = setup()
+    await expect(s.router.route(ev('m1'), [])).rejects.toThrow(/at least one candidate/)
   })
 })
 
 describe('ChannelMessageSource', () => {
-  const source = (observer: CoworkerEventObserver, over: { member?: boolean; canRead?: boolean } = {}) =>
+  const source = (router: CoworkerEventRouter, over: { access?: (id: string) => { read: boolean; member: boolean } } = {}) =>
     new ChannelMessageSource(
       {
         getConversation: async (id) => (id === channel.id ? channel : null),
         listPeople: async () => people,
-        access: async () => ({ read: over.canRead ?? true, member: over.member ?? true }),
+        access: async (id) => over.access?.(id) ?? { read: true, member: true },
       },
-      observer,
+      router,
     )
 
-  it('a heard message becomes one decision when the co-worker is switched on and it is its event', async () => {
-    const s = setup()
-    await s.subscribe()
-    const src = source(s.observer)
-    expect(await src.onMessage('cw-mkt', heard())).toMatchObject({ outcome: 'observed' })
-    expect(await src.onMessage('cw-mkt', heard({ id: 'm2', body: '@marketing do it' }))).toBeNull()
-    expect(await source(s.observer, { member: false }).onMessage('cw-mkt', heard({ id: 'm3' }))).toBeNull()
-    expect(await source(s.observer, { canRead: false }).onMessage('cw-mkt', heard({ id: 'm4' }))).toBeNull()
-    expect(s.decisions.rows()).toHaveLength(1)
+  it('a heard message is routed once to the co-workers it is an event for; a mention or no access leaves a co-worker out', async () => {
+    const s = setup({ ask: jevSays(['yes', 0.9], ['no', 0.9]) })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    const src = source(s.router)
+    expect(await src.onMessage(heard())).toMatchObject({ outcome: 'decided', coworkers: { 'cw-mkt': {}, 'cw-gtm': {} } })
+    // @gtm: a C3 turn for GTM, still an event for Marketing.
+    expect(await src.onMessage(heard({ id: 'm2', body: '@gtm what is the price?' }))).toMatchObject({ coworkers: { 'cw-mkt': {} } })
+    expect(s.stores.observations.filter((o) => o.eventId === 'm2').map((o) => o.coworkerUserId)).toEqual(['cw-mkt'])
+    expect(await source(s.router, { access: (id) => ({ read: true, member: id !== 'cw-mkt' }) }).onMessage(heard({ id: 'm3' }))).toMatchObject({ coworkers: { 'cw-gtm': {} } })
+    expect(await source(s.router, { access: () => ({ read: false, member: true }) }).onMessage(heard({ id: 'm4' }))).toBeNull()
+    expect(await src.onMessage(heard({ id: 'm5', body: '@marketing @gtm both of you' }))).toBeNull()
+    expect(await src.onMessage(heard({ id: 'm6', authorId: 'cw-gtm' }))).toBeNull()
+    expect(s.stores.routes.map((r) => r.eventId)).toEqual(['m1', 'm2', 'm3'])
   })
 
-  it('not switched on: the message is not even looked at', async () => {
+  it('every co-worker’s frame of one message: one route, one call (one process)', async () => {
+    const s = setup({ ask: jevSays(['yes', 0.9], ['no', 0.9]) })
+    await s.subscribe('cw-mkt', 'cw-gtm')
+    const src = source(s.router)
+    const [a, b] = await Promise.all([src.onMessage(heard()), src.onMessage(heard())])
+    expect(a).toBe(b)
+    expect(await src.onMessage(heard())).toBe(a)
+    await src.idle()
+    expect(s.ask).toHaveBeenCalledTimes(1)
+    expect(s.stores.routes).toHaveLength(1)
+  })
+
+  it('nobody switched on: the message is not even looked at', async () => {
     const s = setup()
     const getConversation = vi.fn(async () => channel)
-    const src = new ChannelMessageSource({ getConversation, listPeople: async () => people, access: async () => ({ read: true, member: true }) }, s.observer)
-    expect(await src.onMessage('cw-mkt', heard())).toBeNull()
+    const src = new ChannelMessageSource({ getConversation, listPeople: async () => people, access: async () => ({ read: true, member: true }) }, s.router)
+    expect(await src.onMessage(heard())).toBeNull()
     expect(getConversation).not.toHaveBeenCalled()
     expect(s.ask).not.toHaveBeenCalled()
   })

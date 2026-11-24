@@ -49,7 +49,8 @@ export type MessageFrames = {
  * decide whether it asks for a turn. `refresh` follows the current co-workers.
  *
  * C7: the same frames go to the event sources (`events`, e.g. ChannelMessageSource): a message
- * that does not ask for a turn may still be an event the co-worker notices.
+ * that does not ask for a turn may still be an event a co-worker notices. Every co-worker's
+ * frame of a message is handed over; the source routes each message once.
  */
 export class CoworkerTriggerListener {
   private readonly subs = new Map<string, () => void>()
@@ -60,7 +61,7 @@ export class CoworkerTriggerListener {
       hub: MessageFrames
       listEnabled: () => Promise<CoworkerView[]>
       turns: Pick<CoworkerTurns, 'onMessage'>
-      events?: { onMessage(coworkerId: string, message: HeardMessage): Promise<unknown> }
+      events?: { onMessage(message: HeardMessage): Promise<unknown> }
     },
   ) {}
 
@@ -87,8 +88,8 @@ export class CoworkerTriggerListener {
           this.deps.turns.onMessage(id, frame.data.message).catch((err: unknown) =>
             console.error('[coworkers] a co-worker trigger failed', { coworkerId: id, messageId: frame.data.message.id, err }),
           )
-          this.deps.events?.onMessage(id, frame.data.message).catch((err: unknown) =>
-            console.error('[coworkers] a co-worker event source failed', { coworkerId: id, messageId: frame.data.message.id, err }),
+          this.deps.events?.onMessage(frame.data.message).catch((err: unknown) =>
+            console.error('[coworkers] an event source failed', { heardBy: id, messageId: frame.data.message.id, err }),
           )
         }),
       )

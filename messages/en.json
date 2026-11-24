@@ -597,7 +597,7 @@
   "coworkers_pickup_private": "Private channel",
   "coworkers_pickup_agreement": "Agrees with people’s marks {agreed} of {compared} times.",
   "coworkers_pickup_agreement_none": "No marks yet.",
-  "coworkers_pickup_counts": "Last 24 hours: {decided} judged, {rate} skipped over the limit of {hourly} an hour, {cap} skipped because its daily budget was spent, {failed} failed.",
+  "coworkers_pickup_counts": "Last 24 hours: {decided} judged, {cap} skipped because its daily budget was spent, {author} skipped because the author’s daily budget was spent, {failed} failed.",
   "coworkers_run_trigger_mention": "Mentioned",
   "coworkers_run_trigger_dm": "Direct message",
   "coworkers_run_trigger_assignment": "Assigned task",

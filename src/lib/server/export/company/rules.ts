@@ -89,6 +89,9 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   // event it heard (where it happened and the decision's id — never the event's content).
   coworker_event_subscription: full,
   coworker_event_observation: full,
+  // C7 routed once (0177): one row per routed event — where, who wrote it, how many co-workers it
+  // could be for and were asked, the outcome. Never the event's content.
+  coworker_event_route: full,
   access_grant: full,
   user_api_key: fullWith('key_hash'),
   push_subscription: excluded('device push endpoints; each device subscribes again on the new system'),

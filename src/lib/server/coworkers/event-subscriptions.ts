@@ -1,7 +1,7 @@
 import type { EventObservationStore, EventSubscriptionStore } from './events'
 import type { CoworkerActor, CoworkerView } from './service'
 import { isAdminRole } from '$lib/server/auth/roles'
-import { COWORKER_EVENT_KINDS, EVENT_DECISIONS_PER_HOUR, type CoworkerEventKind, type CoworkerEventOutcome } from './events'
+import { COWORKER_EVENT_KINDS, type CoworkerEventKind, type CoworkerEventOutcome } from './events'
 import { CoworkerError } from './service'
 
 /**
@@ -21,8 +21,6 @@ export type EventSubscriptionsView = {
   userId: string
   /** Every kind of the closed set, on or off. */
   kinds: { kind: CoworkerEventKind; on: boolean }[]
-  /** At most this many event decisions per hour; the rest are counted skipped_rate_limit. */
-  hourlyLimit: number
   /** What became of the events it heard, by outcome: in the last hour and the last 24 hours. */
   lastHour: Record<CoworkerEventOutcome, number>
   lastDay: Record<CoworkerEventOutcome, number>
@@ -36,7 +34,7 @@ export async function getEventSubscriptions(d: EventSubscriptionDeps, userId: st
     d.observations.counts(userId, new Date(now.getTime() - 3_600_000)),
     d.observations.counts(userId, new Date(now.getTime() - 86_400_000)),
   ])
-  return { userId, kinds: COWORKER_EVENT_KINDS.map((kind) => ({ kind, on: on.includes(kind) })), hourlyLimit: EVENT_DECISIONS_PER_HOUR, lastHour, lastDay }
+  return { userId, kinds: COWORKER_EVENT_KINDS.map((kind) => ({ kind, on: on.includes(kind) })), lastHour, lastDay }
 }
 
 export async function setEventSubscriptions(

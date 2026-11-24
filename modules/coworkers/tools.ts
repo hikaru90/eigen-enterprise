@@ -259,7 +259,6 @@ const outcomeCounts = z.object(Object.fromEntries(COWORKER_EVENT_OUTCOMES.map((o
 export const eventSubscriptionsSchema = z.object({
   userId: z.string(),
   kinds: z.array(z.object({ kind: z.enum(COWORKER_EVENT_KINDS), on: z.boolean() })),
-  hourlyLimit: z.number().int(),
   lastHour: outcomeCounts,
   lastDay: outcomeCounts,
 })
@@ -581,7 +580,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       name: 'coworkers.event_subscriptions_get',
       module: COWORKERS_MODULE_ID,
       summary:
-        "Which company events an AI co-worker notices without being @mentioned (kinds: channel_message = a person's new message in a channel it is a member of, not mentioning it), each on or off; and what became of the events it heard in the last hour and day, by outcome (observed = Jev decided in shadow, see decisions.log kind coworkers.event_mine; queued = it took an event run; skipped_rate_limit past hourlyLimit decisions an hour; skipped_daily_cap when its daily AI budget was spent; failed).",
+        "Which company events an AI co-worker notices without being @mentioned (kinds: channel_message = a person's new message in a channel it is a member of, not mentioning it), each on or off; and what became of the events it could be for in the last hour and day, by outcome (the assistant routes each message once, one Jev call for every co-worker it could be for: observed = Jev decided in shadow, see decisions.log kind coworkers.event_mine; queued = it took an event run; skipped_daily_cap when its own daily AI budget was spent; skipped_author_cap when the message author's daily AI budget was spent — the routing call is theirs; failed; skipped_rate_limit only in counts from before 2026-11-24, when an hourly limit existed).",
       auditClass: 'read',
       inputSchema: eventSubscriptionsGetInput,
       outputSchema: eventSubscriptionsSchema,
@@ -592,7 +591,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       name: 'coworkers.event_subscriptions_set',
       module: COWORKERS_MODULE_ID,
       summary:
-        'Choose which company events an AI co-worker notices without being @mentioned: event_kinds is the full new list (channel_message; [] = none). For each such event Jev decides whether it is the co-worker’s to act on; today that runs in shadow — logged in decisions.log, nothing is acted on. The cost is the co-worker’s. Owner and admins.',
+        'Choose which company events an AI co-worker notices without being @mentioned: event_kinds is the full new list (channel_message; [] = none). The company’s assistant routes each such message once: one Jev call asks, for every co-worker it could be for, whether it is that co-worker’s to act on; today that runs in shadow — logged in decisions.log, nothing is acted on. The call is billed to the message’s author. Owner and admins.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: z.infer<typeof eventSubscriptionsSetInput>) =>

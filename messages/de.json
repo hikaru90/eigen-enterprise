@@ -595,7 +595,7 @@
   "coworkers_pickup_private": "Privater Kanal",
   "coworkers_pickup_agreement": "Stimmt {agreed} von {compared} Mal mit den Markierungen überein.",
   "coworkers_pickup_agreement_none": "Noch keine Markierungen.",
-  "coworkers_pickup_counts": "Letzte 24 Stunden: {decided} eingeschätzt, {rate} übersprungen über der Grenze von {hourly} pro Stunde, {cap} übersprungen, weil sein Tagesbudget verbraucht war, {failed} fehlgeschlagen.",
+  "coworkers_pickup_counts": "Letzte 24 Stunden: {decided} eingeschätzt, {cap} übersprungen, weil sein Tagesbudget verbraucht war, {author} übersprungen, weil das Tagesbudget der Verfasserin oder des Verfassers verbraucht war, {failed} fehlgeschlagen.",
   "coworkers_run_trigger_mention": "Erwähnt",
   "coworkers_run_trigger_dm": "Direktnachricht",
   "coworkers_run_trigger_assignment": "Zugewiesene Aufgabe",
