@@ -326,7 +326,7 @@ type ModuleReceiptV1 = {
 - `contracts/fixtures/modules/hello/`: `module.yaml` providing `greet` and using `members.list`; `LICENSE`; a `package.json` with no dependencies; `index.mjs` speaking raw `eem/1`; `test.mjs`.
 - `contracts/fixtures/module-hub-test-key.ts`, a test-only key pair named as such.
 - Empty `companyModulesManifest` and `moduleHubManifest` wired into `modules/index.ts`.
-- Migration numbers reserved: A `0178_company_modules`, C `0179_module_hub`.
+- Migration numbers reserved: A `0179_company_modules`, C `0180_module_hub` (0178 was taken by demo guest access).
 
 **Stream A: kernel module host and the box's Modules module.**
 - **Owns:**
@@ -335,7 +335,7 @@ type ModuleReceiptV1 = {
   - `contracts/sdk/module-*.ts`, `test-kernel.ts`, and the regenerated lock and SDK;
   - `modules/company-modules/**` except `publish/`;
   - the module methods of `src/lib/server/ee/client.ts`;
-  - `gitstore/system.ts` (v2), `kernel.schema.ts` and migration 0178;
+  - `gitstore/system.ts` (v2), `kernel.schema.ts` and migration 0179;
   - the Settings → Modules routes;
   - the Needs you source in `overview/dashboard.ts`;
   - the export of `extensions/<id>/`;
@@ -374,7 +374,7 @@ type ModuleReceiptV1 = {
 - **Owns:**
   - `modules/module-hub/**`;
   - `src/routes/api/hub/modules/**` and `src/routes/(nucleus)/contribute/modules/**`;
-  - migration 0179;
+  - migration 0180;
   - `scripts/oss-operator-secret-keys.mjs` (exports `scanSecrets`);
   - `scripts/mock-hub-core.ts` and `mock-hub.ts`;
   - `modules/company-modules/publish/**` (the `PublishPort`).
