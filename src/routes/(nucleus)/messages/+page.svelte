@@ -41,6 +41,13 @@
     type PresenceView,
   } from '$lib/messages/presence'
   import PresenceDot from '$lib/messages/presence-dot.svelte'
+  import {
+    applyTyping,
+    typingLine,
+    typistsIn,
+    type TypingFrame,
+    type TypingMap,
+  } from '$lib/messages/typing'
   import PresenceSelf from '$lib/messages/presence-self.svelte'
   import type { ReplyQuote as Quote } from '$lib/messages/quote'
   import ReplyQuote from '$lib/messages/reply-quote.svelte'
@@ -82,7 +89,13 @@
   const calls = callsClient()
 
   /** kind: a person or an AI co-worker (plan/phase-ai-coworkers.md §6: shown with the AI mark). */
-  type Person = { id: string; name: string; email: string; image?: string | null; kind?: 'human' | 'coworker' }
+  type Person = {
+    id: string
+    name: string
+    email: string
+    image?: string | null
+    kind?: 'human' | 'coworker'
+  }
 
   // Page-owned state seeded once from the load (the live stream keeps it current).
   // svelte-ignore state_referenced_locally
@@ -109,6 +122,13 @@
 
   // Presence (Contribute 119f59a4): everyone's status from the live feed; mine is set by this tab's heartbeat.
   let presence = $state<PresenceMap>({})
+  // "<name> is typing…" (Contribute 14aea69d): who writes where, from the same feed; each (re)connect sends it afresh.
+  let typing = $state<TypingMap>({})
+  let typingError = $state<string | null>(null)
+  const typingIn = (conversationId: string, threadRootId: string | null) =>
+    typingLine(
+      typistsIn(typing, conversationId, threadRootId, data.me).map((id) => rowPerson(id).name),
+    )
   let presenceError = $state<ShownError | null>(null)
   let dndSaving = $state(false)
   const presenceFor = (userId: string): PresenceView => presenceOf(presence, userId)
@@ -186,7 +206,13 @@
   const myself = $derived(peopleById.get(data.me) ?? null)
   /** Who the composers' @ suggestions offer: the open conversation's members, each by the handle that reaches them. */
   const mentionables = $derived<Mentionable[]>(
-    (members ?? []).map((p) => ({ id: p.id, name: p.name.trim() || p.email, handle: p.handle, kind: p.kind ?? 'human', image: p.image ?? null })),
+    (members ?? []).map((p) => ({
+      id: p.id,
+      name: p.name.trim() || p.email,
+      handle: p.handle,
+      kind: p.kind ?? 'human',
+      image: p.image ?? null,
+    })),
   )
   const uploading = $derived(pendingFiles.some((f) => f.status === 'uploading'))
   const readyFiles = $derived(
@@ -229,7 +255,12 @@
 
   const rowPerson = (id: string): RowPerson => {
     const p = peopleById.get(id)
-    return { id, name: p ? p.name.trim() || p.email : 'Former member', image: p?.image ?? null, kind: p?.kind ?? 'human' }
+    return {
+      id,
+      name: p ? p.name.trim() || p.email : 'Former member',
+      image: p?.image ?? null,
+      kind: p?.kind ?? 'human',
+    }
   }
   /** A DM's other participants (the row's avatar and the header). */
   const dmOthers = (c: ConversationView) => c.memberIds.filter((u) => u !== data.me).map(rowPerson)
@@ -787,8 +818,19 @@
     stream = new ResumableStream({
       url: (after) => `/api/messages/stream?after=${after}`,
       initialCursor: data.cursor,
-      events: ['message', 'conversation', 'read', 'presence', 'presence-error'],
-      onStatus: (status) => (live = status),
+      events: [
+        'message',
+        'conversation',
+        'read',
+        'presence',
+        'presence-error',
+        'typing',
+        'typing-error',
+      ],
+      onStatus: (status) => {
+        live = status
+        if (status === 'live') typing = {}
+      },
       onEvent: (type, payload) => {
         if (type === 'message') void onMessageFrame(payload as MessageFrame)
         else if (type === 'conversation') {
@@ -804,6 +846,11 @@
           tellNav(frame.people)
         } else if (type === 'presence-error') {
           presenceError = { error: (payload as { error: string }).error, agent: null }
+        } else if (type === 'typing') {
+          typing = applyTyping(typing, payload as TypingFrame)
+          typingError = null
+        } else if (type === 'typing-error') {
+          typingError = (payload as { error: string }).error
         }
       },
     })
@@ -986,6 +1033,17 @@
 <svelte:head><title>{docTitle('Messages')}</title></svelte:head>
 <svelte:window onkeydown={onWindowKey} />
 
+<!-- "<name> is typing…" above a composer; the live region stays in place so screen readers hear it start. -->
+{#snippet typingNote(line: string, testid: string)}
+  <p
+    class="h-5 truncate px-5 text-xs text-muted-foreground"
+    aria-live="polite"
+    data-testid={testid}
+  >
+    {#if typingError}<span data-testid="{testid}-error">{typingError}</span>{:else}{line}{/if}
+  </p>
+{/snippet}
+
 {#snippet conversationRow(c: ConversationView)}
   {@const current = c.id === selectedId}
   {@const dmWith = c.kind === 'dm' ? dmOthers(c) : []}
@@ -1038,7 +1096,9 @@
         >
       {/if}
       <span class="min-w-0 flex-1 truncate">{c.title}</span>
-      {#if dmWith.length === 1 && dmWith[0].kind === 'coworker'}<AiMark testid="messages-dm-ai" />{/if}
+      {#if dmWith.length === 1 && dmWith[0].kind === 'coworker'}<AiMark
+          testid="messages-dm-ai"
+        />{/if}
       {#if c.unread > 0}
         <span
           class={[
@@ -1314,7 +1374,9 @@
                               href={resolve('/(nucleus)/settings/org/[id]', { id: p.id })}
                               class="truncate rounded-sm underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                               >{personLabel(p)}</a
-                            ><AiMark testid="messages-member-ai" />{:else}<span class="truncate">{personLabel(p)}</span>{/if}</span
+                            ><AiMark testid="messages-member-ai" />{:else}<span class="truncate"
+                              >{personLabel(p)}</span
+                            >{/if}</span
                         >
                         <span class="block truncate text-xs text-muted-foreground"
                           >{presenceLabel(status, now)}</span
@@ -1438,6 +1500,7 @@
         data-testid="messages-file-input"
         onchange={onPickFiles}
       />
+      {@render typingNote(typingIn(selected.id, null), 'messages-typing')}
       <MessageComposer
         bind:value={draft}
         bind:textarea={composerEl}
@@ -1560,6 +1623,7 @@
         data-testid="thread-file-input"
         onchange={(e) => onPickFiles(e, 'thread')}
       />
+      {@render typingNote(typingIn(selected.id, thread.parent.id), 'messages-thread-typing')}
       <MessageComposer
         bind:value={threadDraft}
         bind:textarea={threadComposerEl}
@@ -1876,7 +1940,10 @@
                   />{/if}</span
               >
               <span class="block truncate text-xs text-muted-foreground"
-                >{p.kind === 'coworker' ? msg.coworkers_ai_mark_title() : p.email} · {presenceLabel(presenceFor(p.id), now)}</span
+                >{p.kind === 'coworker' ? msg.coworkers_ai_mark_title() : p.email} · {presenceLabel(
+                  presenceFor(p.id),
+                  now,
+                )}</span
               >
             </span>
           </label>

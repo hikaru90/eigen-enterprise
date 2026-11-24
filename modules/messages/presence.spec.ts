@@ -1,8 +1,10 @@
+import { NO_COWORKERS } from './test-fixtures'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PresenceTracker } from '$lib/server/presence/tracker'
 import { presenceStreamFor, reportPresence, setDoNotDisturb, VIEWER_RECHECK_MS, type PresenceFrame } from './presence'
 import { MessagesError } from './service'
-import { fixture } from './test-fixtures'
+import { addCoworker, fixture } from './test-fixtures'
+import type { CoworkerPresencePort, CoworkerPresenceStatus } from './presence'
 
 function setup() {
   const f = fixture()
@@ -76,13 +78,13 @@ describe('setDoNotDisturb', () => {
 describe('presenceStreamFor (what one viewer’s live feed carries)', () => {
   it('nothing for someone outside the company', async () => {
     const { deps, tracker } = setup()
-    expect(await presenceStreamFor(deps, async () => tracker, 'stranger')).toBeNull()
+    expect(await presenceStreamFor(deps, async () => tracker, 'stranger', NO_COWORKERS)).toBeNull()
   })
 
   it('a member gets everyone in the company (offline included), then each change', async () => {
     const { deps, tracker } = setup()
     await reportPresence(deps, tracker, 'carl', { clientId: CLIENT, state: 'idle' })
-    const stream = await presenceStreamFor(deps, async () => tracker, 'bea')
+    const stream = await presenceStreamFor(deps, async () => tracker, 'bea', NO_COWORKERS)
     const frames: PresenceFrame[] = []
     const stop = await stream!.start((f) => frames.push(f))
     expect(frames).toEqual([
@@ -106,10 +108,59 @@ describe('presenceStreamFor (what one viewer’s live feed carries)', () => {
     vi.useFakeTimers()
     const { deps, tracker, directory } = setup()
     const frames: PresenceFrame[] = []
-    await (await presenceStreamFor(deps, async () => tracker, 'bea'))!.start((f) => frames.push(f))
+    await (await presenceStreamFor(deps, async () => tracker, 'bea', NO_COWORKERS))!.start((f) => frames.push(f))
     directory.roles.delete('bea')
     await vi.advanceTimersByTimeAsync(VIEWER_RECHECK_MS)
     await reportPresence(deps, tracker, 'owner', { clientId: CLIENT, state: 'active' })
     expect(frames).toHaveLength(1)
+  })
+})
+
+describe('AI co-workers in presence (Contribute 14aea69d): from facts, never "offline"', () => {
+  function withCoworkers() {
+    const f = setup()
+    addCoworker(f, { id: 'ada', slug: 'ada', name: 'Ada' })
+    addCoworker(f, { id: 'max', slug: 'max', name: 'Max' })
+    const statuses = new Map<string, CoworkerPresenceStatus>([
+      ['ada', 'available'],
+      ['max', 'paused'],
+    ])
+    const listeners = new Set<() => void>()
+    const port: CoworkerPresencePort = {
+      statuses: async () => new Map(statuses),
+      subscribe: (fn) => {
+        listeners.add(fn)
+        return () => listeners.delete(fn)
+      },
+    }
+    const change = async (id: string, s: CoworkerPresenceStatus) => {
+      statuses.set(id, s)
+      for (const fn of listeners) fn()
+      await new Promise((r) => setTimeout(r, 0))
+    }
+    return { ...f, port, change, listeners }
+  }
+
+  it('an enabled co-worker is available, a switched-off one paused; then each change, once', async () => {
+    const { deps, tracker, port, change, listeners } = withCoworkers()
+    const frames: PresenceFrame[] = []
+    const stop = await (await presenceStreamFor(deps, async () => tracker, 'bea', port))!.start((f) => frames.push(f))
+    expect(frames[0].people.filter((p) => p.userId === 'ada' || p.userId === 'max')).toEqual([
+      { userId: 'ada', status: 'available', doNotDisturb: false, lastSeenAt: null },
+      { userId: 'max', status: 'paused', doNotDisturb: false, lastSeenAt: null },
+    ])
+    await change('ada', 'busy')
+    expect(frames[1]).toEqual({ replace: false, people: [{ userId: 'ada', status: 'busy', doNotDisturb: false, lastSeenAt: null }] })
+    await change('ada', 'busy')
+    expect(frames).toHaveLength(2)
+    stop()
+    expect(listeners.size).toBe(0)
+  })
+
+  it('a co-worker without a status (removed) is paused, never offline', async () => {
+    const { deps, tracker } = withCoworkers()
+    const frames: PresenceFrame[] = []
+    await (await presenceStreamFor(deps, async () => tracker, 'bea', NO_COWORKERS))!.start((f) => frames.push(f))
+    expect(frames[0].people.find((p) => p.userId === 'ada')?.status).toBe('paused')
   })
 })

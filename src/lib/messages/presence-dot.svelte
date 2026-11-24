@@ -4,7 +4,8 @@
   /**
    * A person's status as a small badge on an avatar's corner. Shape AND color
    * differ per status (a phone for a call, a bar for do-not-disturb, a clock
-   * for away, a hollow ring for offline), and the words are its accessible
+   * for away, a hollow ring for offline; an AI co-worker's spark, dots while
+   * it writes, a pause sign when switched off), and the words are its accessible
    * name and tooltip — never color alone.
    */
   let {
@@ -22,7 +23,10 @@
     testid?: string
   } = $props()
 
-  const GLYPH: Record<PresenceStatus, 'phone' | 'bar' | 'clock' | 'none' | 'ring'> = {
+  const GLYPH: Record<PresenceStatus, 'phone' | 'bar' | 'clock' | 'none' | 'ring' | 'spark' | 'dots' | 'pause'> = {
+    available: 'spark',
+    busy: 'dots',
+    paused: 'pause',
     in_call: 'phone',
     dnd: 'bar',
     away: 'clock',
@@ -35,6 +39,9 @@
     away: 'bg-amber-600',
     online: 'bg-emerald-600',
     offline: 'border-2 border-muted-foreground bg-background',
+    available: 'bg-primary',
+    busy: 'bg-primary',
+    paused: 'bg-muted-foreground',
   }
 
   const label = $derived(presenceLabel(presence, now))
@@ -51,13 +58,24 @@
   class={['inline-grid shrink-0 place-items-center rounded-full ring-2 ring-background', FILL[presence.status], className]}
   style="width: {size}px; height: {size}px;"
 >
-  {#if glyph === 'phone' || glyph === 'bar' || glyph === 'clock'}
+  {#if glyph !== 'none' && glyph !== 'ring'}
     <svg viewBox="-4 -4 32 32" class="size-full text-white" aria-hidden="true">
       {#if glyph === 'phone'}
         <path
           fill="currentColor"
           d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"
         />
+      {:else if glyph === 'spark'}
+        <path fill="currentColor" d="M12 2l2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z" />
+      {:else if glyph === 'dots'}
+        <circle cx="5" cy="12" r="2.6" fill="currentColor" /><circle cx="12" cy="12" r="2.6" fill="currentColor" /><circle
+          cx="19"
+          cy="12"
+          r="2.6"
+          fill="currentColor"
+        />
+      {:else if glyph === 'pause'}
+        <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" /><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" />
       {:else if glyph === 'bar'}
         <rect x="4" y="9.5" width="16" height="5" rx="2" fill="currentColor" />
       {:else}

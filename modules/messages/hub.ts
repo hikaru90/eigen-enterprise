@@ -1,4 +1,5 @@
 import type { PresenceFrame, PresenceStream } from './presence'
+import type { TypingFrame, TypingStream } from './typing'
 import type { MessageEvent } from './store'
 import {
   canUse,
@@ -129,12 +130,18 @@ export function encodePresenceFrame(f: PresenceFrame): string {
   return `event: presence\ndata: ${JSON.stringify(f)}\n\n`
 }
 
+/** "Is typing…" is not in the event log either. */
+export function encodeTypingFrame(f: TypingFrame): string {
+  return `event: typing\ndata: ${JSON.stringify(f)}\n\n`
+}
+
 /**
  * One person's SSE response. Subscribes first and buffers, then sends the
  * catch-up after `lastEventId`, then the buffered and live frames — each
  * event id at most once. `presence` (null: the person is not in the company)
  * adds the company's presence: a full snapshot on every (re)connect, then
- * changes as they happen.
+ * changes as they happen. `typing` adds who is writing where ("<name> is
+ * typing…"): what is being written now, then each change.
  */
 export function messagesStreamResponse(
   hub: MessagesHub,
@@ -142,11 +149,13 @@ export function messagesStreamResponse(
   lastEventId: number | null,
   signal: AbortSignal,
   presence: PresenceStream | null,
+  typing: TypingStream | null,
 ): Response {
   const encoder = new TextEncoder()
   let closed = false
   let unsubscribe = () => {}
   let stopPresence = () => {}
+  let stopTyping = () => {}
   let heartbeat: ReturnType<typeof setInterval> | undefined
   const sent = new Set<number>()
   const close = () => {
@@ -154,6 +163,7 @@ export function messagesStreamResponse(
     closed = true
     unsubscribe()
     stopPresence()
+    stopTyping()
     if (heartbeat) clearInterval(heartbeat)
   }
 
@@ -180,6 +190,16 @@ export function messagesStreamResponse(
         } catch (err) {
           console.error('[messages] stream presence failed', { userId, err })
           write(`event: presence-error\ndata: ${JSON.stringify({ error: 'Status is unavailable right now; reload to try again.' })}\n\n`)
+        }
+      }
+      if (typing) {
+        try {
+          const stop = await typing.start((f) => write(encodeTypingFrame(f)))
+          if (closed) stop()
+          else stopTyping = stop
+        } catch (err) {
+          console.error('[messages] stream typing failed', { userId, err })
+          write(`event: typing-error\ndata: ${JSON.stringify({ error: 'Who is typing is unavailable right now; reload to try again.' })}\n\n`)
         }
       }
       try {

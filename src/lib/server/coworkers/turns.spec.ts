@@ -260,3 +260,37 @@ describe('what a turn carries', () => {
     expect(note.body).toContain('@bea')
   })
 })
+
+describe('"is typing…" while a turn runs (Contribute 14aea69d)', () => {
+  it('the co-worker shows as writing in the thread while its model answers, and not once the reply is posted', async () => {
+    let seen: unknown = null
+    const fx = turnsFixture({
+      script: () => {
+        seen = fx.typing.list()
+        return 'on it'
+      },
+    })
+    await fx.handle.reload()
+    const launch = await createChannel(fx.deps, 'owner', { name: 'launch', private: false })
+    const { message: root } = await postMessage(fx.deps, 'bea', launch.id, '@marketing draft the post')
+    await fx.settle()
+    expect(seen).toEqual([{ conversationId: launch.id, typists: [{ userId: 'cw-mkt', threadRootId: root.id }] }])
+    expect(fx.typing.list()).toEqual([])
+    expect((await fx.thread(root.id)).at(-1)).toEqual({ authorId: 'cw-mkt', body: 'on it' })
+  })
+
+  it('a failed model call ends the typing too', async () => {
+    const fx = turnsFixture({
+      script: () => {
+        throw new Error('provider down')
+      },
+    })
+    await fx.handle.reload()
+    const launch = await createChannel(fx.deps, 'owner', { name: 'launch', private: false })
+    await postMessage(fx.deps, 'bea', launch.id, '@marketing draft the post')
+    await fx.settle()
+    expect(fx.runs.rows[0]).toMatchObject({ status: 'failed', stopReason: 'model_error' })
+    expect(fx.typing.list()).toEqual([])
+    expect(fx.typing.busy('cw-mkt')).toBe(false)
+  })
+})

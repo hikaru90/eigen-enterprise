@@ -1,9 +1,11 @@
+import { NO_COWORKERS } from './test-fixtures'
 import { describe, expect, it, vi } from 'vitest'
 import { PresenceTracker } from '$lib/server/presence/tracker'
 import { MessagesHub, messagesStreamResponse, parseLastEventId, type StreamFrame } from './hub'
 import { presenceStreamFor, reportPresence } from './presence'
 import { createChannel, markRead, openDm, postMessage } from './service'
 import { fixture } from './test-fixtures'
+import { TypingBoard, typingStreamFor } from './typing'
 
 /** A hub wired the way the live listener does it: every appended event is "NOTIFY"-ed into dispatch. */
 function liveFixture() {
@@ -113,7 +115,7 @@ describe('messagesStreamResponse', () => {
     await postMessage(deps, 'owner', ch.id, 'missed while offline')
     await settle()
     const ac = new AbortController()
-    const res = messagesStreamResponse(hub, 'bea', mark, ac.signal, null)
+    const res = messagesStreamResponse(hub, 'bea', mark, ac.signal, null, null)
     expect(res.headers.get('content-type')).toBe('text/event-stream')
     await new Promise((r) => setTimeout(r, 0))
     await postMessage(deps, 'owner', ch.id, 'live')
@@ -130,7 +132,7 @@ describe('messagesStreamResponse', () => {
     const tracker = new PresenceTracker(() => new Date(Date.UTC(2026, 10, 12, 9, 0, 0)))
     await reportPresence(deps, tracker, 'carl', { clientId: 'carl-tab-0001', state: 'active' })
     const ac = new AbortController()
-    const inner = (await presenceStreamFor(deps, async () => tracker, 'bea'))!
+    const inner = (await presenceStreamFor(deps, async () => tracker, 'bea', NO_COWORKERS))!
     let stopped = 0
     const presence = {
       start: async (send: Parameters<typeof inner.start>[0]) => {
@@ -141,7 +143,7 @@ describe('messagesStreamResponse', () => {
         }
       },
     }
-    const res = messagesStreamResponse(hub, 'bea', null, ac.signal, presence)
+    const res = messagesStreamResponse(hub, 'bea', null, ac.signal, presence, null)
     const reader = res.body!.getReader()
     const dec = new TextDecoder()
     let text = ''
@@ -164,14 +166,42 @@ describe('messagesStreamResponse', () => {
     expect(stopped).toBe(1)
   })
 
+  it('carries "is typing…" on the same stream, without ids', async () => {
+    const { deps, hub, settle } = liveFixture()
+    const ch = await createChannel(deps, 'owner', { name: 'general', private: false })
+    await settle()
+    const board = new TypingBoard()
+    const ac = new AbortController()
+    const res = messagesStreamResponse(hub, 'bea', null, ac.signal, null, typingStreamFor(deps, board, 'bea'))
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    const readUntil = async (needle: string) => {
+      while (!text.includes(needle)) text += dec.decode((await reader.read()).value)
+    }
+    await readUntil(': connected')
+    const stop = board.start({ conversationId: ch.id, threadRootId: null, userId: 'owner' })
+    await readUntil('event: typing')
+    stop()
+    await readUntil('"typists":[]')
+    const frames = text.split('\n\n').filter((b) => b.startsWith('event: typing'))
+    expect(frames.map((b) => JSON.parse(b.split('data: ')[1]) as unknown)).toEqual([
+      { conversationId: ch.id, typists: [{ userId: 'owner', threadRootId: null }] },
+      { conversationId: ch.id, typists: [] },
+    ])
+    expect(frames.every((b) => !/^id:/m.test(b))).toBe(true)
+    ac.abort()
+    await reader.cancel()
+  })
+
   it('presence that cannot start is reported on the stream, and messages keep flowing', async () => {
     const { deps, hub, settle } = liveFixture()
     const ch = await createChannel(deps, 'owner', { name: 'general', private: false })
     await settle()
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const broken = await presenceStreamFor(deps, () => Promise.reject(new Error('calls hub down')), 'bea')
+    const broken = await presenceStreamFor(deps, () => Promise.reject(new Error('calls hub down')), 'bea', NO_COWORKERS)
     const ac = new AbortController()
-    const res = messagesStreamResponse(hub, 'bea', null, ac.signal, broken)
+    const res = messagesStreamResponse(hub, 'bea', null, ac.signal, broken, null)
     const reader = res.body!.getReader()
     const dec = new TextDecoder()
     let text = ''

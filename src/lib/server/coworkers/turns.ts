@@ -100,6 +100,11 @@ export type CoworkerTurnsDeps = {
   company: (coworkerId: string) => Promise<CompanyContext>
   agents: CoworkerAgents
   prompts: TurnPrompts
+  /**
+   * Shows the co-worker as writing in the thread ("<name> is typing…", Contribute 14aea69d)
+   * until the returned stop is called: from the turn's start to its reply or its end.
+   */
+  typing(entry: { conversationId: string; threadRootId: string | null; userId: string }): () => void
   /** Posts as the co-worker (messages.post through the kernel, as its principal). */
   post(coworkerId: string, input: { conversationId: string; body: string; parentId: string | null }): Promise<{ id: string }>
   /** What one turn's model calls cost (USD): the cost log's rows of the run's trace for that user id. */
@@ -377,12 +382,14 @@ export class CoworkerTurns {
     ;(beat as { unref?: () => void }).unref?.()
     let view: CoworkerView | null = null
     let promptSet = false
+    let stopTyping = () => {}
     try {
       view = await this.deps.coworkers.get(run.coworkerUserId)
       if (!view.enabled || view.removedAt) {
         await this.finish(run, { status: 'stopped', stopReason: 'unavailable', error: 'the co-worker was switched off or removed before this turn ran' })
         return
       }
+      stopTyping = this.deps.typing({ conversationId: c.id, threadRootId: run.threadRootId, userId: run.coworkerUserId })
       await this.deps.agents.reload()
       const prompt = await this.promptInput(run, view, c, thread, turnsUsed)
       this.deps.prompts.set(sessionId, assembleCoworkerPrompt(prompt))
@@ -411,6 +418,7 @@ export class CoworkerTurns {
       }
       try {
         await this.deps.post(run.coworkerUserId, { conversationId: c.id, body: reply, parentId: run.threadRootId })
+        stopTyping()
       } catch (err) {
         await this.finish(run, { status: 'failed', stopReason: 'post_error', costUsd, error: errorText(err) })
         await this.postNote(run, 'post_error', errorText(err), view)
@@ -422,6 +430,7 @@ export class CoworkerTurns {
       await this.finish(run, { status: 'failed', stopReason: 'turn_error', error: errorText(err) })
       await this.postNote(run, 'turn_error', errorText(err), view ?? undefined)
     } finally {
+      stopTyping()
       clearInterval(beat)
       if (promptSet) this.deps.prompts.delete(sessionId)
     }

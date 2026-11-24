@@ -8,6 +8,7 @@ import { createTaskTools } from '../../../../modules/memory/task-tools'
 import { MessagesHub } from '../../../../modules/messages/hub'
 import { addCoworker, fixture } from '../../../../modules/messages/test-fixtures'
 import { createMessagesTools } from '../../../../modules/messages/tools'
+import { TypingBoard } from '../../../../modules/messages/typing'
 import { composeCoworkerTurns, type ComposeCoworkerTurnsInput } from './live-turns'
 import { MemoryRhythmStore } from './rhythms'
 import { MemoryCoworkerRunStore } from './run-store'
@@ -154,7 +155,9 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
   }
 
   const hub = new MessagesHub(f.deps)
+  const typing = new TypingBoard()
   const handle = composeCoworkerTurns({
+    typing,
     registry,
     runtime,
     messages: f.deps,
@@ -212,5 +215,5 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
     return [root!, ...(await f.store.listReplies(rootId))].map((m) => ({ authorId: m.authorId, body: m.body }))
   }
 
-  return { ...f, coworkers, registry, runtime, runs, rhythms, taskDeps, notified, hub, handle, calls, costs, settle, thread, loads: () => loads }
+  return { ...f, coworkers, registry, runtime, runs, rhythms, taskDeps, notified, hub, typing, handle, calls, costs, settle, thread, loads: () => loads }
 }
