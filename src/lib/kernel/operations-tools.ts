@@ -14,7 +14,8 @@ import { KernelError } from './errors'
  * A call that runs as no person (a bare agent principal) is refused: these
  * pages are a person's capability (company.manage, backups.manage, owner).
  * kernel.release_status is the read of Settings → Updates: it gives the exact
- * release name kernel.release_install takes.
+ * release name kernel.release_install takes, how the last update ended, and
+ * what kernel.release_rollback would put back (plan/phase-upgrades.md §6.4).
  */
 
 export const KERNEL_OPERATIONS_TOOL_NAMES = [
@@ -24,6 +25,7 @@ export const KERNEL_OPERATIONS_TOOL_NAMES = [
   'kernel.backup_run',
   'kernel.release_install',
   'kernel.release_status',
+  'kernel.release_rollback',
 ] as const
 
 /** The capabilities these tools check, as the routes do. */
@@ -42,6 +44,10 @@ export type ReleaseStatus = {
   latest: { release: string; version: string; state: 'newer' | 'rebuild' | 'installed' | 'older'; notes: string | null } | null
   latestError: string | null
   job: { id: string; release: string; status: 'running' | 'succeeded' | 'failed'; step: string; error: string | null; endedAt: string | null } | null
+  /** How the newest update ended (from here or from `ee upgrade` on the server); null when none is recorded. */
+  lastOutcome: { release: string; from: string | null; step: string; ok: boolean; reason: string | null; rolledBack: boolean } | null
+  /** What kernel.release_rollback would put back (`to`), or why it can't (`refused`); null on a managed box or while an update runs. */
+  rollback: { to: string | null; refused: string | null } | null
 }
 
 export type LogoOutcome = { ok: true } | { ok: false; status: number; error: string }
@@ -58,6 +64,8 @@ export type OperationsPort = {
   releaseStatus(): Promise<ReleaseStatus>
   /** Starts the update to `release` (ee startUpgrade); `author` is `human:<id>`. */
   installRelease(release: string, author: string): Promise<{ jobId: string; status: string }>
+  /** Puts the release before back live (ee rollback); `to` picks one of the kept releases. */
+  rollbackRelease(author: string, to?: string): Promise<{ from: string; to: string }>
 }
 
 /** A square in the image's pixels (it may reach past the edges); cropLogo checks it against the image. */
@@ -85,6 +93,15 @@ const releaseInput = z
   })
   .strict()
 
+const rollbackInput = z
+  .object({
+    to: z
+      .string()
+      .regex(RELEASE_NAME, 'to must be the full release name (eigenenterprise-<version>-<12-hex sha>): kernel.release_status gives rollback.to')
+      .optional(),
+  })
+  .strict()
+
 const releaseStatusOutput = z.object({
   installed: z.object({ release: z.string().nullable(), tarball: z.string(), version: z.string() }).nullable(),
   managed: z.boolean(),
@@ -107,6 +124,17 @@ const releaseStatusOutput = z.object({
       endedAt: z.string().nullable(),
     })
     .nullable(),
+  lastOutcome: z
+    .object({
+      release: z.string(),
+      from: z.string().nullable(),
+      step: z.string(),
+      ok: z.boolean(),
+      reason: z.string().nullable(),
+      rolledBack: z.boolean(),
+    })
+    .nullable(),
+  rollback: z.object({ to: z.string().nullable(), refused: z.string().nullable() }).nullable(),
 })
 
 const okSchema = z.object({ ok: z.literal(true) })
@@ -115,7 +143,7 @@ const REFUSED: Record<OperationsCapability, string> = {
   'company.manage': 'Only the owner or an admin can change the company logo.',
   'backups.manage': 'Only the owner can run a backup.',
   'updates.manage': 'Only the owner or an admin can see eigenEnterprise updates.',
-  owner: 'Only the owner can install a new eigenEnterprise release.',
+  owner: 'Only the owner can install or roll back an eigenEnterprise release.',
 }
 
 async function personWith(port: OperationsPort, ctx: ToolContext, capability: OperationsCapability): Promise<string> {
@@ -226,7 +254,7 @@ export function createOperationsTools(deps: { port: OperationsPort }): ToolDescr
       name: 'kernel.release_status',
       module: 'kernel',
       summary:
-        'Read Settings → Updates: the eigenEnterprise release this server runs, the newest signed release (latest.release is the exact name kernel.release_install takes; state newer or rebuild means it can be installed), and the last update with its step and error. Owner or admin.',
+        'Read Settings → Updates: the eigenEnterprise release this server runs, the newest signed release (latest.release is the exact name kernel.release_install takes; state newer or rebuild means it can be installed), the last update with its step and error, how the newest update ended (lastOutcome: ok, the step, why, rolled back), and what kernel.release_rollback would put back (rollback.to, or rollback.refused). Owner or admin.',
       auditClass: 'read',
       inputSchema: z.object({}).strict(),
       outputSchema: releaseStatusOutput,
@@ -234,6 +262,23 @@ export function createOperationsTools(deps: { port: OperationsPort }): ToolDescr
       handler: async (ctx) => {
         await personWith(port, ctx, 'updates.manage')
         return port.releaseStatus()
+      },
+    },
+    {
+      name: 'kernel.release_rollback',
+      module: 'kernel',
+      summary:
+        'Put the eigenEnterprise release that ran before back live (`ee rollback`): it is still installed on the server, so nothing is restored and no data is lost; ee brings it up health-gated and points the edge back at it. Refused below the downgrade floor of what runs now (that needs a restore). Owner only; waits for the owner’s approval. Without `to` it goes back to the release kernel.release_status names as rollback.to.',
+      auditClass: 'mutate',
+      approvalRisk: 'destructive',
+      approvalAlways: true,
+      activity: (input: { to?: string }) => `Rolled eigenEnterprise back${input.to ? ` to ${input.to}` : ' to the release before'}`,
+      inputSchema: rollbackInput,
+      outputSchema: z.object({ from: z.string(), to: z.string() }),
+      permission: { roles: ['admin', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = rollbackInput.parse(input)
+        return port.rollbackRelease(`human:${await personWith(port, ctx, 'owner')}`, i.to)
       },
     },
   ]

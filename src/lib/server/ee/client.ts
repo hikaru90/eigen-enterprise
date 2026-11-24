@@ -290,7 +290,21 @@ export type RestoreJob = {
 /** Where a box's releases come from (ee/src/release-source.ts). */
 export type ReleaseSource = { kind: 'github'; repo: string } | { kind: 'dir'; path: string } | { kind: 'url'; base: string }
 
-export type UpgradeStep = 'handover' | 'verifying' | 'safety-copy' | 'installing' | 'done'
+export type UpgradeStep = 'handover' | 'verifying' | 'safety-copy' | 'backup' | 'installing' | 'watching' | 'rolling-back' | 'done'
+
+/** How an update ended (ee/src/upgrade.ts UpgradeOutcome): the release, what ran before, the step, ok or why not. */
+export type UpgradeOutcome = {
+  release: string
+  from: string | null
+  step: Exclude<UpgradeStep, 'handover'>
+  ok: boolean
+  reason: string | null
+  /** The release before was put back live (its watch failed, or it never went live). */
+  rolledBack: boolean
+}
+
+/** What `ee rollback` would do now (ee/src/rollback.ts): from, to, or why not. */
+export type RollbackPlan = { from: string | null; to: string | null; refused: string | null }
 
 /** The last update from Settings → Updates, as ee records it (ee/src/upgrade-job.ts; survives the restarts). */
 export type UpgradeJob = {
@@ -311,6 +325,8 @@ export type UpgradeJob = {
   error: string | null
   log: string[]
   announced: boolean
+  /** How it ended; null while it runs (and on jobs from before ee recorded it). */
+  outcome: UpgradeOutcome | null
 }
 
 export type UpgradeInfo = {
@@ -318,6 +334,8 @@ export type UpgradeInfo = {
   managed: boolean
   source: ReleaseSource | null
   job: UpgradeJob | null
+  /** The newest update end in ee's journal, from Settings → Updates or from `ee upgrade` on the server. */
+  lastOutcome: UpgradeOutcome | null
 }
 
 /** newer / rebuild (same version, another build) are offered; installed / older are not. */
@@ -382,6 +400,16 @@ export class EeClient {
   /** Update to `release` (the one the person approved); ee refuses anything else. */
   startUpgrade(i: { release: string; author: string }): Promise<{ job: UpgradeJob }> {
     return this.call('POST', '/v1/upgrade', i)
+  }
+
+  /** What a rollback would do now (a read: nothing changes). */
+  rollbackPlan(): Promise<RollbackPlan> {
+    return this.call('GET', '/v1/upgrade/rollback')
+  }
+
+  /** Put the release before back live (no restore); ee refuses below the downgrade floor. */
+  rollback(i: { author: string; to?: string }): Promise<{ from: string; to: string }> {
+    return this.call('POST', '/v1/upgrade/rollback', i)
   }
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {

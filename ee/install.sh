@@ -135,20 +135,9 @@ if [ ! -x "$RUNTIME/bin/node" ] || [ "$("$RUNTIME/bin/node" -v)" != "v$NODE_VERS
   rm -rf "$RUNTIME" && mv "$RUNTIME.partial" "$RUNTIME"
 fi
 
-step "installing ee"
-fetch ee.mjs "$WORK/ee.mjs"
-signed "$WORK/ee.mjs" ee.mjs
-install -D -m 0755 "$WORK/ee.mjs" /opt/ee/ee.mjs
-cat > /usr/local/bin/ee <<SH
-#!/bin/sh
-exec $RUNTIME/bin/node /opt/ee/ee.mjs "\$@"
-SH
-chmod 0755 /usr/local/bin/ee
-
-step "fetching the eigenEnterprise release"
+# Which release this is: LATEST names it (eigenenterprise-<version>-<sha>); each CPU has its own tarball.
 case "$FROM" in
   http://*|https://*)
-    # LATEST names the release (eigenenterprise-<version>-<sha>); each CPU has its own tarball.
     fetch LATEST "$WORK/LATEST"
     signed "$WORK/LATEST" LATEST
     NAME=$(tr -d '[:space:]' < "$WORK/LATEST")
@@ -159,6 +148,46 @@ case "$FROM" in
   *) RELEASE=$(cd "$FROM" && ls eigenenterprise-*-linux-$ARCH.tar.gz | sort | tail -n 1) ;;
 esac
 [ -n "$RELEASE" ] || { echo "✗ no eigenenterprise release for linux-$ARCH in $FROM" >&2; exit 1; }
+NAME="${RELEASE%-linux-$ARCH.tar.gz}"
+
+# BEGIN EE SLOTS (plan/phase-upgrades.md §6.4; ee/src/ee-slots.ts; ee/src/ee-slots-install.spec.ts runs this block)
+# ee upgrades itself first, from its own A/B slot: each release's ee lives in <root>/releases/<release>/ee.mjs,
+# <root>/ee.mjs points at the one that runs and <root>/ee.previous.mjs at the one before (nothing older
+# is kept). The ee from before the slots is kept as <root>/releases/pre-slots/ee.mjs. A link is replaced
+# by renaming a new one over it, so ee.mjs is never missing.
+install_ee() { # install_ee <ee.mjs> <release name> <root>
+  new="$3/releases/$2/ee.mjs"
+  mkdir -p "$3/releases/$2"
+  install -m 0755 "$1" "$new.partial" && mv -f "$new.partial" "$new"
+  if [ -f "$3/ee.mjs" ] && [ ! -L "$3/ee.mjs" ]; then
+    mkdir -p "$3/releases/pre-slots"
+    mv -f "$3/ee.mjs" "$3/releases/pre-slots/ee.mjs"
+    ln -s "$3/releases/pre-slots/ee.mjs" "$3/ee.mjs"
+  fi
+  old=$(readlink "$3/ee.mjs" 2>/dev/null || true)
+  if [ -n "$old" ] && [ "$old" != "$new" ]; then
+    ln -sfn "$old" "$3/ee.previous.mjs.tmp" && mv -f "$3/ee.previous.mjs.tmp" "$3/ee.previous.mjs"
+  fi
+  ln -sfn "$new" "$3/ee.mjs.tmp" && mv -f "$3/ee.mjs.tmp" "$3/ee.mjs"
+  prev=$(readlink "$3/ee.previous.mjs" 2>/dev/null || true)
+  for d in "$3"/releases/*; do
+    [ -d "$d" ] || continue
+    [ "$d/ee.mjs" = "$new" ] || [ "$d/ee.mjs" = "$prev" ] || rm -rf "$d"
+  done
+}
+# END EE SLOTS
+
+step "installing ee"
+fetch ee.mjs "$WORK/ee.mjs"
+signed "$WORK/ee.mjs" ee.mjs
+install_ee "$WORK/ee.mjs" "$NAME" /opt/ee
+cat > /usr/local/bin/ee <<SH
+#!/bin/sh
+exec $RUNTIME/bin/node /opt/ee/ee.mjs "\$@"
+SH
+chmod 0755 /usr/local/bin/ee
+
+step "fetching the eigenEnterprise release"
 fetch "$RELEASE" "$WORK/$RELEASE"
 signed "$WORK/$RELEASE" "$RELEASE"
 

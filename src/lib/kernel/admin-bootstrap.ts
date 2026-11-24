@@ -142,7 +142,7 @@ function liveMemberAiCapPort(): MemberAiCapPort {
   }
 }
 
-/** The live company-operations port (logo, backup now, release install), loaded on first use. */
+/** The live company-operations port (logo, backup now, release install and rollback), loaded on first use. */
 function liveOperationsPort(): OperationsPort {
   const live = async () => (await import('$lib/server/settings/operations')).liveOperationsPort
   return {
@@ -153,6 +153,7 @@ function liveOperationsPort(): OperationsPort {
     runBackup: async (author) => (await live()).runBackup(author),
     releaseStatus: async () => (await live()).releaseStatus(),
     installRelease: async (release, author) => (await live()).installRelease(release, author),
+    rollbackRelease: async (author, to) => (await live()).rollbackRelease(author, to),
   }
 }
 

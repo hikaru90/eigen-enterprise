@@ -1,7 +1,7 @@
 # Publishes an eigenEnterprise release on a v* tag (scripts/release.sh, plan/phase-substrate.md D7).
 #
 # Each CPU builds on its own native runner (no emulation), then one job publishes
-# a GitHub Release with: LATEST, DOWNGRADE_FLOOR, install.sh, ee.mjs (+ .sha256) and
+# a GitHub Release with: LATEST, DOWNGRADE_FLOOR, UPGRADE.json, install.sh, ee.mjs (+ .sha256) and
 # eigenenterprise-<version>-<sha>-linux-{x64,arm64}.tar.gz (+ .sha256) and
 # livekit-server-<version>-linux-{x64,arm64}.tar.gz (+ .sha256), which install.sh fetches for calls,
 # chromium-headless-shell-<revision>-linux-{x64,arm64}.tar.gz (+ .sha256), the chromium capability (brand site capture),
@@ -51,6 +51,7 @@ jobs:
             dist/release/LATEST
             dist/release/NOTES.md
             dist/release/DOWNGRADE_FLOOR
+            dist/release/UPGRADE.json
             dist/release/install.sh
             dist/release/ee.mjs
             dist/release/ee.mjs.sha256
@@ -72,11 +73,11 @@ jobs:
           path: built
       - name: Both builds agree on the release name, the installer and ee
         run: |
-          for f in LATEST NOTES.md DOWNGRADE_FLOOR install.sh ee.mjs.sha256; do
+          for f in LATEST NOTES.md DOWNGRADE_FLOOR UPGRADE.json install.sh ee.mjs.sha256; do
             cmp built/release-amd64/$f built/release-arm64/$f || { echo "$f differs between the amd64 and arm64 builds" >&2; exit 1; }
           done
           mkdir out
-          cp built/release-amd64/{LATEST,NOTES.md,DOWNGRADE_FLOOR,install.sh,ee.mjs,ee.mjs.sha256} out/
+          cp built/release-amd64/{LATEST,NOTES.md,DOWNGRADE_FLOOR,UPGRADE.json,install.sh,ee.mjs,ee.mjs.sha256} out/
           cp built/release-*/eigenenterprise-*.tar.gz* out/
           cp built/release-*/livekit-server-*.tar.gz* out/
           cp built/release-*/chromium-headless-shell-*.tar.gz* out/

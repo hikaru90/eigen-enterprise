@@ -491,6 +491,7 @@ describe('control API: updates (Settings → Updates)', () => {
         managed: false,
         source: { kind: 'github', repo: 'hikaru90/eigen-enterprise' },
         job: null,
+        lastOutcome: null,
       },
     })
   })

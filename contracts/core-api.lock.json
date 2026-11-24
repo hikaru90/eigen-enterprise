@@ -13485,6 +13485,48 @@
     },
     {
       "approval": {
+        "always": true,
+        "gated": false,
+        "risk": "destructive"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "to": {
+            "pattern": "^eigenenterprise-\\d+\\.\\d+\\.\\d+-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "module": "kernel",
+      "name": "kernel.release_rollback",
+      "output": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
         "always": false,
         "gated": false,
         "risk": null
@@ -13580,6 +13622,51 @@
               }
             ]
           },
+          "lastOutcome": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "release": {
+                    "type": "string"
+                  },
+                  "rolledBack": {
+                    "type": "boolean"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "ok",
+                  "reason",
+                  "release",
+                  "rolledBack",
+                  "step"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "latest": {
             "anyOf": [
               {
@@ -13628,14 +13715,45 @@
           },
           "managed": {
             "type": "boolean"
+          },
+          "rollback": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "refused": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "to": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "refused",
+                  "to"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "installed",
           "job",
+          "lastOutcome",
           "latest",
           "latestError",
-          "managed"
+          "managed",
+          "rollback"
         ],
         "type": "object"
       },
