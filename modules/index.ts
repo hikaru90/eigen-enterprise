@@ -74,6 +74,7 @@ import { createMemoryTools } from './memory/tools'
 import { MESSAGES_MODULE_ID, messagesManifest } from './messages/manifest'
 import { createMessagesTools } from './messages/tools'
 import { moduleHubManifest } from './module-hub/manifest'
+import { createModuleHubTools } from './module-hub/tools'
 import { createAllowlistAdminTools } from './orchestrator/allowlist-tools'
 import { orchestratorManifest } from './orchestrator/manifest'
 import { createRepoEngine } from './orchestrator/repo/index'
@@ -439,6 +440,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDriveTools(),
     ...createContributeTools(),
     ...createContributeHubTools(),
+    ...createModuleHubTools(),
     ...createCallsTools({ service: liveCallsService }),
     ...createContactsTools(),
     ...createReposTools(),

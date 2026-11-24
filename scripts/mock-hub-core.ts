@@ -6,7 +6,20 @@
  * (401 otherwise, like the real hub); a PUT body must parse with the strict
  * hubContributionV1 (an extra key → 400); a DELETE must carry an empty body
  * (400 otherwise). Every request is recorded with its answer.
+ *
+ * The module hub endpoints (/api/hub/modules/*, plan/phase-upgrades-u2.md
+ * §6.2) are the real module-hub service over in-memory stores — the same
+ * authentication, the six checks and receipts — signed with the TEST-ONLY hub
+ * key (contracts/fixtures/module-hub-test-key.ts), which no real box trusts.
+ * Installs registered here are known to both.
  */
+import {
+  TEST_ONLY_MODULE_HUB_ORIGIN,
+  TEST_ONLY_MODULE_HUB_PRIVATE_KEY_PKCS8,
+} from '../contracts/fixtures/module-hub-test-key'
+import { HUB_ERROR_STATUS, HubError } from '../modules/contribute/hub/errors'
+import { memoryHubStore } from '../modules/contribute/hub/memory-store'
+import { authenticate } from '../modules/contribute/hub/service'
 import {
   HUB_HEADERS,
   HUB_PATHS,
@@ -14,6 +27,16 @@ import {
   hubRegisterV1,
   verifyHubRequest,
 } from '../modules/contribute/share/contract'
+import { memoryBundleStorage } from '../modules/module-hub/bundles'
+import { lockCatalog } from '../modules/module-hub/checks'
+import { MODULE_HUB_ERROR_STATUS, ModuleHubError } from '../modules/module-hub/errors'
+import { memoryModuleHubStore } from '../modules/module-hub/memory-store'
+import {
+  fetchModuleBundle,
+  publishModule,
+  reportModuleRun,
+  type ModuleHubDeps,
+} from '../modules/module-hub/service'
 
 export type MockHubRequest = {
   at: string
@@ -42,11 +65,38 @@ function parseJson(body: string): unknown {
 
 type Headers = Record<string, string | string[] | undefined>
 
+/** An answer of a module endpoint: JSON, or the bytes of a bundle. */
+export type ModuleAnswer = { status: number; answer: Record<string, unknown> } | { status: number; bytes: Uint8Array }
+
+const MODULE_PATH = /^\/api\/hub\/modules\//
+const MODULE_BUNDLE_PATH = /^\/api\/hub\/modules\/bundles\/([^/]+)$/
+const MODULE_RUN_PATH = /^\/api\/hub\/modules\/([^/]+)\/run$/
+
+/** Whether a path is one of the module hub's (served by receiveModules). */
+export const isModulePath = (path: string) => MODULE_PATH.test(path)
+
 /** One mock hub's state and its request handler (pure: no sockets), so it is unit-tested. */
-export function createMockHub(now: () => number = Date.now) {
+export function createMockHub(now: () => number = Date.now, opts: { origin?: string } = {}) {
   const installs = new Map<string, string>() // install id → public key (SPKI DER, base64)
   const contributions = new Map<string, unknown>() // `${installId}/${remoteId}` → payload
   const requests: MockHubRequest[] = []
+  // The module hub: the real service over memory stores; registered installs are known to it too.
+  const hubStore = memoryHubStore()
+  const moduleStore = memoryModuleHubStore(hubStore.installs)
+  const bundles = memoryBundleStorage()
+  const summaryQueue: string[] = []
+  const moduleDeps: ModuleHubDeps = {
+    authenticate: (req) => authenticate({ store: hubStore, now }, req),
+    now,
+    store: moduleStore,
+    bundles,
+    signingKey: () => TEST_ONLY_MODULE_HUB_PRIVATE_KEY_PKCS8,
+    origin: () => opts.origin ?? TEST_ONLY_MODULE_HUB_ORIGIN,
+    catalog: lockCatalog(),
+    enqueueSummary: async (sha) => {
+      summaryQueue.push(sha)
+    },
+  }
 
   function handle(method: string, path: string, headers: Headers, body: string): Answer {
     if (method === 'POST' && path === HUB_PATHS.register) {
@@ -56,6 +106,17 @@ export function createMockHub(now: () => number = Date.now) {
       if (known && known !== reg.data.public_key)
         return { status: 409, answer: { error: 'another key' }, signatureOk: null, installId: reg.data.install_id }
       installs.set(reg.data.install_id, reg.data.public_key)
+      if (!hubStore.installs.has(reg.data.install_id)) {
+        const at = new Date(now())
+        hubStore.installs.set(reg.data.install_id, {
+          installId: reg.data.install_id,
+          publicKey: reg.data.public_key,
+          appVersion: reg.data.app_version,
+          registeredAt: at,
+          lastSeenAt: at,
+          revokedAt: null,
+        })
+      }
       return { status: known ? 200 : 201, answer: { registered: true, install_id: reg.data.install_id }, signatureOk: null, installId: reg.data.install_id }
     }
 
@@ -114,6 +175,46 @@ export function createMockHub(now: () => number = Date.now) {
     return out
   }
 
-  return { receive, requests, contributions }
+  /** Handle and record one request to a module endpoint (the real module-hub service). */
+  async function receiveModules(method: string, path: string, headers: Headers, body: string): Promise<ModuleAnswer> {
+    const h = new globalThis.Headers()
+    for (const [k, v] of Object.entries(headers)) if (v !== undefined) h.set(k, Array.isArray(v) ? v[0]! : v)
+    const req = { method, path, headers: h, body }
+    let out: ModuleAnswer
+    try {
+      const bundle = MODULE_BUNDLE_PATH.exec(path)
+      const run = MODULE_RUN_PATH.exec(path)
+      if (method === 'POST' && path === '/api/hub/modules/publish') {
+        const r = await publishModule(moduleDeps, req)
+        out = { status: r.status, answer: r.body }
+      } else if (method === 'GET' && bundle) {
+        const r = await fetchModuleBundle(moduleDeps, req, bundle[1]!)
+        out = { status: r.status, bytes: r.bytes }
+      } else if (method === 'PUT' && run) {
+        const r = await reportModuleRun(moduleDeps, req, run[1]!)
+        out = { status: r.status, answer: r.body }
+      } else {
+        out = { status: 404, answer: { error: `mock hub has no route for ${method} ${path}` } }
+      }
+    } catch (err) {
+      if (err instanceof HubError) out = { status: HUB_ERROR_STATUS[err.code], answer: { error: err.message, code: err.code } }
+      else if (err instanceof ModuleHubError) out = { status: MODULE_HUB_ERROR_STATUS[err.code], answer: { error: err.message, code: err.code } }
+      else throw err
+    }
+    const installId = h.get(HUB_HEADERS.install)
+    requests.push({
+      at: new Date(now()).toISOString(),
+      method,
+      path,
+      installId,
+      body: path === '/api/hub/modules/publish' ? `(${Buffer.byteLength(body)} bytes)` : body,
+      signatureOk: out.status === 401 ? false : true,
+      status: out.status,
+      answer: 'answer' in out ? out.answer : { bytes: out.bytes.byteLength },
+    })
+    return out
+  }
+
+  return { receive, receiveModules, requests, contributions, hubStore, moduleStore, bundles, summaryQueue }
 }
 

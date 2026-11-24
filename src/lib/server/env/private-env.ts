@@ -43,6 +43,10 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   LLM_REQUEST_TIMEOUT_MS?: string
   LLM_SERIAL_REQUESTS?: string
   MODELS_DEV_CATALOG_URL?: string
+  /** The module hub's origin (plan/phase-upgrades-u2.md §5, rendered by ee); unset = "module hub not configured", nothing is published. */
+  MODULE_HUB_URL?: string
+  /** On the hub box only: the module receipt key, base64 DER PKCS#8 Ed25519 (an ee secret; §6.3). */
+  MODULE_HUB_SIGNING_KEY?: string
   OAUTH_ANTHROPIC_API_BASE_URL?: string
   OAUTH_ANTHROPIC_AUTHORIZE_URL?: string
   OAUTH_ANTHROPIC_TOKEN_URL?: string

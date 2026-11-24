@@ -17117,6 +17117,206 @@
       },
       "auditClass": "read",
       "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256",
+          "path"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.file",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "install_id": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "module_id": {
+            "maxLength": 24,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "install_id",
+          "module_id"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "description": "the cursor the previous page gave",
+            "maxLength": 12,
+            "type": "string"
+          },
+          "query": {
+            "description": "part of a module id or name",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.summarize",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.tree",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "description": "bundle sha256 (a published version)",
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_sha256"
+        ],
+        "type": "object"
+      },
+      "module": "module-hub",
+      "name": "module_hub.version",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
         "properties": {},
         "type": "object"
       },

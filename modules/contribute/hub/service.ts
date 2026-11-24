@@ -90,8 +90,8 @@ export async function register(deps: HubDeps, body: string): Promise<HubReply> {
   return answer(raced)
 }
 
-/** The checks every signed request passes before its body is read; returns the install. */
-async function authenticate(deps: HubDeps, req: HubRequest): Promise<HubInstall> {
+/** The checks every signed request passes before its body is read; returns the install (the module hub, modules/module-hub, signs the same way). */
+export async function authenticate(deps: HubDeps, req: HubRequest): Promise<HubInstall> {
   const installId = req.headers.get(HUB_HEADERS.install)
   if (!installId || !uuid.safeParse(installId).success) throw new HubError('unauthorized', `missing or malformed ${HUB_HEADERS.install} header`)
   const install = await deps.store.getInstall(installId)

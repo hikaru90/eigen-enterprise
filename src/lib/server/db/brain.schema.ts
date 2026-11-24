@@ -1581,6 +1581,8 @@ export const userJobTypeEnum = [
   'calendar_mail_proposal',
   /** Company export X1: build the "export everything" archive (src/lib/server/export/company/live.ts). */
   'company_export',
+  /** Module hub (U2 §7): summarise one published module version (modules/module-hub/live.ts). */
+  'module_hub_summarize',
 ] as const
 export type UserJobType = (typeof userJobTypeEnum)[number]
 
