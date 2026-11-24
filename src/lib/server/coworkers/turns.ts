@@ -121,9 +121,17 @@ export type CoworkerTurnsDeps = {
 
 export type StopNoteReason = Exclude<CoworkerStopReason, 'unavailable' | 'not_member' | 'task_unavailable'>
 
-/** The short note a co-worker posts when a turn cannot answer: where things stand, and its accountable human. */
-export function stopNote(input: { reason: StopNoteReason; humanHandle: string; budget: number; dailyCapUsd: number; detail?: string }): string {
-  const human = `@${input.humanHandle}`
+/** The short note a co-worker posts when a turn cannot answer: where things stand, and its accountable human(s). */
+export function stopNote(input: {
+  reason: StopNoteReason
+  humanHandle: string
+  humanHandles?: string[]
+  budget: number
+  dailyCapUsd: number
+  detail?: string
+}): string {
+  const handles = input.humanHandles && input.humanHandles.length > 0 ? input.humanHandles : [input.humanHandle]
+  const human = handles.map((h) => `@${h}`).join(' ')
   const detail = input.detail ? ` (${input.detail.replace(/\s+/g, ' ').trim().slice(0, 240)})` : ''
   switch (input.reason) {
     case 'thread_budget':
@@ -428,15 +436,33 @@ export class CoworkerTurns {
     }
   }
 
-  /** Posts the stop note as the co-worker in the run's thread, @mentioning its accountable human. A failed note is logged on the run. */
+  /** Posts the stop note as the co-worker in the run's thread, @mentioning its accountable human(s). A failed note is logged on the run. */
   private async postNote(run: CoworkerRunRow, reason: StopNoteReason, detail?: string, known?: CoworkerView): Promise<void> {
     try {
       if (!run.conversationId) return
       const view = known ?? (await this.deps.coworkers.get(run.coworkerUserId))
-      if (!view.accountableHuman) throw new Error(`co-worker ${view.id} has no accountable human (removed)`)
-      const human = (await this.deps.messages.directory.listPeople()).find((p) => p.id === view.accountableHuman!.id)
-      if (!human) throw new Error(`the accountable human ${view.accountableHuman.id} is not in the people directory`)
-      const body = stopNote({ reason, humanHandle: primaryHandle(human), budget: this.budget, dailyCapUsd: view.dailyCapUsd, ...(detail ? { detail } : {}) })
+      const accountableList =
+        view.accountableHumans.length > 0
+          ? view.accountableHumans
+          : view.accountableHuman
+            ? [view.accountableHuman]
+            : []
+      if (accountableList.length === 0) throw new Error(`co-worker ${view.id} has no accountable human (removed)`)
+      const directory = await this.deps.messages.directory.listPeople()
+      const humanHandles: string[] = []
+      for (const h of accountableList) {
+        const person = directory.find((p) => p.id === h.id)
+        if (!person) throw new Error(`the accountable human ${h.id} is not in the people directory`)
+        humanHandles.push(primaryHandle(person))
+      }
+      const body = stopNote({
+        reason,
+        humanHandle: humanHandles[0]!,
+        humanHandles,
+        budget: this.budget,
+        dailyCapUsd: view.dailyCapUsd,
+        ...(detail ? { detail } : {}),
+      })
       await this.deps.post(run.coworkerUserId, { conversationId: run.conversationId, body, parentId: run.threadRootId })
     } catch (err) {
       console.error('[coworkers] posting a co-worker stop note failed', { runId: run.id, reason, err })
@@ -464,8 +490,15 @@ export class CoworkerTurns {
       return { id: p.id, name: p.name.trim() || p.email, kind: p.kind, handle: primaryHandle(p) }
     }
     const byId = new Map(chart.people.map((e) => [e.id, e]))
-    if (!view.accountableHuman) throw new Error(`co-worker ${view.id} has no accountable human (removed)`)
-    const manager = view.reportsToUserId ? byId.get(view.reportsToUserId) : undefined
+    const accountableList =
+      view.accountableHumans.length > 0
+        ? view.accountableHumans
+        : view.accountableHuman
+          ? [view.accountableHuman]
+          : []
+    if (accountableList.length === 0) throw new Error(`co-worker ${view.id} has no accountable human (removed)`)
+    const managerIds = view.reportsToUserIds.length > 0 ? view.reportsToUserIds : view.reportsToUserId ? [view.reportsToUserId] : []
+    const managers = managerIds.map((id) => byId.get(id)).filter((e): e is OrgChartEntry => Boolean(e))
     const triggerMessage = run.triggerMessageId ? await d.store.getMessage(run.triggerMessageId) : null
     const memberIds = c?.kind === 'dm' ? await d.store.memberIds(c.id) : []
     const t = work?.task
@@ -477,17 +510,24 @@ export class CoworkerTurns {
         title: view.title,
         accountabilities: view.accountabilities,
         lens: view.lens,
-        reportsTo: manager ? { name: manager.name, kind: manager.kind } : null,
-        accountableHuman: person(view.accountableHuman.id),
+        reportsTo: managers[0] ? { name: managers[0].name, kind: managers[0].kind } : null,
+        reportsToList: managers.map((m) => ({ name: m.name, kind: m.kind })),
+        accountableHuman: person(accountableList[0]!.id),
+        accountableHumans: accountableList.map((h) => person(h.id)),
       },
-      org: chart.people.map((e) => ({
-        ...person(e.id),
-        name: e.name,
-        kind: e.kind,
-        title: e.title,
-        accountabilities: e.accountabilities,
-        reportsToName: e.reportsToUserId ? (byId.get(e.reportsToUserId)?.name ?? null) : null,
-      })),
+      org: chart.people.map((e) => {
+        const entryManagerIds = e.reportsToUserIds.length > 0 ? e.reportsToUserIds : e.reportsToUserId ? [e.reportsToUserId] : []
+        const reportsToNames = entryManagerIds.map((id) => byId.get(id)?.name).filter((n): n is string => Boolean(n))
+        return {
+          ...person(e.id),
+          name: e.name,
+          kind: e.kind,
+          title: e.title,
+          accountabilities: e.accountabilities,
+          reportsToName: reportsToNames[0] ?? null,
+          reportsToNames,
+        }
+      }),
       company,
       conversation: c
         ? {
@@ -675,10 +715,30 @@ export class CoworkerTurns {
     try {
       const view = known ?? (await this.deps.coworkers.get(run.coworkerUserId))
       const people = await this.deps.messages.directory.listPeople()
+      const accountableList =
+        view.accountableHumans.length > 0
+          ? view.accountableHumans
+          : view.accountableHuman
+            ? [view.accountableHuman]
+            : []
       if (reason && run.triggerKind === 'assignment' && run.taskId) {
-        const human = view.accountableHuman ? people.find((p) => p.id === view.accountableHuman!.id) : undefined
-        if (!human) throw new Error(`the accountable human of co-worker ${view.id} is not in the people directory`)
-        const body = stopNote({ reason, humanHandle: primaryHandle(human), budget: this.budget, dailyCapUsd: view.dailyCapUsd, ...(detail ? { detail } : {}) })
+        if (accountableList.length === 0) {
+          throw new Error(`the accountable human of co-worker ${view.id} is not in the people directory`)
+        }
+        const humanHandles: string[] = []
+        for (const h of accountableList) {
+          const human = people.find((p) => p.id === h.id)
+          if (!human) throw new Error(`the accountable human of co-worker ${view.id} is not in the people directory`)
+          humanHandles.push(primaryHandle(human))
+        }
+        const body = stopNote({
+          reason,
+          humanHandle: humanHandles[0]!,
+          humanHandles,
+          budget: this.budget,
+          dailyCapUsd: view.dailyCapUsd,
+          ...(detail ? { detail } : {}),
+        })
         try {
           await this.deps.tasks.comment(run.coworkerUserId, run.taskId, body)
         } catch (err) {
@@ -687,9 +747,11 @@ export class CoworkerTurns {
         }
       }
       const humans = new Set(people.filter((p) => p.kind === 'human').map((p) => p.id))
-      const to = [view.accountableHuman?.id, run.triggerKind === 'assignment' ? run.requestedByUserId : null].filter(
-        (id): id is string => typeof id === 'string' && humans.has(id),
-      )
+      const candidates = [
+        ...accountableList.map((h) => h.id),
+        ...(run.triggerKind === 'assignment' && run.requestedByUserId ? [run.requestedByUserId] : []),
+      ]
+      const to = [...new Set(candidates.filter((id) => humans.has(id)))]
       if (to.length === 0) throw new Error(`co-worker run ${run.id} has nobody to report to (no accountable human)`)
       await this.deps.runs.addNotices(run.id, to, this.now())
     } catch (err) {

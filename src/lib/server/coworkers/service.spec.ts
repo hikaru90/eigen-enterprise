@@ -3,6 +3,7 @@ import { isPoolModel } from '$lib/server/llm/model-pool'
 import { memoryCoworkerStore } from './memory-store'
 import {
   accountableHumanFor,
+  accountableHumansFor,
   coworkerEmail,
   createCoworker,
   getCoworker,
@@ -263,5 +264,113 @@ describe('update, enable, disable, remove', () => {
     await expect(removeCoworker(owner, { userId: mm.id }, deps)).rejects.toMatchObject({ code: 'removed' })
     await expect(accountableHumanFor(deps.store, mm.id)).rejects.toMatchObject({ code: 'removed' })
     await expect(removeCoworker(member, { userId: gtm.id }, deps)).rejects.toMatchObject({ code: 'forbidden' })
+  })
+})
+
+describe('multi-manager reporting and avatars', () => {
+  const SHA_A = 'a'.repeat(64)
+  const SHA_B = 'b'.repeat(64)
+
+  it('persists ordered, deduplicated multi-manager lists across create, update, setOrgPosition, and orgChart', async () => {
+    const { deps } = setup()
+    const cw = await createCoworker(owner, { templateId: 'marketing-manager', reportsToUserIds: ['ari', 'mo', 'ari'] }, deps)
+    expect(cw).toMatchObject({
+      reportsToUserId: 'ari',
+      reportsToUserIds: ['ari', 'mo'],
+      accountableHuman: { id: 'ari', name: 'Ari', reason: 'chain' },
+      accountableHumans: [
+        { id: 'ari', name: 'Ari', reason: 'chain' },
+        { id: 'mo', name: 'Mo', reason: 'chain' },
+      ],
+    })
+    const updated = await updateCoworker(owner, { userId: cw.id, reportsToUserIds: ['mo', 'olga'] }, deps)
+    expect(updated).toMatchObject({
+      reportsToUserId: 'mo',
+      reportsToUserIds: ['mo', 'olga'],
+    })
+    const pos = await setOrgPosition(owner, { userId: cw.id, reportsToUserIds: ['ari', 'olga'] }, deps)
+    expect(pos).toMatchObject({
+      reportsToUserId: 'ari',
+      reportsToUserIds: ['ari', 'olga'],
+    })
+    await expect(setOrgPosition(member, { userId: 'mo', reportsToUserIds: ['olga'] }, deps)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(setOrgPosition(owner, { userId: 'ari', reportsToUserIds: ['ari'] }, deps)).rejects.toMatchObject({ code: 'org_cycle' })
+    await expect(setOrgPosition(owner, { userId: 'ari', reportsToUserIds: ['ghost'] }, deps)).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('allows diamond reporting graphs while refusing real cycles across secondary branches', async () => {
+    const { deps } = setup()
+    const cwA = await createCoworker(owner, { templateId: 'marketing-manager', reportsToUserIds: ['ari'] }, deps)
+    const cwB = await createCoworker(owner, { templateId: 'designer', reportsToUserIds: ['ari'] }, deps)
+    const leaf = await createCoworker(owner, { templateId: 'ops-analyst', reportsToUserIds: [cwA.id, cwB.id] }, deps)
+    expect(leaf.accountableHumans).toEqual([{ id: 'ari', name: 'Ari', reason: 'chain' }])
+    await expect(setOrgPosition(owner, { userId: 'ari', reportsToUserIds: ['mo', leaf.id] }, deps)).rejects.toMatchObject({ code: 'org_cycle' })
+  })
+
+  it('resolves nearest accountable humans up each reporting branch, falling back to owner when none', async () => {
+    const { deps } = setup()
+    await setOrgPosition(owner, { userId: 'mo', reportsToUserIds: ['olga'] }, deps)
+    const cwA = await createCoworker(owner, { templateId: 'marketing-manager', reportsToUserIds: ['ari'] }, deps)
+    const cwB = await createCoworker(owner, { templateId: 'designer' }, deps)
+    const cw = await createCoworker(owner, { templateId: 'ops-analyst', reportsToUserIds: [cwA.id, 'mo'] }, deps)
+    expect(await accountableHumansFor(deps.store, cw.id)).toEqual([
+      { id: 'mo', name: 'Mo', reason: 'chain' },
+      { id: 'ari', name: 'Ari', reason: 'chain' },
+    ])
+    // Branch with a human vs branch without a human still yields the branch human.
+    await updateCoworker(owner, { userId: cw.id, reportsToUserIds: [cwA.id, cwB.id] }, deps)
+    expect(await accountableHumansFor(deps.store, cw.id)).toEqual([{ id: 'ari', name: 'Ari', reason: 'chain' }])
+    // All coworker-only branches fall back to owner.
+    const orphan = await createCoworker(owner, { templateId: 'finance-analyst', reportsToUserIds: [cwB.id] }, deps)
+    expect(await accountableHumansFor(deps.store, orphan.id)).toEqual([{ id: 'olga', name: 'Olga', reason: 'owner' }])
+  })
+
+  it('reparents all managers in order when removing a coworker in a multi-manager chart', async () => {
+    const { deps } = setup()
+    const mm = await createCoworker(owner, { templateId: 'marketing-manager', reportsToUserIds: ['ari', 'mo'] }, deps)
+    const gtm = await createCoworker(owner, { templateId: 'go-to-market-manager', reportsToUserIds: [mm.id, 'olga'] }, deps)
+    await removeCoworker(owner, { userId: mm.id }, deps)
+    const chart = (await orgChart(deps.store)).people
+    expect(chart.find((p) => p.id === gtm.id)).toMatchObject({
+      reportsToUserId: 'ari',
+      reportsToUserIds: ['ari', 'mo', 'olga'],
+    })
+  })
+
+  it('persists abstract CI presets and uploaded WebP SHAs, validates them, and exposes image on views & orgChart', async () => {
+    const { store, deps } = setup()
+    store.users.set('olga', { ...store.users.get('olga')!, avatarSha256: SHA_B })
+    const withBlobs = { ...deps, avatarExists: async (sha: string) => sha === SHA_A }
+
+    const cw = await createCoworker(owner, { templateId: 'designer', avatarPreset: 'prism' }, withBlobs)
+    expect(cw.image).toBe('/avatars/coworkers/prism.svg')
+
+    const uploaded = await updateCoworker(owner, { userId: cw.id, avatarSha256: SHA_A }, withBlobs)
+    expect(uploaded.image).toBe(`/api/people/avatar/${SHA_A}`)
+    expect(store.users.get(cw.id)).toMatchObject({ avatarSha256: SHA_A, image: `/api/people/avatar/${SHA_A}` })
+
+    const backToPreset = await updateCoworker(owner, { userId: cw.id, avatarPreset: 'orbit' }, withBlobs)
+    expect(backToPreset.image).toBe('/avatars/coworkers/orbit.svg')
+    expect(store.users.get(cw.id)).toMatchObject({ avatarSha256: null, image: '/avatars/coworkers/orbit.svg' })
+
+    const chart = (await orgChart(deps.store)).people
+    expect(chart.find((p) => p.id === 'olga')?.image).toBe(`/api/people/avatar/${SHA_B}`)
+    expect(chart.find((p) => p.id === cw.id)?.image).toBe('/avatars/coworkers/orbit.svg')
+
+    const cleared = await updateCoworker(owner, { userId: cw.id, avatarPreset: null }, withBlobs)
+    expect(cleared.image).toBeNull()
+
+    await expect(createCoworker(owner, { templateId: 'designer', avatarPreset: 'bogus' as never }, withBlobs)).rejects.toMatchObject({
+      code: 'invalid_input',
+    })
+    await expect(createCoworker(owner, { templateId: 'designer', avatarSha256: 'not-a-sha' }, withBlobs)).rejects.toMatchObject({
+      code: 'invalid_input',
+    })
+    await expect(createCoworker(owner, { templateId: 'designer', avatarSha256: SHA_B }, withBlobs)).rejects.toMatchObject({
+      code: 'invalid_input',
+    })
+    await expect(
+      createCoworker(owner, { templateId: 'designer', avatarPreset: 'prism', avatarSha256: SHA_A }, withBlobs),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
   })
 })

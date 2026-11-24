@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { COWORKER_AVATAR_PRESET_IDS } from '$lib/coworkers/avatar-presets'
 import type { ToolContext, ToolDescriptor, ToolPrincipal } from '$lib/kernel/types'
 import { notifyCoworkersChanged } from '$lib/server/coworkers/changes'
 import type { NoticeDeps } from '$lib/server/coworkers/notices'
@@ -67,6 +68,10 @@ const capField = z.number().positive().max(1000)
 
 const emptyInput = z.object({}).strict()
 const byIdInput = z.object({ user_id: userId }).strict()
+const avatarPresetField = z.enum(COWORKER_AVATAR_PRESET_IDS).nullable().optional()
+const avatarShaField = z.string().min(1).max(128).nullable().optional()
+const managerIdsField = z.array(userId).max(32).optional()
+
 const createInput = z
   .object({
     template_id: z.enum(COWORKER_TEMPLATE_IDS).optional(),
@@ -76,7 +81,10 @@ const createInput = z
     accountabilities: accountabilitiesField.optional(),
     model_id: modelField.optional(),
     reports_to_user_id: userId.nullable().optional(),
+    reports_to_user_ids: managerIdsField,
     daily_cap_usd: capField.optional(),
+    avatar_preset: avatarPresetField,
+    avatar_sha256: avatarShaField,
   })
   .strict()
 const updateInput = z
@@ -88,7 +96,10 @@ const updateInput = z
     accountabilities: accountabilitiesField.optional(),
     model_id: modelField.optional(),
     reports_to_user_id: userId.nullable().optional(),
+    reports_to_user_ids: managerIdsField,
     daily_cap_usd: capField.optional(),
+    avatar_preset: avatarPresetField,
+    avatar_sha256: avatarShaField,
   })
   .strict()
 const setPositionInput = z
@@ -97,6 +108,7 @@ const setPositionInput = z
     title: titleField.nullable().optional(),
     accountabilities: z.array(z.string().min(1).max(300)).max(8).optional(),
     reports_to_user_id: userId.nullable().optional(),
+    reports_to_user_ids: managerIdsField,
   })
   .strict()
 
@@ -106,6 +118,7 @@ export const coworkerViewSchema = z.object({
   name: z.string(),
   email: z.string(),
   slug: z.string(),
+  image: z.string().nullable(),
   title: z.string().nullable(),
   accountabilities: z.array(z.string()),
   lens: z.string(),
@@ -114,7 +127,9 @@ export const coworkerViewSchema = z.object({
   dailyCapUsd: z.number(),
   templateId: z.string().nullable(),
   reportsToUserId: z.string().nullable(),
+  reportsToUserIds: z.array(z.string()),
   accountableHuman: accountableSchema.nullable(),
+  accountableHumans: z.array(accountableSchema),
   agentId: z.string(),
   createdBy: z.string(),
   createdAt: z.string(),
@@ -124,12 +139,15 @@ export const coworkerViewSchema = z.object({
 export const orgChartEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
+  image: z.string().nullable(),
   kind: z.enum(['human', 'coworker']),
   role: z.enum(['owner', 'admin', 'member']),
   title: z.string().nullable(),
   accountabilities: z.array(z.string()),
   reportsToUserId: z.string().nullable(),
+  reportsToUserIds: z.array(z.string()),
   accountableHuman: accountableSchema.nullable(),
+  accountableHumans: z.array(accountableSchema),
   enabled: z.boolean().nullable(),
 })
 const templateSchema = z.object({
@@ -328,7 +346,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       name: COWORKERS_CREATE_TOOL,
       module: COWORKERS_MODULE_ID,
       summary:
-        'Create an AI co-worker: from template_id (coworkers.templates), with any field overridden, or from explicit name/title/lens/accountabilities/model_id/daily_cap_usd. model_id must be a chat model of the vetted pool. Optional reports_to_user_id places it in the org chart (default: answers to the owner). It joins as a member and never signs in. Waits for a person’s approval in every approval mode.',
+        'Create an AI co-worker: from template_id (coworkers.templates), with any field overridden, or from explicit name/title/lens/accountabilities/model_id/daily_cap_usd. model_id must be a chat model of the vetted pool. Optional reports_to_user_id / reports_to_user_ids places it in the org chart (default: answers to the owner), and avatar_preset / avatar_sha256 sets its picture. It joins as a member and never signs in. Waits for a person’s approval in every approval mode.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       approvalAlways: true,
@@ -350,7 +368,10 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
               accountabilities: i.accountabilities,
               modelId: i.model_id,
               reportsToUserId: i.reports_to_user_id,
+              reportsToUserIds: i.reports_to_user_ids,
               dailyCapUsd: i.daily_cap_usd,
+              avatarPreset: i.avatar_preset,
+              avatarSha256: i.avatar_sha256,
             },
             await deps(),
           ),
@@ -361,7 +382,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       name: 'coworkers.update',
       module: COWORKERS_MODULE_ID,
       summary:
-        "Change an AI co-worker (only the fields given): name, title, lens, accountabilities, model_id (a chat model of the vetted pool), daily_cap_usd, reports_to_user_id (null = answers to the owner). Refuses a reporting cycle.",
+        "Change an AI co-worker (only the fields given): name, title, lens, accountabilities, model_id (a chat model of the vetted pool), daily_cap_usd, reports_to_user_id / reports_to_user_ids ([] or null = answers to the owner), avatar_preset / avatar_sha256 (null clears). Refuses a reporting cycle.",
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (_input: z.infer<typeof updateInput>, output: unknown) => `Changed the AI co-worker ${nameOf(output) ?? ''}`.trim(),
@@ -381,7 +402,10 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
               accountabilities: i.accountabilities,
               modelId: i.model_id,
               reportsToUserId: i.reports_to_user_id,
+              reportsToUserIds: i.reports_to_user_ids,
               dailyCapUsd: i.daily_cap_usd,
+              avatarPreset: i.avatar_preset,
+              avatarSha256: i.avatar_sha256,
             },
             await deps(),
           ),
@@ -619,7 +643,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       name: 'org.set_position',
       module: COWORKERS_MODULE_ID,
       summary:
-        "Set a seat in the org chart: title (null clears it), accountabilities (the full new list), reports_to_user_id (null = reports to nobody). Owner and admins set anyone's; a member sets only their own title and accountabilities. Refuses self-reporting and reporting cycles.",
+        "Set a seat in the org chart: title (null clears it), accountabilities (the full new list), reports_to_user_id / reports_to_user_ids ([] or null = reports to nobody). Owner and admins set anyone's; a member sets only their own title and accountabilities. Refuses self-reporting and reporting cycles.",
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: z.infer<typeof setPositionInput>, output: unknown) =>
@@ -631,7 +655,13 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
         const i = setPositionInput.parse(input)
         return (await service()).setOrgPosition(
           await actor(ctx),
-          { userId: i.user_id, title: i.title, accountabilities: i.accountabilities, reportsToUserId: i.reports_to_user_id },
+          {
+            userId: i.user_id,
+            title: i.title,
+            accountabilities: i.accountabilities,
+            reportsToUserId: i.reports_to_user_id,
+            reportsToUserIds: i.reports_to_user_ids,
+          },
           await deps(),
         )
       },

@@ -8,9 +8,9 @@
   import ActionFeedback from './action-feedback.svelte'
   import { feedbackFor } from './action-result'
   import AiMark from './ai-mark.svelte'
-  import { draftFromCoworker, type CardDraft, type CoworkerLike } from './card-draft'
+  import { draftFromCoworker, emptyDraft, type CardDraft, type CoworkerLike } from './card-draft'
   import CoworkerFields from './coworker-fields.svelte'
-  import CoworkerRhythms,{ type RhythmItem, type RhythmTargetItem } from './coworker-rhythms.svelte'
+  import CoworkerRhythms, { type RhythmItem, type RhythmTargetItem } from './coworker-rhythms.svelte'
   import MentionHandle from './mention-handle.svelte'
   import { modelFamily, modelName, type ChatModelOption } from './model-family'
 
@@ -27,6 +27,7 @@
     slug: string
     enabled: boolean
     accountableHuman: { id: string; name: string } | null
+    accountableHumans?: { id: string; name: string }[]
   }
 
   let {
@@ -50,10 +51,26 @@
 
   let editing = $state(false)
   let confirmingRemove = $state(false)
-  let card = $state<CardDraft>({ name: '', title: '', accountabilities: '', lens: '', modelId: '', reportsTo: '', dailyCapUsd: '' })
+  let card = $state<CardDraft>(emptyDraft())
 
   const family = $derived(modelFamily(c.modelId))
-  const managerName = $derived(c.reportsToUserId ? (seats.find((s) => s.id === c.reportsToUserId)?.name ?? null) : null)
+  const managerIds = $derived(
+    c.reportsToUserIds && c.reportsToUserIds.length > 0
+      ? c.reportsToUserIds
+      : c.reportsToUserId
+        ? [c.reportsToUserId]
+        : [],
+  )
+  const managerNames = $derived(
+    managerIds.map((id) => seats.find((s) => s.id === id)?.name).filter((n): n is string => Boolean(n)),
+  )
+  const accountables = $derived(
+    c.accountableHumans && c.accountableHumans.length > 0
+      ? c.accountableHumans
+      : c.accountableHuman
+        ? [c.accountableHuman]
+        : [],
+  )
   const feedback = $derived(
     feedbackFor(form, 'update', c.id) ??
       feedbackFor(form, 'enable', c.id) ??
@@ -74,7 +91,7 @@
 
 <li class="rounded-lg border border-border bg-card p-4" data-testid="coworker-card" data-id={c.id} data-enabled={c.enabled}>
   <div class="flex flex-wrap items-start gap-3">
-    <UserAvatar name={c.name} size="md" />
+    <UserAvatar name={c.name} image={c.image ?? null} size="md" />
     <div class="min-w-0 flex-1 space-y-0.5">
       <h3 class="flex flex-wrap items-center gap-2 text-sm font-semibold">
         <a
@@ -90,8 +107,12 @@
       <p class="text-sm text-muted-foreground">{c.title ?? ''}</p>
       <p class="text-xs text-muted-foreground">
         {modelName(c.modelId)} · {m.coworkers_daily_cap_value({ amount: c.dailyCapUsd.toFixed(2) })} ·
-        {managerName ? m.coworkers_reports_to_name({ name: managerName }) : m.coworkers_reports_to_owner()}
-        {#if c.accountableHuman}· {m.coworkers_answers_to({ name: c.accountableHuman.name })}{/if}
+        {#if managerNames.length > 0}
+          {m.coworkers_reports_to_name({ name: managerNames.join(', ') })}
+        {:else}
+          {m.coworkers_reports_to_owner()}
+        {/if}
+        {#if accountables.length > 0}· {m.coworkers_answers_to({ name: accountables.map((h) => h.name).join(', ') })}{/if}
       </p>
       <MentionHandle handle={c.slug} />
     </div>
@@ -141,7 +162,7 @@
       data-testid="coworker-edit-form"
     >
       <input type="hidden" name="user_id" value={c.id} />
-      <CoworkerFields idPrefix="coworker-{c.id}" bind:card {models} {seats} selfId={c.id} />
+      <CoworkerFields idPrefix="coworker-{c.id}" bind:card {models} {seats} selfId={c.id} currentImage={c.image ?? null} />
       <div class="flex flex-wrap gap-2">
         <Button type="submit" size="sm" data-testid="coworker-save">{m.coworkers_save()}</Button>
         <Button type="button" variant="ghost" size="sm" onclick={() => (editing = false)}>{m.coworkers_cancel()}</Button>

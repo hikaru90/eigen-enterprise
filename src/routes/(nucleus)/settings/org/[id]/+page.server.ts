@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { error, redirect } from '@sveltejs/kit'
-import { managerName } from '$lib/coworkers/org-tree'
+import { managerIdsOf } from '$lib/coworkers/org-tree'
 import type { PickupCounts, PickupItem } from '$lib/coworkers/pickup-format'
 import type { RunItem } from '$lib/coworkers/run-format'
 import type { DecisionKindView, DecisionLogEntry } from '$lib/kernel/decision-tools'
@@ -84,7 +84,7 @@ export const _profileDeps: { run: PersonRunner; role: (userId: string) => Promis
 
 export type CoworkerCard = Pick<
   CoworkerView,
-  'lens' | 'modelId' | 'enabled' | 'dailyCapUsd' | 'accountableHuman'
+  'lens' | 'modelId' | 'enabled' | 'dailyCapUsd' | 'accountableHuman' | 'accountableHumans'
 > & {
   /** Its @handle, the token that asks it for a turn in Messages (its slug). */
   handle: string
@@ -109,14 +109,22 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       enabled: c.enabled,
       dailyCapUsd: c.dailyCapUsd,
       accountableHuman: c.accountableHuman,
+      accountableHumans: c.accountableHumans ?? (c.accountableHuman ? [c.accountableHuman] : []),
     }
     runs = (await _profileDeps.run<{ runs: RunItem[] }>(user, 'coworkers.runs', { user_id: person.id, limit: 30 })).runs
     if (canManage) wouldPickUp = await loadWouldPickUp(_profileDeps.run, user, person.id)
   }
+  const managers = managerIdsOf(person).map((id) => ({
+    id,
+    name: people.find((p) => p.id === id)?.name ?? null,
+  }))
   return {
     person,
-    manager: person.reportsToUserId ? { id: person.reportsToUserId, name: managerName(people, person) } : null,
-    reports: people.filter((p) => p.reportsToUserId === person.id).map((p) => ({ id: p.id, name: p.name, kind: p.kind })),
+    manager: managers[0] ?? null,
+    managers,
+    reports: people
+      .filter((p) => managerIdsOf(p).includes(person.id))
+      .map((p) => ({ id: p.id, name: p.name, kind: p.kind })),
     coworker,
     runs,
     wouldPickUp,

@@ -35,12 +35,21 @@ export const actions: Actions = {
     const form = await request.formData()
     const userId = field(form, 'user_id')
     const title = field(form, 'title').trim()
+    const reportsTo = form.has('reports_to_sent')
+      ? {
+          reports_to_user_ids: form
+            .getAll('reports_to_user_ids')
+            .map(String)
+            .filter((s) => s.trim() !== ''),
+        }
+      : form.has('reports_to_user_id')
+        ? { reports_to_user_id: field(form, 'reports_to_user_id') || null }
+        : {}
     const input: Record<string, unknown> = {
       user_id: userId,
       title: title === '' ? null : title,
       accountabilities: accountabilityLines(field(form, 'accountabilities')),
-      // Only the owner's and admins' form sends reports-to ('' = reports to nobody); the tool refuses it from a member.
-      ...(form.has('reports_to_user_id') ? { reports_to_user_id: field(form, 'reports_to_user_id') || null } : {}),
+      ...reportsTo,
     }
     return runAction(
       'setPosition',

@@ -640,5 +640,13 @@
   "org_view_diagram": "Diagram",
   "org_view_list": "List",
   "org_accountabilities_more": "+{count} more",
-  "org_also_reports_to": "Also reports to {names}"
+  "org_also_reports_to": "Also reports to {names}",
+  "coworkers_field_avatar": "Avatar",
+  "coworkers_avatar_presets_label": "Abstract CI avatars",
+  "coworkers_avatar_upload": "Upload own image",
+  "coworkers_avatar_uploading": "Uploading…",
+  "coworkers_avatar_clear": "Use initials",
+  "coworkers_avatar_hint": "Pick an eigenEnterprise CI emblem or upload a square image (cropped to 256×256 WebP).",
+  "coworkers_reports_to_multi_hint": "Select one or more managers. If none are checked, it answers to the owner.",
+  "org_reports_to_multi_hint": "Select one or more managers (leave all unchecked for nobody)."
 }

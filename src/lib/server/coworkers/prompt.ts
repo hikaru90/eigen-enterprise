@@ -29,6 +29,7 @@ export type PromptOrgEntry = PromptPerson & {
   title: string | null
   accountabilities: string[]
   reportsToName: string | null
+  reportsToNames?: string[]
 }
 
 export type PromptMessage = {
@@ -59,7 +60,9 @@ export type CoworkerPromptInput = {
     accountabilities: string[]
     lens: string
     reportsTo: { name: string; kind: PromptKind } | null
+    reportsToList?: { name: string; kind: PromptKind }[]
     accountableHuman: PromptPerson
+    accountableHumans?: PromptPerson[]
   }
   org: PromptOrgEntry[]
   company: { name: string | null; profile: string | null; brandVoice: string | null }
@@ -86,14 +89,28 @@ const at = (p: PromptPerson) => (p.handle ? `@${p.handle}` : p.name)
 
 const bullets = (items: string[]) => items.map((a) => `- ${a}`).join('\n')
 
+function accountableList(self: CoworkerPromptInput['self']): PromptPerson[] {
+  return self.accountableHumans && self.accountableHumans.length > 0 ? self.accountableHumans : [self.accountableHuman]
+}
+
 function roleCard(self: CoworkerPromptInput['self']): string {
+  const managers = self.reportsToList ?? (self.reportsTo ? [self.reportsTo] : [])
+  const humans = accountableList(self)
+  const reportsLine =
+    managers.length > 0
+      ? managers.map((m) => `${m.name} (${m.kind === 'coworker' ? 'AI co-worker' : 'person'})`).join('; ')
+      : 'nobody in the org chart'
+  const answerLine =
+    humans.length > 1
+      ? `The people you answer to: ${humans.map(who).join('; ')}. Approvals you need and anything that needs a person go to them.`
+      : `The person you answer to: ${who(humans[0]!)}. Approvals you need and anything that needs a person go to them.`
   const lines = [
     `You are ${self.name} (${at({ ...self, kind: 'coworker' })}), an AI co-worker at this company: a colleague with your own seat, not an assistant to anyone.`,
     `Title: ${self.title ?? 'none set'}`,
     self.accountabilities.length > 0 ? `You are accountable for:\n${bullets(self.accountabilities)}` : 'You have no accountabilities set yet.',
     `Your lens (what you care about, what you push back on):\n${self.lens}`,
-    `You report to: ${self.reportsTo ? `${self.reportsTo.name} (${self.reportsTo.kind === 'coworker' ? 'AI co-worker' : 'person'})` : 'nobody in the org chart'}.`,
-    `The person you answer to: ${who(self.accountableHuman)}. Approvals you need and anything that needs a person go to them.`,
+    `You report to: ${reportsLine}.`,
+    answerLine,
   ]
   return `# Your role\n${lines.join('\n')}`
 }
@@ -102,7 +119,8 @@ function orgChart(org: PromptOrgEntry[], selfId: string): string {
   const rows = org.map((p) => {
     const me = p.id === selfId ? ' — you' : ''
     const title = p.title ?? 'no title'
-    const reports = p.reportsToName ? `, reports to ${p.reportsToName}` : ''
+    const names = p.reportsToNames ?? (p.reportsToName ? [p.reportsToName] : [])
+    const reports = names.length > 0 ? `, reports to ${names.join(', ')}` : ''
     const owns = p.accountabilities.length > 0 ? `; owns: ${p.accountabilities.join('; ')}` : ''
     return `- ${who(p)}: ${title}${reports}${owns}${me}`
   })
@@ -160,29 +178,43 @@ ${SHARED_RULES}
 
 function assignmentRules(input: CoworkerPromptInput): string {
   const t = input.task!
+  const humans = accountableList(input.self)
+  const answer =
+    humans.length > 1
+      ? `${humans.map((h) => `${h.name} (${at(h)})`).join(', ')} are the people you answer to.`
+      : `${humans[0]!.name} (${at(humans[0]!)}) is the person you answer to.`
   return `# How you work here
 ${SHARED_RULES}
 - Do the work with your tools. Your answer is posted for you as your comment on the task, as you: your result, or what you need. Do not comment yourself with tasks.comment.
 - When the task is done, mark it done with tasks.complete (task_id ${t.id}) before you answer.
 - When something blocks you, say what blocks it and who can unblock it, and leave the task open.
 - Be concise: a few short paragraphs or a list, no filler, no greeting.
-- ${t.assigner.name} (${at(t.assigner)}) reads your comment; ${input.self.accountableHuman.name} (${at(input.self.accountableHuman)}) is the person you answer to.`
+- ${t.assigner.name} (${at(t.assigner)}) reads your comment; ${answer}`
 }
 
 function eventRules(input: CoworkerPromptInput): string {
+  const humans = accountableList(input.self)
+  const answer =
+    humans.length > 1
+      ? `${humans.map((h) => `${h.name} (${at(h)})`).join(', ')} are the people you answer to.`
+      : `${humans[0]!.name} (${at(humans[0]!)}) is the person you answer to.`
   return `# How you work here
 ${SHARED_RULES}
 - Nobody asked you: act only on the part that is yours. Do not repeat what others already said or answer what was asked of someone else.
 - Your answer is posted for you as a reply in this thread, as you. Do not post it yourself with messages.post.
 - Be concise: a few short paragraphs or a list, no filler, no greeting.
-- ${input.self.accountableHuman.name} (${at(input.self.accountableHuman)}) is the person you answer to.`
+- ${answer}`
 }
 
 function rules(input: CoworkerPromptInput): string {
   if (input.trigger.kind === 'rhythm') return rhythmRules(input)
   if (input.trigger.kind === 'event') return eventRules(input)
   if (input.trigger.kind === 'assignment') return assignmentRules(input)
-  const human = input.self.accountableHuman
+  const humans = accountableList(input.self)
+  const whoStepsIn =
+    humans.length > 1
+      ? `${humans.map((h) => `${h.name} (${at(h)})`).join(' or ')} have`
+      : `${humans[0]!.name} (${at(humans[0]!)}) has`
   return `# How you work here
 - Argue from your accountability and your lens. Do not just agree: when your lens says something is wrong, say so and say why.
 - Stay in your role. When something belongs to someone else's accountability, say so and @mention who owns it (see the org chart) with a concrete question.
@@ -190,7 +222,7 @@ function rules(input: CoworkerPromptInput): string {
 - Be concise: a few short paragraphs or a list, no filler, no greeting.
 - End by answering whoever asked you (${at(input.trigger.from)}), with your result or the one thing you need from them.
 - Your answer is posted to this conversation for you, as you. Do not post it yourself with messages.post.
-- This thread has ${input.turnsLeft} co-worker turn${input.turnsLeft === 1 ? '' : 's'} left before ${human.name} (${at(human)}) has to step in; do not spend them on back-and-forth.`
+- This thread has ${input.turnsLeft} co-worker turn${input.turnsLeft === 1 ? '' : 's'} left before ${whoStepsIn} to step in; do not spend them on back-and-forth.`
 }
 
 /** The whole system prompt of one co-worker turn. Fails loud on an input that does not fit its trigger. */

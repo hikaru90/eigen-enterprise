@@ -16,28 +16,65 @@ let calls: Call[] = []
 let role: string | null = 'member'
 
 const people = [
-  { id: 'owner', name: 'Olga', kind: 'human', role: 'owner', title: 'CEO', accountabilities: [], reportsToUserId: null, accountableHuman: null, enabled: null },
-  { id: 'me', name: 'Ony', kind: 'human', role: 'member', title: null, accountabilities: [], reportsToUserId: 'owner', accountableHuman: null, enabled: null },
+  {
+    id: 'owner',
+    name: 'Olga',
+    image: null,
+    kind: 'human',
+    role: 'owner',
+    title: 'CEO',
+    accountabilities: [],
+    reportsToUserId: null,
+    reportsToUserIds: [],
+    accountableHuman: null,
+    accountableHumans: [],
+    enabled: null,
+  },
+  {
+    id: 'me',
+    name: 'Ony',
+    image: null,
+    kind: 'human',
+    role: 'member',
+    title: null,
+    accountabilities: [],
+    reportsToUserId: 'owner',
+    reportsToUserIds: ['owner'],
+    accountableHuman: null,
+    accountableHumans: [],
+    enabled: null,
+  },
   {
     id: 'cw1',
     name: 'Mara',
+    image: '/avatars/coworkers/prism.svg',
     kind: 'coworker',
     role: 'member',
     title: 'Marketing Manager',
     accountabilities: ['Pipeline'],
     reportsToUserId: 'owner',
+    reportsToUserIds: ['owner', 'me'],
     accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },
+    accountableHumans: [
+      { id: 'owner', name: 'Olga', reason: 'chain' },
+      { id: 'me', name: 'Ony', reason: 'chain' },
+    ],
     enabled: true,
   },
 ]
 const coworker = {
   id: 'cw1',
   slug: 'mia-mwujrl74',
+  image: '/avatars/coworkers/prism.svg',
   lens: 'Reach first.',
   modelId: 'anthropic/claude-sonnet-5.5',
   enabled: true,
   dailyCapUsd: 2,
   accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },
+  accountableHumans: [
+    { id: 'owner', name: 'Olga', reason: 'chain' },
+    { id: 'me', name: 'Ony', reason: 'chain' },
+  ],
 }
 
 const counts = { claimed: 0, observed: 0, queued: 0, skipped_rate_limit: 0, skipped_daily_cap: 0, skipped_author_cap: 0, failed: 0 }
@@ -117,6 +154,38 @@ describe('setPosition', () => {
     expect(calls[0]!.input).toEqual({ user_id: 'cw1', title: null, accountabilities: [], reports_to_user_id: null })
   })
 
+  it('setPosition forwards reports_to_user_ids when reports_to_sent is posted (multi-manager or cleared)', async () => {
+    const multi = new URLSearchParams([
+      ['user_id', 'cw1'],
+      ['title', 'Marketing Manager'],
+      ['accountabilities', 'Pipeline'],
+      ['reports_to_sent', '1'],
+      ['reports_to_user_ids', 'owner'],
+      ['reports_to_user_ids', 'me'],
+    ])
+    await actions.setPosition({ locals, request: new Request('http://x/settings/org', { method: 'POST', body: multi }) } as never)
+    expect(calls[0]!.input).toEqual({
+      user_id: 'cw1',
+      title: 'Marketing Manager',
+      accountabilities: ['Pipeline'],
+      reports_to_user_ids: ['owner', 'me'],
+    })
+
+    const cleared = new URLSearchParams([
+      ['user_id', 'cw1'],
+      ['title', 'Marketing Manager'],
+      ['accountabilities', 'Pipeline'],
+      ['reports_to_sent', '1'],
+    ])
+    await actions.setPosition({ locals, request: new Request('http://x/settings/org', { method: 'POST', body: cleared }) } as never)
+    expect(calls[1]!.input).toEqual({
+      user_id: 'cw1',
+      title: 'Marketing Manager',
+      accountabilities: ['Pipeline'],
+      reports_to_user_ids: [],
+    })
+  })
+
   it('a change waiting for approval says so', async () => {
     _orgDeps.run = (async () => {
       throw new KernelError('approval_required', 'tool org.set_position requires approval', { approvalId: 'a1', tool: 'org.set_position' })
@@ -143,6 +212,10 @@ describe('profile load', () => {
     expect(calls[3]!.input).toEqual({ user_id: 'cw1', limit: 30 })
     expect(data.runs).toEqual([{ id: 'run-1', triggerKind: 'rhythm', status: 'done' }])
     expect(data.manager).toEqual({ id: 'owner', name: 'Olga' })
+    expect(data.managers).toEqual([
+      { id: 'owner', name: 'Olga' },
+      { id: 'me', name: 'Ony' },
+    ])
     expect(data.coworker).toEqual({
       handle: 'mia-mwujrl74',
       lens: 'Reach first.',
@@ -150,10 +223,14 @@ describe('profile load', () => {
       enabled: true,
       dailyCapUsd: 2,
       accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },
+      accountableHumans: [
+        { id: 'owner', name: 'Olga', reason: 'chain' },
+        { id: 'me', name: 'Ony', reason: 'chain' },
+      ],
     })
   })
 
-  it("a person's profile has no co-worker card and lists their direct reports", async () => {
+  it("a person's profile has no co-worker card and lists their direct reports (including secondary reports)", async () => {
     const data = (await profileLoad({ locals, params: { id: 'owner' } } as never)) as Record<string, unknown>
     expect(calls.map((c) => c.tool)).not.toContain('coworkers.get')
     expect(calls.map((c) => c.tool)).not.toContain('coworkers.runs')
@@ -163,6 +240,8 @@ describe('profile load', () => {
       { id: 'me', name: 'Ony', kind: 'human' },
       { id: 'cw1', name: 'Mara', kind: 'coworker' },
     ])
+    const secondary = (await profileLoad({ locals, params: { id: 'me' } } as never)) as Record<string, unknown>
+    expect(secondary.reports).toEqual([{ id: 'cw1', name: 'Mara', kind: 'coworker' }])
   })
 
   it('"Got it" on a co-worker row in Needs you → coworkers.notice_seen as the person (C6)', async () => {
