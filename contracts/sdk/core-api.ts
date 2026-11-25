@@ -1866,6 +1866,98 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "drive.sheet_chart_create": {
+    input: {
+      "at"?: string
+      "file_id": string
+      "grouping"?: "clustered" | "stacked" | "percentStacked" | "standard"
+      "legend"?: ("r" | "l" | "t" | "b" | "tr") | null
+      "new_sheet"?: string
+      "range"?: string
+      "series"?: Array<{
+        "categories"?: string | null
+        "name"?: string | null
+        "name_ref"?: string | null
+        "secondary"?: boolean
+        "sizes"?: string | null
+        "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+        "values": string
+      }>
+      "sheet": string
+      "title"?: string | null
+      "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_delete": {
+    input: {
+      "chart": string
+      "file_id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_list": {
+    input: {
+      "file_id": string
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_update": {
+    input: {
+      "axes"?: {
+        "category"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+        "secondary"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+        "value"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+      }
+      "chart": string
+      "colors"?: Array<string | null>
+      "file_id": string
+      "grouping"?: "clustered" | "stacked" | "percentStacked" | "standard"
+      "labels"?: ({
+        "category"?: boolean
+        "percent"?: boolean
+        "position"?: ("ctr" | "inEnd" | "outEnd" | "inBase" | "t" | "b" | "l" | "r" | "bestFit") | null
+        "series"?: boolean
+        "value"?: boolean
+      }) | null
+      "legend"?: ("r" | "l" | "t" | "b" | "tr") | null
+      "markers"?: boolean
+      "position"?: string
+      "series"?: Array<{
+        "categories"?: string | null
+        "name"?: string | null
+        "name_ref"?: string | null
+        "secondary"?: boolean
+        "sizes"?: string | null
+        "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+        "values": string
+      }>
+      "sheet": string
+      "title"?: string | null
+      "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+    }
+    output: unknown
+  }
   "drive.sheet_filter": {
     input: {
       "columns"?: Array<{
@@ -4600,6 +4692,10 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.set_sharing",
   "drive.share_many",
   "drive.shared_with_me",
+  "drive.sheet_chart_create",
+  "drive.sheet_chart_delete",
+  "drive.sheet_chart_list",
+  "drive.sheet_chart_update",
   "drive.sheet_filter",
   "drive.sheet_format",
   "drive.sheet_freeze",

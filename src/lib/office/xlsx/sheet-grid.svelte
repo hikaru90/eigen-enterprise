@@ -17,6 +17,7 @@
 </script>
 
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
   import { onMount, tick } from 'svelte'
@@ -61,6 +62,8 @@
     filter = null,
     onfilter,
     onresize,
+    overlay,
+    oncellpointerdown,
   }: {
     rows: number
     cols: number
@@ -94,6 +97,19 @@
     onfilter?: (col: number, at: DOMRect, row: number) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
+    /** Floating sheet overlay (charts) positioned in sheet pixel space. */
+    overlay?: Snippet<
+      [
+        {
+          colLeft: (c: number) => number
+          rowTop: (r: number) => number
+          maxCol: number
+          maxRow: number
+        },
+      ]
+    >
+    /** Fired when pointer goes down on a cell (used to clear floating object selection). */
+    oncellpointerdown?: () => void
   } = $props()
 
   const HEAD_H = 24
@@ -383,6 +399,7 @@
     if (event.button !== 0) return
     const p = posFromEvent(event)
     if (!p) return
+    oncellpointerdown?.()
     if (editing) finishEdit(true)
     const mr = mergeAt(p.row, p.col)
     const at = mr ? { row: mr.range.top, col: mr.range.left } : p
@@ -749,6 +766,22 @@
         {@render pane(visibleRows, visibleCols, FW, FH, 'br')}
       </div>
     </div>
+    {#if overlay}
+      <div
+        class="g-abs g-ghost g-z6"
+        style="top: {HEAD_H}px; left: {HEAD_W}px; width: {colLefts[cols]!}px; height: {rowTops[
+          rows
+        ]!}px;"
+        role="presentation"
+      >
+        {@render overlay({
+          colLeft: (c) => colLefts[Math.max(0, Math.min(c, cols))]!,
+          rowTop: (r) => rowTops[Math.max(0, Math.min(r, rows))]!,
+          maxCol: cols - 1,
+          maxRow: rows - 1,
+        })}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -808,6 +841,9 @@
     bottom: 0;
     right: 0;
     width: 1px;
+  }
+  .g-z6 {
+    z-index: 6;
   }
   .g-z12 {
     z-index: 12;

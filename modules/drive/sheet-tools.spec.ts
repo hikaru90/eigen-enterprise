@@ -186,13 +186,13 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     }
     await expect(tool('drive.sheet_structure').handler(as('alice'), change)).rejects.toMatchObject({
       code: 'invalid',
-      message: expect.stringMatching(/pictures, charts or shapes/),
+      message: expect.stringMatching(/pictures or shapes/),
     })
     const ok = (await tool('drive.sheet_structure').handler(as('alice'), {
       ...change,
       accept_losses: true,
     })) as { warnings: string[] }
-    expect(ok.warnings).toEqual([expect.stringMatching(/1 × pictures, charts or shapes/)])
+    expect(ok.warnings).toEqual([expect.stringMatching(/1 × pictures or shapes/)])
   })
 
   it('refuses what is not a workbook, a missing sheet, a formula it can’t read, and a file open in an editor', async () => {

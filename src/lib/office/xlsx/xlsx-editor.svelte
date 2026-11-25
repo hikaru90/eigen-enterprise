@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { OfficeViewerProps } from '../viewers'
+  import type { ChartPlacement } from './chart-anchor'
+  import type { ChartPosition } from './chart-ops'
   import type { StylePatch } from './format-cells'
   import ArrowDownAZIcon from '@lucide/svelte/icons/arrow-down-a-z'
   import ArrowDownZAIcon from '@lucide/svelte/icons/arrow-down-z-a'
@@ -35,6 +37,10 @@
   import { createOfficeEditSession } from '../edit-session'
   import { OFFICE_MIME } from '../kinds'
   import { OpcError } from '../ooxml/package'
+  import { chartsOn } from './chart-anchor'
+  import ChartDialog from './chart-dialog.svelte'
+  import ChartOverlay from './chart-overlay.svelte'
+  import ChartView from './chart-view.svelte'
   import { createSheetEditor, workbookNotes, type SheetEditor, type WorkbookNote } from './editor'
   import {
     autoFilterOf,
@@ -151,6 +157,11 @@
   let creating = $state<{ kind: 'table' | 'pivot'; range: string; header: boolean } | null>(null)
   let pivotFieldsOpen = $state(true)
   let sorting = $state<{ range: Range; header: boolean; first: number } | null>(null)
+  let selectedChartId = $state<string | null>(null)
+  let chartDialog = $state<
+    { mode: 'create'; range: string } | { mode: 'edit'; placement: ChartPlacement } | null
+  >(null)
+  let chartSheetBox = $state({ width: 760, height: 460 })
 
   let editor: SheetEditor | null = null
   /** The bytes as the server has them (last loaded or saved) and their SHA-256 (the save's base). */
@@ -209,8 +220,30 @@
     void rev
     return editor && info?.kind === 'worksheet' ? editor.wb.sheet(info.name) : null
   })
-  const rows = $derived(Math.min(MAX_ROWS, Math.max((data?.maxRow ?? 0) + 31, 60) + extraRows))
-  const cols = $derived(Math.min(MAX_COLS, Math.max((data?.maxCol ?? 0) + 6, 26) + extraCols))
+  const sheetCharts = $derived.by(() => {
+    void rev
+    return editor && info ? chartsOn(editor.wb, info) : []
+  })
+  const chartMax = $derived.by(() => {
+    let row = 0
+    let col = 0
+    for (const c of sheetCharts) {
+      if (c.anchor.kind === 'twoCell') {
+        row = Math.max(row, c.anchor.to.row)
+        col = Math.max(col, c.anchor.to.col)
+      } else if (c.anchor.kind === 'oneCell') {
+        row = Math.max(row, c.anchor.from.row + 15)
+        col = Math.max(col, c.anchor.from.col + 8)
+      }
+    }
+    return { row, col }
+  })
+  const rows = $derived(
+    Math.min(MAX_ROWS, Math.max((data?.maxRow ?? 0) + 31, chartMax.row + 6, 60) + extraRows),
+  )
+  const cols = $derived(
+    Math.min(MAX_COLS, Math.max((data?.maxCol ?? 0) + 6, chartMax.col + 3, 26) + extraCols),
+  )
   const sel = $derived<Range>({
     top: Math.min(active.row, anchor.row),
     bottom: Math.max(active.row, anchor.row),
@@ -1096,9 +1129,67 @@
   function afterHistory() {
     if (!editor) return
     if (!editor.wb.findSheet(sheet)) sheet = editor.wb.sheets()[0]!.name
+    selectedChartId = null
     rev++
     autosave.change(String(editor.version()))
     touchIdle()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Charts (./chart-ops.ts, ./chart-overlay.svelte, ./chart-dialog.svelte)
+
+  function openInsertChart() {
+    if (!editable || !data) return
+    if (editing) grid?.finishEdit(true)
+    const single = sel.top === sel.bottom && sel.left === sel.right
+    const range = single ? rangeName(currentRegion(data, active)) : rangeName(sel)
+    chartDialog = { mode: 'create', range }
+  }
+
+  async function applyChartOp(op: SheetOp): Promise<string | null> {
+    if (await change(op)) return null
+    const msg = failure?.error ?? null
+    failure = null
+    return msg
+  }
+
+  function moveChart(chartId: string, to: ChartPosition) {
+    void change({ op: 'chart_move', sheet, chart: chartId, to })
+  }
+
+  function deleteChart(chartId: string) {
+    if (selectedChartId === chartId) selectedChartId = null
+    void change({ op: 'chart_delete', sheet, chart: chartId })
+  }
+
+  function observeChartSheet(node: HTMLElement) {
+    let raf = 0
+    const measure = () => {
+      const nextW = Math.max(240, node.clientWidth || 760)
+      const nextH = Math.max(200, node.clientHeight || 460)
+      if (
+        Math.abs(nextW - chartSheetBox.width) > 2 ||
+        Math.abs(nextH - chartSheetBox.height) > 2
+      ) {
+        chartSheetBox = { width: nextW, height: nextH }
+      }
+    }
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        measure()
+      })
+    }
+    measure()
+    const ro = new ResizeObserver(schedule)
+    ro.observe(node)
+    return {
+      destroy: () => {
+        if (raf) cancelAnimationFrame(raf)
+        ro.disconnect()
+      },
+    }
   }
 
   function onRootKeydown(event: KeyboardEvent) {
@@ -1161,6 +1252,7 @@
   async function pickSheet(n: string) {
     if (editing) grid?.finishEdit(true)
     sheet = n
+    selectedChartId = null
     active = { row: 0, col: 0 }
     anchor = { row: 0, col: 0 }
     extraRows = 0
@@ -1389,6 +1481,16 @@
             <option value="at">{m.drive_sheet_freeze_at({ ref: activeRef })}</option>
           </select>
         </label>
+        <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
+        <button
+          type="button"
+          class={btn}
+          disabled={info?.kind !== 'worksheet'}
+          onclick={openInsertChart}
+          title={m.drive_sheet_chart_insert()}
+          data-testid="xlsx-insert-chart"
+          ><ChartColumnIcon class="size-4" aria-hidden="true" />{m.drive_sheet_chart_insert()}</button
+        >
         <span
           class="ml-auto flex items-center gap-1.5 px-2 text-xs text-muted-foreground"
           role="status"
@@ -1540,13 +1642,42 @@
     </div>
 
     {#if info && info.kind !== 'worksheet'}
-      <div
-        class="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-sm text-muted-foreground"
-        data-testid="xlsx-chart-sheet"
-      >
-        <ChartColumnIcon class="size-8" aria-hidden="true" />
-        <p>{m.drive_sheet_chart_sheet({ name: info.name })}</p>
-      </div>
+      {#if info.kind === 'chartsheet' && sheetCharts[0] && editor}
+        {@const chart = sheetCharts[0]}
+        <div class="flex min-h-0 flex-1 flex-col" data-testid="xlsx-chart-sheet">
+          {#if editable}
+            <div class="flex items-center gap-2 border-b bg-muted/20 px-3 py-1.5 text-sm">
+              <span class="font-medium text-foreground">{chart.name}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                class="ml-auto"
+                onclick={() => (chartDialog = { mode: 'edit', placement: chart })}
+                data-testid="xlsx-chart-sheet-edit">{m.drive_sheet_chart_edit()}</Button
+              >
+            </div>
+          {/if}
+          <div class="chart-sheet-host min-h-[24rem] flex-1 overflow-hidden p-4" use:observeChartSheet>
+            <ChartView
+              wb={editor.wb}
+              calc={() => editor!.calc()}
+              placement={chart}
+              width={chartSheetBox.width - 32}
+              height={chartSheetBox.height - 32}
+              {locale}
+              {rev}
+            />
+          </div>
+        </div>
+      {:else}
+        <div
+          class="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-sm text-muted-foreground"
+          data-testid="xlsx-chart-sheet"
+        >
+          <ChartColumnIcon class="size-8" aria-hidden="true" />
+          <p>{m.drive_sheet_chart_sheet({ name: info.name })}</p>
+        </div>
+      {/if}
     {:else if data}
       <div class="flex min-h-0 min-w-0 flex-1">
       <SheetGrid
@@ -1575,13 +1706,35 @@
         onfilter={openFilterMenu}
         onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
         onresize={onResize}
+        oncellpointerdown={() => (selectedChartId = null)}
         onblocked={() =>
           (notice = canEdit
             ? mode.kind === 'watching'
               ? m.drive_sheet_someone_editing({ name: mode.holder.name })
               : notice
             : m.drive_sheet_view_only())}
-      />
+      >
+        {#snippet overlay({ colLeft, rowTop, maxCol, maxRow })}
+          {#if sheetCharts.length > 0 && editor}
+            <ChartOverlay
+              wb={editor.wb}
+              calc={() => editor!.calc()}
+              charts={sheetCharts}
+              {colLeft}
+              {rowTop}
+              {maxCol}
+              {maxRow}
+              {locale}
+              {rev}
+              {editable}
+              bind:selected={selectedChartId}
+              onmove={moveChart}
+              onedit={(placement) => (chartDialog = { mode: 'edit', placement })}
+              ondelete={deleteChart}
+            />
+          {/if}
+        {/snippet}
+      </SheetGrid>
       {#if activePivot && pivotFieldsOpen}
         <PivotFields
           pivot={activePivot}
@@ -1734,6 +1887,23 @@
   />
 {/if}
 
+{#if chartDialog && editor}
+  {@const cd = chartDialog}
+  <ChartDialog
+    mode={cd.mode}
+    {sheet}
+    wb={editor.wb}
+    initialRange={cd.mode === 'create' ? cd.range : ''}
+    placement={cd.mode === 'edit' ? cd.placement : null}
+    onsubmit={applyChartOp}
+    ondelete={cd.mode === 'edit' ? () => deleteChart(cd.placement.id) : undefined}
+    onclose={() => {
+      chartDialog = null
+      grid?.focus()
+    }}
+  />
+{/if}
+
 <AlertDialog.Root
   open={confirm !== null}
   onOpenChange={(open) => {
@@ -1768,3 +1938,14 @@
     </AlertDialog.Footer>
   </AlertDialog.Content>
 </AlertDialog.Root>
+
+<style>
+  .chart-sheet-host {
+    min-height: 24rem;
+    height: 28rem;
+    flex: 1 1 0%;
+    overflow: hidden;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+</style>

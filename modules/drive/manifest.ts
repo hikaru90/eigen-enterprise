@@ -23,7 +23,7 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-pivot-table-tools.ts, the Drive's spreadsheet editor): one read, thirteen writes. */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-chart-tools.ts, ./sheet-pivot-table-tools.ts, the Drive's spreadsheet editor): two reads, sixteen writes. */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
@@ -39,6 +39,10 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_pivot_update',
   'drive.sheet_pivot_refresh',
   'drive.sheet_pivot_delete',
+  'drive.sheet_chart_list',
+  'drive.sheet_chart_create',
+  'drive.sheet_chart_update',
+  'drive.sheet_chart_delete',
 ] as const
 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
@@ -56,6 +60,9 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_pivot_update',
   'drive.sheet_pivot_refresh',
   'drive.sheet_pivot_delete',
+  'drive.sheet_chart_create',
+  'drive.sheet_chart_update',
+  'drive.sheet_chart_delete',
 ] as const
 
 /** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */
