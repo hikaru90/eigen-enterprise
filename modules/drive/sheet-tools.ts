@@ -157,12 +157,28 @@ export type Xlsx = {
   ref: typeof import('$lib/office/xlsx/ref')
   workbook: typeof import('$lib/office/xlsx/workbook')
   formatCells: typeof import('$lib/office/xlsx/format-cells')
+  hyperlinks: typeof import('$lib/office/xlsx/hyperlinks')
+  protection: typeof import('$lib/office/xlsx/protection')
+  validation: typeof import('$lib/office/xlsx/validation')
   chartOps: typeof import('$lib/office/xlsx/chart-ops')
   chartAnchor: typeof import('$lib/office/xlsx/chart-anchor')
 }
 /** The spreadsheet code loads when a workbook is used, not with the registry. */
 export async function xlsx(): Promise<Xlsx> {
-  const [opc, editor, ops, read, ref, workbook, formatCells, chartOps, chartAnchor] =
+  const [
+    opc,
+    editor,
+    ops,
+    read,
+    ref,
+    workbook,
+    formatCells,
+    hyperlinks,
+    protection,
+    validation,
+    chartOps,
+    chartAnchor,
+  ] =
     await Promise.all([
       import('$lib/office/ooxml/package'),
       import('$lib/office/xlsx/editor'),
@@ -171,10 +187,26 @@ export async function xlsx(): Promise<Xlsx> {
       import('$lib/office/xlsx/ref'),
       import('$lib/office/xlsx/workbook'),
       import('$lib/office/xlsx/format-cells'),
+      import('$lib/office/xlsx/hyperlinks'),
+      import('$lib/office/xlsx/protection'),
+      import('$lib/office/xlsx/validation'),
       import('$lib/office/xlsx/chart-ops'),
       import('$lib/office/xlsx/chart-anchor'),
     ])
-  return { opc, editor, ops, read, ref, workbook, formatCells, chartOps, chartAnchor }
+  return {
+    opc,
+    editor,
+    ops,
+    read,
+    ref,
+    workbook,
+    formatCells,
+    hyperlinks,
+    protection,
+    validation,
+    chartOps,
+    chartAnchor,
+  }
 }
 
 /** A workbook refusal (no such sheet, a formula that can't be read, losses not accepted) is the caller's to fix. */
@@ -267,7 +299,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
     {
       name: 'drive.sheet_read',
       module: DRIVE_MODULE_ID,
-      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden, the AutoFilter and its filtered columns, frozen panes, charts, and counts of drawings/notes/comments/cell_images when present), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes), and any charts (full details in drive.sheet_chart_list), drawings (pictures, shapes, text boxes), legacy notes, threaded comments, or in-cell images on that sheet. At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
+      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden, protected, the AutoFilter and its filtered columns, frozen panes, charts, and counts of drawings/notes/comments/cell_images when present), whether the workbook's structure is protected, the sheet's data validations (with the filled cells that break them now: invalid_cells) and hyperlinks, and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes), and any charts (full details in drive.sheet_chart_list), drawings (pictures, shapes, text boxes), legacy notes, threaded comments, or in-cell images on that sheet. At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
       auditClass: 'read',
       permission: { roles: DRIVE_ROLES },
       inputSchema: readInput,
@@ -312,6 +344,9 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
           )
           const data = editor.wb.sheet(sheet)
           const ann = lib.read.readSheetAnnotations(editor, data.info.name)
+          const wbProt = lib.protection.workbookProtectionOf(editor.wb)
+          const validations = lib.validation.validationsOf(editor.wb, data.info.name)
+          const hyperlinks = lib.hyperlinks.hyperlinksOf(editor.wb, data.info.name)
           const charts = lib.chartOps.describeCharts(editor.wb, data.info.name)
           const out: Record<string, unknown> = {
             file: { id: file.id, name: file.name },
@@ -324,6 +359,44 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
               data,
               range ? lib.ref.requireRange(range) : null,
             ),
+            ...(wbProt ? { workbook_protected: true } : {}),
+            ...(validations.length > 0
+              ? {
+                  validations: validations.map((v) => ({
+                    sqref: v.sqref,
+                    type: v.type,
+                    operator: v.operator,
+                    formula1: v.formula1,
+                    formula2: v.formula2,
+                    items: v.items,
+                    allow_blank: v.allowBlank,
+                    dropdown: v.dropdown,
+                    error_style: v.errorStyle,
+                    input_title: v.inputTitle,
+                    input_message: v.inputMessage,
+                    error_title: v.errorTitle,
+                    error_message: v.errorMessage,
+                  })),
+                  // Excel's "Circle Invalid Data": filled cells that break their rule now.
+                  invalid_cells: lib.validation.invalidCells(
+                    editor.wb,
+                    editor.calc(),
+                    data.info.name,
+                    SHEET_MAX_CELLS,
+                  ),
+                }
+              : {}),
+            ...(hyperlinks.length > 0
+              ? {
+                  hyperlinks: hyperlinks.map((h) => ({
+                    ref: h.ref,
+                    target: h.target.kind === 'url' ? h.target.url : h.target.location,
+                    kind: h.target.kind,
+                    tooltip: h.tooltip,
+                    display: h.display,
+                  })),
+                }
+              : {}),
             ...(charts.length > 0 ? { charts } : {}),
           }
           if (ann.drawings.length > 0) out.drawings = ann.drawings

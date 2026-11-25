@@ -333,7 +333,7 @@
           role="button"
           tabindex="-1"
           aria-label={o.alt ? `${o.name}: ${o.alt}` : o.name}
-          class="dl-item select-none {sel
+          class="dl-item select-none focus-visible:ring-2 focus-visible:ring-ring {sel
             ? 'ring-2 ring-primary'
             : 'hover:ring-1 hover:ring-primary/50'}"
           style="left: {box.x - dx}px; top: {box.y - dy}px; width: {box.w}px; height: {Math.max(

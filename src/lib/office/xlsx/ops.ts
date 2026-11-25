@@ -5,16 +5,20 @@ import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
 import { needsDynamicArray } from './calc-static'
 import { runChartOp, shiftChartRefs, type ChartOp } from './chart-ops'
+import { runCfOp, type CfOp } from './cond-format'
 import { drawingPartOf, shiftDrawing, sortDrawing } from './drawing'
 import { runDrawingOp, type DrawingOp } from './drawing-ops'
 import { editLosses, runEditOp, type EditOp } from './edit-ops'
 import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
 import { runFormatOp, type FormatOp } from './format-cells'
 import { toFileText, toShownText } from './formula-text'
+import { runHyperlinkOp, type HyperlinkOp } from './hyperlinks'
 import { ensureDynamicArrayCm } from './metadata'
+import { runNameOp, type NameOp } from './names'
 import { runNoteOp, shiftLegacyComments, sortLegacyComments, type NoteOp } from './notes'
 import { freezePanes, type FreezeOp } from './panes'
 import { createPivot, deletePivot, refreshPivot, updatePivot, type PivotOp } from './pivot'
+import { guard, runProtectionOp, type ProtectionOp } from './protection'
 import {
   cellKey,
   cellName,
@@ -54,6 +58,7 @@ import { sortLosses, sortRange, type SortOp } from './sort'
 import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
 import { autoExpandTables, createTable, deleteTable, updateTable, type TableOp } from './tables'
 import { runThreadOp, shiftThreads, sortThreads, type ThreadOp } from './threads'
+import { runValidationOp, type ValidationOp } from './validation'
 import {
   isErrorValue,
   relativeTarget,
@@ -129,6 +134,12 @@ export type SheetOp =
   | DrawingOp
   | NoteOp
   | ThreadOp
+  /** Conditional formats, validation, links, names, protection (./cond-format.ts … ./protection.ts). */
+  | CfOp
+  | ValidationOp
+  | HyperlinkOp
+  | NameOp
+  | ProtectionOp
   /** Excel tables (./tables.ts). */
   | TableOp
   /** Pivot tables (./pivot.ts). */
@@ -462,6 +473,8 @@ function movingLosses(wb: Workbook, info: SheetInfo): Loss[] {
 
 /** What `op` would leave wrong, before it runs (empty: nothing). */
 export function lossesOf(wb: Workbook, op: SheetOp): Loss[] {
+  // A protected sheet or workbook refuses first: nobody is asked about losses of a change that can't run.
+  guard(wb, op)
   switch (op.op) {
     case 'insert_rows':
     case 'delete_rows':
@@ -552,6 +565,8 @@ export function applyOp(
 }
 
 function run(wb: Workbook, op: SheetOp): OpResult {
+  // Protected sheets and a protected workbook structure refuse what they don't allow.
+  guard(wb, op)
   switch (op.op) {
     case 'set_cells':
       return setCells(wb, op.sheet, op.cells)
@@ -590,6 +605,29 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'resolve_comment':
     case 'delete_comment':
       return annotate(wb, op)
+    case 'cf_add':
+    case 'cf_update':
+    case 'cf_delete':
+    case 'cf_clear':
+    case 'cf_move':
+      return { sheets: runCfOp(wb, op) }
+    case 'validation_set':
+    case 'validation_clear':
+      return { sheets: runValidationOp(wb, op) }
+    case 'hyperlink_set':
+    case 'hyperlink_remove':
+      return { sheets: runHyperlinkOp(wb, op) }
+    case 'name_add':
+    case 'name_update':
+    case 'name_delete':
+      runNameOp(wb, op)
+      return { sheets: wb.sheets().filter((s) => s.kind === 'worksheet').map((s) => s.name) }
+    case 'protect_sheet':
+    case 'unprotect_sheet':
+    case 'protect_workbook':
+    case 'unprotect_workbook':
+    case 'set_cell_protection':
+      return { sheets: runProtectionOp(wb, op) }
     case 'create_table':
       return { sheets: createTable(wb, op).sheets }
     case 'update_table': {

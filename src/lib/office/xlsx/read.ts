@@ -16,6 +16,7 @@ import { readNotes } from './notes'
 import { toShownFormula } from './ops'
 import { frozenOf } from './panes'
 import { pivotSummary, readSheetPivots } from './pivot'
+import { sheetProtectionOf } from './protection'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
 import { readSheetTables, tableSummary } from './tables'
 import { readThreads } from './threads'
@@ -44,6 +45,8 @@ export type SheetSummary = {
   filter?: ReturnType<typeof describeAutoFilter>
   /** Frozen panes (rows from the top, columns from the left), when it has them. */
   frozen?: { rows: number; columns: number }
+  /** Whether the sheet is protected. */
+  protected?: true
   /** Excel tables on this sheet, when it has any. */
   tables?: Array<ReturnType<typeof tableSummary>>
   /** Pivot tables on this sheet, when it has any. */
@@ -144,6 +147,7 @@ export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
     if (comments > 0) out.comments = comments
     const cellImages = readCellImages(ed.wb, s).length
     if (cellImages > 0) out.cell_images = cellImages
+    if (sheetProtectionOf(ed.wb, s.name)) out.protected = true
     const tables = readSheetTables(ed.wb, s.name)
     if (tables.length > 0) out.tables = tables.map(tableSummary)
     const pivots = readSheetPivots(ed.wb, s.name)

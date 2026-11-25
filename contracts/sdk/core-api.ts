@@ -2017,6 +2017,92 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_conditional_format_delete": {
+    input: {
+      "file_id": string
+      "priority"?: number
+      "range"?: string | null
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_conditional_format_list": {
+    input: {
+      "file_id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_conditional_format_set": {
+    input: {
+      "file_id": string
+      "move_to"?: number
+      "priority"?: number
+      "range"?: string
+      "rule"?: {
+        "bar"?: {
+          "axis"?: "automatic" | "middle" | "none"
+          "border"?: boolean
+          "color": string
+          "gradient"?: boolean
+          "max"?: {
+            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+            "value"?: string | null
+          }
+          "min"?: {
+            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+            "value"?: string | null
+          }
+          "negative_color"?: string
+          "show_value"?: boolean
+        }
+        "below"?: boolean
+        "bottom"?: boolean
+        "equal_average"?: boolean
+        "formula1"?: string
+        "formula2"?: string
+        "icons"?: {
+          "custom"?: Array<{
+            "index": number
+            "set": "3Arrows" | "3ArrowsGray" | "3Flags" | "3TrafficLights1" | "3TrafficLights2" | "3Signs" | "3Symbols" | "3Symbols2" | "3Stars" | "3Triangles" | "4Arrows" | "4ArrowsGray" | "4RedToBlack" | "4Rating" | "4TrafficLights" | "5Arrows" | "5ArrowsGray" | "5Rating" | "5Quarters" | "5Boxes" | "NoIcons"
+          }>
+          "reverse"?: boolean
+          "set": "3Arrows" | "3ArrowsGray" | "3Flags" | "3TrafficLights1" | "3TrafficLights2" | "3Signs" | "3Symbols" | "3Symbols2" | "3Stars" | "3Triangles" | "4Arrows" | "4ArrowsGray" | "4RedToBlack" | "4Rating" | "4TrafficLights" | "5Arrows" | "5ArrowsGray" | "5Rating" | "5Quarters" | "5Boxes"
+          "show_value"?: boolean
+          "thresholds"?: Array<{
+            "gte"?: boolean
+            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+            "value": string
+          }>
+        }
+        "operator"?: "between" | "notBetween" | "equal" | "notEqual" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual"
+        "percent"?: boolean
+        "period"?: "today" | "yesterday" | "tomorrow" | "last7Days" | "thisWeek" | "lastWeek" | "nextWeek" | "thisMonth" | "lastMonth" | "nextMonth"
+        "points"?: Array<{
+          "color": string
+          "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+          "value"?: string | null
+        }>
+        "rank"?: number
+        "std_dev"?: number
+        "stop_if_true"?: boolean
+        "style"?: {
+          "bold"?: boolean
+          "border"?: string
+          "fill"?: string
+          "font_color"?: string
+          "italic"?: boolean
+          "num_fmt"?: string
+          "strike"?: boolean
+          "underline"?: boolean
+        }
+        "text"?: string
+        "type": "cellIs" | "expression" | "colorScale" | "dataBar" | "iconSet" | "top10" | "aboveAverage" | "duplicateValues" | "uniqueValues" | "containsText" | "notContainsText" | "beginsWith" | "endsWith" | "containsBlanks" | "notContainsBlanks" | "containsErrors" | "notContainsErrors" | "timePeriod"
+      }
+      "sheet": string
+    }
+    output: unknown
+  }
   "drive.sheet_copy_range": {
     input: {
       "cut"?: boolean
@@ -2136,6 +2222,25 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_hyperlink_remove": {
+    input: {
+      "file_id": string
+      "range": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_hyperlink_set": {
+    input: {
+      "file_id": string
+      "range": string
+      "sheet": string
+      "target": string
+      "text"?: string | null
+      "tooltip"?: string | null
+    }
+    output: unknown
+  }
   "drive.sheet_merge": {
     input: {
       "accept_losses"?: boolean
@@ -2158,6 +2263,31 @@ export type CoreApiTools = {
       }
       "sheet": string
       "shift_decimals"?: 1 | -1
+    }
+    output: unknown
+  }
+  "drive.sheet_names_delete": {
+    input: {
+      "file_id": string
+      "name": string
+      "scope"?: string | null
+    }
+    output: unknown
+  }
+  "drive.sheet_names_list": {
+    input: {
+      "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_names_set": {
+    input: {
+      "comment"?: string | null
+      "file_id": string
+      "name": string
+      "new_name"?: string
+      "refers_to"?: string
+      "scope"?: string | null
     }
     output: unknown
   }
@@ -2268,6 +2398,35 @@ export type CoreApiTools = {
         "name"?: string
         "num_fmt"?: string
       }>
+    }
+    output: unknown
+  }
+  "drive.sheet_protect": {
+    input: {
+      "action": "protect_sheet" | "unprotect_sheet" | "protect_workbook" | "unprotect_workbook" | "set_cell_protection"
+      "allow"?: {
+        "auto_filter"?: boolean
+        "delete_columns"?: boolean
+        "delete_rows"?: boolean
+        "format_cells"?: boolean
+        "format_columns"?: boolean
+        "format_rows"?: boolean
+        "insert_columns"?: boolean
+        "insert_hyperlinks"?: boolean
+        "insert_rows"?: boolean
+        "objects"?: boolean
+        "pivot_tables"?: boolean
+        "scenarios"?: boolean
+        "select_locked_cells"?: boolean
+        "select_unlocked_cells"?: boolean
+        "sort"?: boolean
+      }
+      "file_id": string
+      "hidden"?: boolean
+      "locked"?: boolean
+      "password"?: string | null
+      "range"?: string
+      "sheet"?: string
     }
     output: unknown
   }
@@ -2513,6 +2672,36 @@ export type CoreApiTools = {
         "label"?: string
       }>
       "totals_row"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_validation_clear": {
+    input: {
+      "file_id": string
+      "range": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_validation_set": {
+    input: {
+      "allow_blank"?: boolean
+      "dropdown"?: boolean
+      "error_message"?: string | null
+      "error_style"?: "stop" | "warning" | "information"
+      "error_title"?: string | null
+      "file_id": string
+      "formula1"?: string
+      "formula2"?: string
+      "input_message"?: string | null
+      "input_title"?: string | null
+      "items"?: Array<string>
+      "operator"?: "between" | "notBetween" | "equal" | "notEqual" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual"
+      "range": string
+      "sheet": string
+      "show_error"?: boolean
+      "show_input"?: boolean
+      "type": "any" | "whole" | "decimal" | "list" | "date" | "time" | "textLength" | "custom"
     }
     output: unknown
   }
@@ -5025,6 +5214,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.sheet_comment_list",
   "drive.sheet_comment_reply",
   "drive.sheet_comment_resolve",
+  "drive.sheet_conditional_format_delete",
+  "drive.sheet_conditional_format_list",
+  "drive.sheet_conditional_format_set",
   "drive.sheet_copy_range",
   "drive.sheet_export_pdf",
   "drive.sheet_fill",
@@ -5032,7 +5224,12 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.sheet_find_replace",
   "drive.sheet_format",
   "drive.sheet_freeze",
+  "drive.sheet_hyperlink_remove",
+  "drive.sheet_hyperlink_set",
   "drive.sheet_merge",
+  "drive.sheet_names_delete",
+  "drive.sheet_names_list",
+  "drive.sheet_names_set",
   "drive.sheet_picture_delete",
   "drive.sheet_picture_insert",
   "drive.sheet_picture_update",
@@ -5040,6 +5237,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.sheet_pivot_delete",
   "drive.sheet_pivot_refresh",
   "drive.sheet_pivot_update",
+  "drive.sheet_protect",
   "drive.sheet_read",
   "drive.sheet_rows_cols",
   "drive.sheet_shape_create",
@@ -5051,6 +5249,8 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.sheet_table_create",
   "drive.sheet_table_delete",
   "drive.sheet_table_update",
+  "drive.sheet_validation_clear",
+  "drive.sheet_validation_set",
   "drive.sheet_write",
   "drive.suggest_archive",
   "drive.trash",

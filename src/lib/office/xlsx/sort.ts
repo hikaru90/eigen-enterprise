@@ -15,6 +15,7 @@ import {
   requireRange,
   type Range,
 } from './ref'
+import { moveRulesWithSort } from './rule-sort'
 import { dropEmptyRow, ensureRow, sheetDataOf, unshareFormulas } from './sheet-xml'
 import { clearTableSortStates, readSheetTables, setTableSortState, type ExcelTable } from './tables'
 import { isErrorValue, XlsxError, type CellValue, type SheetInfo, type Workbook } from './workbook'
@@ -254,6 +255,7 @@ export function sortRange(
   }
   for (const rowEl of touched) if (rowEl.parentNode) dropEmptyRow(rowEl)
   moveHyperlinks(doc, body, dest)
+  moveRulesWithSort(doc, body, dest)
   dropSortStates(doc, body)
   clearTableSortStates(wb, info, body)
   if (table) setTableSortState(wb, table, body, op.keys)

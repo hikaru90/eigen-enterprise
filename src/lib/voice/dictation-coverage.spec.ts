@@ -30,6 +30,12 @@ const NO_DICTATION: Record<string, string> = {
   'src/lib/components/provider-onboarding.svelte': 'model ids and routing rules; runs before any speech-to-text exists',
   'src/lib/components/welcome-wizard.svelte': 'first-run identity and mail keys, before an AI provider (and so speech-to-text) is set up',
   'src/lib/office/pdf/pdf-viewer.svelte': 'page number and find-in-document',
+  'src/lib/office/xlsx/cond-format-panel.svelte': 'rule values, formulas and cell ranges',
+  'src/lib/office/xlsx/find-dialog.svelte': 'find-in-workbook and replacement text (search-as-filter)',
+  'src/lib/office/xlsx/name-manager-dialog.svelte': 'defined names and the formulas they refer to',
+  'src/lib/office/xlsx/page-setup-dialog.svelte': 'print area and repeat-row ranges, scale numbers',
+  'src/lib/office/xlsx/table-bar.svelte': 'a table name and its cell range',
+  'src/lib/office/xlsx/table-dialog.svelte': 'a cell range',
   'src/lib/office/xlsx/drawing-overlay.svelte':
     'inline editing of a shape’s text in place that saves on blur: tapping a mic would end the edit (the comment panel takes dictation)',
   'src/lib/office/xlsx/sheet-grid.svelte': 'spreadsheet cells and formulas in a grid',

@@ -10,6 +10,7 @@
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { m } from '$lib/paraglide/messages.js'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import { themeOf } from './chart-color'
   import { CHART_KINDS, readChart } from './chart-read'
   import { hasAxes } from './chart-write'
@@ -327,6 +328,7 @@
   }
 
   const field = 'h-8 min-w-0 rounded-md border border-input bg-background px-2 text-sm'
+  let titleEl = $state<HTMLInputElement | null>(null)
 </script>
 
 <Dialog.Root
@@ -390,7 +392,9 @@
       <div class="grid grid-cols-2 gap-3">
         <label class="flex flex-col gap-1 text-xs text-muted-foreground">
           <span>{m.drive_sheet_chart_title()}</span>
-          <input type="text" class={field} bind:value={title} data-testid="xlsx-chart-title" />
+          <DictationField field={titleEl} kind="input" testid="xlsx-chart-title-voice">
+            <input bind:this={titleEl} type="text" class={field} bind:value={title} data-testid="xlsx-chart-title" />
+          </DictationField>
         </label>
         <label class="flex flex-col gap-1 text-xs text-muted-foreground">
           <span>{m.drive_sheet_chart_legend()}</span>

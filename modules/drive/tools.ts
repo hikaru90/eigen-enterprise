@@ -23,6 +23,7 @@ import { createDriveSheetDrawingTools } from './sheet-drawing-tools'
 import { createDriveSheetEditingTools } from './sheet-editing-tools'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { createDriveSheetPivotTableTools } from './sheet-pivot-table-tools'
+import { createDriveSheetRulesTools } from './sheet-rules-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -336,5 +337,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       service,
       ...(opts.pdfDeps ? { pdfDeps: opts.pdfDeps } : {}),
     }),
+    ...createDriveSheetRulesTools({ service }),
   ]
 }

@@ -5,6 +5,7 @@ import { needsDynamicArray } from './calc-static'
 import { moveFormula, writePlacements, type Placement } from './clip'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
 import { richCells, type RichRun } from './rich-text'
+import { carryRules } from './rule-copy'
 import { XlsxError, type CellData, type CellValue, type SheetData, type Workbook } from './workbook'
 
 /**
@@ -492,6 +493,38 @@ export function runFill(wb: Workbook, op: FillOp): OpResult {
   }
   if (placements.length === 0) return { sheets: [] }
   writePlacements(wb, info, placements)
+  // The filled cells take the source block's conditional formats and validations, repeated (Excel's fill copies formats).
+  const h = source.bottom - source.top + 1
+  const w = source.right - source.left + 1
+  const ext: Range =
+    dir === 'down'
+      ? { ...target, top: source.bottom + 1 }
+      : dir === 'up'
+        ? { ...target, bottom: source.top - 1 }
+        : dir === 'right'
+          ? { ...target, left: source.right + 1 }
+          : { ...target, right: source.left - 1 }
+  const tiles: Array<{ row: number; col: number }> = []
+  for (let k = 1; k * (vertical ? h : w) <= count + (vertical ? h : w) - 1; k++)
+    tiles.push(
+      dir === 'down'
+        ? { row: source.top + k * h, col: source.left }
+        : dir === 'up'
+          ? { row: source.top - k * h, col: source.left }
+          : dir === 'right'
+            ? { row: source.top, col: source.left + k * w }
+            : { row: source.top, col: source.left - k * w },
+    )
+  carryRules(wb, {
+    srcSheet: info.name,
+    src: source,
+    dstSheet: info.name,
+    tiles,
+    area: ext,
+    cf: true,
+    dv: true,
+    cut: false,
+  })
   return { sheets: [info.name] }
 }
 

@@ -64,7 +64,7 @@
           >
             <div class="flex items-baseline justify-between gap-2 font-mono">
               <span class="font-semibold">{fn.name}</span>
-              <span class="truncate text-[11px] text-muted-foreground">{signatureText(fn)}</span>
+              <span class="truncate text-xs text-muted-foreground">{signatureText(fn)}</span>
             </div>
           </li>
         {/each}
