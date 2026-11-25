@@ -105,7 +105,8 @@ export function nonChartAnchors(drawing: XMLDocument): number {
   return anchorsOf(drawing).filter((a) => !chartFrameOf(a)).length
 }
 
-export const chartIdOf = (part: string) => part.slice(part.lastIndexOf('/') + 1).replace(/\.xml$/i, '')
+export const chartIdOf = (part: string) =>
+  part.slice(part.lastIndexOf('/') + 1).replace(/\.xml$/i, '')
 
 /** Every chart on a sheet (worksheet or chart sheet), in drawing order. */
 export function chartsOn(wb: Workbook, info: SheetInfo): ChartPlacement[] {
@@ -138,7 +139,12 @@ export function allCharts(wb: Workbook): ChartPlacement[] {
 }
 
 /** The anchor element of a chart (by its chart part) in its drawing. */
-export function anchorElementOf(wb: Workbook, drawingDoc: XMLDocument, drawing: string, part: string): Element | null {
+export function anchorElementOf(
+  wb: Workbook,
+  drawingDoc: XMLDocument,
+  drawing: string,
+  part: string,
+): Element | null {
   const rels = wb.pkg.relationships(drawing)
   for (const a of anchorsOf(drawingDoc)) {
     const f = chartFrameOf(a)
@@ -163,7 +169,11 @@ function setMarker(el: Element, m: Marker) {
 }
 
 /** Writes a new position into an anchor element (its kind stays; a one-cell anchor gets its size from `to`). */
-export function writeAnchor(el: Element, next: { from: Marker; to: Marker } | ChartAnchor, size?: { cx: number; cy: number }) {
+export function writeAnchor(
+  el: Element,
+  next: { from: Marker; to: Marker } | ChartAnchor,
+  size?: { cx: number; cy: number; x?: number; y?: number },
+) {
   const from = 'from' in next ? next.from : null
   if (el.localName === 'twoCellAnchor' && 'to' in next) {
     setMarker(xk(el, 'from')!, next.from)
@@ -172,6 +182,17 @@ export function writeAnchor(el: Element, next: { from: Marker; to: Marker } | Ch
     setMarker(xk(el, 'from')!, from)
     const ext = xk(el, 'ext')
     if (ext && size) {
+      ext.setAttribute('cx', String(Math.round(size.cx)))
+      ext.setAttribute('cy', String(Math.round(size.cy)))
+    }
+  } else if (el.localName === 'absoluteAnchor' && size) {
+    const pos = xk(el, 'pos')
+    if (pos && size.x !== undefined && size.y !== undefined) {
+      pos.setAttribute('x', String(Math.round(size.x)))
+      pos.setAttribute('y', String(Math.round(size.y)))
+    }
+    const ext = xk(el, 'ext')
+    if (ext) {
       ext.setAttribute('cx', String(Math.round(size.cx)))
       ext.setAttribute('cy', String(Math.round(size.cy)))
     }

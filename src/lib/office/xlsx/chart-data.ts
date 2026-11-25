@@ -1,7 +1,7 @@
-import { parseA1Ref, tokenize } from '@borgar/fx/xlsx'
 import type { Calc } from './calc'
-import { autoColor, type Theme } from './chart-color'
 import type { ChartModel, DataSource, PlotModel, SeriesModel } from './chart-read'
+import { parseA1Ref, tokenize } from '@borgar/fx/xlsx'
+import { autoColor, type Theme } from './chart-color'
 import { displayValue, formatCode, type SheetLocale } from './format'
 import { cellKey, type Range } from './ref'
 import { isErrorValue, type CellValue, type Workbook } from './workbook'
@@ -41,7 +41,8 @@ export function resolveRef(wb: Workbook, formula: string, depth = 0): CellsRef |
         .definedNames()
         .find((n) => n.localSheet === null && n.name.toLowerCase() === r.name!.toLowerCase())
       const inner = def ? resolveRef(wb, def.formula, depth + 1) : null
-      if (!inner || (sheet !== null && inner.sheet.toLowerCase() !== sheet.toLowerCase())) return null
+      if (!inner || (sheet !== null && inner.sheet.toLowerCase() !== sheet.toLowerCase()))
+        return null
       sheet = inner.sheet
       ranges.push(...inner.ranges)
       continue
@@ -59,7 +60,10 @@ export function resolveRef(wb: Workbook, formula: string, depth = 0): CellsRef |
 }
 
 /** The cells of a reference in order (each range row by row), with whether Excel would hide them. */
-function cellsOf(wb: Workbook, ref: CellsRef): Array<{ row: number; col: number; hidden: boolean }> {
+function cellsOf(
+  wb: Workbook,
+  ref: CellsRef,
+): Array<{ row: number; col: number; hidden: boolean }> {
   const data = wb.sheet(ref.sheet)
   const colHidden = (c: number) => data.cols.some((x) => c >= x.min && c <= x.max && x.hidden)
   const out: Array<{ row: number; col: number; hidden: boolean }> = []
@@ -188,7 +192,10 @@ function seriesData(
     } else nameCached = true
   }
   if (!name) name = `Series${s.idx + 1}`
-  const color = s.color ?? (s.lineColor && s.lineColor !== 'none' ? s.lineColor : null) ?? autoColor(s.idx, theme)
+  const color =
+    s.color ??
+    (s.lineColor && s.lineColor !== 'none' ? s.lineColor : null) ??
+    autoColor(s.idx, theme)
   const pointColors = Array.from(
     { length: n },
     (_, i) => s.points.get(i) ?? (plot.varyColors ? autoColor(i, theme) : color),

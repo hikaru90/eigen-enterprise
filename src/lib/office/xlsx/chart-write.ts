@@ -43,40 +43,291 @@ export type FilledSeries = SeriesDef & {
 
 /** The schema sequences (§21.2.2) of the elements this writer adds children to. */
 export const CHART_ORDER: Record<string, readonly string[]> = {
-  chartSpace: ['date1904', 'lang', 'roundedCorners', 'AlternateContent', 'style', 'clrMapOvr', 'pivotSource', 'protection', 'chart', 'spPr', 'txPr', 'externalData', 'printSettings', 'userShapes', 'extLst'],
-  chart: ['title', 'autoTitleDeleted', 'pivotFmts', 'view3D', 'floor', 'sideWall', 'backWall', 'plotArea', 'legend', 'plotVisOnly', 'dispBlanksAs', 'showDLblsOverMax', 'extLst'],
+  chartSpace: [
+    'date1904',
+    'lang',
+    'roundedCorners',
+    'AlternateContent',
+    'style',
+    'clrMapOvr',
+    'pivotSource',
+    'protection',
+    'chart',
+    'spPr',
+    'txPr',
+    'externalData',
+    'printSettings',
+    'userShapes',
+    'extLst',
+  ],
+  chart: [
+    'title',
+    'autoTitleDeleted',
+    'pivotFmts',
+    'view3D',
+    'floor',
+    'sideWall',
+    'backWall',
+    'plotArea',
+    'legend',
+    'plotVisOnly',
+    'dispBlanksAs',
+    'showDLblsOverMax',
+    'extLst',
+  ],
   title: ['tx', 'layout', 'overlay', 'spPr', 'txPr', 'extLst'],
   legend: ['legendPos', 'legendEntry', 'layout', 'overlay', 'spPr', 'txPr', 'extLst'],
   /** CT_PlotArea: the chart groups are one choice (any order, the primary first), the axes another. */
   plotArea: ['layout', 'GROUP', 'AXIS', 'dTable', 'spPr', 'extLst'],
-  catAx: ['axId', 'scaling', 'delete', 'axPos', 'majorGridlines', 'minorGridlines', 'title', 'numFmt', 'majorTickMark', 'minorTickMark', 'tickLblPos', 'spPr', 'txPr', 'crossAx', 'crosses', 'crossesAt', 'auto', 'lblAlgn', 'lblOffset', 'tickLblSkip', 'tickMarkSkip', 'noMultiLvlLbl', 'extLst'],
-  dateAx: ['axId', 'scaling', 'delete', 'axPos', 'majorGridlines', 'minorGridlines', 'title', 'numFmt', 'majorTickMark', 'minorTickMark', 'tickLblPos', 'spPr', 'txPr', 'crossAx', 'crosses', 'crossesAt', 'auto', 'lblOffset', 'baseTimeUnit', 'majorUnit', 'majorTimeUnit', 'minorUnit', 'minorTimeUnit', 'extLst'],
-  valAx: ['axId', 'scaling', 'delete', 'axPos', 'majorGridlines', 'minorGridlines', 'title', 'numFmt', 'majorTickMark', 'minorTickMark', 'tickLblPos', 'spPr', 'txPr', 'crossAx', 'crosses', 'crossesAt', 'crossBetween', 'majorUnit', 'minorUnit', 'dispUnits', 'extLst'],
+  catAx: [
+    'axId',
+    'scaling',
+    'delete',
+    'axPos',
+    'majorGridlines',
+    'minorGridlines',
+    'title',
+    'numFmt',
+    'majorTickMark',
+    'minorTickMark',
+    'tickLblPos',
+    'spPr',
+    'txPr',
+    'crossAx',
+    'crosses',
+    'crossesAt',
+    'auto',
+    'lblAlgn',
+    'lblOffset',
+    'tickLblSkip',
+    'tickMarkSkip',
+    'noMultiLvlLbl',
+    'extLst',
+  ],
+  dateAx: [
+    'axId',
+    'scaling',
+    'delete',
+    'axPos',
+    'majorGridlines',
+    'minorGridlines',
+    'title',
+    'numFmt',
+    'majorTickMark',
+    'minorTickMark',
+    'tickLblPos',
+    'spPr',
+    'txPr',
+    'crossAx',
+    'crosses',
+    'crossesAt',
+    'auto',
+    'lblOffset',
+    'baseTimeUnit',
+    'majorUnit',
+    'majorTimeUnit',
+    'minorUnit',
+    'minorTimeUnit',
+    'extLst',
+  ],
+  valAx: [
+    'axId',
+    'scaling',
+    'delete',
+    'axPos',
+    'majorGridlines',
+    'minorGridlines',
+    'title',
+    'numFmt',
+    'majorTickMark',
+    'minorTickMark',
+    'tickLblPos',
+    'spPr',
+    'txPr',
+    'crossAx',
+    'crosses',
+    'crossesAt',
+    'crossBetween',
+    'majorUnit',
+    'minorUnit',
+    'dispUnits',
+    'extLst',
+  ],
   scaling: ['logBase', 'orientation', 'max', 'min', 'extLst'],
-  dLbls: ['dLbl', 'delete', 'numFmt', 'spPr', 'txPr', 'dLblPos', 'showLegendKey', 'showVal', 'showCatName', 'showSerName', 'showPercent', 'showBubbleSize', 'separator', 'showLeaderLines', 'leaderLines', 'extLst'],
-  barChart: ['barDir', 'grouping', 'varyColors', 'ser', 'dLbls', 'gapWidth', 'overlap', 'serLines', 'axId', 'extLst'],
-  bar3DChart: ['barDir', 'grouping', 'varyColors', 'ser', 'dLbls', 'gapWidth', 'gapDepth', 'shape', 'axId', 'extLst'],
-  lineChart: ['grouping', 'varyColors', 'ser', 'dLbls', 'dropLines', 'hiLowLines', 'upDownBars', 'marker', 'smooth', 'axId', 'extLst'],
-  line3DChart: ['grouping', 'varyColors', 'ser', 'dLbls', 'dropLines', 'gapDepth', 'axId', 'extLst'],
+  dLbls: [
+    'dLbl',
+    'delete',
+    'numFmt',
+    'spPr',
+    'txPr',
+    'dLblPos',
+    'showLegendKey',
+    'showVal',
+    'showCatName',
+    'showSerName',
+    'showPercent',
+    'showBubbleSize',
+    'separator',
+    'showLeaderLines',
+    'leaderLines',
+    'extLst',
+  ],
+  barChart: [
+    'barDir',
+    'grouping',
+    'varyColors',
+    'ser',
+    'dLbls',
+    'gapWidth',
+    'overlap',
+    'serLines',
+    'axId',
+    'extLst',
+  ],
+  bar3DChart: [
+    'barDir',
+    'grouping',
+    'varyColors',
+    'ser',
+    'dLbls',
+    'gapWidth',
+    'gapDepth',
+    'shape',
+    'axId',
+    'extLst',
+  ],
+  lineChart: [
+    'grouping',
+    'varyColors',
+    'ser',
+    'dLbls',
+    'dropLines',
+    'hiLowLines',
+    'upDownBars',
+    'marker',
+    'smooth',
+    'axId',
+    'extLst',
+  ],
+  line3DChart: [
+    'grouping',
+    'varyColors',
+    'ser',
+    'dLbls',
+    'dropLines',
+    'gapDepth',
+    'axId',
+    'extLst',
+  ],
   areaChart: ['grouping', 'varyColors', 'ser', 'dLbls', 'dropLines', 'axId', 'extLst'],
-  area3DChart: ['grouping', 'varyColors', 'ser', 'dLbls', 'dropLines', 'gapDepth', 'axId', 'extLst'],
+  area3DChart: [
+    'grouping',
+    'varyColors',
+    'ser',
+    'dLbls',
+    'dropLines',
+    'gapDepth',
+    'axId',
+    'extLst',
+  ],
   pieChart: ['varyColors', 'ser', 'dLbls', 'firstSliceAng', 'extLst'],
   pie3DChart: ['varyColors', 'ser', 'dLbls', 'extLst'],
   doughnutChart: ['varyColors', 'ser', 'dLbls', 'firstSliceAng', 'holeSize', 'extLst'],
   scatterChart: ['scatterStyle', 'varyColors', 'ser', 'dLbls', 'axId', 'extLst'],
-  bubbleChart: ['varyColors', 'ser', 'dLbls', 'bubble3D', 'bubbleScale', 'showNegBubbles', 'sizeRepresents', 'axId', 'extLst'],
+  bubbleChart: [
+    'varyColors',
+    'ser',
+    'dLbls',
+    'bubble3D',
+    'bubbleScale',
+    'showNegBubbles',
+    'sizeRepresents',
+    'axId',
+    'extLst',
+  ],
   radarChart: ['radarStyle', 'varyColors', 'ser', 'dLbls', 'axId', 'extLst'],
   stockChart: ['ser', 'dLbls', 'dropLines', 'hiLowLines', 'upDownBars', 'axId', 'extLst'],
 }
 
 /** The sequences of each group's `c:ser` (CT_BarSer, CT_LineSer …). */
 export const SER_ORDER: Record<string, readonly string[]> = {
-  bar: ['idx', 'order', 'tx', 'spPr', 'invertIfNegative', 'pictureOptions', 'dPt', 'dLbls', 'trendline', 'errBars', 'cat', 'val', 'shape', 'extLst'],
-  line: ['idx', 'order', 'tx', 'spPr', 'marker', 'dPt', 'dLbls', 'trendline', 'errBars', 'cat', 'val', 'smooth', 'extLst'],
-  area: ['idx', 'order', 'tx', 'spPr', 'pictureOptions', 'dPt', 'dLbls', 'trendline', 'errBars', 'cat', 'val', 'extLst'],
+  bar: [
+    'idx',
+    'order',
+    'tx',
+    'spPr',
+    'invertIfNegative',
+    'pictureOptions',
+    'dPt',
+    'dLbls',
+    'trendline',
+    'errBars',
+    'cat',
+    'val',
+    'shape',
+    'extLst',
+  ],
+  line: [
+    'idx',
+    'order',
+    'tx',
+    'spPr',
+    'marker',
+    'dPt',
+    'dLbls',
+    'trendline',
+    'errBars',
+    'cat',
+    'val',
+    'smooth',
+    'extLst',
+  ],
+  area: [
+    'idx',
+    'order',
+    'tx',
+    'spPr',
+    'pictureOptions',
+    'dPt',
+    'dLbls',
+    'trendline',
+    'errBars',
+    'cat',
+    'val',
+    'extLst',
+  ],
   pie: ['idx', 'order', 'tx', 'spPr', 'explosion', 'dPt', 'dLbls', 'cat', 'val', 'extLst'],
-  scatter: ['idx', 'order', 'tx', 'spPr', 'marker', 'dPt', 'dLbls', 'trendline', 'errBars', 'xVal', 'yVal', 'smooth', 'extLst'],
-  bubble: ['idx', 'order', 'tx', 'spPr', 'invertIfNegative', 'dPt', 'dLbls', 'trendline', 'errBars', 'xVal', 'yVal', 'bubbleSize', 'bubble3D', 'extLst'],
+  scatter: [
+    'idx',
+    'order',
+    'tx',
+    'spPr',
+    'marker',
+    'dPt',
+    'dLbls',
+    'trendline',
+    'errBars',
+    'xVal',
+    'yVal',
+    'smooth',
+    'extLst',
+  ],
+  bubble: [
+    'idx',
+    'order',
+    'tx',
+    'spPr',
+    'invertIfNegative',
+    'dPt',
+    'dLbls',
+    'trendline',
+    'errBars',
+    'xVal',
+    'yVal',
+    'bubbleSize',
+    'bubble3D',
+    'extLst',
+  ],
   radar: ['idx', 'order', 'tx', 'spPr', 'marker', 'dPt', 'dLbls', 'cat', 'val', 'extLst'],
 }
 
@@ -131,7 +382,11 @@ export const hasAxes = (k: ChartKind) => k !== 'pie' && k !== 'doughnut'
 const scatterLike = (k: ChartKind) => k === 'scatter' || k === 'bubble'
 
 export function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 const v = (name: string, val: string | number) => `<c:${name} val="${esc(String(val))}"/>`
@@ -148,14 +403,19 @@ function strCache(points: Array<number | string | null>) {
     .join('')}</c:strCache>`
 }
 
-const numRef = (f: string, cache: Array<number | null>) => `<c:numRef><c:f>${esc(f)}</c:f>${numCache(cache)}</c:numRef>`
-const strRef = (f: string, cache: Array<number | string | null>) => `<c:strRef><c:f>${esc(f)}</c:f>${strCache(cache)}</c:strRef>`
+const numRef = (f: string, cache: Array<number | null>) =>
+  `<c:numRef><c:f>${esc(f)}</c:f>${numCache(cache)}</c:numRef>`
+const strRef = (f: string, cache: Array<number | string | null>) =>
+  `<c:strRef><c:f>${esc(f)}</c:f>${strCache(cache)}</c:strRef>`
 
 /** A rich-text body with one paragraph per line (titles). */
 export function richXml(text: string, vertical = false): string {
   const paras = text
     .split('\n')
-    .map((line) => `<a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:rPr lang="en-US"/><a:t>${esc(line)}</a:t></a:r></a:p>`)
+    .map(
+      (line) =>
+        `<a:p><a:pPr><a:defRPr/></a:pPr><a:r><a:rPr lang="en-US"/><a:t>${esc(line)}</a:t></a:r></a:p>`,
+    )
     .join('')
   return `<c:rich><a:bodyPr${vertical ? ' rot="-5400000" vert="horz"' : ''}/><a:lstStyle/>${paras}</c:rich>`
 }
@@ -167,7 +427,12 @@ const titleXml = (text: string, vertical = false) =>
 function accentXml(i: number): string {
   const n = (i % 6) + 1
   const cycle = Math.floor(i / 6) % 4
-  const mods = ['', '<a:lumMod val="60000"/>', '<a:lumMod val="80000"/><a:lumOff val="20000"/>', '<a:lumMod val="80000"/>'][cycle]
+  const mods = [
+    '',
+    '<a:lumMod val="60000"/>',
+    '<a:lumMod val="80000"/><a:lumOff val="20000"/>',
+    '<a:lumMod val="80000"/>',
+  ][cycle]
   return `<a:schemeClr val="accent${n}">${mods}</a:schemeClr>`
 }
 
@@ -193,7 +458,10 @@ export function serXml(kind: ChartKind, s: FilledSeries, order: number): string 
         : ''
   const cat = s.categories
     ? s.catNumeric
-      ? numRef(s.categories, (s.catCache ?? []).map((x) => (typeof x === 'number' ? x : null)))
+      ? numRef(
+          s.categories,
+          (s.catCache ?? []).map((x) => (typeof x === 'number' ? x : null)),
+        )
       : strRef(s.categories, s.catCache ?? [])
     : ''
   const val = numRef(s.values, s.valCache)
@@ -214,14 +482,22 @@ export function serXml(kind: ChartKind, s: FilledSeries, order: number): string 
     case 'scatter':
       return `<c:ser>${head}<c:marker>${v('symbol', 'circle')}${v('size', 5)}</c:marker>${cat ? `<c:xVal>${cat}</c:xVal>` : ''}<c:yVal>${val}</c:yVal>${v('smooth', 0)}</c:ser>`
     case 'bubble': {
-      const size = s.sizes ? `<c:bubbleSize>${numRef(s.sizes, s.sizeCache ?? [])}</c:bubbleSize>` : `<c:bubbleSize>${numRef(s.values, s.valCache)}</c:bubbleSize>`
+      const size = s.sizes
+        ? `<c:bubbleSize>${numRef(s.sizes, s.sizeCache ?? [])}</c:bubbleSize>`
+        : `<c:bubbleSize>${numRef(s.values, s.valCache)}</c:bubbleSize>`
       return `<c:ser>${head}${v('invertIfNegative', 0)}${cat ? `<c:xVal>${cat}</c:xVal>` : ''}<c:yVal>${val}</c:yVal>${size}${v('bubble3D', 0)}</c:ser>`
     }
   }
 }
 
 /** A chart group element with its series and axis ids. */
-export function groupXml(kind: ChartKind, grouping: Grouping | undefined, series: FilledSeries[], axIds: [number, number] | null, startOrder: number): string {
+export function groupXml(
+  kind: ChartKind,
+  grouping: Grouping | undefined,
+  series: FilledSeries[],
+  axIds: [number, number] | null,
+  startOrder: number,
+): string {
   const el = GROUP_ELEMENT[kind]
   const sers = series.map((s, i) => serXml(kind, s, startOrder + i)).join('')
   const ax = axIds ? `<c:axId val="${axIds[0]}"/><c:axId val="${axIds[1]}"/>` : ''
@@ -258,20 +534,31 @@ export function axesXml(kind: ChartKind, ids: [number, number], secondary: boole
   const catPos = secondary ? (horizontal ? 'r' : 't') : horizontal ? 'l' : 'b'
   const valPos = secondary ? (horizontal ? 't' : 'r') : horizontal ? 'b' : 'l'
   const grid = secondary ? '' : '<c:majorGridlines/>'
-  const common = (pos: string, deleted: boolean) => `<c:scaling>${v('orientation', 'minMax')}</c:scaling>${v('delete', deleted ? 1 : 0)}${v('axPos', pos)}`
+  const common = (pos: string, deleted: boolean) =>
+    `<c:scaling>${v('orientation', 'minMax')}</c:scaling>${v('delete', deleted ? 1 : 0)}${v('axPos', pos)}`
   const ticks = `${v('majorTickMark', 'none')}${v('minorTickMark', 'none')}${v('tickLblPos', 'nextTo')}`
   if (scatterLike(kind))
-    return `<c:valAx>${v('axId', ids[0])}${common(secondary ? 't' : 'b', secondary)}<c:numFmt formatCode="General" sourceLinked="1"/>${ticks}${v('crossAx', ids[1])}${v('crosses', secondary ? 'max' : 'autoZero')}${v('crossBetween', 'midCat')}</c:valAx>` +
+    return (
+      `<c:valAx>${v('axId', ids[0])}${common(secondary ? 't' : 'b', secondary)}<c:numFmt formatCode="General" sourceLinked="1"/>${ticks}${v('crossAx', ids[1])}${v('crosses', secondary ? 'max' : 'autoZero')}${v('crossBetween', 'midCat')}</c:valAx>` +
       `<c:valAx>${v('axId', ids[1])}${common(valPos, false)}${grid}<c:numFmt formatCode="General" sourceLinked="1"/>${ticks}${v('crossAx', ids[0])}${v('crosses', secondary ? 'max' : 'autoZero')}${v('crossBetween', 'midCat')}</c:valAx>`
-  return `<c:catAx>${v('axId', ids[0])}${common(catPos, secondary)}<c:numFmt formatCode="General" sourceLinked="1"/>${ticks}${v('crossAx', ids[1])}${v('crosses', 'autoZero')}${v('auto', 1)}${v('lblAlgn', 'ctr')}${v('lblOffset', 100)}${v('noMultiLvlLbl', 0)}</c:catAx>` +
+    )
+  return (
+    `<c:catAx>${v('axId', ids[0])}${common(catPos, secondary)}<c:numFmt formatCode="General" sourceLinked="1"/>${ticks}${v('crossAx', ids[1])}${v('crosses', 'autoZero')}${v('auto', 1)}${v('lblAlgn', 'ctr')}${v('lblOffset', 100)}${v('noMultiLvlLbl', 0)}</c:catAx>` +
     `<c:valAx>${v('axId', ids[1])}${common(valPos, false)}${grid}<c:numFmt formatCode="General" sourceLinked="1"/>${ticks}${v('crossAx', ids[0])}${v('crosses', secondary ? 'max' : 'autoZero')}${v('crossBetween', kind === 'area' ? 'midCat' : 'between')}</c:valAx>`
+  )
 }
 
 /** Axis ids Excel-style (large, unique within the part). */
-export const AXIS_IDS = { primary: [500000001, 500000002] as [number, number], secondary: [500000003, 500000004] as [number, number] }
+export const AXIS_IDS = {
+  primary: [500000001, 500000002] as [number, number],
+  secondary: [500000003, 500000004] as [number, number],
+}
 
 /** The groups a set of series makes: one per (type, side), in the order they first appear. */
-export function groupsOf(kind: ChartKind, series: FilledSeries[]): Array<{ kind: ChartKind; secondary: boolean; series: FilledSeries[] }> {
+export function groupsOf(
+  kind: ChartKind,
+  series: FilledSeries[],
+): Array<{ kind: ChartKind; secondary: boolean; series: FilledSeries[] }> {
   const out: Array<{ kind: ChartKind; secondary: boolean; series: FilledSeries[] }> = []
   for (const s of series) {
     const k = s.type ?? kind
@@ -284,7 +571,9 @@ export function groupsOf(kind: ChartKind, series: FilledSeries[]): Array<{ kind:
   if (out.some((g) => !hasAxes(g.kind)) && out.length > 1)
     throw new XlsxError('A pie or doughnut chart can’t be combined with other chart types.')
   if (out.some((g) => scatterLike(g.kind)) && out.some((g) => !scatterLike(g.kind)))
-    throw new XlsxError('A scatter or bubble chart can’t be combined with column, line or area series.')
+    throw new XlsxError(
+      'A scatter or bubble chart can’t be combined with column, line or area series.',
+    )
   if (out.some((g) => g.kind === 'bar') && out.some((g) => g.kind !== 'bar'))
     throw new XlsxError('Horizontal bars can’t be combined with other chart types (use columns).')
   if (out.every((g) => g.secondary)) for (const g of out) g.secondary = false
@@ -293,7 +582,11 @@ export function groupsOf(kind: ChartKind, series: FilledSeries[]): Array<{ kind:
 }
 
 /** The plot area's groups and axes for these series. */
-export function plotAreaInner(kind: ChartKind, grouping: Grouping | undefined, series: FilledSeries[]): string {
+export function plotAreaInner(
+  kind: ChartKind,
+  grouping: Grouping | undefined,
+  series: FilledSeries[],
+): string {
   const groups = groupsOf(kind, series)
   let order = 0
   const parts: string[] = []
@@ -306,7 +599,9 @@ export function plotAreaInner(kind: ChartKind, grouping: Grouping | undefined, s
     if (ids && !g.secondary) primaryKind ??= g.kind
     if (ids && g.secondary) secondaryKind ??= g.kind
   }
-  const axes = (primaryKind ? axesXml(primaryKind, AXIS_IDS.primary, false) : '') + (secondaryKind ? axesXml(secondaryKind, AXIS_IDS.secondary, true) : '')
+  const axes =
+    (primaryKind ? axesXml(primaryKind, AXIS_IDS.primary, false) : '') +
+    (secondaryKind ? axesXml(secondaryKind, AXIS_IDS.secondary, true) : '')
   return parts.join('') + axes
 }
 
@@ -320,8 +615,12 @@ export type NewChart = {
 
 /** A complete new chart part. */
 export function newChartXml(c: NewChart): string {
-  const title = c.title ? `${titleXml(c.title)}${v('autoTitleDeleted', 0)}` : v('autoTitleDeleted', 1)
-  const legend = c.legend ? `<c:legend>${v('legendPos', c.legend)}<c:overlay val="0"/></c:legend>` : ''
+  const title = c.title
+    ? `${titleXml(c.title)}${v('autoTitleDeleted', 0)}`
+    : v('autoTitleDeleted', 1)
+  const legend = c.legend
+    ? `<c:legend>${v('legendPos', c.legend)}<c:overlay val="0"/></c:legend>`
+    : ''
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<c:chartSpace ${CHART_NS}>${v('date1904', 0)}${v('lang', 'en-US')}${v('roundedCorners', 0)}<c:chart>${title}<c:plotArea><c:layout/>${plotAreaInner(c.type, c.grouping, c.series)}</c:plotArea>${legend}${v('plotVisOnly', 1)}${v('dispBlanksAs', 'gap')}</c:chart><c:spPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:ln w="9525" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="tx1"><a:lumMod val="15000"/><a:lumOff val="85000"/></a:schemeClr></a:solidFill><a:round/></a:ln></c:spPr></c:chartSpace>`
 }
 
@@ -329,18 +628,24 @@ export function newChartXml(c: NewChart): string {
 // Editing in place
 
 const parseFragment = (xml: string): Element => {
-  const doc = new DOMParser().parseFromString(`<root ${CHART_NS}>${xml}</root>`, 'application/xml') as unknown as XMLDocument
+  const doc = new DOMParser().parseFromString(
+    `<root ${CHART_NS}>${xml}</root>`,
+    'application/xml',
+  ) as unknown as XMLDocument
   return doc.documentElement!
 }
 
 /** Parses chart-namespace XML into nodes owned by `doc`. */
 export function fragment(doc: XMLDocument, xml: string): Element[] {
-  return kids(parseFragment(xml), undefined, NS_CHART).map((e) => doc.importNode(e, true) as Element)
+  return kids(parseFragment(xml), undefined, NS_CHART).map(
+    (e) => doc.importNode(e, true) as Element,
+  )
 }
 
 function cel(doc: XMLDocument, name: string): Element {
   const root = doc.documentElement!
-  const prefix = root.lookupPrefix(NS_CHART) ?? (root.namespaceURI === NS_CHART ? root.prefix : null)
+  const prefix =
+    root.lookupPrefix(NS_CHART) ?? (root.namespaceURI === NS_CHART ? root.prefix : null)
   return doc.createElementNS(NS_CHART, prefix ? `${prefix}:${name}` : name)
 }
 
@@ -359,7 +664,12 @@ export function removeChild(parent: Element | null, name: string) {
 }
 
 /** Replaces (or removes, when `xml` is null) the child `name` of `parent`, in schema order. */
-export function replaceChild(parent: Element, name: string, xml: string | null, order: readonly string[]) {
+export function replaceChild(
+  parent: Element,
+  name: string,
+  xml: string | null,
+  order: readonly string[],
+) {
   const doc = parent.ownerDocument!
   const old = ck(parent, name)
   if (xml === null) {
@@ -453,7 +763,10 @@ export function patchAxis(ax: Element, p: AxisPatch) {
   if (p.min !== undefined || p.max !== undefined) {
     let scaling = ck(ax, 'scaling')
     if (!scaling) {
-      ;[scaling] = fragment(ax.ownerDocument!, `<c:scaling>${v('orientation', 'minMax')}</c:scaling>`)
+      ;[scaling] = fragment(
+        ax.ownerDocument!,
+        `<c:scaling>${v('orientation', 'minMax')}</c:scaling>`,
+      )
       insertInOrder(ax, scaling!, order)
     }
     for (const k of ['min', 'max'] as const) {
@@ -464,12 +777,16 @@ export function patchAxis(ax: Element, p: AxisPatch) {
     }
   }
   if (p.format !== undefined) {
-    const xml = p.format === null ? `<c:numFmt formatCode="General" sourceLinked="1"/>` : `<c:numFmt formatCode="${esc(p.format)}" sourceLinked="0"/>`
+    const xml =
+      p.format === null
+        ? `<c:numFmt formatCode="General" sourceLinked="1"/>`
+        : `<c:numFmt formatCode="${esc(p.format)}" sourceLinked="0"/>`
     replaceChild(ax, 'numFmt', xml, order)
   }
   if (p.gridlines !== undefined) {
     if (p.gridlines) {
-      if (!ck(ax, 'majorGridlines')) replaceChild(ax, 'majorGridlines', '<c:majorGridlines/>', order)
+      if (!ck(ax, 'majorGridlines'))
+        replaceChild(ax, 'majorGridlines', '<c:majorGridlines/>', order)
     } else removeChild(ax, 'majorGridlines')
   }
 }
@@ -493,18 +810,20 @@ const LABEL_POSITIONS: Record<string, readonly string[]> = {
   bubble: ['ctr', 't', 'b', 'l', 'r'],
 }
 
-/** Data labels on every series of the chart (null removes them). */
+/** Data labels on every series of the chart (null or all-off removes them). */
 export function setLabels(doc: XMLDocument, labels: LabelPatch | null) {
+  const on = !!labels && !!(labels.value || labels.category || labels.series || labels.percent)
   const plotArea = ck(ck(doc.documentElement!, 'chart'), 'plotArea')!
   for (const group of cks(plotArea).filter((g) => g.localName! in SER_KIND)) {
     const kind = SER_KIND[group.localName!]!
     removeChild(group, 'dLbls')
     for (const ser of cks(group, 'ser')) {
       removeChild(ser, 'dLbls')
-      if (!labels) continue
+      if (!on) continue
       const allowed = LABEL_POSITIONS[kind] ?? []
-      const pos = labels.position && allowed.includes(labels.position) ? v('dLblPos', labels.position) : ''
-      const xml = `<c:dLbls>${pos}${v('showLegendKey', 0)}${v('showVal', labels.value ? 1 : 0)}${v('showCatName', labels.category ? 1 : 0)}${v('showSerName', labels.series ? 1 : 0)}${v('showPercent', labels.percent && kind === 'pie' ? 1 : 0)}${v('showBubbleSize', 0)}${kind === 'pie' ? v('showLeaderLines', 1) : ''}</c:dLbls>`
+      const pos =
+        labels!.position && allowed.includes(labels!.position) ? v('dLblPos', labels!.position) : ''
+      const xml = `<c:dLbls>${pos}${v('showLegendKey', 0)}${v('showVal', labels!.value ? 1 : 0)}${v('showCatName', labels!.category ? 1 : 0)}${v('showSerName', labels!.series ? 1 : 0)}${v('showPercent', labels!.percent && kind === 'pie' ? 1 : 0)}${v('showBubbleSize', 0)}${kind === 'pie' ? v('showLeaderLines', 1) : ''}</c:dLbls>`
       replaceChild(ser, 'dLbls', xml, serOrderOf(group.localName!))
     }
   }
@@ -515,15 +834,19 @@ export function setSeriesColor(ser: Element, groupElement: string, color: string
   const order = serOrderOf(groupElement)
   const kind = SER_KIND[groupElement] ?? 'bar'
   const doc = ser.ownerDocument!
-  if (color !== null && !/^#[0-9A-Fa-f]{6}$/.test(color)) throw new XlsxError(`“${color}” is not a colour like #4472C4.`)
+  if (color !== null && !/^#[0-9A-Fa-f]{6}$/.test(color))
+    throw new XlsxError(`“${color}” is not a colour like #4472C4.`)
   const line = kind === 'line' || kind === 'scatter' || kind === 'radar'
   let spPr = ck(ser, 'spPr')
   if (color === null) {
     if (!spPr) return
     if (line) {
       const ln = kid(spPr, 'ln', NS_A)
-      for (const k of ln ? kids(ln, undefined, NS_A).filter((x) => /Fill$/.test(x.localName!)) : []) ln!.removeChild(k)
-    } else for (const k of kids(spPr, undefined, NS_A).filter((x) => /Fill$/.test(x.localName!))) spPr.removeChild(k)
+      for (const k of ln ? kids(ln, undefined, NS_A).filter((x) => /Fill$/.test(x.localName!)) : [])
+        ln!.removeChild(k)
+    } else
+      for (const k of kids(spPr, undefined, NS_A).filter((x) => /Fill$/.test(x.localName!)))
+        spPr.removeChild(k)
     return
   }
   if (!spPr) {
@@ -537,9 +860,20 @@ export function setSeriesColor(ser: Element, groupElement: string, color: string
     return f
   }
   // a:spPr children: xfrm, custGeom/prstGeom, fill, ln, effect …: the fill goes before the line.
-  const target = line ? (kid(spPr!, 'ln', NS_A) ?? spPr!.appendChild(doc.createElementNS(NS_A, 'a:ln'))) : spPr!
-  for (const k of kids(target as Element, undefined, NS_A).filter((x) => /Fill$/.test(x.localName!) || x.localName === 'grpFill')) (target as Element).removeChild(k)
-  const anchor = line ? (target as Element).firstChild : kid(spPr!, 'ln', NS_A) ?? kids(spPr!, undefined, NS_A).find((x) => !['xfrm', 'custGeom', 'prstGeom'].includes(x.localName!)) ?? null
+  const target = line
+    ? (kid(spPr!, 'ln', NS_A) ?? spPr!.appendChild(doc.createElementNS(NS_A, 'a:ln')))
+    : spPr!
+  for (const k of kids(target as Element, undefined, NS_A).filter(
+    (x) => /Fill$/.test(x.localName!) || x.localName === 'grpFill',
+  ))
+    (target as Element).removeChild(k)
+  const anchor = line
+    ? (target as Element).firstChild
+    : (kid(spPr!, 'ln', NS_A) ??
+      kids(spPr!, undefined, NS_A).find(
+        (x) => !['xfrm', 'custGeom', 'prstGeom'].includes(x.localName!),
+      ) ??
+      null)
   ;(target as Element).insertBefore(fill(), anchor)
   // Per-point colours would hide the series colour (a pie's slices keep theirs).
   if (kind !== 'pie') removeChild(ser, 'dPt')
@@ -549,7 +883,8 @@ export function setSeriesColor(ser: Element, groupElement: string, color: string
 export function setMarkers(ser: Element, groupElement: string, on: boolean) {
   const kind = SER_KIND[groupElement] ?? 'bar'
   if (kind !== 'line' && kind !== 'scatter' && kind !== 'radar') return
-  const xml = on ? `<c:marker>${v('symbol', kind === 'scatter' ? 'circle' : 'circle')}${v('size', 5)}</c:marker>` : `<c:marker>${v('symbol', 'none')}</c:marker>`
+  const xml = on
+    ? `<c:marker>${v('symbol', kind === 'scatter' ? 'circle' : 'circle')}${v('size', 5)}</c:marker>`
+    : `<c:marker>${v('symbol', 'none')}</c:marker>`
   replaceChild(ser, 'marker', xml, serOrderOf(groupElement))
 }
-

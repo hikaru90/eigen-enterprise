@@ -2,6 +2,8 @@ import type { SheetEditor } from './editor'
 import type { Loss } from './ops'
 import { translateFormulaToA1, translateFormulaToR1C1 } from '@borgar/fx'
 import { createCalc } from './calc'
+import { anchorsOf, chartFrameOf } from './chart-anchor'
+import { sortCharts } from './chart-ops'
 import { overlaps, tableRanges } from './filter'
 import {
   cellKey,
@@ -112,7 +114,10 @@ export function sortLosses(wb: Workbook, op: SortOp): Loss[] {
     if (r.external || !r.part || !wb.pkg.has(r.part)) continue
     if (r.type === `${REL}drawing`) {
       const doc = wb.pkg.xml(r.part)
-      for (const from of all(doc, 'from', NS_XDR)) {
+      for (const anchor of anchorsOf(doc)) {
+        if (chartFrameOf(anchor)) continue
+        const from = kid(anchor, 'from', NS_XDR)
+        if (!from) continue
         const row = Number(textOf(kid(from, 'row', NS_XDR)))
         const col = Number(textOf(kid(from, 'col', NS_XDR)))
         if (inBody(row, col)) drawings++
@@ -227,6 +232,7 @@ export function sortRange(wb: Workbook, doc: XMLDocument, op: SortOp): boolean {
   for (const rowEl of touched) if (rowEl.parentNode) dropEmptyRow(rowEl)
   moveHyperlinks(doc, body, dest)
   dropSortStates(doc, body)
+  sortCharts(wb, info, body, dest)
   return true
 }
 

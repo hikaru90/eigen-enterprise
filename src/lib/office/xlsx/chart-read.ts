@@ -11,16 +11,7 @@ import { kid, kids, NS_A, NS_CHART, textOf } from './xml'
  */
 
 export type ChartKind =
-  | 'column'
-  | 'bar'
-  | 'line'
-  | 'area'
-  | 'pie'
-  | 'doughnut'
-  | 'scatter'
-  | 'bubble'
-  | 'radar'
-  | 'stock'
+  'column' | 'bar' | 'line' | 'area' | 'pie' | 'doughnut' | 'scatter' | 'bubble' | 'radar' | 'stock'
 
 export const CHART_KINDS: readonly ChartKind[] = [
   'column',
@@ -250,7 +241,8 @@ export function readSource(el: Element | null): DataSource | null {
       formatCode: textOf(ck(numLit, 'formatCode')) || null,
     }
   const strLit = ck(el, 'strLit')
-  if (strLit) return { formula: null, kind: 'str', cache: readCache(strLit, 'str'), formatCode: null }
+  if (strLit)
+    return { formula: null, kind: 'str', cache: readCache(strLit, 'str'), formatCode: null }
   return null
 }
 
@@ -332,7 +324,11 @@ function readSeries(ser: Element, theme: Theme, scatterLike: boolean): SeriesMod
     color: fill === 'none' ? null : fill,
     lineColor: lineFill,
     lineWidthPx: w ? Number(w) / EMU_PER_PX : null,
-    dash: !!(ln && kid(ln, 'prstDash', NS_A) && kid(ln, 'prstDash', NS_A)!.getAttribute('val') !== 'solid'),
+    dash: !!(
+      ln &&
+      kid(ln, 'prstDash', NS_A) &&
+      kid(ln, 'prstDash', NS_A)!.getAttribute('val') !== 'solid'
+    ),
     marker:
       markerEl || symbol
         ? {
@@ -366,7 +362,8 @@ export function readChart(doc: XMLDocument, theme: Theme): ChartModel {
       const barDir = valOf(el, 'barDir')
       const kind: ChartKind = kind0 === 'column' && barDir === 'bar' ? 'bar' : kind0
       const scatterLike = kind === 'scatter' || kind === 'bubble'
-      const grouping = (valOf(el, 'grouping') ?? (kind === 'line' || kind === 'area' ? 'standard' : 'clustered')) as Grouping
+      const grouping = (valOf(el, 'grouping') ??
+        (kind === 'line' || kind === 'area' ? 'standard' : 'clustered')) as Grouping
       plots.push({
         kind,
         element: name,
@@ -375,7 +372,8 @@ export function readChart(doc: XMLDocument, theme: Theme): ChartModel {
         holeSize: numVal(el, 'holeSize') ?? 50,
         firstSliceAngle: numVal(el, 'firstSliceAng') ?? 0,
         gapWidth: numVal(el, 'gapWidth') ?? 150,
-        overlap: numVal(el, 'overlap') ?? (grouping === 'clustered' || grouping === 'standard' ? 0 : 100),
+        overlap:
+          numVal(el, 'overlap') ?? (grouping === 'clustered' || grouping === 'standard' ? 0 : 100),
         scatterStyle: valOf(el, 'scatterStyle'),
         radarStyle: valOf(el, 'radarStyle'),
         axIds: cks(el, 'axId').map((a) => Number(a.getAttribute('val'))),
@@ -422,7 +420,8 @@ export function readChart(doc: XMLDocument, theme: Theme): ChartModel {
     p.axIds.find((id) => axes.find((a) => a.id === id)?.kind === 'val') ?? null
   const primary = plots.find((p) => p.axIds.length > 0)
   const primaryVal = primary ? valAxisOf(primary) : null
-  for (const p of plots) p.secondary = p.axIds.length > 0 && primaryVal !== null && valAxisOf(p) !== primaryVal
+  for (const p of plots)
+    p.secondary = p.axIds.length > 0 && primaryVal !== null && valAxisOf(p) !== primaryVal
   const titleEl = ck(chart, 'title')
   const t = readTitle(titleEl)
   const legendEl = ck(chart, 'legend')
@@ -441,4 +440,3 @@ export function readChart(doc: XMLDocument, theme: Theme): ChartModel {
     unsupported,
   }
 }
-
