@@ -168,6 +168,7 @@ export default defineConfig({
       'src/routes/(nucleus)/m/memory/reminders/reminders.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/capture/intake/brain-intake.svelte.spec.ts',
       'src/routes/(nucleus)/m/memory/questions/questions.svelte.spec.ts',
+      'src/routes/(nucleus)/m/memory/handover/handover.svelte.spec.ts',
       'src/routes/timeline/temporal-event-delete-button.svelte.spec.ts',
       'src/routes/timeline/temporal-event-status-button.svelte.spec.ts',
       'src/routes/timeline/temporal-event-detail.svelte.spec.ts',

@@ -2343,6 +2343,68 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "handover.add_entry": {
+    input: {
+      "entry_on"?: string
+      "handover_id": string
+      "link"?: string
+      "sentence": string
+      "status": "decision_needed" | "in_progress" | "for_info"
+      "topic": string
+    }
+    output: unknown
+  }
+  "handover.assign_entry": {
+    input: {
+      "assignee_id": string
+      "entry_id": string
+    }
+    output: unknown
+  }
+  "handover.create": {
+    input: {
+      "subject_id"?: string
+      "title": string
+    }
+    output: unknown
+  }
+  "handover.draft_entry": {
+    input: {
+      "handover_id": string
+      "link"?: string
+      "source": string
+      "status"?: "decision_needed" | "in_progress" | "for_info"
+      "topic": string
+    }
+    output: unknown
+  }
+  "handover.get": {
+    input: {
+      "handover_id": string
+    }
+    output: unknown
+  }
+  "handover.list": {
+    input: Record<string, never>
+    output: unknown
+  }
+  "handover.remove_entry": {
+    input: {
+      "entry_id": string
+    }
+    output: unknown
+  }
+  "handover.update_entry": {
+    input: {
+      "entry_id": string
+      "entry_on"?: string
+      "link"?: string | null
+      "sentence"?: string
+      "status"?: "decision_needed" | "in_progress" | "for_info"
+      "topic"?: string
+    }
+    output: unknown
+  }
   "kernel.approvals_decide": {
     input: {
       "approval_id": string
@@ -4320,6 +4382,14 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "github.auto_deploy",
   "github.repos_list",
   "github.status",
+  "handover.add_entry",
+  "handover.assign_entry",
+  "handover.create",
+  "handover.draft_entry",
+  "handover.get",
+  "handover.list",
+  "handover.remove_entry",
+  "handover.update_entry",
   "kernel.approvals_decide",
   "kernel.approvals_list",
   "kernel.backup_run",

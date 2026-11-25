@@ -1,7 +1,7 @@
 import type { Pathname } from '$app/types'
 import { m } from '$lib/paraglide/messages.js'
 
-export type MemorySurfaceTab = 'tasks' | 'projects' | 'documents' | 'reminders' | 'questions' | 'knows'
+export type MemorySurfaceTab = 'tasks' | 'projects' | 'documents' | 'reminders' | 'questions' | 'handover' | 'knows'
 
 /**
  * The Memory module page's sub-navigation (phase-cohesion §3): one page under
@@ -49,6 +49,12 @@ export const MEMORY_TABS: ReadonlyArray<{
     label: () => m.memory_tab_questions(),
     href: '/m/memory/questions',
     description: () => m.memory_tab_questions_line(),
+  },
+  {
+    id: 'handover',
+    label: () => m.memory_tab_handover(),
+    href: '/m/memory/handover',
+    description: () => m.memory_tab_handover_line(),
   },
   {
     id: 'knows',
