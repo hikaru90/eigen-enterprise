@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { auditSource, type Finding } from '../lib/a11y/page-style-audit'
-import { stripCssComments, themeContexts } from '../lib/a11y/theme-contexts'
+import { cssBlock, stripCssComments, themeContexts } from '../lib/a11y/theme-contexts'
 
 /**
  * Accessibility on the individual pages (Contribute b73604ff, part 2). Part 1
@@ -12,57 +12,24 @@ import { stripCssComments, themeContexts } from '../lib/a11y/theme-contexts'
  * below 4.5:1, no removed focus outline without a replacement
  * (src/lib/a11y/page-style-audit.ts has the rules).
  *
- * REMAINING lists the areas not fixed yet, by name, so they are a visible
- * to-do and not a silent skip. Each must still contain findings: once an area
- * is clean, delete its entry and the guard holds it from then on.
+ * Every source under src/ and modules/ is held to it, with no area exempt;
+ * the only exceptions are the single ACCEPTED findings below, each with its
+ * reason.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(here, '../..')
-const contexts = themeContexts(
-  stripCssComments(readFileSync(path.join(here, 'layout.css'), 'utf-8')),
-)
-
-type Area = { area: string; why: string; paths: string[] }
-
-const REMAINING: Area[] = [
-  {
-    area: 'Email',
-    why: 'inbox / templates / people under rework in a parallel stream (Contribute eb674853)',
-    paths: ['src/routes/(nucleus)/m/email/', 'modules/email/', 'src/lib/components/email/'],
-  },
-  {
-    area: 'Contacts',
-    why: 'contacts module under rework in a parallel stream',
-    paths: ['src/routes/(nucleus)/m/contacts/', 'modules/contacts/'],
-  },
-  {
-    area: 'Memory',
-    why: 'memory pages and capture components under rework in a parallel stream',
-    paths: [
-      'src/routes/(nucleus)/m/memory/',
-      'src/lib/memory/',
-      'src/lib/components/memory-',
-      'src/lib/components/capture-',
-      'src/lib/components/grounding-question-card.svelte',
-    ],
-  },
-  {
-    area: 'Brand',
-    why: 'brand pages and picker under rework in a parallel stream (Contribute 288dc1d2)',
-    paths: ['src/routes/(nucleus)/brand/', 'src/lib/components/brand-picker/', 'modules/brand/'],
-  },
-  {
-    area: 'Sidebar and presence',
-    why: 'main sidebar / nav footer and presence under rework in a parallel stream',
-    paths: ['src/lib/components/app-shell.svelte', 'src/lib/messages/presence-'],
-  },
-  {
-    area: 'Settings › Modules',
-    why: 'module settings pages under rework in a parallel stream',
-    paths: ['src/routes/(nucleus)/settings/modules/'],
-  },
-]
+const css = stripCssComments(readFileSync(path.join(here, 'layout.css'), 'utf-8'))
+const base = themeContexts(css)
+/**
+ * Light and dark (signed out), the light nucleus in both OS modes, and the
+ * app frame: the sidebar and top bar re-scope the tokens to ink inside the
+ * light page, so faded text there is measured on ink as well.
+ */
+const contexts = {
+  ...base,
+  'app frame': { ...base['nucleus, light'], ...cssBlock(css, '.ink-scope') },
+}
 
 /**
  * Single findings that are correct as written, each with the reason. A
@@ -120,7 +87,6 @@ for (const file of files) {
   if (kept.length) findings.set(file, kept)
 }
 
-const areaOf = (file: string) => REMAINING.find((a) => a.paths.some((p) => file.startsWith(p)))
 const describeFinding = (file: string, f: Finding) => `${file}:${f.line} ${f.kind} ${f.match}`
 
 describe('page-level accessibility style guard', () => {
@@ -128,9 +94,8 @@ describe('page-level accessibility style guard', () => {
     expect(files.length).toBeGreaterThan(100)
   })
 
-  it('no tiny text, faded text or removed focus outline outside the remaining areas', () => {
+  it('no tiny text, faded text or removed focus outline anywhere', () => {
     const offenders = [...findings]
-      .filter(([file]) => !areaOf(file))
       .flatMap(([file, found]) => found.map((f) => describeFinding(file, f)))
     expect(offenders, offenders.join('\n')).toEqual([])
   })
@@ -140,24 +105,6 @@ describe('page-level accessibility style guard', () => {
       const source = readFileSync(path.join(repo, a.file), 'utf-8')
       const hits = auditSource(source, { contexts }).filter((f) => f.match === a.match)
       expect(hits.length, `${a.file}: ${a.match} (${a.why})`).toBe(1)
-    }
-  })
-
-  describe('remaining areas (fix, then delete the entry)', () => {
-    for (const area of REMAINING) {
-      it(`${area.area} — ${area.why}`, () => {
-        for (const p of area.paths) {
-          const exists =
-            p.endsWith('/') || p.endsWith('.svelte')
-              ? existsSync(path.join(repo, p))
-              : files.some((f) => f.startsWith(p))
-          expect(exists, `${area.area}: path "${p}" no longer exists`).toBe(true)
-        }
-        const count = [...findings]
-          .filter(([file]) => areaOf(file) === area)
-          .reduce((n, [, f]) => n + f.length, 0)
-        expect(count, `${area.area} is clean: remove it from REMAINING`).toBeGreaterThan(0)
-      })
     }
   })
 })
