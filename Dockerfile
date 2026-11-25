@@ -3,6 +3,8 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package*.json ./
+# Vendored tarballs package.json installs from (SheetJS CE: cdn.sheetjs.com, not the stale npm copy).
+COPY vendor ./vendor
 # prepare needs svelte.config / project.inlang / scripts — not present yet; skip lifecycle scripts.
 RUN npm ci --ignore-scripts
 
@@ -67,7 +69,8 @@ ENV HOST=0.0.0.0
 ENV PORT=3000
 
 COPY package*.json ./
-# Same as deps: package*.json only — do not run prepare (git hooks / paraglide).
+COPY vendor ./vendor
+# Same as deps: package*.json (and the vendored tarballs) only — do not run prepare (git hooks / paraglide).
 RUN npm ci --ignore-scripts
 COPY --from=build /app/build ./build
 COPY --from=build /app/drizzle ./drizzle

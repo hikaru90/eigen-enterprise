@@ -57,7 +57,13 @@ import { createDemoTools } from './demo/tools'
 import { DOMAINS_MODULE_ID, domainsManifest } from './domains/manifest'
 import { createDomainsTools } from './domains/tools'
 import { driveSourceWriter } from './drive'
-import { DRIVE_MODULE_ID, DRIVE_SHEET_WRITE_TOOLS, DRIVE_WRITE_TOOLS, driveManifest } from './drive/manifest'
+import {
+  DRIVE_MODULE_ID,
+  DRIVE_SHEET_COPY_TOOL_NAMES,
+  DRIVE_SHEET_WRITE_TOOLS,
+  DRIVE_WRITE_TOOLS,
+  driveManifest,
+} from './drive/manifest'
 import { resolveDriveStorageDir } from './drive/storage'
 import { createDriveTools } from './drive/tools'
 import { EMAIL_INBOX_WRITE_TOOLS } from './email/inbox/tool-names'
@@ -250,6 +256,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   ...DRIVE_WRITE_TOOLS,
   // Drive spreadsheets: an agent's cell writes and sheet/row/column changes (a new revision).
   ...DRIVE_SHEET_WRITE_TOOLS,
+  // Drive: an editable .xlsx copy of an .xls/.ods (a new file next to the original).
+  ...DRIVE_SHEET_COPY_TOOL_NAMES,
   // Calls: ringing, booking meetings / inviting guests (external mail), removing a guest and
   // the Company Brain's switch and shares wait on the approval mode.
   ...CALLS_WRITE_TOOLS,

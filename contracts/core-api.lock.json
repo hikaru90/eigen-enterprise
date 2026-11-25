@@ -9043,7 +9043,8 @@
           "kind": {
             "enum": [
               "md",
-              "csv"
+              "csv",
+              "xlsx"
             ],
             "type": "string"
           },
@@ -9344,6 +9345,50 @@
       },
       "module": "drive",
       "name": "drive.list_trash",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "description": "The .xls or .ods file",
+            "minLength": 1,
+            "type": "string"
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the copy goes: a folder id, null for the top level; omitted: next to the original"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.make_xlsx_copy",
       "output": null,
       "permission": {
         "roles": [

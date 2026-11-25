@@ -1,9 +1,16 @@
 import type { AccessLevel, DriveAccessPort, Grant, GrantSubject } from './access-port'
 import { LEVEL_RANK } from './access-port'
 import type { BlobStore } from './storage'
+import type { ConversionLoss } from '$lib/office/xlsx/convert'
 import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
 import { randomUUID } from 'node:crypto'
-import { hasOfficeSignature, OFFICE_LABEL, OfficeNotSupportedError } from '$lib/office/kinds'
+import {
+  hasOfficeSignature,
+  OFFICE_LABEL,
+  OFFICE_MIME,
+  OfficeNotSupportedError,
+  READ_ONLY_OFFICE_KINDS,
+} from '$lib/office/kinds'
 import { extractOfficeText } from '$lib/office/text'
 import { contentDateOf } from './content-date'
 import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
@@ -78,6 +85,15 @@ export class DriveError extends Error {
   ) {
     super(message, options)
   }
+}
+
+/** What New → Document / Table / Spreadsheet (drive.create_document) makes. */
+export const DOCUMENT_KINDS = ['md', 'csv', 'xlsx'] as const
+export type DocumentKind = (typeof DOCUMENT_KINDS)[number]
+const UNTITLED: Record<DocumentKind, string> = {
+  md: 'Untitled document',
+  csv: 'Untitled table',
+  xlsx: 'Untitled spreadsheet',
 }
 
 /**
@@ -1079,21 +1095,76 @@ export function createDriveService(deps: DriveDeps) {
     /**
      * New → Document (.md) / Table (.csv): an empty file (its first save is its
      * first revision), or — with `content` (the agent's drive.create_document) —
-     * a file with that text as its first revision.
+     * a file with that text as its first revision. New → Spreadsheet (.xlsx):
+     * an empty Excel workbook with one sheet (its bytes are the first
+     * revision); it starts empty, its cells are written with drive.sheet_write.
      */
     async createDocument(
       actor: Actor,
       folderId: string | null,
-      kind: 'md' | 'csv',
+      kind: DocumentKind,
       rawName?: string,
       content?: string,
     ): Promise<ItemView> {
-      const base = rawName?.trim() || (kind === 'md' ? 'Untitled document' : 'Untitled table')
+      const base = rawName?.trim() || UNTITLED[kind]
       const name = base.toLowerCase().endsWith(`.${kind}`) ? base : `${base}.${kind}`
+      if (kind === 'xlsx') {
+        if (content !== undefined)
+          throw new DriveError(
+            'invalid',
+            'A new spreadsheet starts empty; write its cells with drive.sheet_write after creating it.',
+          )
+        const { newWorkbookBytes } = await import('$lib/office/xlsx/new-workbook')
+        return fileView(await addFile(actor, folderId, name, newWorkbookBytes(), OFFICE_MIME.xlsx))
+      }
       const bytes = new TextEncoder().encode(content ?? '')
       return fileView(
         await addFile(actor, folderId, name, bytes, kind === 'md' ? 'text/markdown' : 'text/csv'),
       )
+    },
+
+    /**
+     * Make an editable .xlsx copy of a spreadsheet shown read-only (.xls,
+     * .ods): converted (src/lib/office/xlsx/convert.ts) and saved as a new
+     * file next to the original — or in `folderId` — a taken name getting
+     * “ (2)”. The original is left as it is; `notKept` names what the copy
+     * does not carry over.
+     */
+    async makeXlsxCopy(
+      actor: Actor,
+      id: string,
+      folderId?: string | null,
+    ): Promise<{ file: ItemView; source: ItemView; notKept: readonly ConversionLoss[] }> {
+      const file = await requireFile(actor, id, 'view')
+      const kind = officeKind(file.name, file.mime)
+      if (kind !== 'xls' && kind !== 'ods')
+        throw new DriveError(
+          'invalid',
+          kind === 'xlsx'
+            ? `“${file.name}” is already an Excel workbook; edit it directly.`
+            : `“${file.name}” is not an Excel 97–2003 (.xls) or OpenDocument (.ods) spreadsheet.`,
+        )
+      const [{ convertToXlsx, xlsxCopyName }, { XlsxError }] = await Promise.all([
+        import('$lib/office/xlsx/convert'),
+        import('$lib/office/xlsx/workbook'),
+      ])
+      let conversion: Awaited<ReturnType<typeof convertToXlsx>>
+      try {
+        conversion = await convertToXlsx(kind, await blobs.get(file.sha256))
+      } catch (err) {
+        if (err instanceof XlsxError)
+          throw new DriveError('invalid', `“${file.name}” could not be converted: ${err.message}`, undefined, {
+            cause: err,
+          })
+        throw err
+      }
+      const { outcome: _outcome, ...copy } = await service.upload(
+        actor,
+        folderId === undefined ? file.folderId : folderId,
+        { name: xlsxCopyName(file.name), bytes: conversion.bytes, mime: OFFICE_MIME.xlsx },
+        'keep_both',
+      )
+      return { file: copy, source: fileView(file), notKept: conversion.notKept }
     },
 
     async rename(actor: Actor, type: ItemType, id: string, rawName: string): Promise<ItemView> {
@@ -1380,6 +1451,11 @@ export function createDriveService(deps: DriveDeps) {
         throw new DriveError(
           'invalid',
           `Only PDF, Word (.docx), PowerPoint (.pptx) and Excel (.xlsx) files are saved as bytes; “${file.name}” is not one.`,
+        )
+      if (READ_ONLY_OFFICE_KINDS.includes(kind))
+        throw new DriveError(
+          'invalid',
+          `“${file.name}” is an ${OFFICE_LABEL[kind]}, which is shown read-only and never saved in place; make an editable .xlsx copy (drive.make_xlsx_copy) and edit that.`,
         )
       if (opts.baseSha256 !== undefined && opts.baseSha256 !== file.sha256)
         throw new DriveError(

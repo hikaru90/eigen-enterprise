@@ -5,7 +5,7 @@
  * PowerPoint: plan/phase-office-files.md) keep revisions.
  */
 
-import { OFFICE_MIME, type OfficeKind } from '$lib/office/kinds'
+import { OFFICE_MIME, XLSM_MIME, type OfficeKind } from '$lib/office/kinds'
 
 export type PreviewKind = 'markdown' | 'csv' | 'html' | 'image' | 'text' | 'other' | OfficeKind
 
@@ -23,6 +23,9 @@ const MIME_BY_EXT: Record<string, string> = {
   docx: OFFICE_MIME.docx,
   pptx: OFFICE_MIME.pptx,
   xlsx: OFFICE_MIME.xlsx,
+  xlsm: XLSM_MIME,
+  xls: OFFICE_MIME.xls,
+  ods: OFFICE_MIME.ods,
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -50,13 +53,20 @@ export function previewKind(name: string, mime: string): PreviewKind {
   return 'other'
 }
 
-/** The office format of a file (PDF, Word .docx, PowerPoint .pptx, Excel .xlsx), else null. */
+/**
+ * The office format of a file (PDF, Word .docx, PowerPoint .pptx, Excel
+ * .xlsx — a macro-enabled .xlsm is the same format —, Excel 97–2003 .xls,
+ * OpenDocument .ods), else null.
+ */
 export function officeKind(name: string, mime: string): OfficeKind | null {
   const ext = extensionOf(name)
   if (ext === 'pdf' || mime === OFFICE_MIME.pdf) return 'pdf'
   if (ext === 'docx' || mime === OFFICE_MIME.docx) return 'docx'
   if (ext === 'pptx' || mime === OFFICE_MIME.pptx) return 'pptx'
-  if (ext === 'xlsx' || mime === OFFICE_MIME.xlsx) return 'xlsx'
+  if (ext === 'xlsx' || ext === 'xlsm' || mime === OFFICE_MIME.xlsx || mime === XLSM_MIME)
+    return 'xlsx'
+  if (ext === 'xls' || mime === OFFICE_MIME.xls) return 'xls'
+  if (ext === 'ods' || mime === OFFICE_MIME.ods) return 'ods'
   return null
 }
 

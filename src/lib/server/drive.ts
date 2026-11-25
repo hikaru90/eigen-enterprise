@@ -11,6 +11,7 @@ export {
   UploadConflictError,
   ON_CONFLICT,
   type OnConflict,
+  DOCUMENT_KINDS,
   type UploadOutcome,
   LOCK_HEARTBEAT_MS,
   LOCK_TTL_MS,
