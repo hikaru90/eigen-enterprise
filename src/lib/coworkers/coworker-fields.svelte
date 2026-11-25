@@ -111,12 +111,13 @@
   <fieldset class="space-y-2 sm:col-span-2" data-testid="{idPrefix}-manager">
     <legend class="text-sm font-medium">{m.org_field_reports_to()}</legend>
     <input type="hidden" name="reports_to_sent" value="1" />
+    <!-- In the order chosen: the first is the primary manager (the chart's parent). -->
+    {#each card.reportsTo as id (id)}<input type="hidden" name="reports_to_user_ids" value={id} />{/each}
     <div class="flex flex-wrap gap-2">
       {#each managers as s (s.id)}
         <label class="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-card px-2.5 py-1.5 text-sm">
           <input
             type="checkbox"
-            name="reports_to_user_ids"
             value={s.id}
             checked={card.reportsTo.includes(s.id)}
             onchange={() => toggleManager(s.id)}

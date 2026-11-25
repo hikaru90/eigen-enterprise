@@ -15,7 +15,7 @@
   import AiMark from './ai-mark.svelte'
   import { modelFamily } from './model-family'
   import OrgChartTree from './org-chart-tree.svelte'
-  import { buildOrgTree, managerOptions } from './org-tree'
+  import { buildOrgTree, managerIdsOf, managerOptions } from './org-tree'
 
   export type DiagramPerson = OrgPerson & {
     image?: string | null
@@ -70,8 +70,24 @@
     return names
   }
 
+  /** The checked managers of the seat being edited (all of them, not only the primary one). */
+  let draftManagers = $state<string[]>([])
+
   function toggle(id: string) {
-    editing = editing === id ? null : id
+    if (editing === id) {
+      editing = null
+      draftManagers = []
+      return
+    }
+    const target = byId.get(id)
+    editing = id
+    draftManagers = target ? [...managerIdsOf(target)] : []
+  }
+
+  function toggleManager(id: string) {
+    draftManagers = draftManagers.includes(id)
+      ? draftManagers.filter((mId) => mId !== id)
+      : [...draftManagers, id]
   }
 
   /** Close the form once the seat is saved (not when it waits or is refused). */
@@ -272,27 +288,32 @@
                 </p>
               </div>
               {#if me.canManage}
-                <div class="space-y-1">
-                  <label class="text-xs font-medium" for="diagram-seat-manager-{p.id}"
-                    >{m.org_field_reports_to()}</label
-                  >
-                  <select
-                    id="diagram-seat-manager-{p.id}"
-                    name="reports_to_user_id"
-                    class="h-9 w-full rounded-md border border-input bg-card px-2 text-sm"
-                    value={primaryManagerId(p) ?? ''}
-                    data-testid="org-seat-manager"
-                  >
-                    <option value="">{m.org_reports_to_nobody()}</option>
+                <fieldset class="space-y-1.5" data-testid="org-seat-manager">
+                  <legend class="text-xs font-medium">{m.org_field_reports_to()}</legend>
+                  <input type="hidden" name="reports_to_sent" value="1" />
+                  <!-- In the order chosen: the first is the primary manager (the chart's parent). -->
+                  {#each draftManagers as id (id)}<input type="hidden" name="reports_to_user_ids" value={id} />{/each}
+                  <div class="flex flex-wrap gap-2">
                     {#each managerOptions(normalizedPeople, p.id) as o (o.id)}
-                      <option value={o.id}
-                        >{o.kind === 'coworker'
-                          ? m.org_option_coworker({ name: o.name })
-                          : o.name}</option
+                      <label
+                        class="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-card px-2.5 py-1.5 text-sm"
                       >
+                        <input
+                          type="checkbox"
+                          value={o.id}
+                          checked={draftManagers.includes(o.id)}
+                          onchange={() => toggleManager(o.id)}
+                        />
+                        <span
+                          >{o.kind === 'coworker'
+                            ? m.org_option_coworker({ name: o.name })
+                            : o.name}</span
+                        >
+                      </label>
                     {/each}
-                  </select>
-                </div>
+                  </div>
+                  <p class="text-xs text-muted-foreground">{m.org_reports_to_multi_hint()}</p>
+                </fieldset>
               {/if}
               <div class="flex flex-wrap gap-2">
                 <Button type="submit" size="sm" data-testid="org-seat-save"

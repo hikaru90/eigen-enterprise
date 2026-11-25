@@ -6,9 +6,9 @@ import type { CoworkerTemplate } from '$lib/server/coworkers/templates'
 import type { PersonRunner } from '$lib/server/org/person-run'
 import { redirect } from '@sveltejs/kit'
 import { chatModelOption } from '$lib/coworkers/model-family'
-import { accountabilityLines } from '$lib/coworkers/org-tree'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import { poolFor } from '$lib/server/llm/model-pool'
+import { cardInput, seatInput } from '$lib/server/org/form-input'
 import { loadOrgPeople } from '$lib/server/org/org-people'
 import { field, runAction } from '$lib/server/org/page-actions'
 import { personRun } from '$lib/server/org/person-run'
@@ -133,19 +133,6 @@ const TOOL: Record<ManageAction, string> = {
   rhythmRunNow: 'coworkers.rhythm_run_now',
 }
 
-function cardInput(form: FormData): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const key of ['name', 'title', 'lens', 'model_id'] as const) {
-    const v = field(form, key).trim()
-    if (v !== '') out[key] = v
-  }
-  if (form.has('accountabilities')) out.accountabilities = accountabilityLines(field(form, 'accountabilities'))
-  if (form.has('reports_to_user_id')) out.reports_to_user_id = field(form, 'reports_to_user_id') || null
-  const cap = field(form, 'daily_cap_usd').trim()
-  if (cap !== '') out.daily_cap_usd = Number(cap)
-  return out
-}
-
 function rhythmInput(form: FormData): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   if (form.has('weekdays_sent')) out.weekdays = form.getAll('weekdays').map(String)
@@ -165,10 +152,10 @@ function inputFor(action: ManageAction, form: FormData): Record<string, unknown>
   switch (action) {
     case 'create': {
       const template = field(form, 'template_id')
-      return { ...(template ? { template_id: template } : {}), ...cardInput(form) }
+      return { ...(template ? { template_id: template } : {}), ...cardInput(form, 'create') }
     }
     case 'update':
-      return { user_id: field(form, 'user_id'), ...cardInput(form) }
+      return { user_id: field(form, 'user_id'), ...cardInput(form, 'update') }
     case 'enable':
     case 'disable':
     case 'remove':
@@ -203,15 +190,7 @@ export const actions: Actions = {
     if (!user) throw redirect(302, '/login')
     const form = await request.formData()
     const userId = field(form, 'user_id')
-    const title = field(form, 'title').trim()
-    const input: Record<string, unknown> = {
-      user_id: userId,
-      title: title === '' ? null : title,
-      accountabilities: accountabilityLines(field(form, 'accountabilities')),
-      ...(form.has('reports_to_user_id')
-        ? { reports_to_user_id: field(form, 'reports_to_user_id') || null }
-        : {}),
-    }
+    const input = seatInput(form)
     return runAction(
       'setPosition',
       {

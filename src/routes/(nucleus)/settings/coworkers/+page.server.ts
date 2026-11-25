@@ -1,11 +1,11 @@
 import type { Actions, PageServerLoad } from './$types'
 import { chatModelOption, type ChatModelOption } from '$lib/coworkers/model-family'
-import { accountabilityLines } from '$lib/coworkers/org-tree'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import type { RhythmTarget, RhythmView } from '$lib/server/coworkers/rhythms'
 import type { CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
 import type { CoworkerTemplate } from '$lib/server/coworkers/templates'
 import { poolFor } from '$lib/server/llm/model-pool'
+import { cardInput } from '$lib/server/org/form-input'
 import { field, runAction } from '$lib/server/org/page-actions'
 import { personRun, type PersonRunner } from '$lib/server/org/person-run'
 
@@ -93,38 +93,6 @@ const TOOL: Record<CoworkersAction, string> = {
   rhythmUpdate: 'coworkers.rhythm_update',
   rhythmDelete: 'coworkers.rhythm_delete',
   rhythmRunNow: 'coworkers.rhythm_run_now',
-}
-
-/** The role card fields as the tools take them; an empty field is left out (the template's or the current value stays). */
-function cardInput(form: FormData, mode: 'create' | 'update'): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const key of ['name', 'title', 'lens', 'model_id'] as const) {
-    const v = field(form, key).trim()
-    if (v !== '') out[key] = v
-  }
-  if (form.has('accountabilities')) out.accountabilities = accountabilityLines(field(form, 'accountabilities'))
-  if (form.has('reports_to_sent')) {
-    out.reports_to_user_ids = form
-      .getAll('reports_to_user_ids')
-      .map(String)
-      .filter((s) => s.trim() !== '')
-  } else if (form.has('reports_to_user_id')) {
-    // '' = reports to nobody (the co-worker answers to the owner).
-    out.reports_to_user_id = field(form, 'reports_to_user_id') || null
-  }
-  const preset = field(form, 'avatar_preset').trim()
-  const sha = field(form, 'avatar_sha256').trim()
-  if (preset !== '') {
-    out.avatar_preset = preset
-  } else if (sha !== '') {
-    out.avatar_sha256 = sha
-  } else if (mode === 'update' && form.has('avatar_sent')) {
-    out.avatar_preset = null
-    out.avatar_sha256 = null
-  }
-  const cap = field(form, 'daily_cap_usd').trim()
-  if (cap !== '') out.daily_cap_usd = Number(cap)
-  return out
 }
 
 /** A rhythm's fields as the tools take them; a field the form did not send is left out (update changes only what is given). */

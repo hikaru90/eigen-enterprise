@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types'
 import { redirect } from '@sveltejs/kit'
-import { accountabilityLines } from '$lib/coworkers/org-tree'
+import { seatInput } from '$lib/server/org/form-input'
 import { loadOrgPeople } from '$lib/server/org/org-people'
 import { field, runAction } from '$lib/server/org/page-actions'
 import { personRun, type PersonRunner } from '$lib/server/org/person-run'
@@ -34,23 +34,7 @@ export const actions: Actions = {
     if (!user) throw redirect(302, '/login')
     const form = await request.formData()
     const userId = field(form, 'user_id')
-    const title = field(form, 'title').trim()
-    const reportsTo = form.has('reports_to_sent')
-      ? {
-          reports_to_user_ids: form
-            .getAll('reports_to_user_ids')
-            .map(String)
-            .filter((s) => s.trim() !== ''),
-        }
-      : form.has('reports_to_user_id')
-        ? { reports_to_user_id: field(form, 'reports_to_user_id') || null }
-        : {}
-    const input: Record<string, unknown> = {
-      user_id: userId,
-      title: title === '' ? null : title,
-      accountabilities: accountabilityLines(field(form, 'accountabilities')),
-      ...reportsTo,
-    }
+    const input = seatInput(form)
     return runAction(
       'setPosition',
       { attempted: 'Changing a seat in the org chart (Settings → Org chart)', tool: 'org.set_position', input, userId, log: 'settings/org' },

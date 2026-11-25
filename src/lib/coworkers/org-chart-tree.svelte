@@ -182,12 +182,13 @@
             <fieldset class="space-y-1.5" data-testid="org-seat-manager">
               <legend class="text-sm font-medium">{m.org_field_reports_to()}</legend>
               <input type="hidden" name="reports_to_sent" value="1" />
+              <!-- In the order chosen: the first is the primary manager (the chart's parent). -->
+              {#each draftManagers as id (id)}<input type="hidden" name="reports_to_user_ids" value={id} />{/each}
               <div class="flex flex-wrap gap-2">
                 {#each managerOptions(people, p.id) as o (o.id)}
                   <label class="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-card px-2.5 py-1.5 text-sm">
                     <input
                       type="checkbox"
-                      name="reports_to_user_ids"
                       value={o.id}
                       checked={draftManagers.includes(o.id)}
                       onchange={() => toggleManager(o.id)}
