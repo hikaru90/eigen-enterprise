@@ -1,21 +1,22 @@
 /**
  * The office formats the Drive opens with its own viewers and editors
- * (plan/phase-office-files.md): PDF, Word (.docx), PowerPoint (.pptx).
+ * (plan/phase-office-files.md): PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx).
  * Shared by the browser (viewers) and the server (saves, text for agents).
  */
 
-export type OfficeKind = 'pdf' | 'docx' | 'pptx'
+export type OfficeKind = 'pdf' | 'docx' | 'pptx' | 'xlsx'
 
-export const OFFICE_KINDS: readonly OfficeKind[] = ['pdf', 'docx', 'pptx']
+export const OFFICE_KINDS: readonly OfficeKind[] = ['pdf', 'docx', 'pptx', 'xlsx']
 
 export const OFFICE_MIME: Record<OfficeKind, string> = {
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
 
 /** How people call the format in sentences ("not a PDF", "PowerPoint … not supported yet"). */
-export const OFFICE_LABEL: Record<OfficeKind, string> = { pdf: 'PDF', docx: 'Word document', pptx: 'PowerPoint deck' }
+export const OFFICE_LABEL: Record<OfficeKind, string> = { pdf: 'PDF', docx: 'Word document', pptx: 'PowerPoint deck', xlsx: 'Excel workbook' }
 
 /**
  * Whether `bytes` start like a file of this format: "%PDF-" (ISO 32000

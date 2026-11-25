@@ -22,6 +22,7 @@ const MIME_BY_EXT: Record<string, string> = {
   pdf: OFFICE_MIME.pdf,
   docx: OFFICE_MIME.docx,
   pptx: OFFICE_MIME.pptx,
+  xlsx: OFFICE_MIME.xlsx,
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -49,12 +50,13 @@ export function previewKind(name: string, mime: string): PreviewKind {
   return 'other'
 }
 
-/** The office format of a file (PDF, Word .docx, PowerPoint .pptx), else null. */
+/** The office format of a file (PDF, Word .docx, PowerPoint .pptx, Excel .xlsx), else null. */
 export function officeKind(name: string, mime: string): OfficeKind | null {
   const ext = extensionOf(name)
   if (ext === 'pdf' || mime === OFFICE_MIME.pdf) return 'pdf'
   if (ext === 'docx' || mime === OFFICE_MIME.docx) return 'docx'
   if (ext === 'pptx' || mime === OFFICE_MIME.pptx) return 'pptx'
+  if (ext === 'xlsx' || mime === OFFICE_MIME.xlsx) return 'xlsx'
   return null
 }
 

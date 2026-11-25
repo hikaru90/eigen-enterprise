@@ -10,8 +10,13 @@ export type EditSessionTimers = { every(fn: () => void, ms: number): unknown; cl
 export type OfficeEditSession = {
   /** Opens the file for editing: `held`, or `locked` by someone (then `takeover` takes it). */
   start(opts?: { takeover?: boolean }): Promise<LockView>
-  /** Saves the bytes as this session's revision. Throws LockLostError when this session no longer holds the lock. */
-  save(bytes: Uint8Array): Promise<DriveItem>
+  /**
+   * Saves the bytes as this session's revision. Throws LockLostError when
+   * this session no longer holds the lock; with `base` (SHA-256 of the
+   * content the editor started from) a newer save in between is refused
+   * (DriveApiError code `conflict`).
+   */
+  save(bytes: Uint8Array, opts?: { base?: string }): Promise<DriveItem>
   /** Stops heartbeating and lets the lock go. */
   stop(): Promise<void>
   held(): boolean
@@ -62,10 +67,13 @@ export function createOfficeEditSession(opts: {
       if (holding && beat === null) beat = timers.every(() => void heartbeat(), opts.heartbeatMs)
       return view
     },
-    async save(bytes) {
+    async save(bytes, saveOpts) {
       if (!holding) throw new LockLostError('This file is not open for editing in this tab.')
       try {
-        return (await api.writeBytes(opts.fileId, bytes, session)).file
+        const out = saveOpts?.base
+          ? await api.writeBytes(opts.fileId, bytes, session, saveOpts.base)
+          : await api.writeBytes(opts.fileId, bytes, session)
+        return out.file
       } catch (err) {
         if (err instanceof DriveApiError && err.code === 'locked') {
           lose(err.holder)

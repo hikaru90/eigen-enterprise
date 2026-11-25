@@ -44,6 +44,18 @@ describe('office edit session (one editor per file, W-6)', () => {
     expect(s.held()).toBe(false)
   })
 
+  it('passes the content the editor started from, so the server can refuse a save over a newer one', async () => {
+    const { api, timers } = fakes()
+    const s = createOfficeEditSession({ fileId: 'f1', heartbeatMs: 15_000, api, timers, sessionId: 'tab-ada-1' })
+    await s.start()
+    const bytes = new Uint8Array([3])
+    await s.save(bytes, { base: 'a'.repeat(64) })
+    expect(api.writeBytes).toHaveBeenCalledWith('f1', bytes, 'tab-ada-1', 'a'.repeat(64))
+    api.writeBytes.mockRejectedValue(new DriveApiError('“plan.xlsx” was changed since you opened it.', 409, 'conflict', null))
+    await expect(s.save(bytes, { base: 'b'.repeat(64) })).rejects.toMatchObject({ code: 'conflict' })
+    expect(s.held()).toBe(true)
+  })
+
   it('someone else editing: not held, no heartbeat; takeover asks for it', async () => {
     const { api, timers } = fakes({ state: 'locked', holder })
     const s = createOfficeEditSession({ fileId: 'f1', heartbeatMs: 15_000, api, timers, sessionId: 'tab-ada-1' })

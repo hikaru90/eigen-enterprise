@@ -13,6 +13,7 @@ import { createDriveFileTools } from './file-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
+import { createDriveSheetTools } from './sheet-tools'
 
 /**
  * drive.* kernel tools: list a folder, read a text file, write a Markdown/CSV
@@ -311,5 +312,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveFileTools({ service }),
     ...createDrivePdfTools({ service }),
     ...createDrivePdfAnnotateTools({ service }),
+    ...createDriveSheetTools({ service }),
   ]
 }
