@@ -1,0 +1,88 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { render } from 'vitest-browser-svelte'
+import { page, userEvent } from 'vitest/browser'
+import CoworkerCard from './coworker-card.svelte'
+
+/**
+ * Edit a co-worker (fc3c5174, "changes are not saved when Save is pressed"):
+ * the edit form posts every field the tool takes, every manager in the order
+ * it has them (the first is the primary), and a refused save shows its
+ * sentence under the card instead of passing silently.
+ */
+
+const models = [
+  { id: 'anthropic/claude-sonnet-5.5', family: 'Anthropic', name: 'claude-sonnet-5.5', note: 'Careful tool use.', recommended: false },
+]
+const seats = [
+  { id: 'olga', name: 'Olga Owner', kind: 'human' as const },
+  { id: 'ony', name: 'Ony', kind: 'human' as const },
+  { id: 'mara', name: 'Mara', kind: 'coworker' as const },
+]
+const coworker = {
+  id: 'mara',
+  name: 'Mara',
+  slug: 'mara',
+  title: 'Marketing Manager',
+  accountabilities: ['Pipeline'],
+  lens: 'Cares about reach.',
+  modelId: 'anthropic/claude-sonnet-5.5',
+  enabled: true,
+  dailyCapUsd: 2,
+  // Primary manager Ony, second Olga: not the order the checkboxes are listed in.
+  reportsToUserId: 'ony',
+  reportsToUserIds: ['ony', 'olga'],
+  image: '/avatars/coworkers/orbit.svg',
+  accountableHuman: { id: 'olga', name: 'Olga Owner' },
+}
+const rhythms = { rhythms: [], targets: [] }
+
+type Submitted = { action: string; fields: Record<string, string | string[]> }
+let submitted: Submitted[] = []
+function catchSubmits(event: SubmitEvent) {
+  event.preventDefault()
+  const form = event.target as HTMLFormElement
+  const fd = new FormData(form, event.submitter)
+  const fields: Record<string, string | string[]> = {}
+  for (const k of new Set(fd.keys())) {
+    const all = fd.getAll(k).map(String)
+    fields[k] = k === 'reports_to_user_ids' ? all : all.length > 1 ? all : all[0]!
+  }
+  submitted.push({ action: form.getAttribute('action') ?? '', fields })
+}
+beforeEach(() => {
+  submitted = []
+  document.addEventListener('submit', catchSubmits, true)
+})
+afterEach(() => document.removeEventListener('submit', catchSubmits, true))
+
+describe('coworker-card.svelte', () => {
+  it('Save posts the edited card with every manager, primary first, and the avatar', async () => {
+    render(CoworkerCard, { coworker, models, seats, rhythms, timeZone: 'Europe/Berlin' })
+    await page.getByTestId('coworker-edit').click()
+    await userEvent.fill(page.getByTestId('coworker-mara-lens'), 'Cares about reach and tone.')
+    await page.getByTestId('coworker-save').click()
+    expect(submitted).toHaveLength(1)
+    expect(submitted[0]!.action).toBe('?/update')
+    expect(submitted[0]!.fields).toMatchObject({
+      user_id: 'mara',
+      name: 'Mara',
+      lens: 'Cares about reach and tone.',
+      reports_to_sent: '1',
+      reports_to_user_ids: ['ony', 'olga'],
+      avatar_sent: '1',
+      avatar_preset: 'orbit',
+    })
+  })
+
+  it('a refused save shows its sentence under the card', async () => {
+    render(CoworkerCard, {
+      coworker,
+      models,
+      seats,
+      rhythms,
+      timeZone: 'Europe/Berlin',
+      form: { action: 'update', userId: 'mara', error: 'Mara cannot report to someone who reports to Mara.' },
+    })
+    await expect.element(page.getByTestId('coworker-feedback')).toHaveTextContent('Mara cannot report to someone who reports to Mara.')
+  })
+})

@@ -328,6 +328,96 @@ describe('actions', () => {
     }
   })
 
+  // fc3c5174: the edit form (coworker-fields.svelte) posts the multi-select
+  // reports-to (reports_to_sent + reports_to_user_ids) and the avatar
+  // (avatar_sent + avatar_preset / avatar_sha256); /coworkers read only the
+  // old single reports_to_user_id, so Save answered "done" and kept them.
+  const post = (pairs: [string, string][], loc = locals) =>
+    ({ locals: loc, request: new Request('http://x/coworkers', { method: 'POST', body: new URLSearchParams(pairs) }) }) as never
+
+  it('update sends what the edit form posts: several managers and the avatar', async () => {
+    const out = await actions.update(
+      post([
+        ['user_id', 'cw1'],
+        ['name', 'Mara'],
+        ['title', 'Marketing Manager'],
+        ['accountabilities', 'Pipeline'],
+        ['lens', 'Reach'],
+        ['model_id', 'anthropic/claude-sonnet-5.5'],
+        ['daily_cap_usd', '2'],
+        ['reports_to_sent', '1'],
+        ['reports_to_user_ids', 'owner'],
+        ['reports_to_user_ids', 'me'],
+        ['avatar_sent', '1'],
+        ['avatar_preset', 'orbit'],
+      ]),
+    )
+    expect(out).toEqual({ action: 'update', ok: true, userId: 'cw1' })
+    expect(calls[0]!.input).toEqual({
+      user_id: 'cw1',
+      name: 'Mara',
+      title: 'Marketing Manager',
+      lens: 'Reach',
+      model_id: 'anthropic/claude-sonnet-5.5',
+      accountabilities: ['Pipeline'],
+      reports_to_user_ids: ['owner', 'me'],
+      avatar_preset: 'orbit',
+      daily_cap_usd: 2,
+    })
+
+    calls = []
+    await actions.update(
+      post([
+        ['user_id', 'cw1'],
+        ['reports_to_sent', '1'],
+        ['avatar_sent', '1'],
+        ['avatar_sha256', 'a'.repeat(64)],
+      ]),
+    )
+    expect(calls[0]!.input).toEqual({ user_id: 'cw1', reports_to_user_ids: [], avatar_sha256: 'a'.repeat(64) })
+
+    calls = []
+    await actions.update(post([['user_id', 'cw1'], ['avatar_sent', '1']]))
+    expect(calls[0]!.input).toEqual({ user_id: 'cw1', avatar_preset: null, avatar_sha256: null })
+  })
+
+  it('create sends the managers and avatar the new-co-worker form posts', async () => {
+    await actions.create(
+      post([
+        ['template_id', 'designer'],
+        ['reports_to_sent', '1'],
+        ['reports_to_user_ids', 'owner'],
+        ['reports_to_user_ids', 'me'],
+        ['avatar_sent', '1'],
+        ['avatar_preset', 'prism'],
+      ]),
+    )
+    expect(calls[0]!.input).toEqual({
+      template_id: 'designer',
+      reports_to_user_ids: ['owner', 'me'],
+      avatar_preset: 'prism',
+    })
+  })
+
+  it('setPosition sends the multi-select managers of the org chart list', async () => {
+    await actions.setPosition(
+      post([
+        ['user_id', 'cw1'],
+        ['title', 'Marketing Manager'],
+        ['accountabilities', 'Pipeline'],
+        ['reports_to_sent', '1'],
+        ['reports_to_user_ids', 'owner'],
+        ['reports_to_user_ids', 'me'],
+      ]),
+    )
+    expect(calls[0]!.input).toEqual({
+      user_id: 'cw1',
+      title: 'Marketing Manager',
+      accountabilities: ['Pipeline'],
+      reports_to_user_ids: ['owner', 'me'],
+    })
+  })
+
   it('rhythmCreate, rhythmUpdate, rhythmDelete, and rhythmRunNow invoke their coworkers.rhythm_* tools', async () => {
     const body = new URLSearchParams([
       ['user_id', 'cw1'],

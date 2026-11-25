@@ -47,13 +47,17 @@ const people: DiagramPerson[] = [
   }),
 ]
 
-type Submitted = { action: string; fields: Record<string, string> }
+type Submitted = { action: string; fields: Record<string, string | string[]> }
 let submitted: Submitted[] = []
 function catchSubmits(event: SubmitEvent) {
   event.preventDefault()
   const form = event.target as HTMLFormElement
-  const fields: Record<string, string> = {}
-  for (const [k, v] of new FormData(form, event.submitter).entries()) fields[k] = String(v)
+  const fd = new FormData(form, event.submitter)
+  const fields: Record<string, string | string[]> = {}
+  for (const k of new Set(fd.keys())) {
+    const all = fd.getAll(k).map(String)
+    fields[k] = k === 'reports_to_user_ids' ? all : all.length > 1 ? all : all[0]!
+  }
   submitted.push({ action: form.getAttribute('action') ?? '', fields })
 }
 beforeEach(() => {
@@ -170,16 +174,37 @@ describe('org-diagram.svelte', () => {
     render(OrgDiagram, { people, me: { id: 'olga', canManage: true } })
     expect(document.querySelectorAll('[data-testid="org-seat-edit"]')).toHaveLength(4)
     await page.getByRole('button', { name: 'Edit seat: Mara' }).click()
-    const select = page.getByLabelText('Reports to', { exact: true })
-    const options = [...(select.element() as HTMLSelectElement).options].map((o) => o.textContent)
-    expect(options).toEqual(['Nobody', 'Olga Owner', 'Ony'])
-    await userEvent.selectOptions(select, 'Ony')
+    const fieldset = page.getByTestId('org-seat-manager')
+    const options = [...fieldset.element().querySelectorAll('label')].map((l) => l.textContent?.trim())
+    expect(options).toEqual(['Olga Owner', 'Ony'])
+    await fieldset.getByRole('checkbox', { name: 'Olga Owner' }).click()
+    await fieldset.getByRole('checkbox', { name: 'Ony' }).click()
     await page.getByTestId('org-seat-save').click()
     expect(submitted[0]!.fields).toMatchObject({
       user_id: 'mara',
-      reports_to_user_id: 'ony',
+      reports_to_sent: '1',
+      reports_to_user_ids: ['ony'],
       title: 'Marketing Manager',
     })
+  })
+
+  // fc3c5174: the diagram's seat form had a single "Reports to" select, so
+  // saving a seat with two managers posted one and dropped the other.
+  it('saving a seat with several managers keeps all of them', async () => {
+    render(OrgDiagram, { people, me: { id: 'olga', canManage: true } })
+    await page.getByRole('button', { name: 'Edit seat: Dana' }).click()
+    const fieldset = page.getByTestId('org-seat-manager')
+    await expect.element(fieldset.getByRole('checkbox', { name: 'Mara (AI)' })).toBeChecked()
+    await expect.element(fieldset.getByRole('checkbox', { name: 'Ony' })).toBeChecked()
+    await userEvent.fill(page.getByLabelText('Title', { exact: true }), 'Brand Designer')
+    await page.getByTestId('org-seat-save').click()
+    expect(submitted[0]!.fields).toMatchObject({
+      user_id: 'dana',
+      title: 'Brand Designer',
+      reports_to_sent: '1',
+      reports_to_user_ids: ['mara', 'ony'],
+    })
+    expect(submitted[0]!.fields.reports_to_user_id).toBeUndefined()
   })
 
   it('shows waiting and error feedback under the matching seat card', async () => {
