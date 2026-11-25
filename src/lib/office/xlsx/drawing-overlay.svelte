@@ -272,7 +272,7 @@
     {#if o.kind !== 'connector' && o.geometry !== 'line'}
       {#if textEdit && textEdit.id === o.id}
         <textarea
-          class="dl-fill resize-none bg-transparent p-1 text-xs outline-none"
+          class="dl-fill resize-none bg-transparent p-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
           style="color: {o.textColor ?? '#000000'}; text-align: {o.kind === 'textbox' ? 'left' : 'center'};"
           bind:value={textEdit.value}
           onpointerdown={(e) => e.stopPropagation()}

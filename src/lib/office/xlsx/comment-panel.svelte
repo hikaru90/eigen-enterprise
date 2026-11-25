@@ -334,7 +334,7 @@
           </button>
           {#if t.resolved}
             <span
-              class="rounded-full border px-1.5 text-[11px] text-muted-foreground"
+              class="rounded-full border px-1.5 text-xs text-muted-foreground"
               data-testid="xlsx-thread-resolved"
             >
               {m.drive_sheet_comment_resolved()}
@@ -379,7 +379,7 @@
             >
               <div class="flex items-baseline gap-1.5 text-xs">
                 <span class="font-medium">{c.author || 'Unknown'}</span>
-                <span class="text-[11px] text-muted-foreground">{formatAt(c.at)}</span>
+                <span class="text-xs text-muted-foreground">{formatAt(c.at)}</span>
                 {#if canWrite && (idx === 0 || isOwnComment(c.authorId))}
                   <div class="ml-auto flex gap-0.5">
                     {#if isOwnComment(c.authorId)}
@@ -492,7 +492,7 @@
           {/if}
         </div>
         {#if n.author}
-          <p class="mt-1 text-[11px] font-medium text-muted-foreground">{n.author}</p>
+          <p class="mt-1 text-xs font-medium text-muted-foreground">{n.author}</p>
         {/if}
         {#if composer?.kind === 'edit_note' && composer.ref === n.ref}
           {@render formBlock(
