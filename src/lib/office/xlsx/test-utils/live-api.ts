@@ -12,7 +12,7 @@ import {
   type SubmitRequest,
   type SubmitResponse,
 } from '../collab/protocol'
-import { applyBody } from '../collab/replica'
+import { applyBody, seedOf } from '../collab/replica'
 import { prepareSave } from '../ops'
 import { openWorkbook } from '../workbook'
 
@@ -65,7 +65,10 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-export function createLiveApiHarness(initialBytes: Uint8Array, opts: { actors?: Record<string, ActorConfig>; flushDelayMs?: number } = {}) {
+export function createLiveApiHarness(
+  initialBytes: Uint8Array,
+  opts: { actors?: Record<string, ActorConfig>; flushDelayMs?: number; onSaved?: (bytes: Uint8Array) => unknown } = {},
+) {
   const actors: Record<string, ActorConfig> = opts.actors ?? {
     default: { userId: 'alice', name: 'Alice', canEdit: true },
     alice: { userId: 'alice', name: 'Alice', canEdit: true },
@@ -104,10 +107,11 @@ export function createLiveApiHarness(initialBytes: Uint8Array, opts: { actors?: 
     }
     if (headSeq === baseSeq) return
     const wb = openWorkbook(savedBytes)
-    for (const e of entries) if (e.seq > baseSeq) applyBody(wb, e.body)
+    for (const e of entries) if (e.seq > baseSeq) applyBody(wb, e.body, seedOf(e.clientId, e.opId))
     prepareSave(wb, createCalc(wb))
     savedBytes = wb.pkg.toBytes()
     writtenSnapshots.push(savedBytes)
+    await opts.onSaved?.(savedBytes)
     baseSeq = headSeq
     broadcast({ event: 'saved', data: { seq: headSeq, at: new Date().toISOString() } })
   }
@@ -121,7 +125,7 @@ export function createLiveApiHarness(initialBytes: Uint8Array, opts: { actors?: 
 
   function replicaBytes() {
     const wb = openWorkbook(savedBytes)
-    for (const e of entries) if (e.seq > baseSeq) applyBody(wb, e.body)
+    for (const e of entries) if (e.seq > baseSeq) applyBody(wb, e.body, seedOf(e.clientId, e.opId))
     return wb
   }
 
@@ -171,18 +175,21 @@ export function createLiveApiHarness(initialBytes: Uint8Array, opts: { actors?: 
         }
       }
       const since = entries.filter((e) => e.seq > req.baseSeq).map((e) => e.body)
-      const items = rebaseItems(req.changes, since)
+      const { kept: items, refused } = rebaseItems(req.changes, since)
       const kept = new Set(items.map((i) => i.opId))
       const rejected = req.changes
         .filter((c) => !kept.has(c.opId))
-        .map((c) => ({ opId: c.opId, error: 'It no longer applies after the others’ changes.' }))
+        .map((c) => ({
+          opId: c.opId,
+          error: refused.find((x) => x.item.opId === c.opId)?.reason ?? 'It no longer applies after the others’ changes.',
+        }))
 
       const wb = replicaBytes()
       const accepted: Array<{ opId: string; seq: number }> = []
       const newEntries: LogEntry[] = []
       for (const it of items) {
         try {
-          applyBody(wb, it.body)
+          applyBody(wb, it.body, seedOf(req.clientId, it.opId))
         } catch (err) {
           rejected.push({ opId: it.opId, error: err instanceof Error ? err.message : String(err) })
           continue
@@ -314,4 +321,52 @@ export function createLiveApiHarness(initialBytes: Uint8Array, opts: { actors?: 
     },
     canonicalSame: (a: unknown, b: unknown) => canonical(a) === canonical(b),
   }
+}
+
+type Harness = ReturnType<typeof createLiveApiHarness>
+/** The Drive's plain read and write, as specs written before co-editing mock them. */
+type PlainApi = {
+  readBytes: (id: string) => Promise<Uint8Array>
+  writeBytes: (id: string, bytes: Uint8Array, session: string, base?: string) => Promise<unknown>
+}
+const plainSlots = new WeakMap<object, { h: Harness | null; fileId: string | null }>()
+
+/**
+ * The live APIs for specs that mock the Drive's plain `readBytes` and
+ * `writeBytes`: the session starts from what `readBytes(fileId)` gives, and
+ * every save of the session is a `writeBytes` call — so a spec's saved-file
+ * assertions keep checking what the server writes. Other files (a picture
+ * picked from Drive) are read through the spec's `readBytes` as before.
+ */
+export function liveOverPlainApi(fns: PlainApi) {
+  const slot = { h: null as Harness | null, fileId: null as string | null }
+  plainSlots.set(fns, slot)
+  const harness = async (id: string) => {
+    if (!slot.h) {
+      const start = await fns.readBytes(id)
+      slot.fileId = id
+      slot.h = createLiveApiHarness(start, { onSaved: (bytes) => fns.writeBytes(id, bytes, 'sheet-live:' + id, undefined) })
+    }
+    return slot.h
+  }
+  return {
+    readBytes: (id: string) => (slot.h && id === slot.fileId ? slot.h.api.readBytes(id) : fns.readBytes(id)),
+    sheetLiveJoin: async (id: string) => (await harness(id)).api.sheetLiveJoin(id),
+    sheetLiveSubmit: async (id: string, req: SubmitRequest) => (await harness(id)).api.sheetLiveSubmit(id, req),
+    sheetLiveEntries: async (id: string, after: number) => (await harness(id)).api.sheetLiveEntries(id, after),
+    sheetLivePresence: async (id: string, update: PresenceUpdate) => (await harness(id)).api.sheetLivePresence(id, update),
+    sheetLiveStream: (id: string, clientId: string, after: number) => {
+      if (!slot.h) throw new Error('sheetLiveStream before sheetLiveJoin')
+      return slot.h.api.sheetLiveStream(id, clientId, after)
+    },
+  }
+}
+
+/** Between tests: the next join starts a fresh session from the spec's `readBytes`. */
+export function resetPlainLive(fns: PlainApi) {
+  const slot = plainSlots.get(fns)
+  if (!slot) return
+  slot.h?.reset(new Uint8Array())
+  slot.h = null
+  slot.fileId = null
 }

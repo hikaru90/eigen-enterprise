@@ -1,7 +1,7 @@
 import type { SheetOp } from '../ops'
 import { describe, expect, it } from 'vitest'
-import { rebaseItems, transformBody, type LogBody } from './protocol'
-import { COORDS, EFFECTS, SHEET_OP_NAMES, transform, transformLists } from './transform'
+import { rebaseItems, transformBody, UNDO_GONE, type LogBody } from './protocol'
+import { COORDS, EFFECTS, SHEET_OP_NAMES, transform, transformLists, TransformRefusal } from './transform'
 
 const write = (sheet: string, ...refs: string[]): SheetOp => ({
   op: 'set_cells',
@@ -138,10 +138,11 @@ describe('lists and bodies', () => {
     expect(theirs).toEqual([deleteRows('S', 0)])
   })
 
-  it('an undo loses to a concurrent change; a change passes an undo unchanged', () => {
+  it('an undo loses to a concurrent change (refused, with why); a change passes an undo unchanged', () => {
     const change: LogBody = { kind: 'change', ops: [write('S', 'A1')], acceptLosses: false }
     const undo: LogBody = { kind: 'revert', of: 'x', images: {} }
-    expect(transformBody(undo, change)).toEqual([])
+    expect(() => transformBody(undo, change)).toThrow(TransformRefusal)
+    expect(() => transformBody(undo, change)).toThrow(UNDO_GONE)
     expect(transformBody(change, undo)).toEqual([change])
   })
 
@@ -150,7 +151,8 @@ describe('lists and bodies', () => {
       { opId: 'a', body: { kind: 'change', ops: [write('S', 'A2')], acceptLosses: false } as LogBody },
       { opId: 'b', body: { kind: 'change', ops: [write('S', 'A9')], acceptLosses: false } as LogBody },
     ]
-    const out = rebaseItems(items, [{ kind: 'change', ops: [deleteRows('S', 1)], acceptLosses: true }])
+    const { kept: out, refused } = rebaseItems(items, [{ kind: 'change', ops: [deleteRows('S', 1)], acceptLosses: true }])
+    expect(refused).toEqual([])
     expect(out.map((i) => i.opId)).toEqual(['b'])
     expect(out[0]!.body).toEqual({ kind: 'change', ops: [write('S', 'A8')].map((o) => ({ ...o, cells: [{ ref: 'A8', value: 'A9' }] })), acceptLosses: false })
   })

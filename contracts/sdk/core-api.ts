@@ -1866,6 +1866,285 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "drive.sheet_chart_create": {
+    input: {
+      "at"?: string
+      "file_id": string
+      "grouping"?: "clustered" | "stacked" | "percentStacked" | "standard"
+      "legend"?: ("r" | "l" | "t" | "b" | "tr") | null
+      "new_sheet"?: string
+      "range"?: string
+      "series"?: Array<{
+        "categories"?: string | null
+        "name"?: string | null
+        "name_ref"?: string | null
+        "secondary"?: boolean
+        "sizes"?: string | null
+        "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+        "values": string
+      }>
+      "sheet": string
+      "title"?: string | null
+      "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_delete": {
+    input: {
+      "chart": string
+      "file_id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_list": {
+    input: {
+      "file_id": string
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_update": {
+    input: {
+      "axes"?: {
+        "category"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+        "secondary"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+        "value"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+      }
+      "chart": string
+      "colors"?: Array<string | null>
+      "file_id": string
+      "grouping"?: "clustered" | "stacked" | "percentStacked" | "standard"
+      "labels"?: ({
+        "category"?: boolean
+        "percent"?: boolean
+        "position"?: ("ctr" | "inEnd" | "outEnd" | "inBase" | "t" | "b" | "l" | "r" | "bestFit") | null
+        "series"?: boolean
+        "value"?: boolean
+      }) | null
+      "legend"?: ("r" | "l" | "t" | "b" | "tr") | null
+      "markers"?: boolean
+      "position"?: string
+      "series"?: Array<{
+        "categories"?: string | null
+        "name"?: string | null
+        "name_ref"?: string | null
+        "secondary"?: boolean
+        "sizes"?: string | null
+        "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+        "values": string
+      }>
+      "sheet": string
+      "title"?: string | null
+      "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_add": {
+    input: {
+      "cell": string
+      "file_id": string
+      "kind"?: "comment" | "note"
+      "mentions"?: Array<string>
+      "sheet": string
+      "text": string
+      "visible"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_delete": {
+    input: {
+      "cell"?: string
+      "file_id": string
+      "id"?: string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_edit": {
+    input: {
+      "cell"?: string
+      "file_id": string
+      "id"?: string
+      "mentions"?: Array<string>
+      "sheet": string
+      "text"?: string
+      "visible"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_list": {
+    input: {
+      "file_id": string
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_reply": {
+    input: {
+      "file_id": string
+      "mentions"?: Array<string>
+      "sheet": string
+      "text": string
+      "thread": string
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_resolve": {
+    input: {
+      "file_id": string
+      "resolved"?: boolean
+      "sheet": string
+      "thread": string
+    }
+    output: unknown
+  }
+  "drive.sheet_conditional_format_delete": {
+    input: {
+      "file_id": string
+      "priority"?: number
+      "range"?: string | null
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_conditional_format_list": {
+    input: {
+      "file_id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_conditional_format_set": {
+    input: {
+      "file_id": string
+      "move_to"?: number
+      "priority"?: number
+      "range"?: string
+      "rule"?: {
+        "bar"?: {
+          "axis"?: "automatic" | "middle" | "none"
+          "border"?: boolean
+          "color": string
+          "gradient"?: boolean
+          "max"?: {
+            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+            "value"?: string | null
+          }
+          "min"?: {
+            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+            "value"?: string | null
+          }
+          "negative_color"?: string
+          "show_value"?: boolean
+        }
+        "below"?: boolean
+        "bottom"?: boolean
+        "equal_average"?: boolean
+        "formula1"?: string
+        "formula2"?: string
+        "icons"?: {
+          "custom"?: Array<{
+            "index": number
+            "set": "3Arrows" | "3ArrowsGray" | "3Flags" | "3TrafficLights1" | "3TrafficLights2" | "3Signs" | "3Symbols" | "3Symbols2" | "3Stars" | "3Triangles" | "4Arrows" | "4ArrowsGray" | "4RedToBlack" | "4Rating" | "4TrafficLights" | "5Arrows" | "5ArrowsGray" | "5Rating" | "5Quarters" | "5Boxes" | "NoIcons"
+          }>
+          "reverse"?: boolean
+          "set": "3Arrows" | "3ArrowsGray" | "3Flags" | "3TrafficLights1" | "3TrafficLights2" | "3Signs" | "3Symbols" | "3Symbols2" | "3Stars" | "3Triangles" | "4Arrows" | "4ArrowsGray" | "4RedToBlack" | "4Rating" | "4TrafficLights" | "5Arrows" | "5ArrowsGray" | "5Rating" | "5Quarters" | "5Boxes"
+          "show_value"?: boolean
+          "thresholds"?: Array<{
+            "gte"?: boolean
+            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+            "value": string
+          }>
+        }
+        "operator"?: "between" | "notBetween" | "equal" | "notEqual" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual"
+        "percent"?: boolean
+        "period"?: "today" | "yesterday" | "tomorrow" | "last7Days" | "thisWeek" | "lastWeek" | "nextWeek" | "thisMonth" | "lastMonth" | "nextMonth"
+        "points"?: Array<{
+          "color": string
+          "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
+          "value"?: string | null
+        }>
+        "rank"?: number
+        "std_dev"?: number
+        "stop_if_true"?: boolean
+        "style"?: {
+          "bold"?: boolean
+          "border"?: string
+          "fill"?: string
+          "font_color"?: string
+          "italic"?: boolean
+          "num_fmt"?: string
+          "strike"?: boolean
+          "underline"?: boolean
+        }
+        "text"?: string
+        "type": "cellIs" | "expression" | "colorScale" | "dataBar" | "iconSet" | "top10" | "aboveAverage" | "duplicateValues" | "uniqueValues" | "containsText" | "notContainsText" | "beginsWith" | "endsWith" | "containsBlanks" | "notContainsBlanks" | "containsErrors" | "notContainsErrors" | "timePeriod"
+      }
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_copy_range": {
+    input: {
+      "cut"?: boolean
+      "file_id": string
+      "locale"?: "en" | "de"
+      "mode"?: "all" | "values" | "formulas" | "formats"
+      "skip_blanks"?: boolean
+      "source_file_id"?: string
+      "source_range": string
+      "source_sheet": string
+      "target_sheet"?: string
+      "to": string
+      "transpose"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_export_pdf": {
+    input: {
+      "file_id": string
+      "fit_to_width"?: number | null
+      "locale"?: "en" | "de"
+      "orientation"?: "portrait" | "landscape"
+      "paper_size"?: "a4" | "letter" | "legal" | "a3" | "a5"
+      "print_gridlines"?: boolean
+      "print_headings"?: boolean
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_fill": {
+    input: {
+      "custom_lists"?: Array<Array<string>>
+      "file_id": string
+      "series"?: "auto" | "copy" | "linear" | "growth" | "days" | "weekdays" | "months" | "years"
+      "sheet": string
+      "source": string
+      "step"?: number
+      "stop"?: number
+      "target": string
+    }
+    output: unknown
+  }
   "drive.sheet_filter": {
     input: {
       "columns"?: Array<{
@@ -1877,6 +2156,24 @@ export type CoreApiTools = {
       "off"?: true
       "range"?: string
       "sheet": string
+      "table"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_find_replace": {
+    input: {
+      "cells"?: Array<{
+        "ref": string
+        "sheet": string
+      }>
+      "file_id": string
+      "find": string
+      "locale"?: "en" | "de"
+      "look_in"?: "formulas" | "values"
+      "match_case"?: boolean
+      "replace"?: string
+      "sheet"?: string
+      "whole_cell"?: boolean
     }
     output: unknown
   }
@@ -1925,6 +2222,25 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_hyperlink_remove": {
+    input: {
+      "file_id": string
+      "range": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_hyperlink_set": {
+    input: {
+      "file_id": string
+      "range": string
+      "sheet": string
+      "target": string
+      "text"?: string | null
+      "tooltip"?: string | null
+    }
+    output: unknown
+  }
   "drive.sheet_live_entries": {
     input: {
       "after": number
@@ -1947,7 +2263,7 @@ export type CoreApiTools = {
             "acceptLosses": boolean
             "kind": "change"
             "ops": Array<{
-              "op": "set_cells" | "set_format" | "add_sheet" | "rename_sheet" | "delete_sheet" | "insert_rows" | "delete_rows" | "insert_columns" | "delete_columns" | "set_style" | "set_column_width" | "set_row_height" | "sort_range" | "set_autofilter" | "filter_column" | "freeze_panes"
+              "op": "set_cells" | "set_format" | "add_sheet" | "rename_sheet" | "delete_sheet" | "insert_rows" | "delete_rows" | "insert_columns" | "delete_columns" | "set_style" | "set_column_width" | "set_row_height" | "sort_range" | "set_autofilter" | "filter_column" | "freeze_panes" | "insert_picture" | "insert_shape" | "update_drawing" | "delete_drawing" | "set_note" | "delete_note" | "add_comment" | "reply_comment" | "edit_comment" | "resolve_comment" | "delete_comment" | "cf_add" | "cf_update" | "cf_delete" | "cf_clear" | "cf_move" | "validation_set" | "validation_clear" | "hyperlink_set" | "hyperlink_remove" | "name_add" | "name_update" | "name_delete" | "protect_sheet" | "unprotect_sheet" | "protect_workbook" | "unprotect_workbook" | "set_cell_protection" | "create_table" | "update_table" | "delete_table" | "create_pivot" | "update_pivot" | "refresh_pivot" | "delete_pivot" | "chart_create" | "chart_update" | "chart_move" | "chart_delete" | "paste" | "fill" | "replace" | "merge_cells" | "clear_range" | "set_rich_text" | "shift_decimals" | "hide_columns" | "hide_rows" | "group_columns" | "ungroup_columns" | "group_rows" | "ungroup_rows" | "collapse_columns" | "collapse_rows" | "set_outline_level" | "autofit_columns" | "autofit_rows" | "move_sheet" | "set_sheet_color" | "set_sheet_visibility" | "duplicate_sheet" | "set_page_setup" | "set_view_options" | "batch"
             }>
           }) | ({
             "images": Record<string, ({
@@ -1968,11 +2284,304 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_merge": {
+    input: {
+      "accept_losses"?: boolean
+      "clear"?: "all" | "contents" | "formats"
+      "file_id": string
+      "mode"?: "center" | "merge" | "across" | "unmerge"
+      "range"?: string
+      "rich_text"?: {
+        "ref": string
+        "runs": Array<{
+          "bold"?: boolean
+          "color"?: string
+          "font"?: string
+          "italic"?: boolean
+          "size"?: number
+          "strike"?: boolean
+          "text": string
+          "underline"?: boolean
+        }>
+      }
+      "sheet": string
+      "shift_decimals"?: 1 | -1
+    }
+    output: unknown
+  }
+  "drive.sheet_names_delete": {
+    input: {
+      "file_id": string
+      "name": string
+      "scope"?: string | null
+    }
+    output: unknown
+  }
+  "drive.sheet_names_list": {
+    input: {
+      "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_names_set": {
+    input: {
+      "comment"?: string | null
+      "file_id": string
+      "name": string
+      "new_name"?: string
+      "refers_to"?: string
+      "scope"?: string | null
+    }
+    output: unknown
+  }
+  "drive.sheet_picture_delete": {
+    input: {
+      "file_id": string
+      "id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_picture_insert": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "height"?: number
+      "image_base64"?: string
+      "image_file_id"?: string
+      "name"?: string
+      "sheet": string
+      "width"?: number
+      "x"?: number
+      "y"?: number
+    }
+    output: unknown
+  }
+  "drive.sheet_picture_update": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "height"?: number
+      "id": string
+      "name"?: string
+      "rotation"?: number
+      "sheet": string
+      "width"?: number
+      "x"?: number
+      "y"?: number
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_create": {
+    input: {
+      "col_grand_totals"?: boolean
+      "columns"?: Array<string>
+      "file_id": string
+      "filters"?: Array<{
+        "field": string
+        "selected_item"?: string
+      }>
+      "name"?: string
+      "row_grand_totals"?: boolean
+      "rows"?: Array<string>
+      "source": string
+      "source_sheet"?: string
+      "style"?: string
+      "subtotals"?: boolean
+      "target_cell"?: string
+      "target_sheet"?: string
+      "values"?: Array<{
+        "agg"?: "sum" | "count" | "average" | "min" | "max" | "product" | "countNums" | "stdDev" | "var"
+        "field": string
+        "name"?: string
+        "num_fmt"?: string
+      }>
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_delete": {
+    input: {
+      "file_id": string
+      "keep_values"?: boolean
+      "pivot": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_refresh": {
+    input: {
+      "file_id": string
+      "pivot": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_update": {
+    input: {
+      "col_grand_totals"?: boolean
+      "columns"?: Array<string>
+      "file_id": string
+      "filters"?: Array<{
+        "field": string
+        "selected_item"?: string
+      }>
+      "hidden_items"?: Record<string, Array<string>>
+      "name"?: string
+      "pivot": string
+      "row_grand_totals"?: boolean
+      "rows"?: Array<string>
+      "sheet": string
+      "style"?: string
+      "subtotals"?: boolean
+      "values"?: Array<{
+        "agg"?: "sum" | "count" | "average" | "min" | "max" | "product" | "countNums" | "stdDev" | "var"
+        "field": string
+        "name"?: string
+        "num_fmt"?: string
+      }>
+    }
+    output: unknown
+  }
+  "drive.sheet_protect": {
+    input: {
+      "action": "protect_sheet" | "unprotect_sheet" | "protect_workbook" | "unprotect_workbook" | "set_cell_protection"
+      "allow"?: {
+        "auto_filter"?: boolean
+        "delete_columns"?: boolean
+        "delete_rows"?: boolean
+        "format_cells"?: boolean
+        "format_columns"?: boolean
+        "format_rows"?: boolean
+        "insert_columns"?: boolean
+        "insert_hyperlinks"?: boolean
+        "insert_rows"?: boolean
+        "objects"?: boolean
+        "pivot_tables"?: boolean
+        "scenarios"?: boolean
+        "select_locked_cells"?: boolean
+        "select_unlocked_cells"?: boolean
+        "sort"?: boolean
+      }
+      "file_id": string
+      "hidden"?: boolean
+      "locked"?: boolean
+      "password"?: string | null
+      "range"?: string
+      "sheet"?: string
+    }
+    output: unknown
+  }
   "drive.sheet_read": {
     input: {
       "file_id": string
       "range"?: string
       "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_rows_cols": {
+    input: {
+      "changes": Array<({
+        "action": "hide_columns"
+        "from": number | string
+        "hidden"?: boolean
+        "to"?: number | string
+      }) | ({
+        "action": "hide_rows"
+        "from": number
+        "hidden"?: boolean
+        "to"?: number
+      }) | ({
+        "action": "group_columns"
+        "from": number | string
+        "to"?: number | string
+      }) | ({
+        "action": "ungroup_columns"
+        "from": number | string
+        "to"?: number | string
+      }) | ({
+        "action": "group_rows"
+        "from": number
+        "to"?: number
+      }) | ({
+        "action": "ungroup_rows"
+        "from": number
+        "to"?: number
+      }) | ({
+        "action": "collapse_columns"
+        "collapsed": boolean
+        "from": number | string
+        "to"?: number | string
+      }) | ({
+        "action": "collapse_rows"
+        "collapsed": boolean
+        "from": number
+        "to"?: number
+      }) | ({
+        "action": "set_outline_level"
+        "axis": "row" | "col"
+        "level": number
+      }) | ({
+        "action": "autofit_columns"
+        "from": number | string
+        "locale"?: "en" | "de"
+        "to"?: number | string
+      }) | ({
+        "action": "autofit_rows"
+        "from": number
+        "locale"?: "en" | "de"
+        "to"?: number
+      })>
+      "file_id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_shape_create": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "fill"?: string | null
+      "geometry"?: "rect" | "roundRect" | "ellipse" | "triangle" | "diamond" | "rightArrow" | "leftArrow" | "upArrow" | "downArrow" | "line" | "arrow"
+      "height"?: number
+      "line"?: string | null
+      "name"?: string
+      "sheet": string
+      "text"?: string
+      "textbox"?: boolean
+      "width"?: number
+      "x"?: number
+      "y"?: number
+    }
+    output: unknown
+  }
+  "drive.sheet_shape_delete": {
+    input: {
+      "file_id": string
+      "id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_shape_update": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "fill"?: string | null
+      "height"?: number
+      "id": string
+      "line"?: string | null
+      "name"?: string
+      "rotation"?: number
+      "sheet": string
+      "text"?: string
+      "width"?: number
+      "x"?: number
+      "y"?: number
     }
     output: unknown
   }
@@ -2025,6 +2634,117 @@ export type CoreApiTools = {
         "sheet": string
       })>
       "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_tab": {
+    input: {
+      "accept_losses"?: boolean
+      "action": "move_sheet" | "set_sheet_color" | "set_sheet_visibility" | "duplicate_sheet" | "set_view_options" | "set_page_setup"
+      "center_horizontally"?: boolean
+      "center_vertically"?: boolean
+      "color"?: string | null
+      "file_id": string
+      "fit_to_height"?: number | null
+      "fit_to_width"?: number | null
+      "margins"?: {
+        "bottom"?: number
+        "footer"?: number
+        "header"?: number
+        "left"?: number
+        "right"?: number
+        "top"?: number
+      }
+      "name"?: string
+      "orientation"?: "portrait" | "landscape"
+      "paper_size"?: "a4" | "letter" | "legal" | "a3" | "a5"
+      "position"?: number
+      "print_area"?: string | null
+      "print_gridlines"?: boolean
+      "print_headings"?: boolean
+      "repeat_cols"?: string | null
+      "repeat_rows"?: string | null
+      "scale"?: number
+      "sheet": string
+      "show_gridlines"?: boolean
+      "show_headings"?: boolean
+      "state"?: "visible" | "hidden" | "veryHidden"
+      "zoom_scale"?: number
+    }
+    output: unknown
+  }
+  "drive.sheet_table_create": {
+    input: {
+      "auto_filter"?: boolean
+      "file_id": string
+      "has_headers"?: boolean
+      "name"?: string
+      "range": string
+      "sheet": string
+      "style"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_table_delete": {
+    input: {
+      "file_id": string
+      "mode"?: "convert_to_range" | "delete_cells"
+      "sheet": string
+      "table": string
+    }
+    output: unknown
+  }
+  "drive.sheet_table_update": {
+    input: {
+      "auto_filter"?: boolean
+      "file_id": string
+      "header_row"?: boolean
+      "name"?: string
+      "ref"?: string
+      "sheet": string
+      "show_column_stripes"?: boolean
+      "show_first_column"?: boolean
+      "show_last_column"?: boolean
+      "show_row_stripes"?: boolean
+      "style"?: string
+      "table": string
+      "totals_columns"?: Array<{
+        "column": string | number
+        "formula"?: string
+        "function": "none" | "sum" | "count" | "average" | "min" | "max" | "countNums" | "stdDev" | "var" | "custom"
+        "label"?: string
+      }>
+      "totals_row"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_validation_clear": {
+    input: {
+      "file_id": string
+      "range": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_validation_set": {
+    input: {
+      "allow_blank"?: boolean
+      "dropdown"?: boolean
+      "error_message"?: string | null
+      "error_style"?: "stop" | "warning" | "information"
+      "error_title"?: string | null
+      "file_id": string
+      "formula1"?: string
+      "formula2"?: string
+      "input_message"?: string | null
+      "input_title"?: string | null
+      "items"?: Array<string>
+      "operator"?: "between" | "notBetween" | "equal" | "notEqual" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual"
+      "range": string
+      "sheet": string
+      "show_error"?: boolean
+      "show_input"?: boolean
+      "type": "any" | "whole" | "decimal" | "list" | "date" | "time" | "textLength" | "custom"
     }
     output: unknown
   }
@@ -4527,15 +5247,56 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.set_sharing",
   "drive.share_many",
   "drive.shared_with_me",
+  "drive.sheet_chart_create",
+  "drive.sheet_chart_delete",
+  "drive.sheet_chart_list",
+  "drive.sheet_chart_update",
+  "drive.sheet_comment_add",
+  "drive.sheet_comment_delete",
+  "drive.sheet_comment_edit",
+  "drive.sheet_comment_list",
+  "drive.sheet_comment_reply",
+  "drive.sheet_comment_resolve",
+  "drive.sheet_conditional_format_delete",
+  "drive.sheet_conditional_format_list",
+  "drive.sheet_conditional_format_set",
+  "drive.sheet_copy_range",
+  "drive.sheet_export_pdf",
+  "drive.sheet_fill",
   "drive.sheet_filter",
+  "drive.sheet_find_replace",
   "drive.sheet_format",
   "drive.sheet_freeze",
+  "drive.sheet_hyperlink_remove",
+  "drive.sheet_hyperlink_set",
   "drive.sheet_live_entries",
   "drive.sheet_live_join",
   "drive.sheet_live_submit",
+  "drive.sheet_merge",
+  "drive.sheet_names_delete",
+  "drive.sheet_names_list",
+  "drive.sheet_names_set",
+  "drive.sheet_picture_delete",
+  "drive.sheet_picture_insert",
+  "drive.sheet_picture_update",
+  "drive.sheet_pivot_create",
+  "drive.sheet_pivot_delete",
+  "drive.sheet_pivot_refresh",
+  "drive.sheet_pivot_update",
+  "drive.sheet_protect",
   "drive.sheet_read",
+  "drive.sheet_rows_cols",
+  "drive.sheet_shape_create",
+  "drive.sheet_shape_delete",
+  "drive.sheet_shape_update",
   "drive.sheet_sort",
   "drive.sheet_structure",
+  "drive.sheet_tab",
+  "drive.sheet_table_create",
+  "drive.sheet_table_delete",
+  "drive.sheet_table_update",
+  "drive.sheet_validation_clear",
+  "drive.sheet_validation_set",
   "drive.sheet_write",
   "drive.suggest_archive",
   "drive.trash",

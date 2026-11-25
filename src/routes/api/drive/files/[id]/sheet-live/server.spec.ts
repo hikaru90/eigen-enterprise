@@ -138,8 +138,9 @@ describe('/api/drive/files/[id]/sheet-live/* routes', () => {
     expect(editorSubmit.status).toBe(200)
     expect(await editorSubmit.json()).toMatchObject({ state: 'ok', head: 1 })
 
+    // Frames may arrive split across reads: read until the entry came (or the stream ended).
     let text = ''
-    for (let i = 0; i < 6; i++) {
+    for (;;) {
       const { value, done } = await reader.read()
       if (done) break
       text += dec.decode(value)

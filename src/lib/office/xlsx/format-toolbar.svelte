@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ClearWhat, MergeMode } from './cells-edit'
   import type { StylePatch } from './format-cells'
   import type { BorderPreset, BorderStyle } from './style-choices'
   import type { CellStyle } from './styles'
@@ -7,6 +8,7 @@
   import AlignTopIcon from '@lucide/svelte/icons/align-vertical-justify-start'
   import BaselineIcon from '@lucide/svelte/icons/baseline'
   import BoldIcon from '@lucide/svelte/icons/bold'
+  import CopyIcon from '@lucide/svelte/icons/copy'
   import ItalicIcon from '@lucide/svelte/icons/italic'
   import PaintBucketIcon from '@lucide/svelte/icons/paint-bucket'
   import StrikethroughIcon from '@lucide/svelte/icons/strikethrough'
@@ -21,19 +23,23 @@
   /**
    * The spreadsheet's cell format bar: font family and size, bold, italic,
    * underline, strikethrough, text and fill colour, horizontal and vertical
-   * alignment, wrap, borders, and the active column's width and row's height.
-   * It shows the active cell's look; each control hands one change to the
-   * page (`onstyle`, `onwidth`, `onheight`), which applies it to the
-   * selection — the same operations drive.sheet_format makes.
+   * alignment, wrap, borders, merge/unmerge, clear, format painter, decimal
+   * shift, row/column hide/group/autofit, and column width / row height.
    */
   let {
     style,
     plainFont,
     width,
     height,
+    painterActive = false,
     onstyle,
     onwidth,
     onheight,
+    onmerge,
+    onclear,
+    onpainter,
+    onshiftdecimals,
+    onrowcolaction,
   }: {
     /** The active cell's look. */
     style: CellStyle
@@ -42,10 +48,28 @@
     /** The active column's width (Excel characters) and row's height (points). */
     width: number
     height: number
+    painterActive?: boolean
     onstyle: (patch: StylePatch) => void
     /** null: back to the sheet's default. */
     onwidth: (chars: number | null) => void
     onheight: (points: number | null) => void
+    onmerge?: (mode: MergeMode) => void
+    onclear?: (what: ClearWhat) => void
+    onpainter?: () => void
+    onshiftdecimals?: (delta: 1 | -1) => void
+    onrowcolaction?: (
+      action:
+        | 'hide_rows'
+        | 'unhide_rows'
+        | 'hide_cols'
+        | 'unhide_cols'
+        | 'group_rows'
+        | 'ungroup_rows'
+        | 'group_cols'
+        | 'ungroup_cols'
+        | 'autofit_col'
+        | 'autofit_row',
+    ) => void
   } = $props()
 
   const FONTS = [
@@ -349,4 +373,100 @@
       data-testid="xlsx-row-height"
     />
   </label>
+  {#if onshiftdecimals}
+    <span class={sep} aria-hidden="true"></span>
+    <button
+      type="button"
+      class="{btn} font-mono text-xs"
+      title={m.drive_sheet_fmt_decimals_more()}
+      aria-label={m.drive_sheet_fmt_decimals_more()}
+      onclick={() => onshiftdecimals(1)}
+      data-testid="xlsx-decimals-more">.00→</button
+    >
+    <button
+      type="button"
+      class="{btn} font-mono text-xs"
+      title={m.drive_sheet_fmt_decimals_less()}
+      aria-label={m.drive_sheet_fmt_decimals_less()}
+      onclick={() => onshiftdecimals(-1)}
+      data-testid="xlsx-decimals-less">←.0</button
+    >
+  {/if}
+  {#if onpainter}
+    <button
+      type="button"
+      class="{btn} {painterActive ? on : ''}"
+      aria-pressed={painterActive}
+      title={m.drive_sheet_fmt_painter()}
+      aria-label={m.drive_sheet_fmt_painter()}
+      onclick={onpainter}
+      data-testid="xlsx-format-painter"
+    >
+      <CopyIcon class="size-3.5" aria-hidden="true" />
+      <span class="sr-only sm:not-sr-only text-xs">{m.drive_sheet_fmt_painter()}</span>
+    </button>
+  {/if}
+  {#if onmerge}
+    <select
+      class="{field} w-32"
+      value=""
+      aria-label={m.drive_sheet_merge()}
+      onchange={(e) => {
+        const mode = e.currentTarget.value as MergeMode | ''
+        e.currentTarget.value = ''
+        if (mode) onmerge(mode)
+      }}
+      data-testid="xlsx-merge"
+    >
+      <option value="" disabled>{m.drive_sheet_merge()}</option>
+      <option value="center">{m.drive_sheet_merge_center()}</option>
+      <option value="merge">{m.drive_sheet_merge_cells()}</option>
+      <option value="across">{m.drive_sheet_merge_across()}</option>
+      <option value="unmerge">{m.drive_sheet_unmerge()}</option>
+    </select>
+  {/if}
+  {#if onclear}
+    <select
+      class="{field} w-28"
+      value=""
+      aria-label={m.drive_sheet_clear()}
+      onchange={(e) => {
+        const what = e.currentTarget.value as ClearWhat | ''
+        e.currentTarget.value = ''
+        if (what) onclear(what)
+      }}
+      data-testid="xlsx-clear"
+    >
+      <option value="" disabled>{m.drive_sheet_clear()}</option>
+      <option value="all">{m.drive_sheet_clear_all()}</option>
+      <option value="contents">{m.drive_sheet_clear_contents()}</option>
+      <option value="formats">{m.drive_sheet_clear_formats()}</option>
+    </select>
+  {/if}
+  {#if onrowcolaction}
+    <select
+      class="{field} w-36"
+      value=""
+      aria-label={m.drive_sheet_rows_cols()}
+      onchange={(e) => {
+        const action = e.currentTarget.value as
+          Parameters<NonNullable<typeof onrowcolaction>>[0] | ''
+        e.currentTarget.value = ''
+        if (action) onrowcolaction(action)
+      }}
+      data-testid="xlsx-rows-cols-menu"
+    >
+      <option value="" disabled>{m.drive_sheet_rows_cols()}</option>
+      <option value="hide_rows">{m.drive_sheet_hide_rows()}</option>
+      <option value="unhide_rows">{m.drive_sheet_unhide_rows()}</option>
+      <option value="hide_cols">{m.drive_sheet_hide_cols()}</option>
+      <option value="unhide_cols">{m.drive_sheet_unhide_cols()}</option>
+      <option value="group_rows">{m.drive_sheet_group_rows()}</option>
+      <option value="ungroup_rows">{m.drive_sheet_ungroup_rows()}</option>
+      <option value="group_cols">{m.drive_sheet_group_cols()}</option>
+      <option value="ungroup_cols">{m.drive_sheet_ungroup_cols()}</option>
+      <option value="autofit_col">{m.drive_sheet_autofit_col()}</option>
+      <option value="autofit_row">{m.drive_sheet_autofit_row()}</option>
+    </select>
+  {/if}
 </div>

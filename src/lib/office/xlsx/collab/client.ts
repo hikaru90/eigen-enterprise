@@ -5,16 +5,18 @@ import { openWorkbook, XlsxError } from '../workbook'
 import {
   canonical,
   MAX_BATCH,
+  pinChange,
   rebaseItems,
+  toWireValue,
   type LogBody,
   type LogEntry,
   type SubmitRequest,
   type SubmitResponse,
 } from './protocol'
-import { applyBody, toWire, type Step } from './replica'
+import { applyBody, seedOf, toWire, type Step } from './replica'
 
 /**
- * One grid's side of co-editing a workbook (plan/phase-office-files.md §7.4).
+ * One grid's side of co-editing a workbook (plan/phase-office-files.md §7.9).
  *
  * The workbook on screen is the server's log applied in order (`confirmed`,
  * up to `seq`) plus this tab's own changes the server has not logged yet
@@ -84,7 +86,7 @@ export function createLiveSheet(opts: {
   let seq = opts.baseSeq
   for (const e of opts.entries) {
     if (e.seq !== seq + 1) throw new XlsxError(`The change log has a gap after entry ${seq}.`)
-    applyBody(wb, e.body)
+    applyBody(wb, e.body, seedOf(e.clientId, e.opId))
     seq = e.seq
   }
   let pending: Pending[] = []
@@ -116,13 +118,21 @@ export function createLiveSheet(opts: {
    * the rewriting dropped, `before` lists what there was) is taken back and
    * said — by the server's answer when it is in flight, else here.
    */
-  function reapply(items: Array<{ opId: string; body: LogBody }>, before: Pending[] = items as Pending[]) {
+  function reapply(
+    items: Array<{ opId: string; body: LogBody }>,
+    before: Pending[] = items as Pending[],
+    refused: Array<{ item: Pending; reason: string }> = [],
+  ) {
     const kept: Pending[] = []
     const left = new Set(items.map((i) => i.opId))
-    for (const p of before) if (!left.has(p.opId) && !inflight?.ids.has(p.opId)) ev.onRejected?.(null)
+    const why = new Map(refused.map((r) => [r.item.opId, r.reason]))
+    for (const p of before) {
+      if (left.has(p.opId) || inflight?.ids.has(p.opId)) continue
+      ev.onRejected?.(why.get(p.opId) ?? null)
+    }
     for (const it of items) {
       try {
-        kept.push({ ...it, step: applyBody(wb, it.body).step })
+        kept.push({ ...it, step: applyBody(wb, it.body, seedOf(opts.clientId, it.opId)).step })
       } catch (err) {
         if (!inflight?.ids.has(it.opId)) ev.onRejected?.(err instanceof Error ? err.message : String(err))
       }
@@ -132,7 +142,7 @@ export function createLiveSheet(opts: {
 
   function confirm(entry: LogEntry) {
     try {
-      applyBody(wb, entry.body)
+      applyBody(wb, entry.body, seedOf(entry.clientId, entry.opId))
     } catch (err) {
       // The server applied it to the same workbook: this copy is out of step.
       console.error('[xlsx live] a logged change did not apply here', { seq: entry.seq, err })
@@ -168,7 +178,8 @@ export function createLiveSheet(opts: {
     } else {
       const rest = pending
       if (!confirm(entry)) return
-      reapply(rebaseItems(rest, [entry.body]), rest)
+      const { kept, refused } = rebaseItems(rest, [entry.body])
+      reapply(kept, rest, refused)
       // Someone else changed the file: this tab's history no longer fits it.
       undoStack = []
       redoStack = []
@@ -247,9 +258,9 @@ export function createLiveSheet(opts: {
     if (closed) throw new XlsxError('This copy is no longer connected; reload the file.')
     // A plain copy: the page may hand over reactive proxies ($state), which can't be cloned or
     // transformed, and a change must not move when the page's object does.
-    const body = JSON.parse(JSON.stringify(made)) as LogBody
-    const { result, step } = applyBody(wb, body)
+    const body: LogBody = made.kind === 'change' ? pinChange(made) : toWireValue(made)
     const opId = opts.newId()
+    const { result, step } = applyBody(wb, body, seedOf(opts.clientId, opId))
     pending.push({ opId, body, step })
     bump()
     tellPending()

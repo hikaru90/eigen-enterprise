@@ -4,7 +4,7 @@ import type { Author, LogBody } from '$lib/office/xlsx/collab/protocol'
 
 /**
  * Server-authoritative co-editing state for Excel workbooks (migration 0186,
- * plan/phase-office-files.md §7.4): one session row per open/unsaved
+ * plan/phase-office-files.md §7.9): one session row per open/unsaved
  * workbook, its ordered operation log, and active peer presence across processes.
  */
 export const sheetLiveSession = pgTable(

@@ -47,4 +47,33 @@ describe('a grid’s live copy', () => {
     expect(live.pending()).toBe(1)
     expect(live.seq()).toBe(1)
   })
+
+  it('undo and redo of the new operations (a merge, a picture) are sent as reverts and restore the workbook', () => {
+    const sent: SubmitRequest[] = []
+    let n = 0
+    const live = createLiveSheet({
+      bytes: book,
+      baseSeq: 0,
+      entries: [],
+      clientId: 'tab-a',
+      newId: () => `mine-${++n}`,
+      transport: {
+        submit: (req) => {
+          sent.push(req)
+          return new Promise<SubmitResponse>(() => {})
+        },
+        entriesAfter: async () => [],
+      },
+    })
+    live.apply({ op: 'merge_cells', sheet: 'Budget', range: 'E2:F3', mode: 'merge' })
+    expect(live.wb.sheet('Budget').merges.length).toBeGreaterThan(1)
+    live.undo()
+    expect(live.wb.sheet('Budget').merges).toHaveLength(1)
+    live.redo()
+    expect(live.wb.sheet('Budget').merges.length).toBeGreaterThan(1)
+    live.undo()
+    expect(live.wb.sheet('Budget').merges).toHaveLength(1)
+    expect(live.pending()).toBe(4)
+    expect(sent[0]!.changes.map((c) => c.body.kind)).toEqual(['change'])
+  })
 })

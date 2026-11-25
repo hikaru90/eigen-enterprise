@@ -3,12 +3,22 @@ import { parse } from '@borgar/fx'
 import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
-import { runFormatOp, type FormatOp } from './format-cells'
 import { needsDynamicArray } from './calc-static'
-import { toFileText, toShownText } from './formula-text'
-import { ensureDynamicArrayCm } from './metadata'
+import { runChartOp, shiftChartRefs, type ChartOp } from './chart-ops'
+import { runCfOp, type CfOp } from './cond-format'
+import { drawingPartOf, shiftDrawing, sortDrawing } from './drawing'
+import { runDrawingOp, type DrawingOp } from './drawing-ops'
+import { editLosses, runEditOp, type EditOp } from './edit-ops'
 import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
+import { runFormatOp, type FormatOp } from './format-cells'
+import { toFileText, toShownText } from './formula-text'
+import { runHyperlinkOp, type HyperlinkOp } from './hyperlinks'
+import { ensureDynamicArrayCm } from './metadata'
+import { runNameOp, type NameOp } from './names'
+import { runNoteOp, shiftLegacyComments, sortLegacyComments, type NoteOp } from './notes'
 import { freezePanes, type FreezeOp } from './panes'
+import { createPivot, deletePivot, refreshPivot, updatePivot, type PivotOp } from './pivot'
+import { guard, runProtectionOp, type ProtectionOp } from './protection'
 import {
   cellKey,
   cellName,
@@ -46,6 +56,9 @@ import {
 } from './shift'
 import { sortLosses, sortRange, type SortOp } from './sort'
 import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
+import { autoExpandTables, createTable, deleteTable, updateTable, type TableOp } from './tables'
+import { runThreadOp, shiftThreads, sortThreads, type ThreadOp } from './threads'
+import { runValidationOp, type ValidationOp } from './validation'
 import {
   isErrorValue,
   relativeTarget,
@@ -117,6 +130,26 @@ export type SheetOp =
   | AutoFilterOp
   | FilterColumnOp
   | FreezeOp
+  /** Pictures, shapes, text boxes (./drawing-ops.ts); notes (./notes.ts); threaded comments (./threads.ts). */
+  | DrawingOp
+  | NoteOp
+  | ThreadOp
+  /** Conditional formats, validation, links, names, protection (./cond-format.ts … ./protection.ts). */
+  | CfOp
+  | ValidationOp
+  | HyperlinkOp
+  | NameOp
+  | ProtectionOp
+  /** Excel tables (./tables.ts). */
+  | TableOp
+  /** Pivot tables (./pivot.ts). */
+  | PivotOp
+  /** Insert, change, move, delete charts (./chart-ops.ts). */
+  | ChartOp
+  /** Everyday editing: paste, fill, replace, merge, rich text, clear, rows/columns, sheet tabs, view, page setup (./edit-ops.ts). */
+  | EditOp
+  /** Several operations as one change (one undo step): e.g. a format on each range of a multi-range selection. */
+  | { op: 'batch'; ops: SheetOp[] }
 
 /** A feature that would end up wrong after an operation (what, and how many). */
 export type Loss = { feature: LossFeature; count: number; detail?: string }
@@ -132,6 +165,8 @@ export type LossFeature =
   | 'pivot_sources'
   | 'formulas_ref_error'
   | 'names_ref_error'
+  | 'merged_values'
+  | 'not_copied'
 
 export class XlsxLossError extends XlsxError {
   constructor(readonly losses: Loss[]) {
@@ -145,7 +180,7 @@ export class XlsxLossError extends XlsxError {
 const LOSS_TEXT: Record<LossFeature, string> = {
   tables: 'tables (they keep their old cell ranges)',
   pivot_tables: 'pivot tables (they stay where they are)',
-  drawings: 'pictures, charts or shapes on the sheet (they stay where they are)',
+  drawings: 'pictures or shapes on the sheet (they stay where they are; charts move with their cells)',
   comments: 'comments (they stay on their old cells)',
   threaded_comments: 'threaded comments (they stay on their old cells)',
   controls: 'form controls or embedded objects (they stay where they are)',
@@ -154,6 +189,8 @@ const LOSS_TEXT: Record<LossFeature, string> = {
   pivot_sources: 'pivot tables that read these cells (they keep their old source range)',
   formulas_ref_error: 'formulas in other sheets that use it (they will show #REF!)',
   names_ref_error: 'defined names that use it (they will show #REF!)',
+  merged_values: 'values in the merged cells other than the upper-left one (they are cleared)',
+  not_copied: 'parts of the sheet that are not copied (the copy has no such part)',
 }
 
 export const describeLoss = (l: Loss) =>
@@ -213,6 +250,7 @@ const FUTURE_FUNCTIONS = new Set([
   'DAYS',
   'DECIMAL',
   'DROP',
+  'ENCODEURL',
   'ERF.PRECISE',
   'ERFC.PRECISE',
   'EXPAND',
@@ -226,11 +264,13 @@ const FUTURE_FUNCTIONS = new Set([
   'FLOOR.MATH',
   'FLOOR.PRECISE',
   'FORECAST.LINEAR',
+  'FORMULATEXT',
   'GAMMA',
   'GAMMA.DIST',
   'GAMMA.INV',
   'GAMMALN.PRECISE',
   'GAUSS',
+  'GROUPBY',
   'HSTACK',
   'HYPGEOM.DIST',
   'IFNA',
@@ -243,6 +283,7 @@ const FUTURE_FUNCTIONS = new Set([
   'IMSECH',
   'IMSINH',
   'IMTAN',
+  'ISFORMULA',
   'ISOWEEKNUM',
   'LET',
   'LOGNORM.DIST',
@@ -261,16 +302,21 @@ const FUTURE_FUNCTIONS = new Set([
   'PDURATION',
   'PERCENTILE.EXC',
   'PERCENTILE.INC',
+  'PERCENTOF',
   'PERCENTRANK.EXC',
   'PERCENTRANK.INC',
   'PERMUTATIONA',
   'PHI',
+  'PIVOTBY',
   'POISSON.DIST',
   'QUARTILE.EXC',
   'QUARTILE.INC',
   'RANDARRAY',
   'RANK.AVG',
   'RANK.EQ',
+  'REGEXEXTRACT',
+  'REGEXREPLACE',
+  'REGEXTEST',
   'RRI',
   'SEC',
   'SECH',
@@ -293,6 +339,7 @@ const FUTURE_FUNCTIONS = new Set([
   'TEXTJOIN',
   'TOCOL',
   'TOROW',
+  'TRIMRANGE',
   'UNICHAR',
   'UNICODE',
   'UNIQUE',
@@ -416,19 +463,18 @@ function movingLosses(wb: Workbook, info: SheetInfo): Loss[] {
   }
   add('tables', count('table'))
   add('pivot_tables', count('pivotTable'))
-  add('drawings', count('drawing'))
-  add('comments', count('comments'))
-  add('threaded_comments', rels.filter((r) => r.type.endsWith('/threadedComment')).length)
+  // Pictures, shapes, charts, notes and threaded comments move with the cells (moveCells).
   const root = wb.pkg.xml(info.part).documentElement!
   add('controls', (kid(root, 'controls') ? 1 : 0) + (kid(root, 'oleObjects') ? 1 : 0))
   add('extensions', kid(root, 'extLst') ? 1 : 0)
-  add('charts', chartsUsing(wb, info.name))
   add('pivot_sources', pivotSourcesUsing(wb, info.name))
   return out
 }
 
 /** What `op` would leave wrong, before it runs (empty: nothing). */
 export function lossesOf(wb: Workbook, op: SheetOp): Loss[] {
+  // A protected sheet or workbook refuses first: nobody is asked about losses of a change that can't run.
+  guard(wb, op)
   switch (op.op) {
     case 'insert_rows':
     case 'delete_rows':
@@ -462,6 +508,11 @@ export function lossesOf(wb: Workbook, op: SheetOp): Loss[] {
     }
     case 'sort_range':
       return sortLosses(wb, op)
+    case 'batch':
+      return op.ops.flatMap((o) => lossesOf(wb, o))
+    case 'merge_cells':
+    case 'duplicate_sheet':
+      return editLosses(wb, op)
     default:
       return []
   }
@@ -489,6 +540,8 @@ export type OpResult = {
   sheets: string[]
   /** The sheet to show afterwards (a new or renamed sheet; the neighbour of a deleted one). */
   focus?: string
+  /** The id of what the operation made (a picture, shape or comment). */
+  created?: string
 }
 
 /** Applies one operation in a transaction; throws (and changes nothing) when it can't, or when it has losses not accepted. */
@@ -512,6 +565,8 @@ export function applyOp(
 }
 
 function run(wb: Workbook, op: SheetOp): OpResult {
+  // Protected sheets and a protected workbook structure refuse what they don't allow.
+  guard(wb, op)
   switch (op.op) {
     case 'set_cells':
       return setCells(wb, op.sheet, op.cells)
@@ -537,7 +592,108 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'filter_column':
     case 'freeze_panes':
       return arrange(wb, op)
+    case 'insert_picture':
+    case 'insert_shape':
+    case 'update_drawing':
+    case 'delete_drawing':
+      return runDrawingOp(wb, op)
+    case 'set_note':
+    case 'delete_note':
+    case 'add_comment':
+    case 'reply_comment':
+    case 'edit_comment':
+    case 'resolve_comment':
+    case 'delete_comment':
+      return annotate(wb, op)
+    case 'cf_add':
+    case 'cf_update':
+    case 'cf_delete':
+    case 'cf_clear':
+    case 'cf_move':
+      return { sheets: runCfOp(wb, op) }
+    case 'validation_set':
+    case 'validation_clear':
+      return { sheets: runValidationOp(wb, op) }
+    case 'hyperlink_set':
+    case 'hyperlink_remove':
+      return { sheets: runHyperlinkOp(wb, op) }
+    case 'name_add':
+    case 'name_update':
+    case 'name_delete':
+      runNameOp(wb, op)
+      return { sheets: wb.sheets().filter((s) => s.kind === 'worksheet').map((s) => s.name) }
+    case 'protect_sheet':
+    case 'unprotect_sheet':
+    case 'protect_workbook':
+    case 'unprotect_workbook':
+    case 'set_cell_protection':
+      return { sheets: runProtectionOp(wb, op) }
+    case 'create_table':
+      return { sheets: createTable(wb, op).sheets }
+    case 'update_table': {
+      const normalized =
+        op.totalsColumns && op.totalsColumns.some((c) => c.formula !== undefined)
+          ? {
+              ...op,
+              totalsColumns: op.totalsColumns.map((c) =>
+                c.formula !== undefined
+                  ? {
+                      ...c,
+                      formula: toFileFormula(
+                        c.formula,
+                        `${op.sheet}!${op.table}[${String(c.column)}]`,
+                      ),
+                    }
+                  : c,
+              ),
+            }
+          : op
+      return { sheets: updateTable(wb, normalized).sheets }
+    }
+    case 'delete_table':
+      return deleteTable(wb, op)
+    case 'create_pivot': {
+      const res = createPivot(wb, op, (name) => {
+        addSheet(wb, name)
+        return wb.requireWorksheet(name)
+      })
+      return res.focus ? { sheets: res.sheets, focus: res.focus } : { sheets: res.sheets }
+    }
+    case 'update_pivot':
+      return { sheets: updatePivot(wb, op).sheets }
+    case 'refresh_pivot':
+      return { sheets: refreshPivot(wb, op).sheets }
+    case 'delete_pivot':
+      return deletePivot(wb, op)
+    case 'chart_create':
+    case 'chart_update':
+    case 'chart_move':
+    case 'chart_delete':
+      return runChartOp(wb, op)
+    case 'batch': {
+      const sheets = new Set<string>()
+      let focus: string | undefined
+      for (const o of op.ops) {
+        const r = run(wb, o)
+        for (const s of r.sheets) sheets.add(s)
+        focus = r.focus ?? focus
+      }
+      return focus ? { sheets: [...sheets], focus } : { sheets: [...sheets] }
+    }
+    default:
+      return runEditOp(wb, op)
   }
+}
+
+/** Notes and threaded comments: the sheet's comment parts (and, for a new one, its VML drawing). */
+function annotate(wb: Workbook, op: NoteOp | ThreadOp): OpResult {
+  const info = wb.requireWorksheet(op.sheet)
+  let doc: XMLDocument | null = null
+  const getDoc = () => (doc ??= sheetDoc(wb, info))
+  const created =
+    op.op === 'set_note' || op.op === 'delete_note' ? runNoteOp(wb, op, getDoc) : runThreadOp(wb, op, getDoc)
+  if (doc) finishSheet(wb, info, doc)
+  return created ? { sheets: [info.name], created } : { sheets: [info.name] }
 }
 
 /** Sort, filter and freeze panes: one sheet's XML, its cached model rebuilt after. */
@@ -545,7 +701,14 @@ function arrange(wb: Workbook, op: SortOp | AutoFilterOp | FilterColumnOp | Free
   const info = wb.requireWorksheet(op.sheet)
   const doc = sheetDoc(wb, info)
   if (op.op === 'sort_range') {
-    if (!sortRange(wb, doc, op)) return { sheets: [] }
+    const sorted = sortRange(wb, doc, op)
+    if (!sorted) return { sheets: [] }
+    // Notes, comment threads and one-row pictures on the sorted cells go with their rows, as in Excel.
+    const { body, dest } = sorted
+    sortLegacyComments(wb, info, dest, body.left, body.right)
+    sortThreads(wb, info, dest, body.left, body.right)
+    const drawing = drawingPartOf(wb, info)
+    if (drawing && sortDrawing(wb.pkg.xml(drawing), dest, body.left, body.right)) wb.edit(drawing)
   } else if (op.op === 'set_autofilter') setAutoFilter(wb, info, doc, op)
   else if (op.op === 'filter_column') filterColumn(wb, info, doc, op)
   else freezePanes(doc, op)
@@ -648,6 +811,21 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
     if (p.content) writeCell(wb, doc, p.addr.row, p.addr.col, p.content, style)
     else if (style !== undefined) restyle(wb, doc, p.addr.row, p.addr.col, style)
   }
+  const expandedWrites = planned.flatMap((p) =>
+    p.content && p.content.kind !== 'clear'
+      ? [
+          {
+            row: p.addr.row,
+            col: p.addr.col,
+            text:
+              p.content.kind === 'value' && p.content.value !== null
+                ? String(p.content.value)
+                : null,
+          },
+        ]
+      : [],
+  )
+  autoExpandTables(wb, info, doc, expandedWrites)
   finishSheet(wb, info, doc)
   return { sheets: [info.name] }
 }
@@ -657,7 +835,7 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
  * content in a spilled cell blocks the spill (the formula keeps only its own
  * cell, Excel shows #SPILL!) and the rest of the old spill is cleared.
  */
-function clearSpillsUnder(
+export function clearSpillsUnder(
   wb: Workbook,
   doc: XMLDocument,
   data: ReturnType<Workbook['sheet']>,
@@ -829,7 +1007,10 @@ function renameSheet(wb: Workbook, sheet: string, nameIn: string): OpResult {
  * Rewrites every formula of the workbook — cells, defined names, conditional
  * formats and data validations — editing only the parts where one changes.
  */
-function rewriteAllFormulas(wb: Workbook, rewrite: (formula: string, home: string) => string) {
+export function rewriteAllFormulas(
+  wb: Workbook,
+  rewrite: (formula: string, home: string) => string,
+) {
   for (const s of wb.sheets()) {
     if (s.kind !== 'worksheet') continue
     const doc = wb.pkg.xml(s.part)
@@ -1074,6 +1255,12 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
   }
   const af = kid(root, 'autoFilter')
   if (af && !moveRefAttr(af, 'ref', false)) root.removeChild(af)
+  // Every anchor (pictures, shapes, charts) moves once, here; charts' series references follow the cells.
+  const drawing = drawingPartOf(wb, info)
+  if (drawing && shiftDrawing(wb.pkg.xml(drawing), axis, op.at, op.count, insert)) wb.edit(drawing)
+  shiftChartRefs(wb, edit)
+  shiftLegacyComments(wb, info, doc, edit)
+  shiftThreads(wb, info, edit)
   finishSheet(wb, info, doc)
   wb.invalidate()
   return { sheets: [info.name] }

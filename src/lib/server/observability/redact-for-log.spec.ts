@@ -40,4 +40,20 @@ describe('redactForLog', () => {
     expect(out.items[0].client_secret).toBe('[REDACTED]')
     expect(out.items[1].keep).toBe('ok')
   })
+
+  it('redacts camelCase and joined secret names (passwords, keys, tokens, secrets)', () => {
+    const out = redactForLog({
+      newPassword: 'p',
+      sheetPassword: 'p',
+      apiKey: 'k',
+      accessToken: 't',
+      clientSecret: 's',
+      sortKey: 'keep',
+      maxTokens: 10,
+    }) as Record<string, unknown>
+    for (const k of ['newPassword', 'sheetPassword', 'apiKey', 'accessToken', 'clientSecret'])
+      expect(out[k]).toBe('[REDACTED]')
+    expect(out.sortKey).toBe('keep')
+    expect(out.maxTokens).toBe(10)
+  })
 })

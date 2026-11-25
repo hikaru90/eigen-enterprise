@@ -125,11 +125,128 @@ export const FORMAT_CHOICES = [
   { id: 'percent', code: '0.00%' },
   { id: 'currency_eur', code: '#,##0.00 [$€-407]' },
   { id: 'currency_usd', code: '[$$-409]#,##0.00' },
+  {
+    id: 'accounting',
+    code: '_-[$$-409]* #,##0.00_ ;_-[$$-409]* (#,##0.00);_-[$$-409]* "-"??_ ;_-@_ ',
+  },
   { id: 'date', code: 'mm-dd-yy' },
   { id: 'date_iso', code: 'yyyy-mm-dd' },
   { id: 'time', code: 'h:mm' },
   { id: 'datetime', code: 'yyyy-mm-dd h:mm' },
+  { id: 'fraction', code: '# ?/?' },
+  { id: 'scientific', code: '0.00E+00' },
   { id: 'text', code: '@' },
 ] as const
 
 export type FormatChoiceId = (typeof FORMAT_CHOICES)[number]['id']
+
+/** Increase (`+1`) or decrease (`-1`) decimal places on a number format code. */
+export function shiftDecimals(code: string, delta: 1 | -1, sample?: number): string {
+  if (!code || code === '@' || isDateFormat(code)) return code
+  if (code.toLowerCase() === 'general') {
+    if (delta < 0) {
+      if (typeof sample === 'number' && !Number.isInteger(sample)) {
+        const frac = String(sample).split('.')[1]?.length ?? 1
+        return frac > 1 ? `0.${'0'.repeat(frac - 1)}` : '0'
+      }
+      return '0'
+    }
+    if (typeof sample === 'number' && !Number.isInteger(sample)) {
+      const frac = String(sample).split('.')[1]?.length ?? 0
+      return `0.${'0'.repeat(Math.min(10, frac + 1))}`
+    }
+    return '0.0'
+  }
+  return splitSections(code)
+    .map((sec) => shiftSectionDecimals(sec, delta))
+    .join(';')
+}
+
+function splitSections(code: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let inQuotes = false
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i]!
+    if (ch === '\\' && i + 1 < code.length) {
+      cur += ch + code[++i]!
+      continue
+    }
+    if (ch === '"') inQuotes = !inQuotes
+    if (ch === ';' && !inQuotes) {
+      out.push(cur)
+      cur = ''
+    } else cur += ch
+  }
+  out.push(cur)
+  return out
+}
+
+function shiftSectionDecimals(section: string, delta: 1 | -1): string {
+  // Find numeric placeholder tokens outside "...", [...], and \x escapes.
+  let out: string
+  let i = 0
+  let inQuotes = false
+  let inBracket = false
+  let firstNumStart = -1
+  let dotAt = -1
+  let fracEnd = -1
+  let intEnd = -1
+  let sawNumeric = false
+
+  while (i < section.length) {
+    const ch = section[i]!
+    if (ch === '\\' && i + 1 < section.length) {
+      i += 2
+      continue
+    }
+    if (ch === '"') {
+      inQuotes = !inQuotes
+      i++
+      continue
+    }
+    if (!inQuotes && ch === '[') {
+      inBracket = true
+      i++
+      continue
+    }
+    if (!inQuotes && inBracket && ch === ']') {
+      inBracket = false
+      i++
+      continue
+    }
+    if (!inQuotes && !inBracket) {
+      if (ch === 'E' || ch === 'e') {
+        const next = section[i + 1]
+        if (next === '+' || next === '-') break
+      }
+      if (ch === '0' || ch === '#' || ch === '?') {
+        sawNumeric = true
+        if (firstNumStart < 0) firstNumStart = i
+        if (dotAt >= 0) fracEnd = i + 1
+        else intEnd = i + 1
+      } else if (ch === '.' && sawNumeric && dotAt < 0) {
+        dotAt = i
+        fracEnd = i + 1
+      }
+    }
+    i++
+  }
+
+  if (!sawNumeric) return section
+  if (dotAt >= 0) {
+    const frac = section.slice(dotAt + 1, fracEnd)
+    if (delta > 0) {
+      out = `${section.slice(0, fracEnd)}0${section.slice(fracEnd)}`
+    } else if (frac.length > 1) {
+      out = `${section.slice(0, fracEnd - 1)}${section.slice(fracEnd)}`
+    } else {
+      out = `${section.slice(0, dotAt)}${section.slice(fracEnd)}`
+    }
+    return out
+  }
+  if (delta > 0 && intEnd >= 0) {
+    return `${section.slice(0, intEnd)}.0${section.slice(intEnd)}`
+  }
+  return section
+}

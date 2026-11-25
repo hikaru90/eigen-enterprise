@@ -7,6 +7,7 @@ import { delegatedPrincipal } from '$lib/kernel/principals'
 import type { StreamEvent } from '$lib/office/xlsx/collab/protocol'
 import { cellKey } from '$lib/office/xlsx/ref'
 import { budgetBook, buildXlsx, num, row } from '$lib/office/xlsx/test-utils/build-xlsx'
+import { commentBook, pictureBook } from '$lib/office/xlsx/test-utils/drawing-fixtures'
 import { openWorkbook } from '$lib/office/xlsx/workbook'
 import { createSheetLive } from '$lib/server/sheet-live/service'
 import { memorySheetLiveStore } from '$lib/server/sheet-live/store'
@@ -164,21 +165,29 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     })
   })
 
-  it('refuses a structure change that would leave tables or pictures behind unless accepted, naming them', async () => {
-    const { tool, as, book } = await setup()
+  it('refuses a structure change that would leave tables behind unless accepted, while drawings move with the cells', async () => {
+    const { tool, as, book, reread } = await setup()
     const bytes = buildXlsx({
       sheets: [
         {
           name: 'S',
           rows: row(1, num('A1', 1)),
-          after: '<drawing r:id="rId1"/>',
-          rels: [{ id: 'rId1', type: 'drawing', target: '../drawings/drawing1.xml' }],
+          after:
+            '<drawing r:id="rId1"/><tableParts count="1"><tablePart r:id="rId2"/></tableParts>',
+          rels: [
+            { id: 'rId1', type: 'drawing', target: '../drawings/drawing1.xml' },
+            { id: 'rId2', type: 'table', target: '../tables/table1.xml' },
+          ],
         },
       ],
       parts: {
         '/xl/drawings/drawing1.xml': {
-          xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>',
+          xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="95250" cy="95250"/><xdr:sp><xdr:nvSpPr><xdr:cNvPr id="2" name="Box"/><xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr/></xdr:sp><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>',
           type: 'application/vnd.openxmlformats-officedocument.drawing+xml',
+        },
+        '/xl/tables/table1.xml': {
+          xml: '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="T" displayName="T" ref="A1:A2"/>',
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml',
         },
       },
     })
@@ -189,13 +198,15 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     }
     await expect(tool('drive.sheet_structure').handler(as('alice'), change)).rejects.toMatchObject({
       code: 'invalid',
-      message: expect.stringMatching(/pictures, charts or shapes/),
+      message: expect.stringMatching(/tables/),
     })
     const ok = (await tool('drive.sheet_structure').handler(as('alice'), {
       ...change,
       accept_losses: true,
     })) as { warnings: string[] }
-    expect(ok.warnings).toEqual([expect.stringMatching(/1 × pictures, charts or shapes/)])
+    expect(ok.warnings).toEqual([expect.stringMatching(/1 × tables/)])
+    const wb = await reread(f.id)
+    expect(wb.pkg.text('/xl/drawings/drawing1.xml')).toContain('<xdr:row>2</xdr:row>')
   })
 
   it('refuses what is not a workbook, a missing sheet, a formula it can’t read, and a file open in an editor', async () => {
@@ -356,5 +367,38 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     expect(saved.sheet('Budget').cells.get(cellKey(1, 1))?.value).toBe(999)
     expect(saved.sheet('Budget').cells.get(cellKey(1, 3))?.value).toBe('tool-edit')
     live.stop()
+  })
+
+  it('drive.sheet_read includes drawings, notes and threaded comments summaries and details', async () => {
+    const { tool, as, book } = await setup()
+    const picFile = await book(pictureBook(), 'pics.xlsx')
+    const picOut = (await tool('drive.sheet_read').handler(as('alice'), { file_id: picFile.id })) as {
+      sheets: Array<Record<string, unknown>>
+      drawings: Array<Record<string, unknown>>
+    }
+    // The chart frame is listed under charts (drive.sheet_chart_list), the other four under drawings.
+    expect(picOut.sheets[0]).toMatchObject({ name: 'Pics', drawings: 4 })
+    expect(picOut.drawings).toHaveLength(4)
+    expect(picOut.drawings.some((d) => d.kind === 'chart')).toBe(false)
+    expect(picOut.drawings.find((d) => d.id === '2')).toMatchObject({
+      kind: 'picture',
+      name: 'Picture 1',
+      alt: 'Company logo',
+      rotation: 90,
+      anchor_cell: 'B2:D6',
+    })
+
+    const noteFile = await book(commentBook(), 'notes.xlsx')
+    const noteOut = (await tool('drive.sheet_read').handler(as('alice'), { file_id: noteFile.id })) as {
+      sheets: Array<Record<string, unknown>>
+      notes: Array<Record<string, unknown>>
+      comments: Array<Record<string, unknown>>
+    }
+    expect(noteOut.sheets[0]).toMatchObject({ name: 'Notes', notes: 1, comments: 1 })
+    expect(noteOut.notes).toEqual([
+      { ref: 'B2', author: 'Ada Lovelace', text: 'Ada Lovelace:\nCheck this number', visible: true },
+    ])
+    expect(noteOut.comments).toHaveLength(1)
+    expect(noteOut.comments[0]).toMatchObject({ ref: 'C4', resolved: false })
   })
 })

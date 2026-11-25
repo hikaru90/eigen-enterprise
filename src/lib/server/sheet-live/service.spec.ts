@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { StreamEvent } from '$lib/office/xlsx/collab/protocol'
-import { applyBody, toWire } from '$lib/office/xlsx/collab/replica'
+import { applyBody, seedOf, toWire } from '$lib/office/xlsx/collab/replica'
 import { cellKey } from '$lib/office/xlsx/ref'
 import { budgetBook } from '$lib/office/xlsx/test-utils/build-xlsx'
 import { openWorkbook } from '$lib/office/xlsx/workbook'
@@ -159,8 +159,8 @@ describe('createSheetLive service', () => {
 
     // Bob CAN revert his own last op when nobody edited after him.
     const replica = openWorkbook((await drive.readFile(alice, fileId)).bytes)
-    applyBody(replica, late.entries[0]!.body)
-    const bobApplied = applyBody(replica, late.entries[1]!.body)
+    applyBody(replica, late.entries[0]!.body, seedOf(late.entries[0]!.clientId, late.entries[0]!.opId))
+    const bobApplied = applyBody(replica, late.entries[1]!.body, seedOf(late.entries[1]!.clientId, late.entries[1]!.opId))
     const okUndo = await live.submit(bob, fileId, {
       clientId: 'tab-b',
       baseSeq: 2,
@@ -330,5 +330,72 @@ describe('createSheetLive service', () => {
     const disconnect = await live.connect(alice, fileId, 'tab-alice', 0, () => {})
     await expect(live.presence(bob, fileId, { clientId: 'tab-alice', sheet: 'Budget', range: 'A1' })).rejects.toMatchObject({ code: 'not_found' })
     await disconnect()
+  })
+
+  it('protection: the guard refuses a locked cell on the server, and a password is logged as its result, never as itself', async () => {
+    const { live, fileId, store } = await setup()
+    await live.join(alice, fileId)
+    const change = (ops: unknown[]) => ({ kind: 'change' as const, ops: ops as never, acceptLosses: false })
+    const protect = await live.submit(alice, fileId, {
+      clientId: 'tab-a',
+      baseSeq: 0,
+      changes: [{ opId: 'p1', body: change([{ op: 'protect_sheet', sheet: 'Budget', password: 'hunter22' }]) }],
+    })
+    expect(protect).toMatchObject({ state: 'ok', accepted: [{ opId: 'p1', seq: 1 }] })
+    const logged = await store.entriesAfter(fileId, 0, 10)
+    expect(logged[0]!.body.kind).toBe('parts')
+    expect(JSON.stringify(logged)).not.toContain('hunter22')
+
+    // Bob, based before the protection, writes a locked cell: the server's guard refuses it.
+    const write = await live.submit(bob, fileId, {
+      clientId: 'tab-b',
+      baseSeq: 0,
+      changes: [{ opId: 'w1', body: change([{ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'B2', value: 1 }] }]) }],
+    })
+    expect(write).toMatchObject({ state: 'ok', accepted: [], rejected: [{ opId: 'w1', error: expect.stringMatching(/protected/i) }] })
+  })
+
+  it('refuses a comment without its time and a change logged as parts by a client', async () => {
+    const { live, fileId } = await setup()
+    await live.join(alice, fileId)
+    const res = await live.submit(alice, fileId, {
+      clientId: 'tab-a',
+      baseSeq: 0,
+      changes: [
+        {
+          opId: 'c1',
+          body: {
+            kind: 'change',
+            ops: [{ op: 'add_comment', sheet: 'Budget', ref: 'C3', text: 'x', author: { id: 'alice', name: 'Alice' } }],
+            acceptLosses: false,
+          },
+        },
+        { opId: 'c2', body: { kind: 'parts', of: 'c1', images: {} } },
+      ],
+    })
+    expect(res).toMatchObject({
+      state: 'ok',
+      accepted: [],
+      rejected: [
+        { opId: 'c1', error: expect.stringMatching(/needs its time/) },
+        { opId: 'c2', error: expect.stringMatching(/Only the server/) },
+      ],
+    })
+  })
+
+  it('refuses, by name, a change that can’t be fitted after a concurrent sort', async () => {
+    const { live, fileId } = await setup()
+    await live.join(alice, fileId)
+    await live.submit(alice, fileId, {
+      clientId: 'tab-a',
+      baseSeq: 0,
+      changes: [{ opId: 's1', body: { kind: 'change', ops: [{ op: 'sort_range', sheet: 'Budget', range: 'A2:B3', keys: [{ col: 1 }] }], acceptLosses: true } }],
+    })
+    const res = await live.submit(bob, fileId, {
+      clientId: 'tab-b',
+      baseSeq: 0,
+      changes: [{ opId: 'b1', body: { kind: 'change', ops: [{ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'B3', value: 9 }] }], acceptLosses: false } }],
+    })
+    expect(res).toMatchObject({ state: 'ok', accepted: [], rejected: [{ opId: 'b1', error: expect.stringMatching(/Budget!A2:B3 was sorted/) }] })
   })
 })

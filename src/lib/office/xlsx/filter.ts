@@ -7,12 +7,17 @@ import {
   parseRange,
   rangeName,
   requireRange,
-  type CellAddr,
   type Range,
 } from './ref'
 import { WORKSHEET_ORDER } from './sheet-order'
-import { dropEmptyRow, ensureRow, findRow } from './sheet-xml'
+import { currentRegion, setRowHidden } from './sheet-xml'
 import { quoteSheet } from './shift'
+import {
+  readSheetTables,
+  setTableAutoFilterEl,
+  tableAutoFilterTarget,
+  type ExcelTable,
+} from './tables'
 import { XlsxError, type SheetData, type SheetInfo, type Workbook } from './workbook'
 import { insertInOrder, kid, kids, make, REL, setText, WORKBOOK_ORDER } from './xml'
 
@@ -28,7 +33,12 @@ import { insertInOrder, kid, kids, make, REL, setText, WORKBOOK_ORDER } from './
  * hid for them stay hidden when another column's filter changes.
  */
 
-export type AutoFilterOp = { op: 'set_autofilter'; sheet: string; range: string | null }
+export type AutoFilterOp = {
+  op: 'set_autofilter'
+  sheet: string
+  range: string | null
+  table?: string
+}
 export type FilterColumnOp = {
   op: 'filter_column'
   sheet: string
@@ -38,6 +48,7 @@ export type FilterColumnOp = {
   values: string[] | null
   /** Keep empty cells too. */
   blanks?: boolean
+  table?: string
 }
 
 export type ColumnFilter =
@@ -45,7 +56,9 @@ export type ColumnFilter =
   /** A criterion kept as Excel wrote it (custom, top 10, dynamic, colour, icon, date groups). */
   | { col: number; kind: 'other' }
 
-export type AutoFilter = { range: Range; columns: ColumnFilter[] }
+export type AutoFilter = { range: Range; columns: ColumnFilter[]; table?: string }
+
+export const AUTO_FILTER_ORDER = ['filterColumn', 'sortState', 'extLst'] as const
 
 export const FILTER_DATABASE = '_xlnm._FilterDatabase'
 /** The drop-down lists at most this many values (Excel lists 10 000). */
@@ -81,40 +94,27 @@ export function autoFilterOf(wb: Workbook, sheet: string): AutoFilter | null {
   return { range, columns }
 }
 
+/** All AutoFilters on a sheet: the sheet's own filter (if any) plus every table's AutoFilter. */
+export function sheetFilters(wb: Workbook, sheet: string): AutoFilter[] {
+  const out: AutoFilter[] = []
+  const sheetAf = autoFilterOf(wb, sheet)
+  if (sheetAf) out.push(sheetAf)
+  for (const t of readSheetTables(wb, sheet)) {
+    if (!t.autoFilter || t.headerRowCount === 0) continue
+    out.push({
+      range: t.autoFilter.range,
+      columns: t.autoFilter.columns,
+      table: t.displayName,
+    })
+  }
+  return out
+}
+
+export { currentRegion }
+
 const filled = (d: SheetData, r: number, c: number) => {
   const cell = d.cells.get(cellKey(r, c))
   return !!cell && (cell.value !== null || cell.formula !== null)
-}
-
-/** Excel's current region: the block of filled cells around `at`, grown while a neighbouring row or column (diagonals too) has something. */
-export function currentRegion(d: SheetData, at: CellAddr): Range {
-  const r: Range = { top: at.row, left: at.col, bottom: at.row, right: at.col }
-  const anyIn = (top: number, left: number, bottom: number, right: number) => {
-    for (let y = Math.max(0, top); y <= Math.min(bottom, d.maxRow); y++)
-      for (let x = Math.max(0, left); x <= Math.min(right, d.maxCol); x++)
-        if (filled(d, y, x)) return true
-    return false
-  }
-  for (let grown = true; grown;) {
-    grown = false
-    if (r.top > 0 && anyIn(r.top - 1, r.left - 1, r.top - 1, r.right + 1)) {
-      r.top--
-      grown = true
-    }
-    if (r.bottom < d.maxRow && anyIn(r.bottom + 1, r.left - 1, r.bottom + 1, r.right + 1)) {
-      r.bottom++
-      grown = true
-    }
-    if (r.left > 0 && anyIn(r.top - 1, r.left - 1, r.bottom + 1, r.left - 1)) {
-      r.left--
-      grown = true
-    }
-    if (r.right < d.maxCol && anyIn(r.top - 1, r.right + 1, r.bottom + 1, r.right + 1)) {
-      r.right++
-      grown = true
-    }
-  }
-  return r
 }
 
 /** The ranges of the sheet's tables (they have their own filters). */
@@ -160,14 +160,55 @@ export type FilterChoice = {
   count: number
 }
 
+function resolveFilterTarget(
+  wb: Workbook,
+  sheet: string,
+  col: number,
+  tableName?: string,
+): { af: AutoFilter; table?: ExcelTable } {
+  const tables = readSheetTables(wb, sheet)
+  if (tableName !== undefined) {
+    const k = tableName.trim().toLowerCase()
+    const t = tables.find((x) => x.name.toLowerCase() === k || x.displayName.toLowerCase() === k)
+    if (!t) throw new XlsxError(`Sheet “${sheet}” has no table named “${tableName}”.`)
+    if (!t.autoFilter || t.headerRowCount === 0)
+      throw new XlsxError(`Table “${t.displayName}” has no filter: turn filtering on first.`)
+    return { af: { ...t.autoFilter, table: t.displayName }, table: t }
+  }
+  const sheetAf = autoFilterOf(wb, sheet)
+  if (sheetAf && col >= sheetAf.range.left && col <= sheetAf.range.right) return { af: sheetAf }
+  const tableMatches = tables.filter(
+    (t) =>
+      t.headerRowCount > 0 &&
+      t.autoFilter &&
+      col >= t.autoFilter.range.left &&
+      col <= t.autoFilter.range.right,
+  )
+  if (tableMatches.length === 1) {
+    const t = tableMatches[0]!
+    return { af: { ...t.autoFilter!, table: t.displayName }, table: t }
+  }
+  if (tableMatches.length > 1)
+    throw new XlsxError(
+      `Column ${colName(col)} is in multiple tables on “${sheet}”; specify which table to filter.`,
+    )
+  if (sheetAf) return { af: sheetAf }
+  throw new XlsxError(`“${sheet}” has no filter: turn filtering on for a range first.`)
+}
+
 /** The distinct values of a filter column (all its data rows, hidden ones too), sorted as Excel lists them; blanks last as ''. */
 export function columnChoices(
   ed: SheetEditor,
   sheet: string,
   col: number,
   locale: SheetLocale = 'en',
+  tableName?: string,
 ): FilterChoice[] {
-  const af = autoFilterOf(ed.wb, sheet)
+  const af = tableName
+    ? resolveFilterTarget(ed.wb, sheet, col, tableName).af
+    : (autoFilterOf(ed.wb, sheet) ??
+        sheetFilters(ed.wb, sheet).find((f) => col >= f.range.left && col <= f.range.right) ??
+        null)
   if (!af) throw new XlsxError(`“${sheet}” has no filter.`)
   const d = ed.wb.sheet(sheet)
   const calc = ed.calc()
@@ -252,18 +293,6 @@ function setFilterName(wb: Workbook, info: SheetInfo, range: Range | null) {
   setText(doc, el, filterNameRef(info, range))
 }
 
-function setRowHidden(doc: XMLDocument, r: number, hide: boolean) {
-  if (hide) {
-    ensureRow(doc, r).setAttribute('hidden', '1')
-    return
-  }
-  const rowEl = findRow(doc, r)
-  if (!rowEl || !rowEl.hasAttribute('hidden')) return
-  rowEl.removeAttribute('hidden')
-  dropEmptyRow(rowEl)
-}
-
-/** Every data row of the filter shown or hidden by its columns' criteria (rows hidden for criteria kept as written stay hidden). */
 function applyFilter(wb: Workbook, info: SheetInfo, doc: XMLDocument, af: AutoFilter) {
   const d = wb.sheet(info.name)
   const calc = createCalc(wb)
@@ -291,9 +320,26 @@ function showAll(doc: XMLDocument, range: Range) {
   for (let r = range.top + 1; r <= range.bottom; r++) setRowHidden(doc, r, false)
 }
 
-/** Turns the sheet's filter on for a range (a single cell: its current region), or off (null). */
+const sameRange = (a: Range, b: Range) =>
+  a.top === b.top && a.bottom === b.bottom && a.left === b.left && a.right === b.right
+
+/** Turns the sheet's or table's filter on for a range (a single cell: its table or current region), or off (null). */
 export function setAutoFilter(wb: Workbook, info: SheetInfo, doc: XMLDocument, op: AutoFilterOp) {
   const root = doc.documentElement!
+  const tables = readSheetTables(wb, info.name)
+  if (op.table !== undefined) {
+    const k = op.table.trim().toLowerCase()
+    const t = tables.find((x) => x.name.toLowerCase() === k || x.displayName.toLowerCase() === k)
+    if (!t) throw new XlsxError(`Sheet “${info.name}” has no table named “${op.table}”.`)
+    if (op.range === null) {
+      if (t.autoFilter) showAll(doc, t.autoFilter.range)
+      setTableAutoFilterEl(wb, t, false)
+    } else {
+      setTableAutoFilterEl(wb, t, true)
+    }
+    return
+  }
+
   const old = kid(root, 'autoFilter')
   const oldRange = old ? parseRange(old.getAttribute('ref') ?? '') : null
   if (op.range === null) {
@@ -306,6 +352,17 @@ export function setAutoFilter(wb: Workbook, info: SheetInfo, doc: XMLDocument, o
   let range = requireRange(op.range)
   const d = wb.sheet(info.name)
   if (range.top === range.bottom && range.left === range.right) {
+    const hitTable = tables.find(
+      (t) =>
+        range.top >= t.ref.top &&
+        range.top <= t.ref.bottom &&
+        range.left >= t.ref.left &&
+        range.left <= t.ref.right,
+    )
+    if (hitTable) {
+      setTableAutoFilterEl(wb, hitTable, true)
+      return
+    }
     range = currentRegion(d, { row: range.top, col: range.left })
     if (
       range.top === range.bottom &&
@@ -315,6 +372,14 @@ export function setAutoFilter(wb: Workbook, info: SheetInfo, doc: XMLDocument, o
       throw new XlsxError(
         `${rangeName(range)} is empty: select the cells to filter (the first row is the header).`,
       )
+  }
+  const exactTable = tables.find((t) => {
+    const afTarget = tableAutoFilterTarget(t)
+    return sameRange(t.ref, range) || (afTarget ? sameRange(afTarget, range) : false)
+  })
+  if (exactTable) {
+    setTableAutoFilterEl(wb, exactTable, true)
+    return
   }
   const table = tableRanges(wb, info).find((t) => overlaps(t.range, range))
   if (table)
@@ -334,11 +399,17 @@ export function setAutoFilter(wb: Workbook, info: SheetInfo, doc: XMLDocument, o
 
 /** Sets (values) or clears (null) one column's value filter and shows/hides the rows again. */
 export function filterColumn(wb: Workbook, info: SheetInfo, doc: XMLDocument, op: FilterColumnOp) {
-  const root = doc.documentElement!
-  const afEl = kid(root, 'autoFilter')
-  const range = afEl ? parseRange(afEl.getAttribute('ref') ?? '') : null
-  if (!afEl || !range)
-    throw new XlsxError(`“${info.name}” has no filter: turn filtering on for a range first.`)
+  const target = resolveFilterTarget(wb, info.name, op.col, op.table)
+  const range = target.af.range
+  let afDoc: XMLDocument
+  let afEl: Element
+  if (target.table) {
+    afDoc = wb.edit(target.table.part)
+    afEl = kid(afDoc.documentElement!, 'autoFilter')!
+  } else {
+    afDoc = doc
+    afEl = kid(doc.documentElement!, 'autoFilter')!
+  }
   if (!Number.isInteger(op.col) || op.col < range.left || op.col > range.right)
     throw new XlsxError(
       `Column ${colName(Math.max(0, op.col))} is outside the filter range ${rangeName(range)}.`,
@@ -353,19 +424,19 @@ export function filterColumn(wb: Workbook, info: SheetInfo, doc: XMLDocument, op
     let el = existing
     if (el) for (const k of kids(el, undefined)) el.removeChild(k)
     else {
-      el = make(doc, 'filterColumn')
+      el = make(afDoc, 'filterColumn')
       el.setAttribute('colId', id)
       const next = kids(afEl, undefined).find(
         (k) => k.localName !== 'filterColumn' || Number(k.getAttribute('colId')) > Number(id),
       )
       afEl.insertBefore(el, next ?? null)
     }
-    const filters = make(doc, 'filters')
+    const filters = make(afDoc, 'filters')
     if (op.blanks) filters.setAttribute('blank', '1')
     const unique = new Map<string, string>()
     for (const v of op.values) if (v !== '') unique.set(v.toLowerCase(), v)
     for (const v of unique.values()) {
-      const f = make(doc, 'filter')
+      const f = make(afDoc, 'filter')
       f.setAttribute('val', v)
       filters.appendChild(f)
     }

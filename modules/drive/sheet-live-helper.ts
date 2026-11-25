@@ -1,6 +1,6 @@
 import type { DriveService, ItemView } from './service'
 import { createHash, randomUUID } from 'node:crypto'
-import type { ChangeBody } from '$lib/office/xlsx/collab/protocol'
+import { pinChange, type ChangeBody } from '$lib/office/xlsx/collab/protocol'
 import type { SheetEditor } from '$lib/office/xlsx/editor'
 import type { SheetOp } from '$lib/office/xlsx/ops'
 import type { SheetLive } from '$lib/server/sheet-live/service'
@@ -50,7 +50,8 @@ function toChangeBodies(applied: AppliedRecord[]): ChangeBody[] {
       out.push({ kind: 'change', ops: [item.op], acceptLosses: item.acceptLosses })
     }
   }
-  return out
+  // As they travel: bytes encoded, comment times set (every replica writes the same).
+  return out.map((b) => pinChange(b))
 }
 
 export async function openLiveAwareBook<

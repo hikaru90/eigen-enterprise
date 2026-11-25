@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import type { ExportPdfDeps } from '$lib/office/xlsx/print-pdf'
 import { roleCan } from '$lib/server/auth/capabilities'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { EeClient } from '$lib/server/ee/client'
@@ -16,9 +17,15 @@ import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
 import { DOCUMENT_KINDS } from './service'
 import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
+import { createDriveSheetChartTools } from './sheet-chart-tools'
+import { createDriveSheetCommentTools } from './sheet-comment-tools'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
+import { createDriveSheetDrawingTools } from './sheet-drawing-tools'
+import { createDriveSheetEditingTools } from './sheet-editing-tools'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { createDriveSheetLiveTools } from './sheet-live-tools'
+import { createDriveSheetPivotTableTools } from './sheet-pivot-table-tools'
+import { createDriveSheetRulesTools } from './sheet-rules-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -49,6 +56,8 @@ export type DriveToolDeps = {
   env?: Record<string, string | undefined>
   /** Live .xlsx co-editing service (when active, sheet_* tools route reads/writes through it). */
   sheetLive?: () => Promise<SheetLive>
+  /** Chromium launcher / probe behind drive.sheet_export_pdf (tests inject a fake). */
+  pdfDeps?: ExportPdfDeps
 }
 
 /** Batch size for one archive/unarchive call (one approval). */
@@ -330,6 +339,16 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetFormatTools({ service, sheetLive }),
     ...createDriveSheetCopyTools({ service }),
     ...createDriveSheetArrangeTools({ service, sheetLive }),
+    ...createDriveSheetPivotTableTools({ service, sheetLive }),
+    ...createDriveSheetChartTools({ service, sheetLive }),
+    ...createDriveSheetDrawingTools({ service, sheetLive }),
+    ...createDriveSheetCommentTools({ service, sheetLive }),
+    ...createDriveSheetEditingTools({
+      service,
+      sheetLive,
+      ...(opts.pdfDeps ? { pdfDeps: opts.pdfDeps } : {}),
+    }),
+    ...createDriveSheetRulesTools({ service, sheetLive }),
     ...createDriveSheetLiveTools({ sheetLive: opts.sheetLive ?? liveSheetLive }),
   ]
 }

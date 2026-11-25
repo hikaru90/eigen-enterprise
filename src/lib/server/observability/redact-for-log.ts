@@ -20,6 +20,17 @@ const SENSITIVE_EXACT = new Set(
 )
 
 const SENSITIVE_SUFFIXES = ['_secret', '_token', '_password', '_key', '_credentials'] as const
+/** camelCase and joined names too (newPassword, sheetPassword, apiKey, accessToken, clientSecret). */
+const SENSITIVE_ENDINGS = [
+  'password',
+  'passphrase',
+  'secret',
+  'token',
+  'apikey',
+  'privatekey',
+  'secretkey',
+  'accesskey',
+] as const
 
 const VECTOR_EXACT = new Set(
   ['embedding', 'summaryembedding', 'queryembedding', 'vector', 'embeddings'].map((s) =>
@@ -34,7 +45,10 @@ function isVectorField(name: string): boolean {
 function isSensitiveField(name: string): boolean {
   const lower = name.toLowerCase()
   if (SENSITIVE_EXACT.has(lower)) return true
-  return SENSITIVE_SUFFIXES.some((s) => lower.endsWith(s))
+  return (
+    SENSITIVE_SUFFIXES.some((s) => lower.endsWith(s)) ||
+    SENSITIVE_ENDINGS.some((s) => lower.endsWith(s))
+  )
 }
 
 function redactValue(key: string, value: unknown): unknown {

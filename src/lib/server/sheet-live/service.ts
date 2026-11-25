@@ -3,10 +3,13 @@ import { createHash } from 'node:crypto'
 import { createCalc } from '$lib/office/xlsx/calc'
 import {
   peerColor,
+  carriesSecret,
   rebaseItems,
+  unpinned,
   type Author,
   type ChangeBody,
   type JoinView,
+  type LogBody,
   type LogEntry,
   type Peer,
   type PresenceUpdate,
@@ -14,14 +17,14 @@ import {
   type SubmitRequest,
   type SubmitResponse,
 } from '$lib/office/xlsx/collab/protocol'
-import { applyBody } from '$lib/office/xlsx/collab/replica'
+import { applyBody, seedOf, toWire } from '$lib/office/xlsx/collab/replica'
 import { prepareSave } from '$lib/office/xlsx/ops'
 import { openWorkbook, type Workbook } from '$lib/office/xlsx/workbook'
 import type { Actor, DriveService, ItemView } from '$lib/server/drive'
 import { DriveError } from '$lib/server/drive'
 
 /**
- * Co-editing a workbook (plan/phase-office-files.md §7.4): the server side.
+ * Co-editing a workbook (plan/phase-office-files.md §7.9): the server side.
  *
  * - **Op log.** One session per open .xlsx file (`store`): numbered entries
  *   in the order accepted. `submit` takes a client's batch with the last
@@ -130,7 +133,7 @@ export function createSheetLive(deps: SheetLiveDeps) {
       replicas.set(s.fileId, r)
     }
     for (const e of await tx.entriesAfter(r.seq)) {
-      applyBody(r.wb, e.body)
+      applyBody(r.wb, e.body, seedOf(e.clientId, e.opId))
       r.seq = e.seq
     }
     return r
@@ -225,16 +228,29 @@ export function createSheetLive(deps: SheetLiveDeps) {
           }
         }
         const since = await tx.entriesAfter(req.baseSeq)
-        const items = rebaseItems(req.changes, since.map((e) => e.body))
+        const { kept: items, refused } = rebaseItems(req.changes, since.map((e) => e.body))
         const kept = new Set(items.map((i) => i.opId))
+        const why = new Map(refused.map((x) => [x.item.opId, x.reason]))
         const rejected: Array<{ opId: string; error: string }> = req.changes
           .filter((c) => !kept.has(c.opId))
-          .map((c) => ({ opId: c.opId, error: 'It no longer applies after the others’ changes.' }))
+          .map((c) => ({
+            opId: c.opId,
+            error: why.get(c.opId) ?? 'It no longer applies: what it changed was removed by someone else meanwhile.',
+          }))
         const r = await replicaAt(tx, s, actor)
         const entries: LogEntry[] = []
         let head = s.headSeq
         const at = now().toISOString()
         for (const it of items) {
+          if (it.body.kind === 'parts') {
+            rejected.push({ opId: it.opId, error: 'Only the server logs a change as its result.' })
+            continue
+          }
+          const notPinned = it.body.kind === 'change' ? unpinned(it.body) : null
+          if (notPinned) {
+            rejected.push({ opId: it.opId, error: notPinned })
+            continue
+          }
           if (it.body.kind === 'revert') {
             const why = await revertRefusal(tx, req.clientId, it.body.of, entries)
             if (why) {
@@ -242,15 +258,22 @@ export function createSheetLive(deps: SheetLiveDeps) {
               continue
             }
           }
+          let body: LogBody = it.body
+          let step: ReturnType<typeof applyBody>['step'] | null = null
           try {
-            applyBody(r.wb, it.body)
+            step = applyBody(r.wb, it.body, seedOf(req.clientId, it.opId)).step
+            // A password never travels on or stays in the log: the change is logged as its result.
+            if (it.body.kind === 'change' && carriesSecret(it.body))
+              body = { kind: 'parts', of: it.opId, images: toWire(step.after) }
           } catch (err) {
+            // Applied but not loggable (its result too large to share): taken back from the server's copy too.
+            if (step) r.wb.restore(step.before)
             rejected.push({ opId: it.opId, error: errorText(err) })
             continue
           }
           head++
           r.seq = head
-          entries.push({ seq: head, clientId: req.clientId, opId: it.opId, author, body: it.body, at })
+          entries.push({ seq: head, clientId: req.clientId, opId: it.opId, author, body, at })
         }
         if (entries.length > 0) {
           await tx.append(entries)

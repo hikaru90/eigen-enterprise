@@ -44,6 +44,8 @@ export type CellStyle = {
 export type Styles = {
   count: number
   xf(index: number): CellStyle
+  /** The format code of a number format id (custom or built-in; unknown ids read General). */
+  numFmtCode(id: number): string
 }
 
 /** Built-in number formats (§18.8.30). Id 14 is the locale's short date. */
@@ -262,17 +264,20 @@ function applyTint(hex: string, tint: number): string {
     .toUpperCase()
 }
 
-export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): Styles {
-  if (!doc) return { count: 1, xf: () => GENERAL }
-  const root = doc.documentElement!
+/** Reads a SpreadsheetML colour element (rgb, theme + tint, indexed) as "#RRGGBB"; null: automatic. Also for conditional formats (./cond-format.ts). */
+export function colorReader(
+  doc: XMLDocument | null,
+  theme: XMLDocument | null,
+): (el: Element | null) => string | null {
+  const root = doc?.documentElement ?? null
   const theme_ = themeColors(theme)
   const palette = (() => {
-    const custom = kid(root, 'colors')
+    const custom = root ? kid(root, 'colors') : null
     const idx = custom ? kid(custom, 'indexedColors') : null
     if (!idx) return DEFAULT_INDEXED
     return kids(idx, 'rgbColor').map((c) => (c.getAttribute('rgb') ?? '').slice(-6).toUpperCase())
   })()
-  const color = (el: Element | null): string | null => {
+  return (el: Element | null): string | null => {
     if (!el) return null
     const rgb = el.getAttribute('rgb')
     const themeIdx = el.getAttribute('theme')
@@ -288,6 +293,13 @@ export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): 
     const tint = Number(el.getAttribute('tint') ?? 0)
     return `#${tint ? applyTint(hex, tint) : hex}`
   }
+}
+
+export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): Styles {
+  if (!doc)
+    return { count: 1, xf: () => GENERAL, numFmtCode: (id) => BUILTIN_NUMFMT[id] ?? 'General' }
+  const root = doc.documentElement!
+  const color = colorReader(doc, theme)
   const numFmts = new Map<number, string>()
   const nf = kid(root, 'numFmts')
   for (const el of nf ? kids(nf, 'numFmt') : [])
@@ -330,6 +342,7 @@ export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): 
   const cache = new Map<number, CellStyle>()
   return {
     count: Math.max(1, xfs.length),
+    numFmtCode: (id) => numFmts.get(id) ?? BUILTIN_NUMFMT[id] ?? 'General',
     xf(index) {
       const hit = cache.get(index)
       if (hit) return hit

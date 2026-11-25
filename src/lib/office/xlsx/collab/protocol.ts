@@ -1,8 +1,8 @@
 import type { SheetOp } from '../ops'
-import { transform, transformLists } from './transform'
+import { transform, transformLists, TransformRefusal } from './transform'
 
 /**
- * Co-editing a workbook (plan/phase-office-files.md §7.4): what travels
+ * Co-editing a workbook (plan/phase-office-files.md §7.9): what travels
  * between the grids, the agent's sheet tools and the server's op log of an
  * open file. Shared by the browser and the server.
  *
@@ -28,7 +28,14 @@ export type ChangeBody = { kind: 'change'; ops: SheetOp[]; acceptLosses: boolean
  * server refuses it otherwise, and a concurrent change drops it.
  */
 export type RevertBody = { kind: 'revert'; of: string; images: WireImages }
-export type LogBody = ChangeBody | RevertBody
+/**
+ * A change the server logs as its result (the parts as they are after it)
+ * rather than as itself: one that carries a password (protecting a sheet or
+ * the workbook), which must not travel to everyone in the file or stay in
+ * the log. Only the server makes these.
+ */
+export type PartsBody = { kind: 'parts'; of: string; images: WireImages }
+export type LogBody = ChangeBody | RevertBody | PartsBody
 
 export type Author = { kind: 'user' | 'agent'; id: string; name: string }
 
@@ -94,23 +101,148 @@ export type StreamEvent =
 
 export const MAX_BATCH = 200
 
-/** `a` rewritten to apply after `b` (both made on the same state): none, or one. */
+/**
+ * A pending `a` rewritten to apply after `b` (both made on the same state):
+ * none (nothing left for it to act on) or one. Throws TransformRefusal when
+ * it can't be made to fit — an undo always, once someone else changed the
+ * file after what it undoes.
+ */
 export function transformBody(a: LogBody, b: LogBody): LogBody[] {
-  // An undo only stands while nobody else changed the file after what it undoes.
-  if (a.kind === 'revert') return []
-  if (b.kind === 'revert') return [a]
+  if (a.kind !== 'change') throw new TransformRefusal(UNDO_GONE)
+  if (b.kind !== 'change') return [a]
   const [ops] = transformLists(a.ops, b.ops, transform)
   return ops.length > 0 ? [{ ...a, ops }] : []
 }
 
-/** `items` (each with its body) rewritten past `others`, in order; items with nothing left go. */
-export function rebaseItems<T extends { body: LogBody }>(items: T[], others: LogBody[]): T[] {
-  const [out] = transformLists<{ item: T; body: LogBody }>(
-    items.map((item) => ({ item, body: item.body })),
-    others.map((body) => ({ item: null as unknown as T, body })),
-    (a, b) => transformBody(a.body, b.body).map((body) => ({ item: a.item, body })),
-  )
-  return out.map(({ item, body }) => ({ ...item, body }))
+export const UNDO_GONE = 'Someone else changed the file since; undo is no longer possible.'
+const AFTER_REFUSED = 'It came after one of your changes that could not be made, so it was not made either.'
+
+/** The logged `b` rewritten to apply after the pending `a` (to fit the changes that follow `a`). */
+function remotePast(b: LogBody, a: LogBody): LogBody {
+  if (b.kind !== 'change' || a.kind !== 'change') return b
+  const [, ops] = transformLists(a.ops, b.ops, transform)
+  return { ...b, ops }
+}
+
+export type Rebased<T> = { kept: T[]; refused: Array<{ item: T; reason: string }> }
+
+/**
+ * Pending `items` (each with its body, in order) rewritten past the logged
+ * `others`, in order — what the server does with a batch and what a client
+ * does with its unsent changes, so both get the same result. An item with
+ * nothing left goes (not in `kept`, not refused); an item that can't be made
+ * to fit is refused with the reason, and every item after it too (they were
+ * made on top of it).
+ */
+export function rebaseItems<T extends { body: LogBody }>(items: T[], others: LogBody[]): Rebased<T> {
+  let cur = items.map((item) => ({ item, body: item.body }))
+  const refused: Array<{ item: T; reason: string }> = []
+  let blocked: string | null = null
+  for (const other of others) {
+    let b: LogBody = other
+    const next: typeof cur = []
+    for (const it of cur) {
+      if (blocked !== null) {
+        refused.push({ item: it.item, reason: blocked })
+        continue
+      }
+      let past: LogBody[]
+      try {
+        past = transformBody(it.body, b)
+        b = remotePast(b, it.body)
+      } catch (err) {
+        if (!(err instanceof TransformRefusal)) throw err
+        refused.push({ item: it.item, reason: err.message })
+        blocked = AFTER_REFUSED
+        continue
+      }
+      if (past.length > 0) next.push({ item: it.item, body: past[0]! })
+    }
+    cur = next
+  }
+  return { kept: cur.map(({ item, body }) => ({ ...item, body })), refused }
+}
+
+// ---------------------------------------------------------------------------
+// Bytes on the wire (a picture's image): JSON carries them as { $bytes: base64 }
+
+const CHUNK = 0x8000
+
+export function toBase64(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i += CHUNK) out += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  return btoa(out)
+}
+
+export function fromBase64(text: string): Uint8Array {
+  const str = atob(text)
+  const out = new Uint8Array(str.length)
+  for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i)
+  return out
+}
+
+/** A plain JSON copy of `value` with bytes as { $bytes } (also drops the reactive proxies a page hands over). */
+export function toWireValue<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_k, v: unknown) => (v instanceof Uint8Array ? { $bytes: toBase64(v) } : v)),
+  ) as T
+}
+
+/** `value` with every { $bytes } back as bytes (a copy). */
+export function fromWireValue<T>(value: T): T {
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk)
+    if (v && typeof v === 'object' && !(v instanceof Uint8Array)) {
+      const o = v as Record<string, unknown>
+      const keys = Object.keys(o)
+      if (keys.length === 1 && keys[0] === '$bytes' && typeof o.$bytes === 'string') return fromBase64(o.$bytes)
+      return Object.fromEntries(keys.map((k) => [k, walk(o[k])]))
+    }
+    return v
+  }
+  return walk(value) as T
+}
+
+// ---------------------------------------------------------------------------
+// What is fixed before a change travels
+
+/** Operations whose apply reads the clock unless told the time: their time is set where they are made. */
+const TIMED = new Set<string>(['add_comment', 'reply_comment'])
+
+function eachOp(ops: SheetOp[], fn: (op: SheetOp) => void) {
+  for (const op of ops) {
+    if (op.op === 'batch') eachOp(op.ops, fn)
+    else fn(op)
+  }
+}
+
+/** The change as it travels: a plain copy, bytes encoded, comment times set (every replica writes the same). */
+export function pinChange(body: ChangeBody, now: () => Date = () => new Date()): ChangeBody {
+  const out = toWireValue(body)
+  eachOp(out.ops, (op) => {
+    const timed = op as { now?: string }
+    if (TIMED.has(op.op) && !timed.now) timed.now = now().toISOString()
+  })
+  return out
+}
+
+/** Why a change can't be logged as sent (a comment without its time), or null. */
+export function unpinned(body: ChangeBody): string | null {
+  let why: string | null = null
+  eachOp(body.ops, (op) => {
+    if (TIMED.has(op.op) && !(op as { now?: string }).now) why = `${op.op} needs its time (now) set where it is made.`
+  })
+  return why
+}
+
+/** Whether the change carries a password (then it is logged as its result: `PartsBody`). */
+export function carriesSecret(body: ChangeBody): boolean {
+  let found = false
+  eachOp(body.ops, (op) => {
+    const pw = (op as { password?: string | null }).password
+    if (typeof pw === 'string' && pw.length > 0) found = true
+  })
+  return found
 }
 
 /** JSON with sorted keys: bodies compared after a round trip through the database. */

@@ -9,7 +9,7 @@ import { actorOf } from './tools'
 
 /**
  * drive.sheet_live_* — co-editing an Excel workbook (plan/phase-office-files.md
- * §7.4) as registry actions: the grid's own calls (join the file's live
+ * §7.9) as registry actions: the grid's own calls (join the file's live
  * session, read its log, send a batch of changes), so the `ee` CLI and the
  * agent reach what the grid does. For everyday changes the agent uses
  * drive.sheet_write / _structure / _format …, which go through the same log

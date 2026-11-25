@@ -2,6 +2,44 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-25 — Assistant chat failed on the demo company: a provider cut the compaction summary short (owner error report from demo.eigenenterprise.app; on main, not released)
+
+- **What broke:** on demo.eigenenterprise.app (v0.5.43, incus `customers/ee-demo` on rs500-1) a turn ended "Something went wrong on my side". Journal: `model_error: Compaction failed: Summarization hit the token limit; the summary is incomplete`. The summary call (`~deepseek/deepseek-flash-latest`) came back `finish_reason: length` at **1639 of the 8192 tokens we asked for**. Prompt 2410 + 1639 = 4049, right at a 4k window. So the router most likely picked an upstream with a small context window, and that upstream stopped the reply on its own limit. Other replies on the same box reach 7340 tokens. pi-durable treats a `length` summary as a hard failure and does not retry it.
+- **Fix:** `llmChatCompletion` (`src/lib/server/llm/llm-client.ts`): a reply with `finish_reason: length` and fewer completion tokens than our `max_tokens` throws `LlmCutShortError` (`errors.ts`). It retries like any failed attempt (3 attempts), then fails loud with "cut the reply short at N of M tokens". The check is numeric: finish reason and token counts, no text. This covers every gateway caller, not only compaction. A reply that used the whole budget is still returned as is. The cut-short call keeps its billed activity row, named `llm.chat.<ctx>.cut_short(attempt=n)`, with no extra 0-cost error row.
+- **Tests:** 3 new in `llm-client.spec.ts` (retry then success, all three cut short fails loud, full budget returned). llm + agent suites 534 green; `npm run check` 0 errors.
+- **Release v0.5.44 blocked (owner: "Push and release"):** bumped + tagged locally (`5870460a`, tag not pushed). The CI gate failed on the unreleased xlsx round already on main, so nothing was pushed: 4 guard specs (`modules/drive/sheet-editing-tools.spec.ts` imports `modules/brand/extract/capture-errors` across a module boundary; tiny text / `outline-none` in `chart-view.svelte` / `chart-overlay.svelte`; 5 xlsx dialogs with free-text fields but no dictation) + one 15 s timeout in `modules/repos/service.spec.ts` (likely load).
+  - **Unblocked (`7e1b05fe`):** the guard failures are fixed on main. Prose fields in the chart, validation and hyperlink dialogs now take dictation; the formula/range dialogs are exempt, with reasons. Text has the 13px floor and the chart frame a focus ring. The drive spec imports the browser error through `print-pdf`. `ci:local` is green on main at 7e1b05fe: 11,170 unit and 1,046 component tests. Main now also holds the merged xlsx charts, pivots/tables, everyday editing and CF/validation streams (all unreleased), so the v0.5.44 tag at `5870460a` is stale; re-bump before releasing.
+- **Not done:** not released, not on the demo box. The demo company is still unseeded: the owner should start a **new** chat and run `kernel.module_activate {module_id: demo}`, then `demo.seed_company`, then `demo.guest_access_set {enabled: true, ai_calls_per_ip: 2}`. Open: asking OpenRouter for providers with enough context instead of retrying until one has it.
+
+## 2026-11-25 — STOPPED: feature-complete xlsx editor, six streams mid-work (owner: "take some open source repo like the one i share [Univer] to clean room code a xlsx editor that is feature complete … why would i want an xlsx editor without charts?", then "stop and write down current state")
+
+- **Goal:** Excel-level editor. Univer's docs/behaviour and Excel's documented behaviour (ECMA-376, Microsoft docs) are the spec. No Univer source is copied. Libraries must be MIT/Apache/BSD (never GPL) and lazy-loaded. Built on our lossless OPC editor (§7).
+- **State:** all six agents were stopped by the owner mid-work. **Nothing from this round is in main.**
+  - The work so far is saved as one local `[wip]` commit per branch. These commits are untested and were made with `--no-verify`, so they are not ready to merge.
+  - The worktrees are kept under `.claude/worktrees/agent-<id>` (gitignored `node_modules`/`.env` symlinks excluded).
+  - No stream had written its UI, registry tools, contract lock or plan section yet.
+
+| Stream | Branch (`worktree-agent-…`) | WIP commit | What exists (files, untested) |
+|---|---|---|---|
+| Charts (owner's top priority) | `af88606afb0d4fa82` | `24949b8d` (+3.6k) | `chart-read/write/data/layout/anchor/color/ops.ts`, `chart.spec.ts`, chart fixtures; small edits in `ops.ts`, messages, sheet-tools spec. Was starting the unit tests. No renderer/overlay UI yet. |
+| Pictures, shapes, notes, threaded comments | `abce1ce53103ad811` | `1ea12ee6` (+2.6k) | `drawing.ts` (shared drawing-part reader/writer), `drawing-ops.ts`, `cell-images.ts`, `image-info.ts`, `notes.ts`, `threads.ts`, `drawing.spec.ts`; edits in `ops.ts`, `sort.ts`, `editor.ts`. |
+| Conditional formatting, validation, hyperlinks, names, protection | `a868d8967340d8f8c` | `588930f0` (+3.5k) | `cond-format.ts`, `rule-formulas.ts`, `validation.ts`, `hyperlinks.ts`, `names.ts`, `protection.ts` (+spec), `sha512.ts`, `sqref.ts`; edits in `ops.ts`, `styles.ts`. Was writing the names/hyperlink/validation tests. |
+| Everyday editing (clipboard, fill, find, rich text, function catalog) | `a76b858543ae93882` | `15f2c3ca` (+2.6k) | `clip.ts`, `fill.ts`, `find.ts`, `cells-edit.ts`, `rich-text.ts`, `function-catalog.ts` (+spec); edit in `ops.ts`. Keyboard, merge, sheet tabs and PDF export not started. |
+| Real-time co-editing | `a17ebcee3b1a78652` | `261b0cb5` (+1.7k) | `src/lib/office/xlsx/collab/`, `src/lib/server/sheet-live/` (protocol/op-log start). Was writing the protocol and replica modules. Transport choice not yet logged. |
+| Pivots, Excel tables, remaining formulas | `a1e0dba3dbd540582` | `7b8248b8` (+1.8k) | `calc-text.ts` (+spec), `calc-agg.ts`, `calc-groupby.ts`, `calc-info.ts`; edits in `calc.ts`, `calc-dynamic.ts`, `calc-values.ts`. Pivots/tables not started. A scratch file `.fxcheck.mjs` is in the commit and must be dropped before merging. |
+
+- **Expected conflicts when resuming:** all six edit `ops.ts`; charts and pictures both touch the drawing part, so charts must plug into `drawing.ts`; and `xlsx-editor.svelte`/`sheet-grid.svelte` once the UIs land.
+- **To resume:** for each branch, continue in its worktree (or `git worktree add .claude/worktrees/<stream> worktree-agent-<id>`). Finish TDD, UI, tools, contract lock and plan section, drop the `[wip]` label, then merge one at a time, starting with charts, as before.
+- **Update (usage limit):** the streams were resumed, then stopped again when the usage limit was reached. The latest commits on each branch are below. They are untested; charts' was a normal commit and it was running lint when stopped:
+  - charts `d6a9b877`
+  - pictures/comments `3b53e4e5`
+  - cf/validation `e3c243a5`
+  - editing `b20e5839`
+  - co-editing `94d404e0`
+  - pivots/formulas `b13609ef`
+  These supersede the commit column in the table.
+- **Main at stop:** `6f343bcd` + this entry. The previous round below is merged; the full `ci:local` gate ran green on it (10,911 unit, 1,027 component). **Not pushed, not released.**
+
 ## 2026-11-25 — xlsx editor gaps closed by four parallel subagents (owner: "use whatever open source you can find and then build it. go go go"; merges `9dfd896d`, `221d5461`, `77602535`, `2c84a368`; on main, not pushed, not released)
 
 - **Owner question first:** Univer (dream-num/univer) was considered and **not adopted**. Its Apache-2.0 core has no .xlsx import/export; that and co-editing are Univer Pro (licensed conversion server). It is React-based, owns the file in its own model (lossy round-trip), and keeps edits UI-side (CLI parity). Our lossless OPC editor stays; the gaps were built on it.

@@ -207,7 +207,7 @@ function textOrder(a: string, b: string, fn: string): number {
   return a.length - x.length - (b.length - y.length)
 }
 
-function sortOrder(a: CellValue, b: CellValue, fn: string): number {
+export function sortOrder(a: CellValue, b: CellValue, fn: string): number {
   if (a === null || b === null)
     throw new Unsupported(`${fn} of empty cells (Excel does not document where they go)`)
   const ka = kind(a)

@@ -2,6 +2,7 @@ import type { SheetEditor } from './editor'
 import type { Loss } from './ops'
 import { translateFormulaToA1, translateFormulaToR1C1 } from '@borgar/fx'
 import { createCalc } from './calc'
+import { anchorElements, NS_XDR, sortRowOf } from './drawing'
 import { overlaps, tableRanges } from './filter'
 import {
   cellKey,
@@ -14,7 +15,9 @@ import {
   requireRange,
   type Range,
 } from './ref'
+import { moveRulesWithSort } from './rule-sort'
 import { dropEmptyRow, ensureRow, sheetDataOf, unshareFormulas } from './sheet-xml'
+import { clearTableSortStates, readSheetTables, setTableSortState, type ExcelTable } from './tables'
 import { isErrorValue, XlsxError, type CellValue, type SheetInfo, type Workbook } from './workbook'
 import { all, kid, kids, REL, setText, textOf } from './xml'
 
@@ -48,8 +51,6 @@ export type SortOp = {
 
 export const MAX_SORT_KEYS = 64
 
-const NS_XDR = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'
-const NS_THREADED = 'http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments'
 
 const collator = new Intl.Collator('en', { sensitivity: 'accent' })
 
@@ -78,8 +79,30 @@ export function compareSortValues(a: CellValue, b: CellValue, descending: boolea
   return descending ? -out : out
 }
 
+function matchedTableForSort(
+  wb: Workbook,
+  info: SheetInfo,
+  range: Range,
+  header: boolean | undefined,
+): ExcelTable | null {
+  for (const t of readSheetTables(wb, info.name)) {
+    if (range.left !== t.ref.left || range.right !== t.ref.right) continue
+    const dataTop = t.ref.top + t.headerRowCount
+    const dataBottom = t.ref.bottom - t.totalsRowCount
+    if (
+      (range.top === t.ref.top && (range.bottom === t.ref.bottom || range.bottom === dataBottom)) ||
+      (header === false && range.top === dataTop && range.bottom === dataBottom)
+    )
+      return t
+  }
+  return null
+}
+
 /** The range's body (rows that move) and checks of the request. */
-function plan(wb: Workbook, op: SortOp): { info: SheetInfo; range: Range; body: Range } {
+function plan(
+  wb: Workbook,
+  op: SortOp,
+): { info: SheetInfo; range: Range; body: Range; table: ExcelTable | null } {
   const info = wb.requireWorksheet(op.sheet)
   const range = requireRange(op.range)
   if (op.keys.length === 0) throw new XlsxError('Name at least one column to sort by.')
@@ -90,13 +113,21 @@ function plan(wb: Workbook, op: SortOp): { info: SheetInfo; range: Range; body: 
       throw new XlsxError(
         `Column ${colName(Math.max(0, k.col))} is outside the range ${rangeName(range)} being sorted.`,
       )
-  const body = { ...range, top: op.header ? range.top + 1 : range.top }
-  return { info, range, body }
+  const table = matchedTableForSort(wb, info, range, op.header)
+  let top = op.header ? range.top + 1 : range.top
+  let bottom = range.bottom
+  if (table) {
+    if (table.headerRowCount > 0 && range.top === table.ref.top)
+      top = Math.max(top, table.ref.top + table.headerRowCount)
+    bottom = Math.min(bottom, table.ref.bottom - table.totalsRowCount)
+  }
+  const body = { ...range, top, bottom }
+  return { info, range, body, table }
 }
 
-/** Comments, pictures and tables in the rows being sorted would stay where they are. */
+/** Comments, pictures and partial-overlap tables in the rows being sorted would stay where they are. */
 export function sortLosses(wb: Workbook, op: SortOp): Loss[] {
-  const { info, body } = plan(wb, op)
+  const { info, body, table } = plan(wb, op)
   if (body.top > body.bottom) return []
   const out: Loss[] = []
   const add = (feature: Loss['feature'], count: number) => {
@@ -104,34 +135,28 @@ export function sortLosses(wb: Workbook, op: SortOp): Loss[] {
   }
   const inBody = (row: number, col: number) =>
     row >= body.top && row <= body.bottom && col >= body.left && col <= body.right
-  add('tables', tableRanges(wb, info).filter((t) => overlaps(t.range, body)).length)
+  add(
+    'tables',
+    tableRanges(wb, info).filter(
+      (t) => overlaps(t.range, body) && (!table || t.name.toLowerCase() !== table.displayName.toLowerCase()),
+    ).length,
+  )
   let drawings = 0
-  let comments = 0
-  let threaded = 0
   for (const r of wb.pkg.relationships(info.part)) {
     if (r.external || !r.part || !wb.pkg.has(r.part)) continue
+    // Notes, threads, charts and pictures inside one row move with their rows (ops.ts arrange, drawing.ts sortDrawing); larger objects stay.
     if (r.type === `${REL}drawing`) {
       const doc = wb.pkg.xml(r.part)
-      for (const from of all(doc, 'from', NS_XDR)) {
+      for (const el of anchorElements(doc)) {
+        const from = el.getElementsByTagNameNS(NS_XDR, 'from')[0]
+        if (!from) continue
         const row = Number(textOf(kid(from, 'row', NS_XDR)))
         const col = Number(textOf(kid(from, 'col', NS_XDR)))
-        if (inBody(row, col)) drawings++
-      }
-    } else if (r.type === `${REL}comments`) {
-      for (const c of all(wb.pkg.xml(r.part), 'comment')) {
-        const a = parseCell(c.getAttribute('ref') ?? '')
-        if (a && inBody(a.row, a.col)) comments++
-      }
-    } else if (r.type.endsWith('/threadedComment')) {
-      for (const c of all(wb.pkg.xml(r.part), 'threadedComment', NS_THREADED)) {
-        const a = parseCell(c.getAttribute('ref') ?? '')
-        if (a && inBody(a.row, a.col)) threaded++
+        if (inBody(row, col) && (el.namespaceURI !== NS_XDR || sortRowOf(el) === null)) drawings++
       }
     }
   }
   add('drawings', drawings)
-  add('comments', comments)
-  add('threaded_comments', threaded)
   return out
 }
 
@@ -140,10 +165,14 @@ function moveFormula(text: string, from: string, to: string): string {
   return translateFormulaToA1(translateFormulaToR1C1(text, from), to, { wrapEdges: false })
 }
 
-/** Sorts the range in the sheet's XML (`doc` from the open transaction). Returns whether anything moved. */
-export function sortRange(wb: Workbook, doc: XMLDocument, op: SortOp): boolean {
-  const { info, body } = plan(wb, op)
-  if (body.top > body.bottom) return false
+/** Sorts the range in the sheet's XML (`doc` from the open transaction). Returns the rows that moved (old -> new) and the sorted cells, or null when nothing moved. */
+export function sortRange(
+  wb: Workbook,
+  doc: XMLDocument,
+  op: SortOp,
+): { body: Range; dest: Map<number, number> } | null {
+  const { info, body, table } = plan(wb, op)
+  if (body.top > body.bottom) return null
   const d = wb.sheet(info.name)
   const where = `${info.name}!${rangeName(body)}`
   const merge = d.merges.find((m) => overlaps(m, body))
@@ -184,7 +213,7 @@ export function sortRange(wb: Workbook, doc: XMLDocument, op: SortOp): boolean {
   keyed.forEach((k, i) => {
     if (k.r !== rows[i]) dest.set(k.r, rows[i]!)
   })
-  if (dest.size === 0) return false
+  if (dest.size === 0) return null
 
   if (all(doc, 'f').some((f) => f.getAttribute('t') === 'shared'))
     unshareFormulas(doc, (ref) => {
@@ -226,8 +255,12 @@ export function sortRange(wb: Workbook, doc: XMLDocument, op: SortOp): boolean {
   }
   for (const rowEl of touched) if (rowEl.parentNode) dropEmptyRow(rowEl)
   moveHyperlinks(doc, body, dest)
+  moveRulesWithSort(doc, body, dest)
   dropSortStates(doc, body)
-  return true
+  clearTableSortStates(wb, info, body)
+  if (table) setTableSortState(wb, table, body, op.keys)
+  // Notes, threads, pictures and charts move with their rows in ops.ts (arrange: one anchor mover, drawing.ts).
+  return { body, dest }
 }
 
 /** Single-cell hyperlinks move with their cell. */

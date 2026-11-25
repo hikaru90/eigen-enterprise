@@ -1,7 +1,5 @@
 import type { AccessLevel, DriveAccessPort, Grant, GrantSubject } from './access-port'
-import { LEVEL_RANK } from './access-port'
 import type { BlobStore } from './storage'
-import type { ConversionLoss } from '$lib/office/xlsx/convert'
 import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
 import { randomUUID } from 'node:crypto'
 import {
@@ -12,6 +10,8 @@ import {
   READ_ONLY_OFFICE_KINDS,
 } from '$lib/office/kinds'
 import { extractOfficeText } from '$lib/office/text'
+import type { ConversionLoss } from '$lib/office/xlsx/convert'
+import { LEVEL_RANK } from './access-port'
 import { contentDateOf } from './content-date'
 import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
 import { isRevisioned, isTextDocument, isTextFile, mimeFor, officeKind } from './preview'

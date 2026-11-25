@@ -289,6 +289,72 @@ describe('llm client retries', () => {
     expect(fetch).toHaveBeenCalledTimes(3)
   })
 
+  // demo box 2026-11-25: a compaction summary came back finish_reason "length" at
+  // 1639 of 8192 tokens (prompt 2410 + 1639 ≈ a 4k-context upstream provider).
+  // The answer was cut short by the provider, not by our budget.
+  it('retries a reply the provider cut short below our max_tokens', async () => {
+    const cut = {
+      usage: { prompt_tokens: 2410, completion_tokens: 1639, total_tokens: 4049 },
+      choices: [{ finish_reason: 'length', message: { content: 'half a summ' } }],
+    }
+    const whole = {
+      usage: { prompt_tokens: 2410, completion_tokens: 2100, total_tokens: 4510 },
+      choices: [{ finish_reason: 'stop', message: { content: 'the whole summary' } }],
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(response(true, 200, cut))
+      .mockResolvedValueOnce(response(true, 200, whole))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const out = await llmChatCompletion({
+      userId: 'u1',
+      messages: [{ role: 'user', content: 'summarize' }],
+      maxTokens: 8192,
+    })
+
+    expect(out).toEqual(whole)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // The cut-short call was billed: its activity row keeps the call, under its own name.
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ operation: 'llm.chat.chat.cut_short(attempt=1)' }),
+    )
+    expect(logActivityCallMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ operation: expect.stringMatching(/\.error\(attempt=1\)/) }),
+    )
+  })
+
+  it('fails loud when every attempt is cut short by the provider', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response(true, 200, {
+          usage: { prompt_tokens: 2410, completion_tokens: 1639 },
+          choices: [{ finish_reason: 'length', message: { content: 'half' } }],
+        }),
+      ),
+    )
+    await expect(
+      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'x' }], maxTokens: 8192 }),
+    ).rejects.toThrow(/cut the reply short at 1639 of 8192 tokens/)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('returns a reply that used our whole max_tokens budget as is (finish_reason length)', async () => {
+    const full = {
+      usage: { prompt_tokens: 10, completion_tokens: DEFAULT_CHAT_MAX_TOKENS },
+      choices: [{ finish_reason: 'length', message: { content: 'long' } }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => response(true, 200, full)))
+    const out = await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'x' }] })
+    expect(out).toEqual(full)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it('captures ai generation error when all chat retries fail', async () => {
     vi.stubGlobal(
       'fetch',

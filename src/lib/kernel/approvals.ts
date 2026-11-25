@@ -1,5 +1,6 @@
 import type { ToolContext, ToolDescriptor } from './types'
 import { randomUUID } from 'node:crypto'
+import { redactForLog } from '../server/observability/redact-for-log'
 
 export type ApprovalStatus = 'pending' | 'approved' | 'denied'
 
@@ -218,7 +219,8 @@ export function newApprovalRequest(params: {
   return {
     id: randomUUID(),
     toolName: params.toolName,
-    input: params.input,
+    // Secret-named fields never reach an approval record (AGENTS.md: redact *password, *key, *token, *secret).
+    input: redactForLog(params.input),
     principalId: params.principalId,
     status: 'pending',
   }
