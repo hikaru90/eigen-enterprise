@@ -148,6 +148,7 @@ export default defineConfig({
       'src/lib/components/page/status-pill.svelte.spec.ts',
       'src/lib/components/ui/info-popover.svelte.spec.ts',
       'src/lib/components/drive/drive-browser.svelte.spec.ts',
+      'src/lib/components/drive/drive-selection.svelte.spec.ts',
       'src/lib/components/drive/drive-privacy-note.svelte.spec.ts',
       'src/lib/components/drive/archived-view.svelte.spec.ts',
       'src/lib/components/drive/revisions-panel.svelte.spec.ts',

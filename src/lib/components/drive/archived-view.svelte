@@ -10,24 +10,38 @@
   import PresentationIcon from '@lucide/svelte/icons/presentation'
   import SheetIcon from '@lucide/svelte/icons/sheet'
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
+  import { onMount } from 'svelte'
   import { invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
   import { driveApi, formatSize, type ArchiveGroup, type DriveItem } from '$lib/drive/api'
+  import { bulkOutcome, runBulk, type BulkOutcome, type BulkRequest } from '$lib/drive/bulk'
   import { driveItemKind, shortWhen, type DriveItemKind } from '$lib/drive/display'
+  import {
+    bulkActions,
+    clickSelect,
+    headerState,
+    selKey,
+    toggleAll,
+    type Selection,
+  } from '$lib/drive/selection'
   import { driveShownError } from '$lib/drive/shown-error'
   import type { ShownError } from '$lib/errors/agent-report'
+  import { m } from '$lib/paraglide/messages.js'
   import { nextSort, sortRows, type SortState } from '$lib/table/sort'
   import SortableHead from '$lib/table/sortable-head.svelte'
   import ArchiveSuggestions from './archive-suggestions.svelte'
+  import SelectionBar from './selection-bar.svelte'
 
   /**
    * The Archived view: archived files and folders, grouped by the folder
    * each one is in (archiving moves nothing), with when and by whom it was
    * archived. Every item still opens; Unarchive (for those who may edit)
    * brings it back into the normal view. "Suggest what to archive" asks the
-   * AI for candidates the person then confirms.
+   * AI for candidates the person then confirms. Rows can be selected (across
+   * groups, shift-click for a range, Space on a row, Escape clears) and
+   * unarchived together; every item that couldn't be is named with why.
    */
   let {
     groups,
@@ -53,6 +67,59 @@
     size: (i: DriveItem) => (i.type === 'file' ? i.size : null),
   }
   let suggesting = $state(false)
+  let listEl = $state<HTMLElement | null>(null)
+  // Keyboard selection is the list's, delegated from its rows (Space on a row, Escape anywhere in it).
+  onMount(() => listEl?.addEventListener('keydown', onKeydown))
+  let selection = $state.raw<Selection>({ keys: new Set(), anchor: null })
+  let bulkFailed = $state.raw<BulkOutcome | null>(null)
+  /** Every row in the order shown (groups in order, each sorted): what ranges and the bar's checkbox span. */
+  const ordered = $derived(groups.flatMap((g) => sortRows(g.items, sort, sortColumns)))
+  const orderedKeys = $derived(ordered.map(selKey))
+  const selectedItems = $derived(ordered.filter((i) => selection.keys.has(selKey(i))))
+  const groupKeys = (g: ArchiveGroup) => g.items.map(selKey)
+
+  function onCheck(event: MouseEvent, item: Row) {
+    selection = clickSelect(selection, orderedKeys, selKey(item), event.shiftKey)
+  }
+  function toggleKeys(keys: string[]) {
+    selection = { keys: toggleAll(selection.keys, keys), anchor: selection.anchor }
+  }
+  function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && selection.keys.size > 0) {
+      selection = { keys: new Set(), anchor: null }
+      return
+    }
+    if (event.key !== ' ' || !(event.target instanceof Element)) return
+    if (event.target.closest('button, input, select, textarea')) return
+    const key = event.target.closest('[data-sel-key]')?.getAttribute('data-sel-key')
+    if (!key) return
+    event.preventDefault()
+    selection = clickSelect(selection, orderedKeys, key, event.shiftKey)
+  }
+
+  async function runSelected(req: BulkRequest) {
+    const items = selectedItems
+    const names = new Map(items.map((i) => [selKey(i), i.name]))
+    error = null
+    notice = null
+    bulkFailed = null
+    busy = true
+    try {
+      const out = bulkOutcome(
+        req.action,
+        await runBulk(req, items),
+        (r) => names.get(selKey(r)) ?? r.id,
+      )
+      notice = out.notice
+      bulkFailed = out.failed ? out : null
+      selection = { keys: out.stopped ? new Set(names.keys()) : out.failedKeys, anchor: null }
+      await invalidateAll()
+    } catch (err) {
+      error = driveShownError(err)
+    } finally {
+      busy = false
+    }
+  }
 
   const placeOf = (g: ArchiveGroup) =>
     g.folder?.name ?? g.path[g.path.length - 1]?.name ?? g.root.label
@@ -64,6 +131,7 @@
   async function unarchive(group: ArchiveGroup, item: Row) {
     error = null
     notice = null
+    bulkFailed = null
     busy = true
     try {
       const out = await driveApi.unarchive(item)
@@ -92,7 +160,12 @@
     'inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50'
 </script>
 
-<section class="flex min-h-0 flex-1 flex-col" data-testid="drive-archived" aria-label="Archived">
+<section
+  class="flex min-h-0 flex-1 flex-col"
+  data-testid="drive-archived"
+  aria-label="Archived"
+  bind:this={listEl}
+>
   <header
     class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-6"
   >
@@ -123,6 +196,27 @@
         attempted="Unarchiving an item in Drive’s archive"
       />
     {/if}
+    {#if bulkFailed?.failed}
+      <ErrorNotice
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2"
+        testid="drive-bulk-failures"
+        error={bulkFailed.failed.heading}
+        attempted={m.drive_bulk_attempted()}
+      >
+        {#if bulkFailed.failed.rows.length > 0}
+          <ul class="max-h-48 list-disc overflow-y-auto pl-5 text-red-600">
+            {#each bulkFailed.failed.rows as row (row.key)}
+              <li data-testid="drive-bulk-failure">
+                <span class="font-medium">{row.name}</span> — {row.reason}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if bulkFailed.stopped}
+          <p data-testid="drive-bulk-stopped">{bulkFailed.stopped}</p>
+        {/if}
+      </ErrorNotice>
+    {/if}
     {#if notice}
       <p
         class="rounded-md border px-3 py-2 text-sm text-muted-foreground"
@@ -143,6 +237,20 @@
       />
     {/if}
   </div>
+
+  {#if selectedItems.length > 0}
+    <div class="px-4 pt-2 sm:px-6">
+      <SelectionBar
+        items={selectedItems}
+        actions={bulkActions(selectedItems, 'archived')}
+        page={headerState(selection.keys, orderedKeys)}
+        {busy}
+        ontoggleall={() => toggleKeys(orderedKeys)}
+        onclear={() => (selection = { keys: new Set(), anchor: null })}
+        onrun={runSelected}
+      />
+    </div>
+  {/if}
 
   <div class="min-h-0 flex-1 overflow-auto px-2 pb-10 sm:px-4">
     {#if groups.length === 0}
@@ -182,6 +290,17 @@
           <table class="w-full table-fixed text-sm">
             <thead class="text-left text-xs text-muted-foreground">
               <tr class="border-b border-border">
+                <th scope="col" class="w-10 py-2 pr-1 pl-3">
+                  <input
+                    type="checkbox"
+                    class="size-4 align-middle accent-primary"
+                    checked={headerState(selection.keys, groupKeys(group)) === 'all'}
+                    indeterminate={headerState(selection.keys, groupKeys(group)) === 'some'}
+                    aria-label={m.drive_select_page()}
+                    data-testid="drive-select-page"
+                    onclick={() => toggleKeys(groupKeys(group))}
+                  />
+                </th>
                 <SortableHead
                   label="Name"
                   sortKey="name"
@@ -216,11 +335,26 @@
             <tbody>
               {#each sortRows(group.items, sort, sortColumns) as item (item.type + item.id)}
                 {@const Icon = ICONS[driveItemKind(item)]}
+                {@const picked = selection.keys.has(selKey(item))}
                 <tr
-                  class="border-b border-border/60 last:border-0 hover:bg-muted/50"
+                  class="border-b border-border/60 last:border-0 hover:bg-muted/50 {picked
+                    ? 'bg-primary/5'
+                    : ''}"
                   data-testid="drive-archive-row"
+                  data-sel-key={selKey(item)}
+                  data-selected={picked ? 'true' : undefined}
                   data-name={item.name}
                 >
+                  <td class="py-2 pr-1 pl-3">
+                    <input
+                      type="checkbox"
+                      class="size-4 align-middle accent-primary"
+                      checked={picked}
+                      aria-label={m.drive_select_row({ name: item.name })}
+                      data-testid="drive-select"
+                      onclick={(e) => onCheck(e, item)}
+                    />
+                  </td>
                   <td class="px-3 py-2">
                     <span class="flex min-w-0 items-center gap-2.5">
                       <Icon class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

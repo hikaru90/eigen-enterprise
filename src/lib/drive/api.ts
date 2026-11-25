@@ -45,6 +45,8 @@ export type ArchiveSuggestions = {
 }
 export type ItemRef = Pick<DriveItem, 'type' | 'id'>
 export type Unarchived = { item: DriveItem; stillIn: Crumb | null }
+/** One item a bulk act could not do, and why (a plain sentence). */
+export type BatchFailure = ItemRef & { error: string }
 /**
  * A listing row's owner name (null: not a member) and sharing (null: not told
  * — you don't manage it); `readOnlyFrom` names the source a read-only copy
@@ -200,6 +202,43 @@ export const driveApi = {
     call<{ archived: DriveItem[]; errors: Array<ItemRef & { error: string }> }>(
       '/api/drive/archive',
       send('POST', { items }),
+    ),
+  /** Unarchives several items in one go; `errors` says which couldn't be and why. */
+  unarchiveMany: (items: ItemRef[]) =>
+    call<{ unarchived: Unarchived[]; errors: BatchFailure[] }>(
+      '/api/drive/archive',
+      send('DELETE', { items }),
+    ),
+  /*
+   * The selection bar's acts (at most 100 items per call; the bar sends a
+   * larger selection in chunks): each answers per item — what was done, and
+   * under `errors` which items could not be and why.
+   */
+  moveMany: (items: ItemRef[], folderId: string | null) =>
+    call<{ moved: DriveItem[]; errors: BatchFailure[] }>(
+      '/api/drive/batch/move',
+      send('POST', { items, folderId }),
+    ),
+  trashMany: (items: ItemRef[]) =>
+    call<{ trashed: DriveItem[]; errors: BatchFailure[] }>(
+      '/api/drive/batch/trash',
+      send('POST', { items }),
+    ),
+  restoreMany: (items: ItemRef[]) =>
+    call<{ restored: DriveItem[]; errors: BatchFailure[] }>(
+      '/api/drive/batch/restore',
+      send('POST', { items }),
+    ),
+  deleteForeverMany: (items: ItemRef[]) =>
+    call<{ deleted: Array<ItemRef & { name: string }>; errors: BatchFailure[] }>(
+      '/api/drive/batch/delete-forever',
+      send('POST', { items }),
+    ),
+  /** Adds the grants to each item (never lowers or removes access). */
+  shareMany: (items: ItemRef[], grants: GrantEntry[]) =>
+    call<{ shared: DriveItem[]; errors: BatchFailure[] }>(
+      '/api/drive/batch/share',
+      send('POST', { items, grants }),
     ),
   /** The AI's suggestions among files unchanged for `olderThanDays` (archives nothing). */
   suggestArchive: (olderThanDays: number) =>
