@@ -2,6 +2,30 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-25 — xlsx editor gaps closed by four parallel subagents (owner: "use whatever open source you can find and then build it. go go go"; merges `9dfd896d`, `221d5461`, `77602535`, `2c84a368`; on main, not pushed, not released)
+
+- **Owner question first:** Univer (dream-num/univer) was considered and **not adopted**. Its Apache-2.0 core has no .xlsx import/export; that and co-editing are Univer Pro (licensed conversion server). It is React-based, owns the file in its own model (lossy round-trip), and keeps edits UI-side (CLI parity). Our lossless OPC editor stays; the gaps were built on it.
+- **Cell formatting + sizing** (§7.1): fonts, fills, border presets, alignment, wrap. Style records are copied and deduped. Column/row drag resize, Ctrl/Cmd+B/I/U. Tool `drive.sheet_format`; `drive.sheet_read` returns styles and sizes.
+- **New spreadsheet, .xlsm, .xls/.ods** (§7.2):
+  - New menu "Spreadsheet (.xlsx)" via `drive.create_document` `kind: "xlsx"`.
+  - .xlsm edits like .xlsx, `vbaProject.bin` kept byte for byte, macros never run.
+  - .xls/.ods open read-only; `drive.make_xlsx_copy` saves an editable .xlsx next to the original and lists what is not kept.
+  - **New dependency:** SheetJS CE 0.20.3 (Apache-2.0), vendored as `vendor/xlsx-0.20.3.tgz` (official CDN tarball; npm 0.18.x has CVE-2023-30533). It is a devDependency, expected to be bundled into the server build, and lazy-loaded. The Dockerfile copies `vendor/`. **A release build with it has not run yet.**
+- **Formula coverage** (§7 Formulas):
+  - Now calculated: OFFSET, INDIRECT, XLOOKUP/XMATCH, LET/LAMBDA (+ MAP/REDUCE/SCAN/BYROW/BYCOL/MAKEARRAY), dynamic arrays with spills and `#SPILL!` (FILTER, SORT, SORTBY, UNIQUE, SEQUENCE, TAKE/DROP, VSTACK/HSTACK, TEXTSPLIT …), table references, legacy CSE arrays, and iterative calculation when the workbook enables it.
+  - Spill metadata (`cm`, `metadata.xml`) is written so Excel opens spills as dynamic arrays.
+  - **Behaviour change:** plain (non-dynamic) formulas now use Excel's implicit intersection, so values of formulas saved earlier may show differently (now matching Excel).
+  - **Risk:** `calc-params.ts` lists which parameters take whole ranges; a missing entry gives a wrong value instead of a marked one.
+- **Sort, AutoFilter, freeze panes** (§7.3):
+  - Excel sort order; relative references in moved formulas follow.
+  - Merged cells and array formulas in the range are refused.
+  - Value filters with hidden rows; unknown filter conditions are kept as written.
+  - Frozen panes are sticky in the grid.
+  - Tools: `drive.sheet_sort`, `drive.sheet_filter`, `drive.sheet_freeze`.
+- **Merges:** conflicts were in the grid, editor, `ops.ts`, the tool lists and the plan; both sides kept. The contract lock was regenerated each time (447 tools).
+- **Tests after the last merge:** drive + office unit 898 passed; office + drive component 205 passed; check 0 errors.
+- **Still open:** co-editing (needs a sync layer; Yjs MIT would be the candidate), cell comments, charts/pictures drawn in the grid, diagonal borders/gradient fills, rich text in cells, colour/custom filters, the e2e journey step.
+
 ## 2026-11-25 — Release v0.5.43 (owner: "Push and release"; tag on `16db49c3`, GitHub release run 45616642038)
 
 - **Contents:** the make-a-wish round below (all boards), plus xlsx editing and multi-select in Drive.
