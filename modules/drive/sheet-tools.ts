@@ -27,12 +27,12 @@ import { actorOf } from './tools'
 
 export type DriveSheetToolDeps = { service: () => Promise<DriveService> }
 
-const DRIVE_ROLES = ['admin', 'member', 'agent']
+export const DRIVE_ROLES = ['admin', 'member', 'agent']
 /** One call reads or writes at most this many cells: more is refused (ask for a smaller range), never cut. */
 export const SHEET_MAX_CELLS = 5000
 
-const fileId = z.string().min(1)
-const sheetName = z.string().min(1).max(31).describe('The sheet (tab) name')
+export const fileId = z.string().min(1)
+export const sheetName = z.string().min(1).max(31).describe('The sheet (tab) name')
 const cellRef = z.string().min(2).max(10).describe('A cell address like B3')
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()])
 
@@ -92,7 +92,7 @@ const writeInput = z
   })
   .strict()
 
-const column = z
+export const column = z
   .union([z.number().int().min(1), z.string().regex(/^[A-Za-z]{1,3}$/)])
   .describe('A column letter (C) or number from 1')
 const structureChange = z.discriminatedUnion('action', [
@@ -149,29 +149,31 @@ const structureInput = z
   })
   .strict()
 
-type Xlsx = {
+export type Xlsx = {
   opc: typeof import('$lib/office/ooxml/package')
   editor: typeof import('$lib/office/xlsx/editor')
   ops: typeof import('$lib/office/xlsx/ops')
   read: typeof import('$lib/office/xlsx/read')
   ref: typeof import('$lib/office/xlsx/ref')
   workbook: typeof import('$lib/office/xlsx/workbook')
+  formatCells: typeof import('$lib/office/xlsx/format-cells')
 }
 /** The spreadsheet code loads when a workbook is used, not with the registry. */
-async function xlsx(): Promise<Xlsx> {
-  const [opc, editor, ops, read, ref, workbook] = await Promise.all([
+export async function xlsx(): Promise<Xlsx> {
+  const [opc, editor, ops, read, ref, workbook, formatCells] = await Promise.all([
     import('$lib/office/ooxml/package'),
     import('$lib/office/xlsx/editor'),
     import('$lib/office/xlsx/ops'),
     import('$lib/office/xlsx/read'),
     import('$lib/office/xlsx/ref'),
     import('$lib/office/xlsx/workbook'),
+    import('$lib/office/xlsx/format-cells'),
   ])
-  return { opc, editor, ops, read, ref, workbook }
+  return { opc, editor, ops, read, ref, workbook, formatCells }
 }
 
 /** A workbook refusal (no such sheet, a formula that can't be read, losses not accepted) is the caller's to fix. */
-async function guarded<T>(lib: Xlsx, work: () => T | Promise<T>): Promise<T> {
+export async function guarded<T>(lib: Xlsx, work: () => T | Promise<T>): Promise<T> {
   try {
     return await work()
   } catch (err) {
@@ -185,7 +187,7 @@ async function guarded<T>(lib: Xlsx, work: () => T | Promise<T>): Promise<T> {
   }
 }
 
-async function openBook(drive: DriveService, ctx: ToolContext, id: string, lib: Xlsx) {
+export async function openBook(drive: DriveService, ctx: ToolContext, id: string, lib: Xlsx) {
   const { file, bytes } = await drive.readFile(actorOf(ctx), id)
   if (officeKind(file.name, file.mime) !== 'xlsx')
     throw new DriveError('invalid', `“${file.name}” is not an Excel workbook (.xlsx).`)
@@ -195,7 +197,7 @@ async function openBook(drive: DriveService, ctx: ToolContext, id: string, lib: 
 
 type Saved = { file: ItemView; revision: { id: string; createdAt: Date } }
 
-async function save(
+export async function save(
   drive: DriveService,
   ctx: ToolContext,
   id: string,
@@ -208,7 +210,7 @@ async function save(
   return { file: out.file, revision: { id: out.revision.id, createdAt: out.revision.createdAt } }
 }
 
-const colIndex = (lib: Xlsx, at: number | string) => {
+export const colIndex = (lib: Xlsx, at: number | string) => {
   if (typeof at === 'number') return at - 1
   const i = lib.ref.colIndex(at)
   if (i === null) throw new DriveError('invalid', `“${at}” is not a column.`)
@@ -232,8 +234,8 @@ function toOp(lib: Xlsx, c: z.infer<typeof structureChange>): SheetOp {
   }
 }
 
-const nameOf = (output: unknown) => (output as { file?: { name?: string } } | undefined)?.file?.name
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+export const nameOf = (output: unknown) => (output as { file?: { name?: string } } | undefined)?.file?.name
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 function describeChange(c: z.infer<typeof structureChange>): string {
   switch (c.action) {
@@ -259,7 +261,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
     {
       name: 'drive.sheet_read',
       module: DRIVE_MODULE_ID,
-      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text and number format. At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
+      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes). At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
       auditClass: 'read',
       permission: { roles: DRIVE_ROLES },
       inputSchema: readInput,
@@ -287,12 +289,18 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
             'en',
             SHEET_MAX_CELLS,
           )
+          const data = editor.wb.sheet(sheet)
           return {
             file: { id: file.id, name: file.name },
             sheets,
-            sheet: editor.wb.requireWorksheet(sheet).name,
+            sheet: data.info.name,
             range,
             cells,
+            sizes: lib.formatCells.sheetSizes(
+              editor.wb,
+              data,
+              range ? lib.ref.requireRange(range) : null,
+            ),
           }
         })
       },

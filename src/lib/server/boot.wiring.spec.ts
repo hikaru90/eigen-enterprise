@@ -333,6 +333,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'drive.set_sharing',
   'drive.share_many',
   'drive.shared_with_me',
+  'drive.sheet_format',
   'drive.sheet_read',
   'drive.sheet_structure',
   'drive.sheet_write',

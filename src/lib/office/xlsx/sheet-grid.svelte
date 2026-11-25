@@ -5,6 +5,8 @@
     /** Inline CSS from the cell's format (font, fill, colour). */
     css: string
     wrap: boolean
+    /** Where the text sits in a taller row (Excel's default: bottom). */
+    vertical?: 'top' | 'center' | 'bottom'
     /** A formula whose value is Excel's last result (this editor can't calculate it): why. */
     kept: string | null
     /** The number format can't be shown: the plain value is. */
@@ -49,6 +51,7 @@
     copyText,
     onreach,
     onblocked,
+    onresize,
   }: {
     rows: number
     cols: number
@@ -73,6 +76,8 @@
     onreach?: (axis: 'row' | 'col') => void
     /** A key that would edit while editing is not allowed (view only). */
     onblocked?: () => void
+    /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
+    onresize?: (axis: 'col' | 'row', index: number, px: number) => void
   } = $props()
 
   const HEAD_H = 24
@@ -397,6 +402,42 @@
     if (text !== '') onpaste({ row: sel.top, col: sel.left }, text)
   }
 
+  // Dragging a column's right edge or a row's bottom edge: a guide line follows, the size is set on release.
+  type Resizing = { axis: 'col' | 'row'; index: number; from: number; base: number; px: number }
+  let resizing = $state<Resizing | null>(null)
+  const MIN_PX = { col: 8, row: 6 }
+
+  function onHandleDown(event: PointerEvent, axis: 'col' | 'row', index: number) {
+    if (event.button !== 0 || !onresize) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (editing) finishEdit(true)
+    const base = axis === 'col' ? colWidth(index) : rowHeight(index)
+    resizing = { axis, index, from: axis === 'col' ? event.clientX : event.clientY, base, px: base }
+    window.addEventListener('pointermove', onHandleMove)
+    window.addEventListener('pointerup', onHandleUp, { once: true })
+  }
+
+  function onHandleMove(event: PointerEvent) {
+    const r = resizing
+    if (!r) return
+    const at = r.axis === 'col' ? event.clientX : event.clientY
+    resizing = { ...r, px: Math.max(MIN_PX[r.axis], Math.round(r.base + at - r.from)) }
+  }
+
+  function onHandleUp() {
+    window.removeEventListener('pointermove', onHandleMove)
+    const r = resizing
+    resizing = null
+    if (r && r.px !== r.base) onresize?.(r.axis, r.index, r.px)
+    focus()
+  }
+
+  const guideStyle = (r: Resizing) =>
+    r.axis === 'col'
+      ? `left: ${HEAD_W + colLefts[r.index]! + r.px - 1}px; top: 0; width: 2px; height: ${HEAD_H + rowTops[rows]!}px;`
+      : `top: ${HEAD_H + rowTops[r.index]! + r.px - 1}px; left: 0; height: 2px; width: ${HEAD_W + colLefts[cols]!}px;`
+
   const inSel = (r: number, c: number) =>
     r >= sel.top && r <= sel.bottom && c >= sel.left && c <= sel.right
 </script>
@@ -422,6 +463,14 @@
     class="g-canvas"
     style="width: {HEAD_W + colLefts[cols]!}px; height: {HEAD_H + rowTops[rows]!}px;"
   >
+    {#if resizing}
+      <div
+        class="g-abs g-ghost g-guide bg-primary"
+        style={guideStyle(resizing)}
+        aria-hidden="true"
+        data-testid="xlsx-resize-guide"
+      ></div>
+    {/if}
     <!-- Column letters -->
     <div class="g-head" style="height: {HEAD_H}px; width: {HEAD_W + colLefts[cols]!}px;" role="row">
       <div
@@ -444,6 +493,17 @@
             style="left: {colLefts[c]}px; width: {colWidth(c)}px; height: {HEAD_H}px;"
             onclick={(e) => pickColumn(c, e.shiftKey)}>{colName(c)}</button
           >
+          {#if onresize && editable}
+            <div
+              class="g-abs g-top g-col-handle"
+              style="left: {colLefts[c + 1]! - 3}px; height: {HEAD_H}px;"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={m.drive_sheet_fmt_col_resize({ col: colName(c) })}
+              onpointerdown={(e) => onHandleDown(e, 'col', c)}
+              data-testid="xlsx-col-resize-{colName(c)}"
+            ></div>
+          {/if}
         {/each}
       </div>
     </div>
@@ -465,6 +525,17 @@
             aria-label={m.drive_sheet_row_label({ n: r + 1 })}
             onclick={(e) => pickRow(r, e.shiftKey)}>{r + 1}</button
           >
+          {#if onresize && editable}
+            <div
+              class="g-abs g-full-w g-row-handle"
+              style="top: {rowTops[r + 1]! - 3}px;"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label={m.drive_sheet_fmt_row_resize({ row: r + 1 })}
+              onpointerdown={(e) => onHandleDown(e, 'row', r)}
+              data-testid="xlsx-row-resize-{r + 1}"
+            ></div>
+          {/if}
         {/each}
       </div>
       <!-- Cells -->
@@ -494,7 +565,8 @@
                   role="gridcell"
                   aria-colindex={c + 1}
                   aria-selected={inSel(r, c)}
-                  class="xlsx-cell g-abs g-top g-clip border-r border-b border-border/60 px-1 leading-[18px] {cell?.wrap
+                  class="xlsx-cell g-abs g-top g-clip g-cell-{cell?.vertical ??
+                    'bottom'} border-r border-b border-border/60 px-1 leading-[18px] {cell?.wrap
                     ? 'whitespace-pre-wrap'
                     : 'whitespace-pre'} {cell?.kept ? 'xlsx-kept' : ''}"
                   style="left: {colLefts[c]}px; width: {b ? b.width : colWidth(c)}px; height: {b
@@ -507,7 +579,7 @@
                       : undefined}
                   data-ref="{colName(c)}{r + 1}"
                 >
-                  {cell?.text ?? ''}
+                  <span class="block">{cell?.text ?? ''}</span>
                 </div>
               {/if}
             {/each}
@@ -603,6 +675,36 @@
   }
   .g-editor {
     z-index: 5;
+  }
+  .g-cell-top,
+  .g-cell-center,
+  .g-cell-bottom {
+    display: flex;
+    flex-direction: column;
+  }
+  .g-cell-top {
+    justify-content: flex-start;
+  }
+  .g-cell-center {
+    justify-content: center;
+  }
+  .g-cell-bottom {
+    justify-content: flex-end;
+  }
+  .g-col-handle {
+    width: 6px;
+    z-index: 2;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .g-row-handle {
+    height: 6px;
+    z-index: 2;
+    cursor: row-resize;
+    touch-action: none;
+  }
+  .g-guide {
+    z-index: 40;
   }
   .xlsx-grid :global(.xlsx-kept) {
     background-image: linear-gradient(135deg, var(--muted-foreground) 0 4px, transparent 4px);

@@ -11147,6 +11147,287 @@
     {
       "approval": {
         "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^[A-Za-z]{1,3}$",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "A column letter (C) or number from 1"
+                },
+                "to": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^[A-Za-z]{1,3}$",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "The last column (default: just `from`)"
+                },
+                "width": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 255,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "In Excel characters (8.43 is the default); null: back to the default"
+                }
+              },
+              "required": [
+                "from",
+                "width"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "description": "A row number (1 = top)",
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "height": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 409,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "In points (15 is the default); null: back to the automatic height"
+                },
+                "to": {
+                  "description": "The last row (default: just `from`)",
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "from",
+                "height"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "styles": {
+            "description": "Applied in order",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "bold": {
+                  "type": "boolean"
+                },
+                "border": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "anyOf": [
+                        {
+                          "description": "A colour like #1F4E79",
+                          "pattern": "^#[0-9A-Fa-f]{6}$",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Line colour; null or left out: automatic"
+                    },
+                    "preset": {
+                      "description": "all: every edge; outer: around the range; inner: the lines inside; top/bottom/left/right: that side of the range; none: remove the lines",
+                      "enum": [
+                        "all",
+                        "outer",
+                        "inner",
+                        "top",
+                        "bottom",
+                        "left",
+                        "right",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
+                    "style": {
+                      "description": "Line style (default thin)",
+                      "enum": [
+                        "thin",
+                        "medium",
+                        "thick",
+                        "dashed",
+                        "dotted",
+                        "double",
+                        "hair",
+                        "mediumDashed",
+                        "dashDot",
+                        "mediumDashDot",
+                        "dashDotDot",
+                        "mediumDashDotDot",
+                        "slantDashDot"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "preset"
+                  ],
+                  "type": "object"
+                },
+                "fill": {
+                  "anyOf": [
+                    {
+                      "description": "A colour like #1F4E79",
+                      "pattern": "^#[0-9A-Fa-f]{6}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Background colour; null: no fill"
+                },
+                "font_color": {
+                  "anyOf": [
+                    {
+                      "description": "A colour like #1F4E79",
+                      "pattern": "^#[0-9A-Fa-f]{6}$",
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Text colour; null: automatic"
+                },
+                "font_name": {
+                  "description": "A font family, e.g. Arial",
+                  "maxLength": 31,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "font_size": {
+                  "description": "In points, e.g. 11",
+                  "maximum": 409,
+                  "minimum": 1,
+                  "type": "number"
+                },
+                "horizontal": {
+                  "description": "general: text left, numbers right",
+                  "enum": [
+                    "general",
+                    "left",
+                    "center",
+                    "right",
+                    "justify"
+                  ],
+                  "type": "string"
+                },
+                "italic": {
+                  "type": "boolean"
+                },
+                "range": {
+                  "description": "The cells, like B2:D9 or A1",
+                  "maxLength": 30,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                "strike": {
+                  "description": "Strikethrough",
+                  "type": "boolean"
+                },
+                "underline": {
+                  "type": "boolean"
+                },
+                "vertical": {
+                  "enum": [
+                    "top",
+                    "center",
+                    "bottom"
+                  ],
+                  "type": "string"
+                },
+                "wrap": {
+                  "description": "Wrap text onto several lines",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "range"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_format",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
         "gated": false,
         "risk": null
       },
