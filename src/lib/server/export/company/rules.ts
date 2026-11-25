@@ -393,6 +393,10 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   assigned_tasks: full,
   assigned_task_comments: full,
 
+  // --- Team questions to the company or chosen groups and people (work: full) --
+  team_questions: full,
+  team_question_answers: full,
+
   // --- Brand, website, repos, GitHub, contribute --------------------------------
   brand_assets: full,
   brand_calibration_cases: full,

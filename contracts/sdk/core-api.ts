@@ -3402,6 +3402,47 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "questions.answer": {
+    input: {
+      "question_id": string
+      "text": string
+    }
+    output: unknown
+  }
+  "questions.ask": {
+    input: {
+      "audience"?: "company" | "chosen"
+      "group_ids"?: Array<string>
+      "person_ids"?: Array<string>
+      "tags"?: Array<string>
+      "text": string
+    }
+    output: unknown
+  }
+  "questions.close": {
+    input: {
+      "question_id": string
+    }
+    output: unknown
+  }
+  "questions.get": {
+    input: {
+      "question_id": string
+    }
+    output: unknown
+  }
+  "questions.list": {
+    input: {
+      "for_me"?: boolean
+      "status"?: "open" | "closed" | "all"
+      "tag"?: string
+    }
+    output: unknown
+  }
+  "questions.tags": {
+    input: Record<string, never>
+    output: unknown
+  }
   "recap.run_now": {
     input: Record<string, never>
     output: unknown
@@ -4404,6 +4445,12 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "org.chart",
   "org.set_position",
   "owlery.status",
+  "questions.answer",
+  "questions.ask",
+  "questions.close",
+  "questions.get",
+  "questions.list",
+  "questions.tags",
   "recap.run_now",
   "reminders.complete",
   "reminders.create",

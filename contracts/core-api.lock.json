@@ -19478,6 +19478,243 @@
       "auditClass": "mutate",
       "input": {
         "additionalProperties": false,
+        "properties": {
+          "question_id": {
+            "description": "The question id (from questions.list).",
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "questions.answer",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "audience": {
+            "description": "company = every member; chosen = the group_ids and person_ids. Leave out: chosen when ids are given, else company.",
+            "enum": [
+              "company",
+              "chosen"
+            ],
+            "type": "string"
+          },
+          "group_ids": {
+            "description": "Ask these groups (members.group_list).",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "person_ids": {
+            "description": "Ask these members (members.list), never contacts.",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "type": "array"
+          },
+          "tags": {
+            "description": "Free tags for categories and topics, e.g. [\"hr\", \"travel\"]; reuse the ones in questions.tags.",
+            "items": {
+              "maxLength": 40,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "text": {
+            "description": "The question, short and crisp — one line people can answer.",
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "questions.ask",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "question_id": {
+            "description": "The question id (from questions.list).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "questions.close",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "question_id": {
+            "description": "The question id (from questions.list).",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question_id"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "questions.get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "for_me": {
+            "description": "Only open questions asked of the person by someone else that they have not answered yet.",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "Default all.",
+            "enum": [
+              "open",
+              "closed",
+              "all"
+            ],
+            "type": "string"
+          },
+          "tag": {
+            "description": "Only questions with this tag.",
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "questions.list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "questions.tags",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
         "properties": {},
         "type": "object"
       },
