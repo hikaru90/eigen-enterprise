@@ -47,7 +47,7 @@
   const revisioned = $derived(data.kind === 'markdown' || data.kind === 'csv')
   /** The format's own viewer for PDF/Word/PowerPoint once it has one (plan/phase-office-files.md), else the old preview. */
   const officeViewer = $derived(
-    data.kind === 'pdf' || data.kind === 'docx' || data.kind === 'pptx'
+    data.kind === 'pdf' || data.kind === 'docx' || data.kind === 'pptx' || data.kind === 'xlsx'
       ? (OFFICE_VIEWERS[data.kind] ?? null)
       : null,
   )
@@ -72,6 +72,7 @@
     pdf: 'PDF',
     word: 'Word',
     slides: 'Slides',
+    sheet: 'Spreadsheet',
     file: 'File',
   } as const
   const kindLabel = $derived(KIND_LABEL[driveItemKind(data.file)])

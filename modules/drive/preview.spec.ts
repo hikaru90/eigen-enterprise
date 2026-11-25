@@ -16,6 +16,9 @@ describe('previewKind', () => {
     ['Deck.PPTX', '', 'pptx'],
     ['letter.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
     ['letter.doc', 'application/msword', 'other'],
+    ['budget.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
+    ['Budget.XLSX', '', 'xlsx'],
+    ['old.xls', 'application/vnd.ms-excel', 'other'],
     ['archive.zip', 'application/zip', 'other'],
   ])('%s → %s', (name, mime, kind) => {
     expect(previewKind(name, mime)).toBe(kind)
@@ -26,6 +29,7 @@ describe('previewKind', () => {
     expect(isRevisioned('a.pdf')).toBe(true)
     expect(isRevisioned('a.docx')).toBe(true)
     expect(isRevisioned('a.pptx')).toBe(true)
+    expect(isRevisioned('a.xlsx')).toBe(true)
     expect(isRevisioned('a.txt')).toBe(false)
     expect(isTextDocument('a.md')).toBe(true)
     expect(isTextDocument('a.csv')).toBe(true)

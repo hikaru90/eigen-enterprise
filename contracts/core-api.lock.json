@@ -11154,6 +11154,413 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "Like A1:D20; omitted: the sheet’s used range",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet to read; omitted: the first visible sheet",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_read",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "accept_losses": {
+            "description": "Do it even when tables, pivot tables, pictures, charts or comments would be left in the wrong place (the refusal names them)",
+            "type": "boolean"
+          },
+          "changes": {
+            "description": "Applied in order, saved as one revision",
+            "items": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "add_sheet",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "rename_sheet",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "sheet": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "name",
+                    "sheet"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "delete_sheet",
+                      "type": "string"
+                    },
+                    "sheet": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "sheet"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "insert_rows",
+                      "type": "string"
+                    },
+                    "at": {
+                      "description": "The new rows start at this row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "count": {
+                      "default": 1,
+                      "maximum": 10000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "sheet": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "at",
+                    "sheet"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "delete_rows",
+                      "type": "string"
+                    },
+                    "at": {
+                      "description": "The first row to delete",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "count": {
+                      "default": 1,
+                      "maximum": 10000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "sheet": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "at",
+                    "sheet"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "insert_columns",
+                      "type": "string"
+                    },
+                    "at": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    },
+                    "count": {
+                      "default": 1,
+                      "maximum": 1000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "sheet": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "at",
+                    "sheet"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "delete_columns",
+                      "type": "string"
+                    },
+                    "at": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    },
+                    "count": {
+                      "default": 1,
+                      "maximum": 1000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "sheet": {
+                      "description": "The sheet (tab) name",
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "at",
+                    "sheet"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "changes",
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_structure",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "format": {
+                  "description": "A number format code, e.g. #,##0.00, 0%, yyyy-mm-dd, @ for text",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "formula": {
+                  "description": "A formula in Excel’s English syntax, e.g. =SUM(B2:B9) or =Sheet2!A1*2",
+                  "maxLength": 8000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "ref": {
+                  "description": "A cell address like B3",
+                  "maxLength": 10,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                "value": {
+                  "description": "A number, text or true/false; null or \"\" clears the content (the format stays)",
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "ref"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "formats": {
+            "description": "Number formats for whole ranges (e.g. { range: \"B2:B40\", format: \"#,##0.00 [$€-407]\" })",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "format": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "range": {
+                  "maxLength": 30,
+                  "minLength": 2,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "format",
+                "range"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_write",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "older_than_days": {
             "maximum": 3650,
             "minimum": 30,

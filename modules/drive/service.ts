@@ -1361,22 +1361,30 @@ export function createDriveService(deps: DriveDeps) {
     },
 
     /**
-     * Saves new bytes into a PDF, Word or PowerPoint file — what its viewer
-     * or an office tool produced (one revision per editing session, see
-     * saveContent). The bytes must be of the file's own format.
+     * Saves new bytes into a PDF, Word, PowerPoint or Excel file — what its
+     * viewer or an office tool produced (one revision per editing session,
+     * see saveContent). The bytes must be of the file's own format.
+     * `baseSha256`: the content the writer started from; when the file has
+     * changed since, nothing is saved (`conflict`) — never a silent overwrite.
      */
     async writeBytes(
       actor: Actor,
       id: string,
       bytes: Uint8Array,
       sessionId?: string,
+      opts: { baseSha256?: string } = {},
     ): Promise<{ file: ItemView; revision: DriveRevision }> {
       const file = await requireFile(actor, id, 'edit')
       const kind = officeKind(file.name, file.mime)
       if (!kind)
         throw new DriveError(
           'invalid',
-          `Only PDF, Word (.docx) and PowerPoint (.pptx) files are saved as bytes; “${file.name}” is not one.`,
+          `Only PDF, Word (.docx), PowerPoint (.pptx) and Excel (.xlsx) files are saved as bytes; “${file.name}” is not one.`,
+        )
+      if (opts.baseSha256 !== undefined && opts.baseSha256 !== file.sha256)
+        throw new DriveError(
+          'conflict',
+          `“${file.name}” was changed since you opened it (saved ${file.updatedAt.toISOString().slice(0, 16).replace('T', ' ')} UTC). Your changes were not saved; reload to see the newer version.`,
         )
       if (!hasOfficeSignature(kind, bytes))
         throw new DriveError(

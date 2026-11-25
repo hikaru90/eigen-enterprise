@@ -2,7 +2,7 @@ import type { DriveItem } from './api'
 import { OFFICE_MIME } from '$lib/office/kinds'
 
 /** How a Drive row looks: folder, document (.md/.txt), table (.csv), image, PDF, Word (.docx), slides (.pptx), or any other file. */
-export type DriveItemKind = 'folder' | 'document' | 'table' | 'image' | 'pdf' | 'word' | 'slides' | 'file'
+export type DriveItemKind = 'folder' | 'document' | 'table' | 'image' | 'pdf' | 'word' | 'slides' | 'sheet' | 'file'
 
 /** The item's kind from its type, file extension and MIME type (same rules as the old row icons). */
 export function driveItemKind(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): DriveItemKind {
@@ -14,6 +14,7 @@ export function driveItemKind(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): 
   if (item.mime === OFFICE_MIME.pdf || n.endsWith('.pdf')) return 'pdf'
   if (item.mime === OFFICE_MIME.docx || n.endsWith('.docx')) return 'word'
   if (item.mime === OFFICE_MIME.pptx || n.endsWith('.pptx')) return 'slides'
+  if (item.mime === OFFICE_MIME.xlsx || n.endsWith('.xlsx')) return 'sheet'
   return 'file'
 }
 

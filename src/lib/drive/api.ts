@@ -283,10 +283,15 @@ export const driveApi = {
       )
     return new Uint8Array(await res.arrayBuffer())
   },
-  /** Saves new bytes into a PDF/Word/PowerPoint file as a revision (`session`: the editor holding the edit lock). */
-  writeBytes: (fileId: string, bytes: Uint8Array, session: string) =>
+  /**
+   * Saves new bytes into a PDF/Word/PowerPoint/Excel file as a revision
+   * (`session`: the editor holding the edit lock; `base`: SHA-256 of the
+   * content the editor started from — a newer save in between is refused
+   * with code `conflict`).
+   */
+  writeBytes: (fileId: string, bytes: Uint8Array, session: string, base?: string) =>
     call<{ file: DriveItem }>(
-      `/api/drive/files/${fileId}/content?session=${encodeURIComponent(session)}`,
+      `/api/drive/files/${fileId}/content?session=${encodeURIComponent(session)}${base ? `&base=${base}` : ''}`,
       {
         method: 'PUT',
         headers: { 'content-type': 'application/octet-stream' },

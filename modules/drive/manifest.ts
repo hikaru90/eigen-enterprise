@@ -23,6 +23,12 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
+/** Excel workbooks (./sheet-tools.ts, the Drive's spreadsheet editor): one read, two writes. */
+export const DRIVE_SHEET_TOOL_NAMES = ['drive.sheet_read', 'drive.sheet_write', 'drive.sheet_structure'] as const
+
+/** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
+export const DRIVE_SHEET_WRITE_TOOLS = ['drive.sheet_write', 'drive.sheet_structure'] as const
+
 /** File management with UI parity (./file-tools.ts): New folder, Upload, Rename, Move, Share, Trash, Versions. */
 export const DRIVE_FILE_TOOL_NAMES = [
   'drive.create_folder',
@@ -81,6 +87,7 @@ export const DRIVE_TOOL_NAMES = [
   ...DRIVE_BULK_TOOL_NAMES,
   ...DRIVE_PDF_TOOL_NAMES,
   ...DRIVE_PDF_ANNOTATE_TOOL_NAMES,
+  ...DRIVE_SHEET_TOOL_NAMES,
 ] as const
 
 /**
@@ -93,7 +100,7 @@ export const driveManifest: ModuleManifest = {
   name: 'Drive',
   version: '0.3.0',
   description:
-    'Folders and files for the whole company: upload, share, preview; Markdown and CSV keep revisions; archive what is done with (AI suggestions you confirm); run a web app folder and see it live (admins).',
+    'Folders and files for the whole company: upload, share, preview; Markdown and CSV keep revisions; Excel workbooks open as an editable grid; archive what is done with (AI suggestions you confirm); run a web app folder and see it live (admins).',
   tools: [...DRIVE_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

@@ -4,9 +4,11 @@ import { z } from 'zod'
 import { DriveError, driveJson, driveService, previewKind, requestActor } from '$lib/server/drive'
 
 /**
- * GET the file's bytes; PUT new bytes into a PDF, Word or PowerPoint file
- * (the raw body, ?session= the editor session holding the edit lock, W-6;
- * without it the file must not be locked). Saved as a revision.
+ * GET the file's bytes; PUT new bytes into a PDF, Word, PowerPoint or Excel
+ * file (the raw body, ?session= the editor session holding the edit lock,
+ * W-6; without it the file must not be locked; ?base= the SHA-256 of the
+ * content the editor started from: a newer save in between is a conflict,
+ * nothing is overwritten). Saved as a revision.
  *
  * ?revision=<id>: that earlier version's bytes, as a download named
  * "<name> (version 2026-11-20 14-05).<ext>".
@@ -66,6 +68,7 @@ function versionFileName(name: string, at: Date): string {
 }
 
 const session = z.string().min(8).max(100)
+const sha256 = z.string().regex(/^[0-9a-f]{64}$/)
 
 export const PUT: RequestHandler = (event) =>
   driveJson(event, async () => {
@@ -74,6 +77,12 @@ export const PUT: RequestHandler = (event) =>
     const s = raw === null ? undefined : session.safeParse(raw)
     if (s && !s.success)
       throw new DriveError('invalid', 'session: the editor session id is 8–100 characters.')
+    const rawBase = event.url.searchParams.get('base')
+    const base = rawBase === null ? undefined : sha256.safeParse(rawBase)
+    if (base && !base.success)
+      throw new DriveError('invalid', 'base: the SHA-256 of the content you started from, 64 lowercase hex characters.')
     const bytes = new Uint8Array(await event.request.arrayBuffer())
-    return (await driveService()).writeBytes(actor, event.params.id, bytes, s?.data)
+    return (await driveService()).writeBytes(actor, event.params.id, bytes, s?.data, {
+      baseSha256: base?.data,
+    })
   })

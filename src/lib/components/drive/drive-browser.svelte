@@ -627,6 +627,7 @@
     pdf: FileTextIcon,
     word: FileTextIcon,
     slides: PresentationIcon,
+    sheet: SheetIcon,
     file: FileIcon,
   }
   /** Kind tiles in the brand palette (docs/brand-palette.md): tinted square, foreground icon. */
@@ -638,6 +639,7 @@
     pdf: 'bg-[#FF4632]/15 text-foreground/80 dark:bg-[#FF4632]/20',
     word: 'bg-[#A3D8F4]/45 text-foreground/80 dark:bg-[#A3D8F4]/20',
     slides: 'bg-[#FFC107]/25 text-foreground/80 dark:bg-[#FFC107]/20',
+    sheet: 'bg-[#B8E9D0]/70 text-foreground/80 dark:bg-[#B8E9D0]/20',
     file: 'bg-muted text-muted-foreground',
   }
   /** Brand CI color-coded origin styles (docs/brand-palette.md), contrast-safe in light and dark modes. */
@@ -709,6 +711,7 @@
     pdf: 'PDF',
     word: 'Word',
     slides: 'Slides',
+    sheet: 'Spreadsheet',
     file: 'File',
   }
 

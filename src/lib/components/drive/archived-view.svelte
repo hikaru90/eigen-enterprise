@@ -154,6 +154,7 @@
     pdf: FileTextIcon,
     word: FileTextIcon,
     slides: PresentationIcon,
+    sheet: SheetIcon,
     file: FileIcon,
   }
   const btn =

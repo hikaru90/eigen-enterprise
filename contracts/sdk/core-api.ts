@@ -1859,6 +1859,69 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "drive.sheet_read": {
+    input: {
+      "file_id": string
+      "range"?: string
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_structure": {
+    input: {
+      "accept_losses"?: boolean
+      "changes": Array<({
+        "action": "add_sheet"
+        "name": string
+      }) | ({
+        "action": "rename_sheet"
+        "name": string
+        "sheet": string
+      }) | ({
+        "action": "delete_sheet"
+        "sheet": string
+      }) | ({
+        "action": "insert_rows"
+        "at": number
+        "count"?: number
+        "sheet": string
+      }) | ({
+        "action": "delete_rows"
+        "at": number
+        "count"?: number
+        "sheet": string
+      }) | ({
+        "action": "insert_columns"
+        "at": number | string
+        "count"?: number
+        "sheet": string
+      }) | ({
+        "action": "delete_columns"
+        "at": number | string
+        "count"?: number
+        "sheet": string
+      })>
+      "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_write": {
+    input: {
+      "cells"?: Array<{
+        "format"?: string
+        "formula"?: string
+        "ref": string
+        "value"?: string | number | boolean | null
+      }>
+      "file_id": string
+      "formats"?: Array<{
+        "format": string
+        "range": string
+      }>
+      "sheet": string
+    }
+    output: unknown
+  }
   "drive.suggest_archive": {
     input: {
       "older_than_days"?: number
@@ -4340,6 +4403,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.set_sharing",
   "drive.share_many",
   "drive.shared_with_me",
+  "drive.sheet_read",
+  "drive.sheet_structure",
+  "drive.sheet_write",
   "drive.suggest_archive",
   "drive.trash",
   "drive.trash_many",

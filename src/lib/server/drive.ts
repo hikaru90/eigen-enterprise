@@ -80,6 +80,7 @@ const DRIVE_STEPS: Record<DriveFailure['code'], string[]> = {
   busy: ['Another app preview is running (`running` in the answer); stop it first, then retry.'],
   conflict: [
     'A file of that name is already in the folder (`existing` in the answer). Ask the person whether to replace it (a new revision) or keep both, then upload again with onConflict replace or keep_both.',
+    'A save from an editor or tool: the file changed after it was read (another save landed in between). Read the file again and make the change on the newer version.',
   ],
 }
 

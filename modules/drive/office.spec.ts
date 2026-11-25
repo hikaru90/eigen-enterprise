@@ -95,6 +95,20 @@ describe('drive: office files (PDF, Word, PowerPoint) keep binary revisions', ()
     await expectCode(drive.writeBytes(agent, f.id, pdf('v2')), 'locked')
   })
 
+  it('a save that names the content it started from is refused when the file changed since (no silent overwrite)', async () => {
+    const { drive, blobs } = await setup()
+    const f = await drive.upload(alice, null, { name: 'budget.xlsx', bytes: zip('v1'), mime: null }, 'fail')
+    const v1 = (await blobs.put(zip('v1'))).sha256
+    // Another tab saves v2 in between.
+    await drive.writeBytes(alice, f.id, zip('v2'))
+    await expectCode(drive.writeBytes(alice, f.id, zip('mine'), undefined, { baseSha256: v1 }), 'conflict')
+    expect(new TextDecoder().decode((await drive.readFile(alice, f.id)).bytes)).toContain('v2')
+    // Started from the current content: saved.
+    const v2 = (await blobs.put(zip('v2'))).sha256
+    await drive.writeBytes(alice, f.id, zip('mine'), undefined, { baseSha256: v2 })
+    expect(new TextDecoder().decode((await drive.readFile(alice, f.id)).bytes)).toContain('mine')
+  })
+
   it('refuses a save over the size limit', async () => {
     const { drive } = await setup(64)
     const f = await drive.upload(alice, null, { name: 'plan.pdf', bytes: pdf('v1'), mime: 'application/pdf' }, 'fail')
