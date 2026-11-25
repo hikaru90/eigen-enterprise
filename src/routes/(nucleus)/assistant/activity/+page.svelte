@@ -19,21 +19,15 @@
   import * as Card from '$lib/components/ui/card'
   import { formatActivityCredits } from '$lib/pricing/credits'
   import { docTitle } from '$lib/shell/title'
+  import { nextSort, type SortState } from '$lib/table/sort'
+  import SortableHead from '$lib/table/sortable-head.svelte'
+  import {
+    activityCallRows,
+    groupProviderLabel,
+    type ActivityCallCol,
+    type ActivityCallRow,
+  } from './activity-calls'
   import ActivitySpendChart from './activity-spend-chart.svelte'
-
-  type ActivityCallRow = {
-    id: string
-    provider: string
-    gatewayHost?: string | null
-    operation: string
-    context?: string | null
-    baseCostUsd: string
-    markupUsd: string
-    totalCostUsd: string
-    groupId?: string | null
-    durationMs?: number | null
-    createdAt: string | Date
-  }
 
   let { data } = $props()
 
@@ -67,30 +61,6 @@
 
   function toggleGroup(groupId: string) {
     expandedGroups = { ...expandedGroups, [groupId]: !expandedGroups[groupId] }
-  }
-
-  function sumTotalUsd(calls: ActivityCallRow[]): string {
-    let total = 0
-    for (const c of calls) total += Number(c.totalCostUsd)
-    return total.toFixed(6)
-  }
-
-  function endpointLabelFromHost(hostname: string): string {
-    const h = hostname
-      .trim()
-      .toLowerCase()
-      .replace(/^www\./, '')
-    const parts = h.split('.').filter(Boolean)
-    if (parts.length <= 2) return parts[0] ?? h
-    return parts[parts.length - 2] ?? parts[0]
-  }
-
-  function groupProviderLabel(calls: ActivityCallRow[]): { label: string; isPaid: boolean } {
-    const first = calls[0]
-    if (first.provider === 'agent') return { label: 'Agent', isPaid: false }
-    const host = first.gatewayHost?.trim()
-    if (host) return { label: endpointLabelFromHost(host), isPaid: true }
-    return { label: 'Gateway', isPaid: true }
   }
 
   function formatDuration(ms: number | null | undefined): string {
@@ -132,42 +102,13 @@
     }),
   )
 
-  // --- Derived: group filtered calls ---
-  const grouped = $derived.by(() => {
-    const groups: Array<{
-      key: string
-      groupId: string | null
-      calls: ActivityCallRow[]
-      firstOp: string
-      groupTotalUsd: string
-    }> = []
-    const groupMap = new SvelteMap<string, ActivityCallRow[]>()
-    const order: string[] = []
-
-    for (const c of filteredCalls) {
-      const key = c.groupId ?? `__ungrouped__${c.id}`
-      let list = groupMap.get(key)
-      if (!list) {
-        list = []
-        groupMap.set(key, list)
-        order.push(key)
-      }
-      list.push(c)
-    }
-
-    for (const key of order) {
-      const list = groupMap.get(key)!
-      list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      groups.push({
-        key,
-        groupId: key.startsWith('__ungrouped__') ? null : key,
-        calls: list,
-        firstOp: list[0].operation,
-        groupTotalUsd: sumTotalUsd(list),
-      })
-    }
-    return groups
-  })
+  // --- Derived: grouped, or one row per call when a column is sorted ---
+  let sort = $state<SortState<ActivityCallCol>>(null)
+  function sortBy(key: ActivityCallCol) {
+    sort = nextSort(sort, key)
+    currentPage = 1
+  }
+  const grouped = $derived(activityCallRows(filteredCalls, sort))
 
   // --- Derived: client-side pagination ---
   const totalPages = $derived(Math.max(1, Math.ceil(grouped.length / PAGE_SIZE)))
@@ -413,17 +354,29 @@
       <Card.Title class="text-sm">Calls</Card.Title>
       <Card.Description class="text-muted-foreground text-xs">
         All LLM gateway calls and agent tool operations.
+        {#if sort}
+          <span data-testid="activity-calls-sort-scope"
+            >Sorted across all {filteredCalls.length} loaded calls, one row per call; sort the column
+            a third time to group them again.</span
+          >
+        {/if}
       </Card.Description>
     </Card.Header>
     <Card.Content class="overflow-x-auto px-0">
       <table class="w-full text-left text-xs">
         <thead class="bg-muted/50 border-b border-border">
           <tr>
-            <th class="p-2 font-medium">When</th>
-            <th class="p-2 font-medium">Provider</th>
-            <th class="p-2 font-medium">Operation</th>
-            <th class="p-2 font-medium">Duration</th>
-            <th class="p-2 font-medium">Credits</th>
+            <SortableHead label="When" sortKey="when" {sort} class="p-2" onsort={sortBy} />
+            <SortableHead label="Provider" sortKey="provider" {sort} class="p-2" onsort={sortBy} />
+            <SortableHead
+              label="Operation"
+              sortKey="operation"
+              {sort}
+              class="p-2"
+              onsort={sortBy}
+            />
+            <SortableHead label="Duration" sortKey="duration" {sort} class="p-2" onsort={sortBy} />
+            <SortableHead label="Credits" sortKey="credits" {sort} class="p-2" onsort={sortBy} />
           </tr>
         </thead>
         <tbody>
@@ -542,7 +495,8 @@
       {/if}
       <span class="text-muted-foreground text-xs">
         Page {currentPage} of {totalPages}
-        ({grouped.length} groups)
+        ({grouped.length}
+        {sort ? 'calls' : 'groups'})
       </span>
       {#if currentPage < totalPages}
         <button
