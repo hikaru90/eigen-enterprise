@@ -320,7 +320,7 @@ describe('xlsx editor: rows and columns', () => {
     })
   })
 
-  it('names what would end up wrong (tables, pictures, comments) and does it only when accepted', () => {
+  it('names what would end up wrong (tables) and moves drawings with the cells', () => {
     const bytes = buildXlsx({
       sheets: [
         {
@@ -336,7 +336,7 @@ describe('xlsx editor: rows and columns', () => {
       ],
       parts: {
         '/xl/drawings/drawing1.xml': {
-          xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>',
+          xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="95250" cy="95250"/><xdr:sp><xdr:nvSpPr><xdr:cNvPr id="2" name="Box"/><xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr/></xdr:sp><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>',
           type: 'application/vnd.openxmlformats-officedocument.drawing+xml',
         },
         '/xl/tables/table1.xml': {
@@ -347,15 +347,13 @@ describe('xlsx editor: rows and columns', () => {
     })
     const ed = createSheetEditor(bytes)
     const op = { op: 'insert_rows', sheet: 'S', at: 0, count: 1 } as const
-    expect(ed.losses(op)).toEqual([
-      { feature: 'tables', count: 1 },
-      { feature: 'drawings', count: 1 },
-    ])
+    expect(ed.losses(op)).toEqual([{ feature: 'tables', count: 1 }])
     expect(() => ed.apply(op)).toThrow(XlsxLossError)
     expect(ed.changed()).toBe(false)
     ed.apply(op, { acceptLosses: true })
     const out = ed.toBytes()
     expect(val(out, 'S', 1, 0)?.value).toBe(1)
+    expect(xml(out, 'xl/drawings/drawing1.xml')).toContain('<xdr:row>2</xdr:row>')
     expect(parts(out)['xl/tables/table1.xml']).toEqual(parts(bytes)['xl/tables/table1.xml'])
   })
 })

@@ -33,7 +33,7 @@ export const SHEET_MAX_CELLS = 5000
 
 export const fileId = z.string().min(1)
 export const sheetName = z.string().min(1).max(31).describe('The sheet (tab) name')
-const cellRef = z.string().min(2).max(10).describe('A cell address like B3')
+export const cellRef = z.string().min(2).max(10).describe('A cell address like B3')
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()])
 
 const readInput = z
@@ -262,7 +262,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
     {
       name: 'drive.sheet_read',
       module: DRIVE_MODULE_ID,
-      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden, the AutoFilter and its filtered columns, frozen panes), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes). At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
+      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden, the AutoFilter and its filtered columns, frozen panes, and counts of drawings/notes/comments/cell_images when present), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes), and any drawings (pictures, shapes, text boxes, charts), legacy notes, threaded comments, or in-cell images on that sheet. At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
       auditClass: 'read',
       permission: { roles: DRIVE_ROLES },
       inputSchema: readInput,
@@ -291,7 +291,8 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
             SHEET_MAX_CELLS,
           )
           const data = editor.wb.sheet(sheet)
-          return {
+          const ann = lib.read.readSheetAnnotations(editor, data.info.name)
+          const out: Record<string, unknown> = {
             file: { id: file.id, name: file.name },
             sheets,
             sheet: data.info.name,
@@ -303,6 +304,11 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
               range ? lib.ref.requireRange(range) : null,
             ),
           }
+          if (ann.drawings.length > 0) out.drawings = ann.drawings
+          if (ann.notes.length > 0) out.notes = ann.notes
+          if (ann.comments.length > 0) out.comments = ann.comments
+          if (ann.cell_images.length > 0) out.cell_images = ann.cell_images
+          return out
         })
       },
     },

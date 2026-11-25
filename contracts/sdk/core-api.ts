@@ -1866,6 +1866,65 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "drive.sheet_comment_add": {
+    input: {
+      "cell": string
+      "file_id": string
+      "kind"?: "comment" | "note"
+      "mentions"?: Array<string>
+      "sheet": string
+      "text": string
+      "visible"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_delete": {
+    input: {
+      "cell"?: string
+      "file_id": string
+      "id"?: string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_edit": {
+    input: {
+      "cell"?: string
+      "file_id": string
+      "id"?: string
+      "mentions"?: Array<string>
+      "sheet": string
+      "text"?: string
+      "visible"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_list": {
+    input: {
+      "file_id": string
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_reply": {
+    input: {
+      "file_id": string
+      "mentions"?: Array<string>
+      "sheet": string
+      "text": string
+      "thread": string
+    }
+    output: unknown
+  }
+  "drive.sheet_comment_resolve": {
+    input: {
+      "file_id": string
+      "resolved"?: boolean
+      "sheet": string
+      "thread": string
+    }
+    output: unknown
+  }
   "drive.sheet_filter": {
     input: {
       "columns"?: Array<{
@@ -1925,11 +1984,97 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_picture_delete": {
+    input: {
+      "file_id": string
+      "id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_picture_insert": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "height"?: number
+      "image_base64"?: string
+      "image_file_id"?: string
+      "name"?: string
+      "sheet": string
+      "width"?: number
+      "x"?: number
+      "y"?: number
+    }
+    output: unknown
+  }
+  "drive.sheet_picture_update": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "height"?: number
+      "id": string
+      "name"?: string
+      "rotation"?: number
+      "sheet": string
+      "width"?: number
+      "x"?: number
+      "y"?: number
+    }
+    output: unknown
+  }
   "drive.sheet_read": {
     input: {
       "file_id": string
       "range"?: string
       "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_shape_create": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "fill"?: string | null
+      "geometry"?: "rect" | "roundRect" | "ellipse" | "triangle" | "diamond" | "rightArrow" | "leftArrow" | "upArrow" | "downArrow" | "line" | "arrow"
+      "height"?: number
+      "line"?: string | null
+      "name"?: string
+      "sheet": string
+      "text"?: string
+      "textbox"?: boolean
+      "width"?: number
+      "x"?: number
+      "y"?: number
+    }
+    output: unknown
+  }
+  "drive.sheet_shape_delete": {
+    input: {
+      "file_id": string
+      "id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_shape_update": {
+    input: {
+      "alt"?: string
+      "cell"?: string
+      "file_id": string
+      "fill"?: string | null
+      "height"?: number
+      "id": string
+      "line"?: string | null
+      "name"?: string
+      "rotation"?: number
+      "sheet": string
+      "text"?: string
+      "width"?: number
+      "x"?: number
+      "y"?: number
     }
     output: unknown
   }
@@ -4484,10 +4629,22 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.set_sharing",
   "drive.share_many",
   "drive.shared_with_me",
+  "drive.sheet_comment_add",
+  "drive.sheet_comment_delete",
+  "drive.sheet_comment_edit",
+  "drive.sheet_comment_list",
+  "drive.sheet_comment_reply",
+  "drive.sheet_comment_resolve",
   "drive.sheet_filter",
   "drive.sheet_format",
   "drive.sheet_freeze",
+  "drive.sheet_picture_delete",
+  "drive.sheet_picture_insert",
+  "drive.sheet_picture_update",
   "drive.sheet_read",
+  "drive.sheet_shape_create",
+  "drive.sheet_shape_delete",
+  "drive.sheet_shape_update",
   "drive.sheet_sort",
   "drive.sheet_structure",
   "drive.sheet_write",

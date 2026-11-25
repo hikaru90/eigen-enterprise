@@ -17,6 +17,8 @@ import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { DOCUMENT_KINDS } from './service'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
 import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
+import { createDriveSheetCommentTools } from './sheet-comment-tools'
+import { createDriveSheetDrawingTools } from './sheet-drawing-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -320,5 +322,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetFormatTools({ service }),
     ...createDriveSheetCopyTools({ service }),
     ...createDriveSheetArrangeTools({ service }),
+    ...createDriveSheetDrawingTools({ service }),
+    ...createDriveSheetCommentTools({ service }),
   ]
 }

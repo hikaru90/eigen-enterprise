@@ -11,6 +11,13 @@
     kept: string | null
     /** The number format can't be shown: the plain value is. */
     unreadFormat: boolean
+    /** Excel 365 IMAGE-in-cell picture URL and alt text. */
+    imageUrl?: string | null
+    imageAlt?: string
+    /** Cell carries a legacy sticky note (red top-right triangle). */
+    hasNote?: boolean
+    /** Cell carries a threaded comment (purple top-right indicator). */
+    thread?: { count: number; resolved: boolean } | null
   }
   export type Pos = { row: number; col: number }
   export type Move = 'down' | 'up' | 'right' | 'left' | 'none'
@@ -19,7 +26,7 @@
 <script lang="ts">
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
-  import { onMount, tick } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import { m } from '$lib/paraglide/messages.js'
   import { colName, type Range } from './ref'
 
@@ -61,6 +68,10 @@
     filter = null,
     onfilter,
     onresize,
+    overlay,
+    oncellselect,
+    onnoteopen,
+    oncellhover,
   }: {
     rows: number
     cols: number
@@ -94,6 +105,14 @@
     onfilter?: (col: number, at: DOMRect) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
+    /** Floating layer over the main cell pane (`dx`/`dy` are the frozen offsets). */
+    overlay?: Snippet<[{ dx: number; dy: number }]>
+    /** A cell click moved selection back onto the grid. */
+    oncellselect?: () => void
+    /** Clicked a cell's note triangle or comment badge. */
+    onnoteopen?: (pos: Pos, at: DOMRect) => void
+    /** Pointer entered or left an annotated cell (for hover preview). */
+    oncellhover?: (pos: Pos | null, at: DOMRect | null) => void
   } = $props()
 
   const HEAD_H = 24
@@ -392,6 +411,7 @@
       anchor = at
     }
     dragging = true
+    oncellselect?.()
     focus()
     event.preventDefault()
   }
@@ -521,8 +541,60 @@
                 ? m.drive_sheet_unread_format()
                 : undefined}
             data-ref="{colName(c)}{r + 1}"
+            onmouseenter={(e) => {
+              if (cell?.hasNote || cell?.thread)
+                oncellhover?.({ row: r, col: c }, e.currentTarget.getBoundingClientRect())
+            }}
+            onmouseleave={() => {
+              if (cell?.hasNote || cell?.thread) oncellhover?.(null, null)
+            }}
           >
-            <span class="block">{cell?.text ?? ''}</span>
+            {#if cell?.imageUrl}
+              <img
+                src={cell.imageUrl}
+                alt={cell.imageAlt ?? ''}
+                class="pointer-events-none block h-full w-full object-contain"
+                data-testid="xlsx-cell-image"
+              />
+            {:else}
+              <span class="block">{cell?.text ?? ''}</span>
+            {/if}
+            {#if cell?.hasNote}
+              {@const noteLabel = m.drive_sheet_cell_has_note({ ref: `${colName(c)}${r + 1}` })}
+              <button
+                type="button"
+                tabindex="-1"
+                class="g-note-corner"
+                style="right: {fb ? 18 : 0}px;"
+                aria-label={noteLabel}
+                title={noteLabel}
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onnoteopen?.({ row: r, col: c }, e.currentTarget.getBoundingClientRect())
+                }}
+                data-testid="xlsx-note-indicator"
+              ></button>
+            {:else if cell?.thread}
+              {@const threadLabel = m.drive_sheet_cell_has_comments({
+                count: cell.thread.count,
+                ref: `${colName(c)}${r + 1}`,
+              })}
+              <button
+                type="button"
+                tabindex="-1"
+                class="g-thread-corner {cell.thread.resolved ? 'g-thread-resolved' : ''}"
+                style="right: {fb ? 18 : 0}px;"
+                aria-label={threadLabel}
+                title={threadLabel}
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onnoteopen?.({ row: r, col: c }, e.currentTarget.getBoundingClientRect())
+                }}
+                data-testid="xlsx-comment-indicator"
+              ></button>
+            {/if}
             {#if fb}
               {@const on = filter!.filtered(c)}
               {@const what = on
@@ -747,6 +819,7 @@
         role="presentation"
       >
         {@render pane(visibleRows, visibleCols, FW, FH, 'br')}
+        {@render overlay?.({ dx: FW, dy: FH })}
       </div>
     </div>
   </div>
@@ -825,6 +898,26 @@
     width: 16px;
     height: 16px;
     z-index: 2;
+  }
+  .g-note-corner,
+  .g-thread-corner {
+    position: absolute;
+    top: 0;
+    width: 0;
+    height: 0;
+    padding: 0;
+    border-style: solid;
+    border-width: 0 9px 9px 0;
+    border-color: transparent #dc2626 transparent transparent;
+    background: transparent;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .g-thread-corner {
+    border-color: transparent #7c3aed transparent transparent;
+  }
+  .g-thread-resolved {
+    border-color: transparent #a78bfa transparent transparent;
   }
   .g-rowheads {
     position: sticky;

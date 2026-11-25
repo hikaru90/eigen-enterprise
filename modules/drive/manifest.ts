@@ -23,7 +23,7 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, the Drive's spreadsheet editor): one read, six writes. */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-drawing-tools.ts, ./sheet-comment-tools.ts, the Drive's spreadsheet editor). */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
@@ -32,6 +32,18 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_picture_insert',
+  'drive.sheet_picture_update',
+  'drive.sheet_picture_delete',
+  'drive.sheet_shape_create',
+  'drive.sheet_shape_update',
+  'drive.sheet_shape_delete',
+  'drive.sheet_comment_list',
+  'drive.sheet_comment_add',
+  'drive.sheet_comment_reply',
+  'drive.sheet_comment_edit',
+  'drive.sheet_comment_resolve',
+  'drive.sheet_comment_delete',
 ] as const
 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
@@ -42,6 +54,17 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_picture_insert',
+  'drive.sheet_picture_update',
+  'drive.sheet_picture_delete',
+  'drive.sheet_shape_create',
+  'drive.sheet_shape_update',
+  'drive.sheet_shape_delete',
+  'drive.sheet_comment_add',
+  'drive.sheet_comment_reply',
+  'drive.sheet_comment_edit',
+  'drive.sheet_comment_resolve',
+  'drive.sheet_comment_delete',
 ] as const
 
 /** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */

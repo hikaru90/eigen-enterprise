@@ -1,10 +1,21 @@
 import type { SheetEditor } from './editor'
+import { readCellImages } from './cell-images'
+import {
+  anchorBox,
+  readDrawing,
+  sheetGeometry,
+  type Anchor,
+  type Box,
+  type DrawingKind,
+} from './drawing'
 import { autoFilterOf, describeAutoFilter } from './filter'
 import { displayValue, formatCode, type SheetLocale } from './format'
 import { styleSummary, type StyleSummary } from './format-cells'
+import { readNotes } from './notes'
 import { toShownFormula } from './ops'
 import { frozenOf } from './panes'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
+import { readThreads } from './threads'
 import { isErrorValue, XlsxError, type CellValue } from './workbook'
 
 /**
@@ -22,7 +33,51 @@ export type SheetSummary = {
   filter?: ReturnType<typeof describeAutoFilter>
   /** Frozen panes (rows from the top, columns from the left), when it has them. */
   frozen?: { rows: number; columns: number }
+  drawings?: number
+  notes?: number
+  comments?: number
+  cell_images?: number
 }
+
+export type ReadDrawing = {
+  id: string
+  kind: DrawingKind
+  name: string
+  alt: string
+  hidden: boolean
+  rotation: number
+  anchor_cell: string | null
+  box: Box
+  geometry?: string | null
+  fill?: string | null
+  line?: {
+    color: string
+    width_px: number
+    dash: boolean
+    arrow_start: boolean
+    arrow_end: boolean
+  } | null
+  text?: string
+  image?: { part: string; content_type: string } | null
+}
+
+export type ReadNote = { ref: string; author: string; text: string; visible: boolean }
+
+export type ReadThread = {
+  id: string
+  ref: string
+  resolved: boolean
+  comments: Array<{
+    id: string
+    author: string
+    author_id: string | null
+    at: string
+    text: string
+    mentions: Array<{ name: string; member_id: string | null; start: number; length: number }>
+  }>
+}
+
+export type ReadCellImage = { ref: string; content_type: string; alt: string }
 
 export type ReadCell = {
   ref: string
@@ -54,8 +109,96 @@ export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
     if (af) out.filter = describeAutoFilter(af)
     const frozen = frozenOf(ed.wb, s.name)
     if (frozen) out.frozen = { rows: frozen.rows, columns: frozen.cols }
+    const drawings = readDrawing(ed.wb, s).length
+    if (drawings > 0) out.drawings = drawings
+    const notes = readNotes(ed.wb, s).length
+    if (notes > 0) out.notes = notes
+    const comments = readThreads(ed.wb, s).length
+    if (comments > 0) out.comments = comments
+    const cellImages = readCellImages(ed.wb, s).length
+    if (cellImages > 0) out.cell_images = cellImages
     return out
   })
+}
+
+function anchorCell(a: Anchor | null): string | null {
+  if (!a || a.type === 'absolute') return null
+  const from = cellName({ row: a.from.row, col: a.from.col })
+  if (a.type === 'oneCell') return from
+  const to = cellName({ row: a.to.row, col: a.to.col })
+  return to === from ? from : `${from}:${to}`
+}
+
+/** Drawings, notes, threaded comments and in-cell images of one worksheet. */
+export function readSheetAnnotations(
+  ed: SheetEditor,
+  sheet: string,
+): {
+  drawings: ReadDrawing[]
+  notes: ReadNote[]
+  comments: ReadThread[]
+  cell_images: ReadCellImage[]
+} {
+  const info = ed.wb.requireWorksheet(sheet)
+  const g = sheetGeometry(ed.wb.sheet(info.name))
+  const drawings: ReadDrawing[] = readDrawing(ed.wb, info, g).map((o) => {
+    const out: ReadDrawing = {
+      id: o.id,
+      kind: o.kind,
+      name: o.name,
+      alt: o.alt,
+      hidden: o.hidden,
+      rotation: o.rotation,
+      anchor_cell: anchorCell(o.anchor),
+      box: o.anchor ? anchorBox(o.anchor, g) : { x: 0, y: 0, w: 0, h: 0 },
+    }
+    if (o.geometry !== undefined) out.geometry = o.geometry
+    if (o.fill !== undefined) out.fill = o.fill
+    if (o.line !== undefined)
+      out.line = o.line
+        ? {
+            color: o.line.color,
+            width_px: o.line.widthPx,
+            dash: o.line.dash,
+            arrow_start: o.line.arrowStart,
+            arrow_end: o.line.arrowEnd,
+          }
+        : null
+    if (o.text !== undefined) out.text = o.text
+    if (o.image !== undefined)
+      out.image = o.image ? { part: o.image.part, content_type: o.image.contentType } : null
+    return out
+  })
+  const notes: ReadNote[] = readNotes(ed.wb, info).map((n) => ({
+    ref: n.ref,
+    author: n.author,
+    text: n.text,
+    visible: n.visible,
+  }))
+  const comments: ReadThread[] = readThreads(ed.wb, info).map((t) => ({
+    id: t.id,
+    ref: t.ref,
+    resolved: t.resolved,
+    comments: t.comments.map((c) => ({
+      id: c.id,
+      author: c.author,
+      author_id: c.authorId,
+      at: c.at,
+      text: c.text,
+      mentions: c.mentions.map((m) => ({
+        name: m.name,
+        member_id: m.memberId,
+        start: m.start,
+        length: m.length,
+      })),
+    })),
+  }))
+  const cell_images: ReadCellImage[] = readCellImages(ed.wb, info).map((ci) => ({
+    ref: ci.ref,
+    content_type: ci.contentType,
+    alt: ci.alt,
+  }))
+  return { drawings, notes, comments, cell_images }
 }
 
 export function usedRange(ed: SheetEditor, sheet: string): Range | null {
