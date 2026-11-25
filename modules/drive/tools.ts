@@ -13,6 +13,7 @@ import { createDriveFileTools } from './file-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
+import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -313,5 +314,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDrivePdfTools({ service }),
     ...createDrivePdfAnnotateTools({ service }),
     ...createDriveSheetTools({ service }),
+    ...createDriveSheetArrangeTools({ service }),
   ]
 }

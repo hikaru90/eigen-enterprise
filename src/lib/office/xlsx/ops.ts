@@ -34,6 +34,9 @@ import {
   type RefEdit,
 } from './shift'
 import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
+import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
+import { freezePanes, type FreezeOp } from './panes'
+import { sortLosses, sortRange, type SortOp } from './sort'
 import {
   relativeTarget,
   XlsxError,
@@ -97,6 +100,11 @@ export type SheetOp =
       at: number
       count: number
     }
+  /** Sort, filter, freeze panes (./sort.ts, ./filter.ts, ./panes.ts). */
+  | SortOp
+  | AutoFilterOp
+  | FilterColumnOp
+  | FreezeOp
 
 /** A feature that would end up wrong after an operation (what, and how many). */
 export type Loss = { feature: LossFeature; count: number; detail?: string }
@@ -437,6 +445,8 @@ export function lossesOf(wb: Workbook, op: SheetOp): Loss[] {
       if (pivots) out.push({ feature: 'pivot_sources', count: pivots })
       return out
     }
+    case 'sort_range':
+      return sortLosses(wb, op)
     default:
       return []
   }
@@ -503,7 +513,25 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'insert_columns':
     case 'delete_columns':
       return moveCells(wb, op)
+    case 'sort_range':
+    case 'set_autofilter':
+    case 'filter_column':
+    case 'freeze_panes':
+      return arrange(wb, op)
   }
+}
+
+/** Sort, filter and freeze panes: one sheet's XML, its cached model rebuilt after. */
+function arrange(wb: Workbook, op: SortOp | AutoFilterOp | FilterColumnOp | FreezeOp): OpResult {
+  const info = wb.requireWorksheet(op.sheet)
+  const doc = sheetDoc(wb, info)
+  if (op.op === 'sort_range') {
+    if (!sortRange(wb, doc, op)) return { sheets: [] }
+  } else if (op.op === 'set_autofilter') setAutoFilter(wb, info, doc, op)
+  else if (op.op === 'filter_column') filterColumn(wb, info, doc, op)
+  else freezePanes(doc, op)
+  finishSheet(wb, info, doc)
+  return { sheets: [info.name] }
 }
 
 /** The editable worksheet document (refs made explicit on first touch). */
