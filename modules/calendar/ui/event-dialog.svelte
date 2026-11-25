@@ -10,6 +10,7 @@
   import { Label } from '$lib/components/ui/label'
   import { Textarea } from '$lib/components/ui/textarea'
   import type { AgentReport } from '$lib/errors/agent-report'
+  import { m } from '$lib/paraglide/messages.js'
   import { WEEKDAYS, type Weekday } from '../recurrence'
   import { CALENDAR_LIMITS, VISIBILITIES, VISIBILITY_COPY } from '../types'
   import { longDay, WEEKDAY_NAMES } from './layout'
@@ -21,6 +22,8 @@
    * a repeating event it asks first: this event or all events (the date
    * fields follow the choice). Guests of someone else's event see it read
    * only. Nothing is saved until Save.
+   * K3: a video call on the event — "With a video call" for a new one, Add a
+   * video call / Remove call on a saved one, and Join (guests too).
    */
   let {
     open = $bindable(false),
@@ -164,6 +167,10 @@
         {#if start.notes}<div>
             <dt class="text-muted-foreground">Notes</dt>
             <dd class="whitespace-pre-wrap">{start.notes}</dd>
+          </div>{/if}
+        {#if start.joinUrl}<div>
+            <dt class="text-muted-foreground">{m.calendar_call_label()}</dt>
+            <dd><Button href={start.joinUrl} size="sm" data-testid="event-join-call">{m.calendar_call_join()}</Button></dd>
           </div>{/if}
       </dl>
       {#if error}<ErrorNotice {error} {agent} attempted="Changing an event in the calendar" />{/if}
@@ -440,6 +447,16 @@
           </fieldset>
         {/if}
 
+        {#if isNew && !fromMail && !f.allDay && repeatChoice === 'none'}
+          <label class="flex items-start gap-2 text-sm" data-testid="event-with-call">
+            <input type="checkbox" name="withCall" class="mt-1" />
+            <span
+              ><span class="font-medium">{m.calendar_call_with()}</span> —
+              <span class="text-muted-foreground">{m.calendar_call_add_hint()}</span></span
+            >
+          </label>
+        {/if}
+
         <div class="grid gap-1.5">
           <Label for="event-notes">Notes</Label>
           <Textarea
@@ -469,6 +486,32 @@
           >
         </div>
       </form>
+
+      {#if !isNew && !fromMail}
+        <section class="grid gap-2 border-t border-border pt-3" data-testid="event-call">
+          {#if start.joinUrl}
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium">{m.calendar_call_label()}</span>
+              <Button href={start.joinUrl} size="sm" data-testid="event-join-call"
+                >{m.calendar_call_join()}</Button
+              >
+              <form method="POST" action="?/removeCall" use:enhance={saved}>
+                <input type="hidden" name="id" value={start.id} />
+                <Button type="submit" variant="ghost" size="sm">{m.calendar_call_remove()}</Button>
+              </form>
+            </div>
+            <p class="text-xs text-muted-foreground">{m.calendar_call_keeps_time()}</p>
+          {:else if !start.allDay && !start.inSeries}
+            <form method="POST" action="?/addCall" class="grid gap-1" use:enhance={saved}>
+              <input type="hidden" name="id" value={start.id} />
+              <Button type="submit" variant="outline" size="sm" class="justify-self-start"
+                >{m.calendar_call_add()}</Button
+              >
+              <p class="text-xs text-muted-foreground">{m.calendar_call_add_hint()}</p>
+            </form>
+          {/if}
+        </section>
+      {/if}
 
       {#if !isNew}
         <form

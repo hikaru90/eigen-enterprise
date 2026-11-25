@@ -52,6 +52,8 @@ export const CORE_EVENTS = {
   'members.group_updated': { module: 'members', payload: null },
   'members.open_join_changed': { module: 'members', payload: null },
   // Calendar.
+  'calendar.call_added': { module: 'calendar', payload: null },
+  'calendar.call_removed': { module: 'calendar', payload: null },
   'calendar.default_visibility_set': { module: 'calendar', payload: null },
   'calendar.event_created': { module: 'calendar', payload: null },
   'calendar.event_deleted': { module: 'calendar', payload: null },
@@ -59,6 +61,7 @@ export const CORE_EVENTS = {
   'calendar.proposal_accepted': { module: 'calendar', payload: null },
   'calendar.proposal_dismissed': { module: 'calendar', payload: null },
   'calendar.proposal_filed': { module: 'calendar', payload: null },
+  'calendar.reminder_set': { module: 'calendar', payload: null },
   'calendar.week_numbers_set': { module: 'calendar', payload: null },
   // Chat gateway (Telegram).
   'gateway.telegram.denied': { module: 'chat-gateway', payload: null },

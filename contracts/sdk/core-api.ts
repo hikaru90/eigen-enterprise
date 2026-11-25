@@ -357,6 +357,14 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "calendar.add_call": {
+    input: {
+      "call_id"?: string
+      "external_url"?: string
+      "id": string
+    }
+    output: unknown
+  }
   "calendar.create_event": {
     input: {
       "all_day": boolean
@@ -411,10 +419,26 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "calendar.remove_call": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
   "calendar.set_default_visibility": {
     input: {
       "visibility": "company" | "busy" | "private"
     }
+    output: unknown
+  }
+  "calendar.set_reminder": {
+    input: {
+      "minutes": number | null
+    }
+    output: unknown
+  }
+  "calendar.settings_get": {
+    input: Record<string, never>
     output: unknown
   }
   "calendar.update_event": {
@@ -4198,13 +4222,17 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "brand.visual_set_list",
   "brand.visual_set_update",
   "calendar.accept_proposal",
+  "calendar.add_call",
   "calendar.create_event",
   "calendar.delete_event",
   "calendar.dismiss_proposal",
   "calendar.free_busy",
   "calendar.list",
   "calendar.proposals",
+  "calendar.remove_call",
   "calendar.set_default_visibility",
+  "calendar.set_reminder",
+  "calendar.settings_get",
   "calendar.update_event",
   "calls.brain_recap",
   "calls.brain_set",

@@ -91,4 +91,20 @@ export type CalendarStore = {
   /** Whether the member's views show ISO week numbers; null when they never chose. */
   weekNumbers(memberId: string): Promise<boolean | null>
   setWeekNumbers(memberId: string, on: boolean, at: Date): Promise<void>
+  /** Each member's reminder lead in minutes (null = no reminders); members who never chose are absent. */
+  reminderMinutes(memberIds: readonly string[]): Promise<Map<string, number | null>>
+  setReminderMinutes(memberId: string, minutes: number | null, at: Date): Promise<void>
+  /**
+   * Claims one reminder (an occurrence of an event, for one person) before it
+   * is sent: true for the first claim, false when it was claimed already — so
+   * no reminder goes out twice, whichever process ticks.
+   */
+  claimReminder(key: ReminderKey, at: Date): Promise<boolean>
+  /** Gives a claim back (its push failed: the next tick tries again). */
+  releaseReminder(key: ReminderKey): Promise<void>
+  /** Forgets claims for occurrences that started before `before`; returns how many. */
+  pruneReminders(before: Date): Promise<number>
 }
+
+/** One reminder: an event's occurrence (its start) for one member. */
+export type ReminderKey = { eventId: string; occurrenceStart: Date; memberId: string }

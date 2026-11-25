@@ -26,6 +26,7 @@
     type View,
   } from '../../../../../modules/calendar/ui/layout'
   import ProposalCard from '../../../../../modules/calendar/ui/proposal-card.svelte'
+  import ReminderSetting from '../../../../../modules/calendar/ui/reminder-setting.svelte'
   import WeekNumbersToggle from '../../../../../modules/calendar/ui/week-numbers-toggle.svelte'
   import { inboxHref } from '../../../../../modules/email/inbox/url'
 
@@ -88,12 +89,18 @@
       form !== formAtOpen &&
       form &&
       'action' in form &&
-      (form.action === 'save' || form.action === 'delete')
+      (form.action === 'save' ||
+        form.action === 'delete' ||
+        form.action === 'addCall' ||
+        form.action === 'removeCall')
       ? shownErrorOf(form)
       : null,
   )
   const prefsError = $derived(
     form && 'action' in form && form.action === 'preferences' ? shownErrorOf(form) : null,
+  )
+  const reminderError = $derived(
+    form && 'action' in form && form.action === 'reminder' ? shownErrorOf(form) : null,
   )
   const weekNumbersError = $derived(
     form && 'action' in form && form.action === 'weekNumbers' ? shownErrorOf(form) : null,
@@ -250,6 +257,8 @@
         </p>
         {#if prefsError}<ErrorNotice {...prefsError} class="text-xs" />{/if}
       </form>
+
+      <ReminderSetting minutes={data.reminderMinutes} error={reminderError} />
     </aside>
   </div>
 </PageFrame>

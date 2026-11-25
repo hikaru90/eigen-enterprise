@@ -21,6 +21,8 @@ describe.skipIf(!url)('calendar store (Postgres)', () => {
   const run = `pg-spec-${randomUUID()}`
   const ana = `${run}-ana`
   const ben = `${run}-ben`
+  const cara = `${run}-cara`
+  const dan = `${run}-dan`
 
   beforeAll(() => {
     sql = postgres(url!, { prepare: false, max: 2, onnotice: () => {} })
@@ -29,7 +31,7 @@ describe.skipIf(!url)('calendar store (Postgres)', () => {
 
   afterAll(async () => {
     await sql`delete from calendar_events where owner_id in (${ana}, ${ben})`
-    await sql`delete from calendar_preferences where member_id in (${ana}, ${ben})`
+    await sql`delete from calendar_preferences where member_id in (${ana}, ${ben}, ${cara}, ${dan})`
     await sql.end()
   })
 
@@ -167,5 +169,35 @@ describe.skipIf(!url)('calendar store (Postgres)', () => {
     await store.setWeekNumbers(ana, false, new Date())
     expect(await store.weekNumbers(ana)).toBe(false)
     expect(await store.defaultVisibility(ana)).toBe('private')
+  })
+
+  it('keeps each member’s reminder lead (absent until chosen, 10 for a row made by another setting, null = off)', async () => {
+    const store = dbCalendarStore(db)
+    expect(await store.reminderMinutes([cara, dan])).toEqual(new Map())
+    await store.setReminderMinutes(cara, 30, new Date())
+    await store.setDefaultVisibility(dan, 'busy', new Date())
+    expect(await store.reminderMinutes([cara, dan])).toEqual(new Map([[cara, 30], [dan, 10]]))
+    await store.setReminderMinutes(dan, null, new Date())
+    expect((await store.reminderMinutes([dan])).get(dan)).toBeNull()
+  })
+
+  it('claims a reminder once; a released claim can be claimed again; deleting the event drops its claims', async () => {
+    const store = dbCalendarStore(db)
+    const e = await createEvent(deps(), { kind: 'user', userId: ana }, {
+      title: 'Call',
+      allDay: false,
+      start: '2026-11-16T10:00',
+      end: '2026-11-16T11:00',
+      timeZone: 'Europe/Berlin',
+    })
+    const key = { eventId: e.id, occurrenceStart: new Date(e.start), memberId: ana }
+    expect(await store.claimReminder(key, new Date())).toBe(true)
+    expect(await store.claimReminder(key, new Date())).toBe(false)
+    await store.releaseReminder(key)
+    expect(await store.claimReminder(key, new Date())).toBe(true)
+    expect(await store.pruneReminders(new Date('2026-11-16T08:00:00Z'))).toBe(0)
+    await store.deleteEvent(e.id)
+    const [{ n }] = await sql`select count(*)::int as n from calendar_reminders_sent where event_id = ${e.id}`
+    expect(n).toBe(0)
   })
 })

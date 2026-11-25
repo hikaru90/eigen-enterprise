@@ -1,3 +1,4 @@
+import type { CalendarCallsPort } from './event-calls'
 import type { AttendeeRow, CalendarStore, EventPatch, EventRow } from './store'
 import { randomUUID } from 'node:crypto'
 import type { CoreEventType } from '$lib/kernel/event-catalog'
@@ -8,6 +9,7 @@ import { dayStart, isTimeZone, localSpan, parseDay, parseWall, wallToInstant } f
 import {
   ATTENDEE_ROLES,
   CALENDAR_LIMITS,
+  callJoinPath,
   DEFAULT_VISIBILITY,
   EVENT_STATUSES,
   LIMITED_TITLE,
@@ -52,6 +54,8 @@ export type CalendarDeps = {
   /** The person's company role, or null when no such user exists. */
   roleOf: (userId: string) => Promise<MemberRole | null>
   audit: CalendarAudit
+  /** Calls, for a call on an event (K3; wired outside modules/, since modules never import each other). */
+  calls?: CalendarCallsPort
   now?: () => Date
   newId?: () => string
 }
@@ -220,23 +224,23 @@ export function parseRange(input: { from?: unknown; to?: unknown }): { from: Dat
 
 // ── who is looking ────────────────────────────────────────────────────────────
 
-type Viewer = { principalId: string; userId: string | null }
+export type Viewer = { principalId: string; userId: string | null }
 
-async function viewerOf(d: CalendarDeps, actor: Actor): Promise<Viewer> {
+export async function viewerOf(d: CalendarDeps, actor: Actor): Promise<Viewer> {
   if (actor.kind === 'agent') return { principalId: actor.id, userId: null }
   if (!(await d.roleOf(actor.userId))) throw new CalendarError('forbidden', 'Only people in the company have a calendar.')
   return { principalId: actor.userId, userId: actor.userId }
 }
 
 /** The person whose calendar this is (the agent on its own has none). */
-function personOf(v: Viewer): string {
+export function personOf(v: Viewer): string {
   if (v.userId === null) throw new CalendarError('forbidden', 'The agent works in a person’s calendar; on its own it only sees availability.')
   return v.userId
 }
 
-const seriesKey = (row: EventRow) => row.recurrenceId ?? row.id
+export const seriesKey = (row: EventRow) => row.recurrenceId ?? row.id
 
-async function guestsByEvent(d: CalendarDeps, rows: readonly EventRow[]): Promise<Map<string, AttendeeRow[]>> {
+export async function guestsByEvent(d: CalendarDeps, rows: readonly EventRow[]): Promise<Map<string, AttendeeRow[]>> {
   const ids = [...new Set(rows.map(seriesKey))]
   const out = new Map<string, AttendeeRow[]>(ids.map((id) => [id, []]))
   if (ids.length === 0) return out
@@ -248,7 +252,7 @@ async function guestsByEvent(d: CalendarDeps, rows: readonly EventRow[]): Promis
 const isGuest = (guests: readonly AttendeeRow[], userId: string) => guests.some((g) => g.memberId === userId)
 
 /** The event as its owner or a member guest reads it; null for anyone else. */
-async function visibleRow(d: CalendarDeps, v: Viewer, rawId: unknown): Promise<{ row: EventRow; guests: AttendeeRow[] }> {
+export async function visibleRow(d: CalendarDeps, v: Viewer, rawId: unknown): Promise<{ row: EventRow; guests: AttendeeRow[] }> {
   const row = await d.store.getEvent(parseEventId(rawId))
   if (row && v.userId !== null) {
     const guests = (await guestsByEvent(d, [row])).get(seriesKey(row)) ?? []
@@ -257,7 +261,7 @@ async function visibleRow(d: CalendarDeps, v: Viewer, rawId: unknown): Promise<{
   throw new CalendarError('not_found', 'event not found')
 }
 
-function assertOwner(v: Viewer, row: EventRow): void {
+export function assertOwner(v: Viewer, row: EventRow): void {
   if (row.ownerId !== v.userId) throw new CalendarError('forbidden', 'Only the person whose calendar it is changes or deletes this event.')
 }
 
@@ -275,7 +279,7 @@ function attendeeDto(g: AttendeeRow, members: Map<string, CalendarMember>): Atte
   }
 }
 
-function eventDto(row: EventRow, guests: readonly AttendeeRow[], members: Map<string, CalendarMember>, v: Viewer): EventDto {
+export function eventDto(row: EventRow, guests: readonly AttendeeRow[], members: Map<string, CalendarMember>, v: Viewer): EventDto {
   const local = localSpan(row.startsAt, row.endsAt, row.timeZone, row.allDay)
   return {
     id: row.id,
@@ -297,12 +301,13 @@ function eventDto(row: EventRow, guests: readonly AttendeeRow[], members: Map<st
     originalStart: row.originalStart?.toISOString() ?? null,
     attendees: guests.map((g) => attendeeDto(g, members)),
     callId: row.callId,
+    joinUrl: row.callId === null ? null : callJoinPath(row.callId),
     source: row.source,
     canEdit: v.userId !== null && row.ownerId === v.userId,
   }
 }
 
-async function membersById(d: CalendarDeps): Promise<Map<string, CalendarMember>> {
+export async function membersById(d: CalendarDeps): Promise<Map<string, CalendarMember>> {
   return new Map((await d.members()).map((m) => [m.id, m]))
 }
 
@@ -317,10 +322,10 @@ function storedRule(row: EventRow): Recurrence {
   }
 }
 
-type Occurrence = { row: EventRow; start: Date; end: Date; occurrenceStart: Date | null }
+export type Occurrence = { row: EventRow; start: Date; end: Date; occurrenceStart: Date | null }
 
 /** Every occurrence the rows put into [from, to): singles, series instances (minus removed and changed ones), changed instances. */
-function occurrences(rows: readonly EventRow[], window: { from: Date; to: Date }): Occurrence[] {
+export function occurrences(rows: readonly EventRow[], window: { from: Date; to: Date }): Occurrence[] {
   const changed = new Map<string, Date[]>()
   for (const r of rows) if (r.recurrenceId !== null) changed.set(r.recurrenceId, [...(changed.get(r.recurrenceId) ?? []), r.originalStart!])
   const overlaps = (s: Date, e: Date) => s.getTime() < window.to.getTime() && e.getTime() > window.from.getTime()
@@ -629,6 +634,12 @@ export async function updateEvent(d: CalendarDeps, actor: Actor, rawId: unknown,
       timing.timeZone !== row.timeZone ||
       timing.allDay !== row.allDay)
   const ruleChanged = rule !== undefined && (rule?.text ?? null) !== row.rrule
+  // A call is booked for the event's own slot (Calls has no "move a meeting"): moving it would strand the guests.
+  if (row.callId !== null && (timingMoved || ruleChanged)) {
+    throw invalid(
+      'This event has a call booked for its time. To move it or make it repeat, remove the call first, then add a call again (guests get a new invitation).',
+    )
+  }
   if (row.rrule !== null && (timingMoved || ruleChanged)) {
     patch.exdates = []
     for (const o of await d.store.overrides(row.id)) await d.store.deleteEvent(o.id)

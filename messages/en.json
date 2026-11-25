@@ -792,5 +792,21 @@
   "handover_entry_assign_to": "Assign to",
   "handover_entry_assigned": "Assigned to {name}",
   "handover_entry_assigned_done": "{name} completed it",
-  "handover_entry_by_brain": "kept current by the brain"
+  "handover_entry_by_brain": "kept current by the brain",
+  "calendar_reminder_body": "In {minutes} min · {time}",
+  "calendar_reminder_body_now": "Starts now · {time}",
+  "calendar_reminder_join": "Tap to join the call",
+  "calendar_reminder_label": "Reminder",
+  "calendar_reminder_off": "No reminders",
+  "calendar_reminder_at_start": "When it starts",
+  "calendar_reminder_before": "{minutes} min before",
+  "calendar_reminder_hint": "A push to your phone before each of your events. It needs the installed app with notifications on.",
+  "calendar_call_label": "Video call",
+  "calendar_call_join": "Join call",
+  "calendar_call_add": "Add a video call",
+  "calendar_call_add_hint": "Booked for this event’s time: colleagues join from the event, guests outside get the call link by email.",
+  "calendar_call_with": "With a video call",
+  "calendar_call_remove": "Remove call",
+  "calendar_call_keeps_time": "The call is booked for this time. To move the event, remove the call first, then add it again.",
+  "calendar_save": "Save"
 }

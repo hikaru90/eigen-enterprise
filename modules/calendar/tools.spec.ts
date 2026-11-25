@@ -289,3 +289,75 @@ describe('calendar.* tools', () => {
     ).rejects.toThrow()
   })
 })
+
+describe('calendar.* tools: reminders and calls', () => {
+  it('calendar.settings_get reads and calendar.set_reminder sets the person’s own reminder lead', async () => {
+    const { tools } = await setup()
+    expect(tools['calendar.settings_get'].auditClass).toBe('read')
+    expect(await tools['calendar.settings_get'].handler(brainFor('ana'), {})).toEqual({
+      default_visibility: 'busy',
+      week_numbers: false,
+      reminder_minutes: 10,
+    })
+    expect(await tools['calendar.set_reminder'].handler(brainFor('ana'), { minutes: 30 })).toEqual({
+      minutes: 30,
+    })
+    expect(await tools['calendar.set_reminder'].handler(brainFor('ben'), { minutes: null })).toEqual({
+      minutes: null,
+    })
+    expect(await tools['calendar.settings_get'].handler(brainFor('ana'), {})).toMatchObject({
+      reminder_minutes: 30,
+    })
+    expect(await tools['calendar.settings_get'].handler(brainFor('ben'), {})).toMatchObject({
+      reminder_minutes: null,
+    })
+    await expect(
+      tools['calendar.set_reminder'].handler(brainFor('ana'), { minutes: 7 }),
+    ).rejects.toMatchObject({ code: 'invalid' })
+    await expect(
+      tools['calendar.set_reminder'].handler(agentCtx, { minutes: 10 }),
+    ).rejects.toMatchObject({ code: 'forbidden' })
+    expect(tools['calendar.set_reminder'].activity!({ minutes: null }, undefined)).toBe(
+      'Turned calendar reminders off',
+    )
+  })
+
+  it('calendar.add_call books a call for the event (external: guests get mail); calendar.remove_call takes it off', async () => {
+    const { f, tools } = await setup()
+    const booked: string[] = []
+    f.deps.calls = {
+      book: async (userId, input) => {
+        booked.push(`${userId}:${input.title}:${input.memberIds.join(',')}`)
+        return { callId: 'call-1', invited: 0 }
+      },
+      canJoin: async () => false,
+    }
+    expect(tools['calendar.add_call']).toMatchObject({
+      auditClass: 'external',
+      approvalRisk: 'external',
+    })
+    const { event } = (await tools['calendar.create_event'].handler(brainFor('ben'), {
+      title: 'Sync',
+      all_day: false,
+      start: '2026-11-17T09:00',
+      end: '2026-11-17T09:30',
+      time_zone: 'Europe/Berlin',
+      attendees: [{ member_id: 'ana' }],
+    })) as { event: { id: string } }
+    const added = (await tools['calendar.add_call'].handler(brainFor('ben'), { id: event.id })) as {
+      event: { callId: string; joinUrl: string }
+    }
+    expect(added.event).toMatchObject({ callId: 'call-1', joinUrl: '/calls/call-1' })
+    expect(booked).toEqual(['ben:Sync:ana'])
+    // The guest finds the call on the event in their own calendar.
+    const list = (await tools['calendar.list'].handler(brainFor('ana'), week)) as ListOut
+    expect(list.occurrences.find((o) => o.title === 'Sync')?.event?.joinUrl).toBe('/calls/call-1')
+    const removed = (await tools['calendar.remove_call'].handler(brainFor('ben'), {
+      id: event.id,
+    })) as { event: { callId: null } }
+    expect(removed.event.callId).toBeNull()
+    await expect(
+      tools['calendar.add_call'].handler(brainFor('ben'), { id: event.id, call_id: 'not-mine' }),
+    ).rejects.toMatchObject({ code: 'not_found' })
+  })
+})

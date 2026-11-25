@@ -1,4 +1,4 @@
-# Calendar plugin (approved direction; K1 + K2 built, K4 + K7 built for mail proposals, K3/K5/K6 open)
+# Calendar plugin (approved direction; K1 + K2 + K3 built, K4 + K7 built for mail proposals, K5/K6 open)
 
 Source: Contribute `df14e05a` (calendar with appointments, phone reminders before a call,
 company-visible vs private / "out of office") and `d8ec9006` (read agreed call appointments
@@ -122,9 +122,29 @@ Contribute `d8ec9006`):
   invitations for events made or changed in the dialog (REQUEST with SEQUENCE+1, CANCEL on delete);
   in-app RSVP for member guests.
 
+**K3 built (reminders + calls on events)** (migration `0185_calendar_reminders`, Contribute `df14e05a`):
+- **Reminders.** Per person `calendar_preferences.reminder_minutes` (0 / 5 / 10 / 15 / 30 / 60, null =
+  off; 10 until chosen) — `calendar.settings_get`, `calendar.set_reminder`, the "Reminder" select on
+  /m/calendar. The job-queue tick (every minute, while Calendar is on) sends a web push before each
+  timed, not cancelled event a person owns or is a member guest of (not declined), series instances
+  included; all-day events get none. Claimed per occurrence and person in `calendar_reminders_sent`
+  (none twice; a failed push gives its claim back; a late tick still reminds within 5 min). Text in
+  the person's UI language (en/de) and zone (`modules/calendar/reminders.ts`,
+  `src/lib/server/calendar/reminders-live.ts`). For an event with a call the push opens the call.
+- **Calls on events.** `calendar.add_call` (external: books a Calls meeting for the event's slot via
+  Calls' own schedule — colleagues invited, guests outside get the call link by email — or links a
+  call the person is in, `call_id`, or another provider's link) and `calendar.remove_call` (unlinks;
+  the meeting stays booked). Dialog: "With a video call" on a new event, Add a video call / Remove
+  call / Join call on a saved one, Join for guests. `EventDto.joinUrl` = `/calls/<id>`. Port
+  `CalendarCallsPort` wired outside modules/ (`src/lib/server/calendar/calls-port.ts`).
+- **Decisions:** only timed events that don't repeat carry a call (a booked meeting has one slot);
+  while an event has a call its time and repeat rule can't change (fails loud: remove the call, move,
+  add again) — Calls has no "move a meeting" yet; deleting an event only drops the link.
+
 **Still open:**
-- **K3** reminders (web push + in-app toast; a `calendar_reminders` table), "Add a call" / "Join
-  call" (the `call_id` column exists, nothing sets it yet), presence "In a meeting".
+- **K3** (rest): in-app toast for reminders; presence "In a meeting"; calls on repeating events (one
+  meeting per occurrence); moving an event with its call (needs a Calls reschedule); guests changed
+  after the call was booked don't change the call's invitees.
 - **K4** (rest): invitations for events made or changed in the dialog (REQUEST with a higher
   SEQUENCE on change, CANCEL on delete), RSVP replies (iMIP REPLY) read from the inbox into
   `calendar_attendees.rsvp`, in-app RSVP for member guests (the `rsvp` column exists; no UI or

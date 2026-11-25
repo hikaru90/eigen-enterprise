@@ -1275,6 +1275,13 @@
       "when": 1795200000184,
       "tag": "0184_handovers",
       "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1795200000185,
+      "tag": "0185_calendar_reminders",
+      "breakpoints": true
     }
   ]
 }

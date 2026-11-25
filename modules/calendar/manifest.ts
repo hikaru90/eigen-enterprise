@@ -10,12 +10,16 @@ export const CALENDAR_WRITE_TOOLS = [
   'calendar.accept_proposal',
   'calendar.dismiss_proposal',
   'calendar.set_default_visibility',
+  'calendar.set_reminder',
+  'calendar.add_call',
+  'calendar.remove_call',
 ] as const
 
 export const CALENDAR_TOOL_NAMES = [
   'calendar.list',
   'calendar.free_busy',
   'calendar.proposals',
+  'calendar.settings_get',
   ...CALENDAR_WRITE_TOOLS,
 ] as const
 

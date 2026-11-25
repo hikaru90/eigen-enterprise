@@ -1,5 +1,6 @@
 import { raceWithTimeout } from '$lib/server/async/race-with-timeout'
 import { pluginOn } from '$lib/server/plugins/background'
+import { tickCalendarReminders } from './calendar-reminders-tick'
 import { tickContributeShare } from './contribute-share-tick'
 import { tickCoworkerRhythms } from './coworker-rhythms-tick'
 import { tickManagedDomains } from './domains-tick'
@@ -41,6 +42,8 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
     await tickManagedDomains()
   }
   if (await pluginOn('repos', 'GitHub repo sync')) await tickRepos()
+  // Reminders before people's events (plan/calendar.md K3), while Calendar is on.
+  if (await pluginOn('calendar', 'calendar reminders')) await tickCalendarReminders()
   // Drive is a system module: its unreferenced-blob sweep runs hourly, plugin or not.
   await tickDriveBlobs()
   // Contribute is a system module (always on); sharing has its own owner switch in Settings → Company.

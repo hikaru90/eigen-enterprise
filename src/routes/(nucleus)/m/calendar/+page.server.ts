@@ -1,5 +1,10 @@
 import type { Actions, PageServerLoad } from './$types'
 import { CalendarError } from '../../../../../modules/calendar/errors'
+import {
+  addCall,
+  createEventWithCall,
+  removeCall,
+} from '../../../../../modules/calendar/event-calls'
 import { eventFormInput, todayIn } from '../../../../../modules/calendar/form'
 import {
   calendarAction,
@@ -12,6 +17,7 @@ import {
   dismissProposal,
   openProposals,
 } from '../../../../../modules/calendar/proposals'
+import { reminderMinutes, setReminderMinutes } from '../../../../../modules/calendar/reminders'
 import {
   createEvent,
   defaultVisibility,
@@ -38,6 +44,8 @@ import {
  * availability for the people picked (?with=, free/busy only).
  * K7: the appointments found in the person's mail, to accept, edit (the
  * dialog, opened with ?proposal=<id> from the mail) or dismiss.
+ * K3: the person's reminder setting, and a video call on an event (add,
+ * remove, or with a new event; Join is a link to the call).
  */
 
 async function liveProposalDeps() {
@@ -73,12 +81,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const availabilityDays = view === 'month' ? viewDays('week', date) : range.days
     const availabilityRange = viewRange(view === 'month' ? 'week' : view, date, timeZone)
     const selected = [...new Set(url.searchParams.getAll('with'))]
-    const [proposals, occurrences, members, visibility, weekNumbers, people] = await Promise.all([
+    const [proposals, occurrences, members, visibility, weekNumbers, reminder, people] = await Promise.all([
       openProposals(await liveProposalDeps(), actor),
       listCalendar(d, actor, { from: range.from.toISOString(), to: range.to.toISOString() }),
       d.members(),
       defaultVisibility(d, actor),
       showWeekNumbers(d, actor),
+      reminderMinutes(d, actor),
       selected.length === 0
         ? Promise.resolve([])
         : freeBusy(d, actor, {
@@ -100,6 +109,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         .map((m) => ({ id: m.id, name: m.name || m.email })),
       defaultVisibility: visibility,
       weekNumbers,
+      reminderMinutes: reminder,
       timeZones: zoneList(),
       availability: { selected, days: availabilityDays, people },
       proposals,
@@ -130,14 +140,15 @@ export const actions: Actions = {
     const actor = personActor(locals.user)
     const form = await request.formData()
     return calendarAction('save', 'Saving an event in the calendar', async () => {
-      const { id, occurrenceStart, proposalId, input } = eventFormInput(form)
+      const { id, occurrenceStart, proposalId, withCall, input } = eventFormInput(form)
       // An appointment from mail, edited: Save accepts it (the event + the invitation).
       if (proposalId !== null) {
         const out = await acceptProposal(await liveProposalDeps(), actor, proposalId, input)
         return { action: 'save' as const, ok: true, invited: out.invited }
       }
       const d = await liveCalendarDeps()
-      if (id === null) await createEvent(d, actor, input)
+      if (id === null && withCall) await createEventWithCall(d, actor, input, {})
+      else if (id === null) await createEvent(d, actor, input)
       else await updateEvent(d, actor, id, input, occurrenceStart ? { occurrenceStart } : {})
       return { action: 'save' as const, ok: true }
     })
@@ -194,6 +205,33 @@ export const actions: Actions = {
         return { action: 'preferences' as const, ok: true }
       },
     )
+  },
+  /** The reminder setting: minutes before each event, or off (K3). */
+  reminder: async ({ locals, request }) => {
+    const actor = personActor(locals.user)
+    const form = await request.formData()
+    return calendarAction('reminder', 'Saving the calendar reminder setting', async () => {
+      await setReminderMinutes(await liveCalendarDeps(), actor, text(form, 'reminderMinutes'))
+      return { action: 'reminder' as const, ok: true }
+    })
+  },
+  /** The dialog's "Add a video call": booked for the event's time with its guests (K3). */
+  addCall: async ({ locals, request }) => {
+    const actor = personActor(locals.user)
+    const form = await request.formData()
+    return calendarAction('addCall', 'Adding a video call to an event', async () => {
+      await addCall(await liveCalendarDeps(), actor, text(form, 'id'), {})
+      return { action: 'addCall' as const, ok: true }
+    })
+  },
+  /** The dialog's "Remove call" (the meeting itself stays booked). */
+  removeCall: async ({ locals, request }) => {
+    const actor = personActor(locals.user)
+    const form = await request.formData()
+    return calendarAction('removeCall', 'Removing the video call from an event', async () => {
+      await removeCall(await liveCalendarDeps(), actor, text(form, 'id'))
+      return { action: 'removeCall' as const, ok: true }
+    })
   },
   /** The "Week numbers" switch by the view picker (Contribute 9ae58a4e): on or off. */
   weekNumbers: async ({ locals, request }) => {
