@@ -1,7 +1,11 @@
+import type { Calc } from './calc'
 import { parse } from '@borgar/fx'
 import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
+import { needsDynamicArray } from './calc-static'
+import { toFileText, toShownText } from './formula-text'
+import { ensureDynamicArrayCm } from './metadata'
 import {
   cellKey,
   cellName,
@@ -16,6 +20,10 @@ import {
 } from './ref'
 import {
   dropEmptyRow,
+  ensureCell,
+  ensureRow,
+  findCell,
+  findRow,
   normalizeRefs,
   setDimension,
   sheetDataOf,
@@ -35,6 +43,7 @@ import {
 } from './shift'
 import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
 import {
+  isErrorValue,
   relativeTarget,
   XlsxError,
   type CellValue,
@@ -141,6 +150,21 @@ export const describeLoss = (l: Loss) =>
 
 /** Functions newer than Excel 2007 are written with the `_xlfn.` prefix (ECMA-376 Part 1 §18.17.7 future functions). */
 const FUTURE_FUNCTIONS = new Set([
+  'ANCHORARRAY',
+  'ARRAYTOTEXT',
+  'BYCOL',
+  'BYROW',
+  'ISOMITTED',
+  'LAMBDA',
+  'MAKEARRAY',
+  'MAP',
+  'REDUCE',
+  'SCAN',
+  'SINGLE',
+  'TEXTAFTER',
+  'TEXTBEFORE',
+  'TEXTSPLIT',
+  'VALUETOTEXT',
   'ACOT',
   'ACOTH',
   'AGGREGATE',
@@ -273,6 +297,9 @@ const FUTURE_FUNCTIONS = new Set([
   'Z.TEST',
 ])
 
+/** Worksheet-only newer functions: `_xlfn._xlws.` */
+const WORKSHEET_FUNCTIONS = new Set(['FILTER', 'SORT'])
+
 type FxToken = { type: string; value: string }
 const fxTokens = (f: string) => tokenize(f, { mergeRefs: true }) as FxToken[]
 
@@ -280,36 +307,21 @@ const fxTokens = (f: string) => tokenize(f, { mergeRefs: true }) as FxToken[]
 export function toFileFormula(input: string, where: string): string {
   const text = input.trim().replace(/^=/, '')
   if (text === '') throw new XlsxError(`${where}: the formula is empty.`)
-  let toks: FxToken[]
   try {
-    toks = fxTokens(text)
+    fxTokens(text)
     parse(parseableTokens(text) as never)
   } catch (e) {
     throw new XlsxError(
       `${where}: the formula “=${text}” can't be read (${e instanceof Error ? e.message : String(e)}).`,
     )
   }
-  return toks
-    .map((t) =>
-      t.type === 'func' && FUTURE_FUNCTIONS.has(t.value.toUpperCase())
-        ? `_xlfn.${t.value}`
-        : t.value,
-    )
-    .join('')
+  return toFileText(text, FUTURE_FUNCTIONS, WORKSHEET_FUNCTIONS)
 }
 
-/** A formula as the file writes it → as people read it (no `_xlfn.` prefixes). */
+/** A formula as the file writes it → as people read it (no `_xlfn.`/`_xlpm.` prefixes, `A1#`, `@`). */
 export function toShownFormula(formula: string): string {
-  if (!/_xl(fn|ws)\./i.test(formula)) return formula
-  try {
-    return fxTokens(formula)
-      .map((t) =>
-        t.type === 'func' ? t.value.replace(/^_xlfn\.(_xlws\.)?|^_xlws\./i, '') : t.value,
-      )
-      .join('')
-  } catch {
-    return formula
-  }
+  if (!/_xl(fn|ws|pm)\./i.test(formula)) return formula
+  return toShownText(formula)
 }
 
 const SHEET_NAME_BAD = /[\\/?*[\]:]/
@@ -547,7 +559,8 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
       throw new XlsxError(`${where}: nothing to write (value, formula or format).`)
     const cur = data.cells.get(cellKey(addr.row, addr.col))
     const arr = cur?.formulaRef && cur.formulaType !== 'normal' ? cur.formulaRef : cur?.inArrayOf
-    if (arr && (w.value !== undefined || w.formula !== undefined))
+    const dynamicArr = arr ? data.cells.get(cellKey(arr.top, arr.left))?.dynamic === true : false
+    if (arr && !dynamicArr && (w.value !== undefined || w.formula !== undefined))
       throw new XlsxError(
         `${where} is part of the array formula in ${rangeName(arr)}, which this editor can't change; edit it in Excel.`,
       )
@@ -559,14 +572,24 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
         `${where} is inside the merged cells ${rangeName(merge)}; write to ${cellName({ row: merge.top, col: merge.left })}.`,
       )
     let content: CellContent | null = null
-    if (w.formula !== undefined)
-      content = { kind: 'formula', formula: toFileFormula(w.formula, where) }
-    else if (w.value !== undefined)
+    if (w.formula !== undefined) {
+      const formula = toFileFormula(w.formula, where)
+      content = needsDynamicArray(formula, wb)
+        ? { kind: 'formula', formula, dynamicCm: 0 }
+        : { kind: 'formula', formula }
+    } else if (w.value !== undefined)
       content =
         w.value === null || w.value === '' ? { kind: 'clear' } : { kind: 'value', value: w.value }
     return { addr, w, cur, content }
   })
   const doc = sheetDoc(wb, info)
+  if (planned.some((p) => p.content?.kind === 'formula' && p.content.dynamicCm !== undefined)) {
+    const cm = ensureDynamicArrayCm(wb)
+    for (const p of planned)
+      if (p.content?.kind === 'formula' && p.content.dynamicCm !== undefined)
+        p.content.dynamicCm = cm
+  }
+  clearSpillsUnder(wb, doc, data, planned)
   // A shared formula's anchor is about to change: its group is written out per cell first.
   const anchors = new Set<string>()
   for (const p of planned)
@@ -592,6 +615,48 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
   }
   finishSheet(wb, info, doc)
   return { sheets: [info.name] }
+}
+
+/**
+ * Writing over a dynamic array: a new anchor content clears the old spill;
+ * content in a spilled cell blocks the spill (the formula keeps only its own
+ * cell, Excel shows #SPILL!) and the rest of the old spill is cleared.
+ */
+function clearSpillsUnder(
+  wb: Workbook,
+  doc: XMLDocument,
+  data: ReturnType<Workbook['sheet']>,
+  planned: Array<{ addr: { row: number; col: number }; content: CellContent | null }>,
+) {
+  const written = new Set(
+    planned.filter((p) => p.content).map((p) => cellKey(p.addr.row, p.addr.col)),
+  )
+  const anchors = new Map<number, Range>()
+  for (const p of planned) {
+    if (!p.content) continue
+    const cur = data.cells.get(cellKey(p.addr.row, p.addr.col))
+    const r = cur?.formulaType === 'array' && cur.dynamic ? cur.formulaRef : cur?.inArrayOf
+    if (!r) continue
+    const anchor = data.cells.get(cellKey(r.top, r.left))
+    if (!anchor?.dynamic || (isErrorValue(anchor.value) && anchor.value.error === '#SPILL!'))
+      continue
+    anchors.set(cellKey(r.top, r.left), r)
+  }
+  for (const [key, r] of anchors) {
+    for (let row = r.top; row <= r.bottom; row++)
+      for (let col = r.left; col <= r.right; col++) {
+        const k = cellKey(row, col)
+        if (k === key || written.has(k)) continue
+        const c = data.cells.get(k)
+        if (c && c.formula === null && c.inArrayOf) writeCell(wb, doc, row, col, { kind: 'clear' })
+      }
+    if (!written.has(key)) {
+      const rowEl = findRow(doc, r.top)
+      const cell = rowEl ? findCell(rowEl, r.left) : null
+      const f = cell ? kid(cell, 'f') : null
+      if (f) f.setAttribute('ref', cellName({ row: r.top, col: r.left }))
+    }
+  }
 }
 
 /** Gives a cell a new format, keeping its content. */
@@ -988,32 +1053,66 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
  * chain is dropped and Excel is told to recalculate on open, so nothing
  * stale is trusted. Formulas it can't calculate keep the value they had.
  */
-export function prepareSave(
-  wb: Workbook,
-  value: (sheet: string, row: number, col: number) => { value: CellValue; kept: boolean },
-) {
+export function prepareSave(wb: Workbook, calc: Pick<Calc, 'cell' | 'spill'>) {
   wb.begin()
   try {
     for (const s of wb.sheets()) {
       if (s.kind !== 'worksheet') continue
       const data = wb.sheet(s.name)
-      const changes: Array<{ ref: string; v: CellValue }> = []
+      const changes: Array<{ row: number; col: number; v: CellValue }> = []
+      const refs: Array<{ row: number; col: number; ref: string }> = []
+      const clears: Array<{ row: number; col: number }> = []
+      const differs = (row: number, col: number, v: CellValue) => {
+        const cur = data.cells.get(cellKey(row, col))
+        if (!cur || !sameValue(v, cur.value)) changes.push({ row, col, v })
+      }
       for (const c of data.cells.values()) {
-        if (c.formula === null || (c.formulaType !== 'normal' && c.formulaType !== 'shared'))
-          continue
-        const out = value(s.name, c.row, c.col)
-        if (out.kept || sameValue(out.value, c.value)) continue
-        changes.push({ ref: cellName(c), v: out.value })
+        if (c.formula === null) continue
+        if (c.formulaType === 'normal' || c.formulaType === 'shared') {
+          const out = calc.cell(s.name, c.row, c.col)
+          if (!out.kept) differs(c.row, c.col, out.value)
+        } else if (c.formulaType === 'array' && c.dynamic) {
+          const sp = calc.spill(s.name, c.row, c.col)
+          if (!sp) continue
+          const now = parseRange(sp.range)!
+          sp.values.forEach((line, r) =>
+            line.forEach((v, k) => differs(now.top + r, now.left + k, v)),
+          )
+          const old = c.formulaRef
+          if (old && rangeName(old) !== sp.range) {
+            refs.push({ row: c.row, col: c.col, ref: sp.range })
+            // Excel's old spill outside the new one (not when it was blocked: those cells are the blockers).
+            const wasBlocked = isErrorValue(c.value) && c.value.error === '#SPILL!'
+            for (let r = old.top; r <= old.bottom && !wasBlocked; r++)
+              for (let k = old.left; k <= old.right; k++) {
+                if (r >= now.top && r <= now.bottom && k >= now.left && k <= now.right) continue
+                const cell = data.cells.get(cellKey(r, k))
+                if (cell && cell.formula === null && cell.value !== null)
+                  clears.push({ row: r, col: k })
+              }
+          }
+        } else if (c.formulaType === 'array' && c.formulaRef) {
+          const range = c.formulaRef
+          for (let r = range.top; r <= range.bottom; r++)
+            for (let k = range.left; k <= range.right; k++) {
+              const out = calc.cell(s.name, r, k)
+              if (!out.kept) differs(r, k, out.value)
+            }
+        }
       }
-      if (changes.length === 0) continue
+      if (changes.length === 0 && refs.length === 0 && clears.length === 0) continue
       const doc = wb.edit(s.part)
-      const byRef = new Map<string, Element>()
-      for (const row of kids(sheetDataOf(doc), 'row'))
-        for (const c of kids(row, 'c')) byRef.set(c.getAttribute('r') ?? '', c)
-      for (const ch of changes) {
-        const cell = byRef.get(ch.ref)
-        if (cell) setCachedValue(doc, cell, ch.v)
+      normalizeRefs(doc)
+      for (const ch of clears) writeCell(wb, doc, ch.row, ch.col, { kind: 'clear' })
+      for (const ch of changes)
+        setCachedValue(doc, ensureCell(doc, ensureRow(doc, ch.row), ch.row, ch.col), ch.v)
+      for (const r of refs) {
+        const rowEl = findRow(doc, r.row)
+        const cell = rowEl ? findCell(rowEl, r.col) : null
+        const f = cell ? kid(cell, 'f') : null
+        if (f) f.setAttribute('ref', r.ref)
       }
+      finishSheet(wb, s, doc)
     }
     const root = wb.pkg.xml(wb.part).documentElement!
     const chain = wb.pkg.relationships(wb.part).filter((r) => r.type === `${REL}calcChain`)

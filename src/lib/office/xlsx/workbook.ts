@@ -1,6 +1,7 @@
 import { XMLSerializer, type Node as XmldomNode } from '@xmldom/xmldom'
 import { strToU8 } from 'fflate'
 import { readPackage, REL_OFFICE_DOCUMENT, relsPartOf, type OpcPackage } from '../ooxml/package'
+import { dynamicArrayCms } from './metadata'
 import { cellKey, cellName, parseCell, parseRange, type Range } from './ref'
 import { translateFormula } from './shift'
 import { readStyles, type Styles } from './styles'
@@ -93,6 +94,8 @@ export type CellData = {
   formulaRef: Range | null
   /** Inside another cell's array/data-table range (its value comes from there). */
   inArrayOf: Range | null
+  /** An array formula that is a dynamic array (Excel 365, spills) rather than a legacy Ctrl+Shift+Enter one. */
+  dynamic: boolean
   /** Index into the style table (cellXfs). */
   style: number
   /** Rich text in the file (several formatted runs): rewritten as plain text when edited. */
@@ -155,6 +158,7 @@ export class Workbook {
   private stylesCache: Styles | null = null
   private sstCache: string[] | null = null
   private namesCache: DefinedName[] | null = null
+  private daCache: Set<number> | null = null
   /** The pre-images of the open transaction (null: none open). */
   private before: Images | null = null
   private dirtyDocs = new Set<string>()
@@ -291,6 +295,18 @@ export class Workbook {
     return this.namesCache
   }
 
+  /** The `cm` values that mark dynamic-array formulas (metadata.ts). */
+  dynamicArrayCms(): Set<number> {
+    this.daCache ??= dynamicArrayCms(this.pkg, this.part)
+    return this.daCache
+  }
+
+  /** The metadata part changed (within a transaction): cell models are rebuilt. */
+  forgetMetadata() {
+    this.daCache = null
+    this.sheetCache.clear()
+  }
+
   /** The cells and layout of a worksheet (cached until the sheet changes). */
   sheet(name: string): SheetData {
     const info = this.requireWorksheet(name)
@@ -304,6 +320,7 @@ export class Workbook {
   private readSheet(info: SheetInfo): SheetData {
     const root = this.pkg.xml(info.part).documentElement!
     const sst = this.sharedStrings()
+    const daCms = this.dynamicArrayCms()
     const cells = new Map<number, CellData>()
     let maxRow = -1
     let maxCol = -1
@@ -330,6 +347,8 @@ export class Workbook {
         c = addr ? addr.col : c + 1
         const row = addr ? addr.row : r
         const cell = readCell(cEl, row, c, sst)
+        if (cell.formulaType === 'array' && daCms.has(Number(cEl.getAttribute('cm'))))
+          cell.dynamic = true
         const f = kid(cEl, 'f')
         if (f) {
           const t = f.getAttribute('t')
@@ -496,6 +515,7 @@ export class Workbook {
     this.stylesCache = null
     this.sstCache = null
     this.namesCache = null
+    this.daCache = null
   }
 
   /** The shared-string index of `text` (a plain entry; added when it is new). */
@@ -613,6 +633,7 @@ function readCell(cEl: Element, row: number, col: number, sst: string[]): CellDa
     formulaRef:
       (formulaType === 'array' || formulaType === 'dataTable') && fRef ? parseRange(fRef) : null,
     inArrayOf: null,
+    dynamic: false,
     style: Number(cEl.getAttribute('s') ?? 0),
     rich,
   }

@@ -77,7 +77,7 @@ export function createSheetEditor(bytes: Uint8Array): SheetEditor {
     toBytes() {
       if (!dirty) return bytes
       const c = (calc ??= createCalc(wb))
-      prepareSave(wb, (sheet, row, col) => c.cell(sheet, row, col))
+      prepareSave(wb, c)
       calc = null
       return wb.pkg.toBytes()
     },

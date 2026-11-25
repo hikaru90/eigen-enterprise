@@ -203,9 +203,10 @@
     const date1904 = ed.wb.date1904
     return (r: number, c: number): GridCell | null => {
       const cell = d.cells.get(cellKey(r, c))
-      if (!cell) return null
-      const st = styles.xf(cell.style)
       const out = calc.cell(d.info.name, r, c)
+      // An empty cell can still show a value: a dynamic array spilled into it.
+      if (!cell && out.value === null && !out.kept) return null
+      const st = styles.xf(cell?.style ?? 0)
       const shown = displayValue(out.value, formatCode(st.numFmtId, st.numFmt, locale), locale, {
         date1904,
       })
