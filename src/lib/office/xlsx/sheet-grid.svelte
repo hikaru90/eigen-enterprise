@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  import type { RichRun } from './rich-text'
+
   export type GridCell = {
     text: string
     align: 'left' | 'center' | 'right'
@@ -11,6 +13,8 @@
     kept: string | null
     /** The number format can't be shown: the plain value is. */
     unreadFormat: boolean
+    /** Rich-text runs inside the cell (if formatted in substrings). */
+    runs?: RichRun[]
   }
   export type Pos = { row: number; col: number }
   export type Move = 'down' | 'up' | 'right' | 'left' | 'none'
@@ -18,23 +22,31 @@
 
 <script lang="ts">
   import type { Snippet } from 'svelte'
+  import type { SheetOutline } from './rows-cols'
+  import type { SheetData } from './workbook'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
   import { onMount, tick } from 'svelte'
   import { m } from '$lib/paraglide/messages.js'
+  import { cycleAbsoluteAt, type FormulaRefHighlight } from './formula-edit'
+  import { resolveGridKey } from './keyboard'
   import { colName, type Range } from './ref'
+  import { runCss } from './rich-text'
+  import {
+    normalizeRange,
+    rangeContains,
+    sameRange,
+    selectionOf,
+    type HeldSelection,
+  } from './selection'
 
   /**
    * The sheet's cells as a grid (only the visible part is drawn): column
-   * letters and row numbers, the cells with their formats, merged ranges,
-   * the selection. Click or arrow keys move, Shift extends, a row or column
-   * header picks the whole line. When `editable`: typing starts editing (or
-   * Enter/F2/double-click with the cell's content), Enter/Tab commit and move,
-   * Esc cancels, Delete clears the selection, paste fills from the active
-   * cell. The page owns what an edit means (`oncommit`, `onclear`, `onpaste`).
-   * Frozen rows/columns stay in place while the rest scrolls (sticky panes);
-   * an AutoFilter puts a drop-down button in each cell of its header row
-   * (Alt+↓ on a header cell opens it too), the page shows the menu.
+   * letters and row numbers, outline grouping gutter, cells with rich text
+   * and formats, merged ranges, multi-range Ctrl selection, fill handle drag
+   * & double-click autofill, keyboard navigation parity, AutoFilter dropdowns,
+   * column/row drag resize & double-click autofit, and point-to-select +
+   * coloured formula reference highlights.
    */
   let {
     rows,
@@ -48,13 +60,36 @@
     label,
     active = $bindable({ row: 0, col: 0 }),
     anchor = $bindable({ row: 0, col: 0 }),
+    extraSelections = $bindable<Range[]>([]),
+    held = $bindable<HeldSelection | null>(null),
     editing = $bindable(false),
     draft = $bindable(''),
+    data = null,
     editTextOf,
     oncommit,
     onclear,
+    onclearranges,
     onpaste,
     copyText,
+    oncopyclip,
+    oncutclip,
+    onpasteclip,
+    onfill,
+    onfilldblclick,
+    onfillshortcut,
+    onautofit,
+    outline = null,
+    onoutline,
+    cutRange = null,
+    formulaRefs = [],
+    pointSelectMode = false,
+    onpointselect,
+    oneditcursor,
+    onselectcommit,
+    onfind,
+    ongoto,
+    showGridlines = true,
+    showHeadings = true,
     onreach,
     onblocked,
     frozenRows = 0,
@@ -71,24 +106,51 @@
     rowHeight: (r: number) => number
     cellAt: (r: number, c: number) => GridCell | null
     merges: Range[]
-    /** Bumped by the page whenever the workbook changed (sizes are measured again; `cellAt` is a new function then too). */
     rev: number
     editable: boolean
     label: string
     active?: Pos
     anchor?: Pos
+    extraSelections?: Range[]
+    /** The selection kept while Tab/Enter move inside it. */
+    held?: HeldSelection | null
     editing?: boolean
     draft?: string
+    data?: SheetData | null
     editTextOf: (r: number, c: number) => string
     oncommit: (pos: Pos, text: string, move: Move) => void
     onclear: (range: Range) => void
+    onclearranges?: (ranges: Range[]) => void
     onpaste: (pos: Pos, text: string) => void
     copyText: (range: Range) => string
-    /** Scrolled near the last drawn row or column: the page may grow the grid. */
+    oncopyclip?: (range: Range, event: ClipboardEvent) => void
+    oncutclip?: (range: Range, event: ClipboardEvent) => void
+    onpasteclip?: (pos: Pos, event: ClipboardEvent) => void
+    onfill?: (source: Range, target: Range) => void
+    onfilldblclick?: (source: Range) => void
+    onfillshortcut?: (dir: 'down' | 'right', range: Range) => void
+    onautofit?: (axis: 'col' | 'row', index: number) => void
+    outline?: SheetOutline | null
+    onoutline?: (act: {
+      axis: 'row' | 'col'
+      kind: 'toggle' | 'level'
+      from?: number
+      to?: number
+      collapsed?: boolean
+      level?: number
+    }) => void
+    cutRange?: Range | null
+    formulaRefs?: FormulaRefHighlight[]
+    pointSelectMode?: boolean
+    onpointselect?: (range: Range, commit: boolean) => void
+    oneditcursor?: (start: number, end: number) => void
+    onselectcommit?: (range: Range) => void
+    onfind?: (replace: boolean) => void
+    ongoto?: () => void
+    showGridlines?: boolean
+    showHeadings?: boolean
     onreach?: (axis: 'row' | 'col') => void
-    /** A key that would edit while editing is not allowed (view only). */
     onblocked?: () => void
-    /** Rows from the top / columns from the left that stay in place. */
     frozenRows?: number
     frozenCols?: number
     /** The sheet's AutoFilter and its tables' filters: their ranges (drop-downs on each first row), and which columns filter. */
@@ -112,9 +174,19 @@
     oncellpointerdown?: () => void
   } = $props()
 
-  const HEAD_H = 24
-  const HEAD_W = 48
+  const BASE_HEAD_H = 24
+  const BASE_HEAD_W = 48
+  const OUTLINE_PX = 20
   const OVERSCAN = 4
+
+  const hasRowOutline = $derived(!!outline && outline.rows.length > 0)
+  const hasColOutline = $derived(!!outline && outline.cols.length > 0)
+  const OUT_W = $derived(hasRowOutline ? OUTLINE_PX : 0)
+  const OUT_H = $derived(hasColOutline ? OUTLINE_PX : 0)
+  const HEAD_H = $derived(showHeadings ? BASE_HEAD_H : 0)
+  const HEAD_W = $derived(showHeadings ? BASE_HEAD_W : 0)
+  const TOP_OFF = $derived(HEAD_H + OUT_H)
+  const LEFT_OFF = $derived(HEAD_W + OUT_W)
 
   let scroller = $state<HTMLDivElement | null>(null)
   let cellEditor = $state<HTMLTextAreaElement | null>(null)
@@ -123,6 +195,8 @@
   let viewW = $state(800)
   let viewH = $state(400)
   let dragging = false
+  let endMode = false
+  let pointPickAnchor: Pos | null = null
 
   /** Start offsets of each row/column (plus the end), from the sizes. */
   const rowTops = $derived.by(() => {
@@ -138,7 +212,6 @@
     return out
   })
 
-  /** The index whose span holds `x` in prefix offsets `at`. */
   function indexAt(at: Float64Array, x: number): number {
     let lo = 0
     let hi = at.length - 2
@@ -166,17 +239,12 @@
   const visibleCols = $derived(span(firstCol, lastCol))
   const frozenRowList = $derived(span(0, fr - 1))
   const frozenColList = $derived(span(0, fc - 1))
-  /** The pane the active cell is drawn in (the cell editor goes there). */
+
+  const sel = $derived<Range>(selectionOf(active, anchor, held))
+  const allSelections = $derived([...extraSelections, sel])
   const activeQuad = $derived(`${active.row < fr ? 't' : 'b'}${active.col < fc ? 'l' : 'r'}`)
+  const fillQuad = $derived(`${sel.bottom < fr ? 't' : 'b'}${sel.right < fc ? 'l' : 'r'}`)
 
-  const sel = $derived<Range>({
-    top: Math.min(active.row, anchor.row),
-    bottom: Math.max(active.row, anchor.row),
-    left: Math.min(active.col, anchor.col),
-    right: Math.max(active.col, anchor.col),
-  })
-
-  /** The merged range a cell starts (drawn across it), or covers (not drawn). */
   function mergeAt(r: number, c: number): { range: Range; start: boolean } | null {
     for (const mr of merges)
       if (r >= mr.top && r <= mr.bottom && c >= mr.left && c <= mr.right)
@@ -229,13 +297,11 @@
     if (scrollLeft + viewW > colLefts[cols]! - 200) onreach?.('col')
   }
 
-  /** Scrolls the active cell into view. */
   function reveal() {
     if (!scroller) return
     const b = activeBox
-    const bodyH = scroller.clientHeight - HEAD_H
-    const bodyW = scroller.clientWidth - HEAD_W
-    // Cells in frozen rows/columns are always in view on that axis.
+    const bodyH = scroller.clientHeight - TOP_OFF
+    const bodyW = scroller.clientWidth - LEFT_OFF
     if (active.row >= fr) {
       if (b.top < scroller.scrollTop + FH) scroller.scrollTop = b.top - FH
       else if (b.top + b.height > scroller.scrollTop + bodyH)
@@ -253,24 +319,21 @@
     scroller?.focus({ preventScroll: true })
   }
 
+  export function revealActive() {
+    void tick().then(reveal)
+  }
+
   function moveTo(row: number, col: number, extend = false) {
     const next = {
       row: Math.max(0, Math.min(rows - 1, row)),
       col: Math.max(0, Math.min(cols - 1, col)),
     }
     active = next
-    if (!extend) anchor = next
+    if (!extend) {
+      anchor = next
+      extraSelections = []
+    }
     void tick().then(reveal)
-  }
-
-  function step(move: Move, extend = false) {
-    const mr = mergeAt(active.row, active.col)?.range
-    const r = active.row
-    const c = active.col
-    if (move === 'down') moveTo((mr && !extend ? mr.bottom : r) + 1, c, extend)
-    else if (move === 'up') moveTo(r - 1, c, extend)
-    else if (move === 'right') moveTo(r, (mr && !extend ? mr.right : c) + 1, extend)
-    else if (move === 'left') moveTo(r, c - 1, extend)
   }
 
   async function beginEdit(initial: string | null) {
@@ -286,16 +349,25 @@
     cellEditor?.focus()
     const end = draft.length
     cellEditor?.setSelectionRange(end, end)
+    oneditcursor?.(end, end)
   }
 
   /** Ends editing: the text goes to the page (`commit`) or is dropped. */
-  export function finishEdit(commit: boolean, move: Move = 'none') {
+  export function finishEdit(commit: boolean, move: Move = 'none', refocus = true) {
     if (!editing) return
     editing = false
     const text = draft
     if (commit) oncommit({ ...active }, text, move)
-    if (commit && move !== 'none') step(move)
-    focus()
+    if (commit && move !== 'none') {
+      const mr = mergeAt(active.row, active.col)?.range
+      const r = active.row
+      const c = active.col
+      if (move === 'down') moveTo((mr ? mr.bottom : r) + 1, c)
+      else if (move === 'up') moveTo(r - 1, c)
+      else if (move === 'right') moveTo(r, (mr ? mr.right : c) + 1)
+      else if (move === 'left') moveTo(r, c - 1)
+    }
+    if (refocus) focus()
   }
 
   export function startEdit(initial: string | null = null) {
@@ -304,70 +376,110 @@
 
   function onKeydown(event: KeyboardEvent) {
     if (editing || event.defaultPrevented) return
-    const mod = event.metaKey || event.ctrlKey
-    const ext = event.shiftKey
-    if (event.altKey && event.key === 'ArrowDown' && filterButtonAt(active.row, active.col)) {
-      event.preventDefault()
-      openFilter(active.col, document.getElementById(activeId), active.row)
-      return
-    }
-    switch (event.key) {
-      case 'ArrowDown':
-        step('down', ext)
+    const mr = mergeAt(active.row, active.col)?.range ?? null
+    const visRows = Math.max(1, Math.floor(viewH / 20) - 2)
+    const visCols = Math.max(1, Math.floor(viewW / 64) - 1)
+    const action = resolveGridKey({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      active,
+      sel,
+      selections: allSelections,
+      rows,
+      cols,
+      visibleRows: visRows,
+      visibleCols: visCols,
+      data,
+      hasFilterAtActive: filterButtonAt(active.row, active.col),
+      endMode,
+      mergeBottomRight: mr ? { row: mr.bottom, col: mr.right } : null,
+    })
+    endMode = action.kind === 'end_mode_on'
+    if (action.kind === 'none') return
+    event.preventDefault()
+    switch (action.kind) {
+      case 'end_mode_on':
         break
-      case 'ArrowUp':
-        step('up', ext)
+      case 'open_filter':
+        openFilter(active.col, document.getElementById(activeId), active.row)
         break
-      case 'ArrowRight':
-        step('right', ext)
+      case 'move':
+        moveTo(action.to.row, action.to.col, action.extend)
         break
-      case 'ArrowLeft':
-        step('left', ext)
+      case 'move_in_sel':
+        held = { range: { ...sel }, active: action.to, anchor: { ...anchor } }
+        active = action.to
+        void tick().then(reveal)
         break
-      case 'Tab':
-        step(ext ? 'left' : 'right')
+      case 'select_range':
+        extraSelections = []
+        anchor = { row: action.range.top, col: action.range.left }
+        active = { row: action.range.bottom, col: action.range.right }
+        void tick().then(reveal)
         break
-      case 'Enter':
-        if (ext) step('up')
-        else void beginEdit(null)
+      case 'select_cols':
+        anchor = { row: 0, col: sel.left }
+        active = { row: rows - 1, col: sel.right }
         break
-      case 'F2':
-        void beginEdit(null)
+      case 'select_rows':
+        anchor = { row: sel.top, col: 0 }
+        active = { row: sel.bottom, col: cols - 1 }
         break
-      case 'Home':
-        moveTo(mod ? 0 : active.row, 0, ext)
+      case 'begin_edit':
+        void beginEdit(action.initial)
         break
-      case 'PageDown':
-        moveTo(active.row + Math.max(1, Math.floor(viewH / 20) - 2), active.col, ext)
-        break
-      case 'PageUp':
-        moveTo(active.row - Math.max(1, Math.floor(viewH / 20) - 2), active.col, ext)
-        break
-      case 'Delete':
-      case 'Backspace':
+      case 'clear':
         if (!editable) onblocked?.()
+        else if (onclearranges) onclearranges(allSelections)
         else onclear(sel)
         break
-      case 'Escape':
+      case 'cancel':
+        extraSelections = []
         anchor = { ...active }
         break
-      default:
-        if (mod && event.key.toLowerCase() === 'a') {
-          anchor = { row: 0, col: 0 }
-          active = { row: rows - 1, col: cols - 1 }
-          break
-        }
-        // A printable character starts editing with it (replacing the content).
-        if (!mod && !event.altKey && event.key.length === 1) {
-          void beginEdit(event.key)
-          break
-        }
-        return
+      case 'fill_down':
+        if (!editable) onblocked?.()
+        else onfillshortcut?.('down', sel)
+        break
+      case 'fill_right':
+        if (!editable) onblocked?.()
+        else onfillshortcut?.('right', sel)
+        break
+      case 'open_find':
+        onfind?.(action.replace)
+        break
+      case 'open_goto':
+        ongoto?.()
+        break
     }
-    event.preventDefault()
+  }
+
+  function syncEditorCursor() {
+    if (!cellEditor) return
+    oneditcursor?.(
+      cellEditor.selectionStart ?? draft.length,
+      cellEditor.selectionEnd ?? draft.length,
+    )
   }
 
   function onEditorKeydown(event: KeyboardEvent) {
+    if (event.key === 'F4' && draft.startsWith('=') && cellEditor) {
+      event.preventDefault()
+      const start = cellEditor.selectionStart ?? draft.length
+      const end = cellEditor.selectionEnd ?? draft.length
+      const cycled = cycleAbsoluteAt(draft, start, end)
+      if (cycled) {
+        draft = cycled.text
+        void tick().then(() => {
+          cellEditor?.setSelectionRange(cycled.selEnd, cycled.selEnd)
+          oneditcursor?.(cycled.selEnd, cycled.selEnd)
+        })
+      }
+      return
+    }
     if (event.key === 'Enter' && !event.altKey) {
       event.preventDefault()
       finishEdit(true, event.shiftKey ? 'up' : 'down')
@@ -380,18 +492,19 @@
     }
   }
 
-  function posFromEvent(event: PointerEvent | MouseEvent): Pos | null {
+  function posFromEvent(event: PointerEvent | MouseEvent, clamp = false): Pos | null {
     if (!scroller) return null
     const rect = scroller.getBoundingClientRect()
-    const vx = event.clientX - rect.left - HEAD_W
-    const vy = event.clientY - rect.top - HEAD_H
-    if (vx < 0 || vy < 0) return null
-    // Frozen panes don't scroll.
-    const x = vx < FW ? vx : vx + scroller.scrollLeft
-    const y = vy < FH ? vy : vy + scroller.scrollTop
+    const vx = event.clientX - rect.left - LEFT_OFF
+    const vy = event.clientY - rect.top - TOP_OFF
+    if (!clamp && (vx < 0 || vy < 0)) return null
+    const cvx = Math.max(0, vx)
+    const cvy = Math.max(0, vy)
+    const x = cvx < FW ? cvx : cvx + scroller.scrollLeft
+    const y = cvy < FH ? cvy : cvy + scroller.scrollTop
     return {
-      row: Math.min(rows - 1, indexAt(rowTops, y)),
-      col: Math.min(cols - 1, indexAt(colLefts, x)),
+      row: Math.max(0, Math.min(rows - 1, indexAt(rowTops, y))),
+      col: Math.max(0, Math.min(cols - 1, indexAt(colLefts, x))),
     }
   }
 
@@ -399,12 +512,25 @@
     if (event.button !== 0) return
     const p = posFromEvent(event)
     if (!p) return
+    if (pointSelectMode && onpointselect) {
+      event.preventDefault()
+      pointPickAnchor = p
+      onpointselect(normalizeRange(p, p), false)
+      return
+    }
     oncellpointerdown?.()
-    if (editing) finishEdit(true)
+    if (editing) finishEdit(true, 'none', false)
     const mr = mergeAt(p.row, p.col)
     const at = mr ? { row: mr.range.top, col: mr.range.left } : p
-    if (event.shiftKey) active = at
-    else {
+    const addRange = event.ctrlKey || event.metaKey
+    if (event.shiftKey) {
+      active = at
+    } else if (addRange) {
+      extraSelections = [...extraSelections, sel]
+      active = at
+      anchor = at
+    } else {
+      extraSelections = []
       active = at
       anchor = at
     }
@@ -414,35 +540,81 @@
   }
 
   function onPointerMove(event: PointerEvent) {
-    if (!dragging || !(event.buttons & 1)) return
+    if (!(event.buttons & 1)) return
+    if (pointPickAnchor && onpointselect) {
+      const p = posFromEvent(event, true)
+      if (p) onpointselect(normalizeRange(pointPickAnchor, p), false)
+      return
+    }
+    if (!dragging) return
     const p = posFromEvent(event)
     if (p && (p.row !== active.row || p.col !== active.col)) active = p
   }
 
-  function onPointerUp() {
-    dragging = false
+  function onPointerUp(event: PointerEvent) {
+    if (pointPickAnchor && onpointselect) {
+      const p = posFromEvent(event, true) ?? pointPickAnchor
+      const r = normalizeRange(pointPickAnchor, p)
+      pointPickAnchor = null
+      onpointselect(r, true)
+      return
+    }
+    if (dragging) {
+      dragging = false
+      onselectcommit?.(sel)
+    }
   }
 
-  function pickColumn(c: number, extend: boolean) {
+  function pickColumn(c: number, extend: boolean, addRange: boolean) {
     if (editing) finishEdit(true)
-    if (!extend) anchor = { row: 0, col: c }
-    else anchor = { row: 0, col: anchor.col }
+    if (extend) {
+      anchor = { row: 0, col: anchor.col }
+    } else if (addRange) {
+      extraSelections = [...extraSelections, sel]
+      anchor = { row: 0, col: c }
+    } else {
+      extraSelections = []
+      anchor = { row: 0, col: c }
+    }
     active = { row: rows - 1, col: c }
     focus()
+    onselectcommit?.(sel)
   }
 
-  function pickRow(r: number, extend: boolean) {
+  function pickRow(r: number, extend: boolean, addRange: boolean) {
     if (editing) finishEdit(true)
-    if (!extend) anchor = { row: r, col: 0 }
-    else anchor = { row: anchor.row, col: 0 }
+    if (extend) {
+      anchor = { row: anchor.row, col: 0 }
+    } else if (addRange) {
+      extraSelections = [...extraSelections, sel]
+      anchor = { row: r, col: 0 }
+    } else {
+      extraSelections = []
+      anchor = { row: r, col: 0 }
+    }
     active = { row: r, col: cols - 1 }
     focus()
+    onselectcommit?.(sel)
   }
 
   function onCopy(event: ClipboardEvent) {
     if (editing) return
+    if (oncopyclip) {
+      oncopyclip(sel, event)
+      return
+    }
     event.clipboardData?.setData('text/plain', copyText(sel))
     event.preventDefault()
+  }
+
+  function onCut(event: ClipboardEvent) {
+    if (editing || !oncutclip) return
+    if (!editable) {
+      event.preventDefault()
+      onblocked?.()
+      return
+    }
+    oncutclip(sel, event)
   }
 
   function onPaste(event: ClipboardEvent) {
@@ -452,11 +624,60 @@
       onblocked?.()
       return
     }
+    if (onpasteclip) {
+      onpasteclip({ row: sel.top, col: sel.left }, event)
+      return
+    }
     const text = event.clipboardData?.getData('text/plain') ?? ''
     if (text !== '') onpaste({ row: sel.top, col: sel.left }, text)
   }
 
-  // Dragging a column's right edge or a row's bottom edge: a guide line follows, the size is set on release.
+  // Fill handle drag (bottom-right of selection)
+  type FillDrag = { source: Range; target: Range }
+  let fillDrag = $state<FillDrag | null>(null)
+
+  function fillExtend(source: Range, p: Pos): Range {
+    const vDist =
+      p.row > source.bottom ? p.row - source.bottom : p.row < source.top ? source.top - p.row : 0
+    const hDist =
+      p.col > source.right ? p.col - source.right : p.col < source.left ? source.left - p.col : 0
+    if (vDist === 0 && hDist === 0) return source
+    if (vDist >= hDist) {
+      return p.row > source.bottom ? { ...source, bottom: p.row } : { ...source, top: p.row }
+    }
+    return p.col > source.right ? { ...source, right: p.col } : { ...source, left: p.col }
+  }
+
+  function onFillHandleDown(event: PointerEvent) {
+    if (event.button !== 0 || !editable || !onfill) return
+    event.preventDefault()
+    event.stopPropagation()
+    const source = { ...sel }
+    fillDrag = { source, target: source }
+    window.addEventListener('pointermove', onFillHandleMove)
+    window.addEventListener('pointerup', onFillHandleUp, { once: true })
+  }
+
+  function onFillHandleMove(event: PointerEvent) {
+    if (!fillDrag) return
+    const p = posFromEvent(event, true)
+    if (!p) return
+    fillDrag = { ...fillDrag, target: fillExtend(fillDrag.source, p) }
+  }
+
+  function onFillHandleUp() {
+    window.removeEventListener('pointermove', onFillHandleMove)
+    const fd = fillDrag
+    fillDrag = null
+    if (fd && !sameRange(fd.source, fd.target)) {
+      anchor = { row: fd.target.top, col: fd.target.left }
+      active = { row: fd.target.bottom, col: fd.target.right }
+      onfill?.(fd.source, fd.target)
+    }
+    focus()
+  }
+
+  // Dragging a column's right edge or a row's bottom edge
   type Resizing = { axis: 'col' | 'row'; index: number; from: number; base: number; px: number }
   let resizing = $state<Resizing | null>(null)
   const MIN_PX = { col: 8, row: 6 }
@@ -489,11 +710,11 @@
 
   const guideStyle = (r: Resizing) =>
     r.axis === 'col'
-      ? `left: ${HEAD_W + colLefts[r.index]! + r.px - 1 + (r.index < fc ? scrollLeft : 0)}px; top: 0; width: 2px; height: ${HEAD_H + rowTops[rows]!}px;`
-      : `top: ${HEAD_H + rowTops[r.index]! + r.px - 1 + (r.index < fr ? scrollTop : 0)}px; left: 0; height: 2px; width: ${HEAD_W + colLefts[cols]!}px;`
+      ? `left: ${LEFT_OFF + colLefts[r.index]! + r.px - 1 + (r.index < fc ? scrollLeft : 0)}px; top: ${OUT_H}px; width: 2px; height: ${HEAD_H + rowTops[rows]!}px;`
+      : `top: ${TOP_OFF + rowTops[r.index]! + r.px - 1 + (r.index < fr ? scrollTop : 0)}px; left: ${OUT_W}px; height: 2px; width: ${HEAD_W + colLefts[cols]!}px;`
 
   const inSel = (r: number, c: number) =>
-    r >= sel.top && r <= sel.bottom && c >= sel.left && c <= sel.right
+    allSelections.some((rg) => rangeContains(rg, { row: r, col: c }))
 
   const filterButtonAt = (r: number, c: number) =>
     !!filter && filter.ranges.some((x) => r === x.top && c >= x.left && c <= x.right)
@@ -503,9 +724,17 @@
     if (editing) finishEdit(true)
     onfilter(c, el.getBoundingClientRect(), r)
   }
+
+  function clampBoxToGrid(r: Range) {
+    return box({
+      top: Math.max(0, Math.min(rows - 1, r.top)),
+      bottom: Math.max(0, Math.min(rows - 1, r.bottom)),
+      left: Math.max(0, Math.min(cols - 1, r.left)),
+      right: Math.max(0, Math.min(cols - 1, r.right)),
+    })
+  }
 </script>
 
-<!-- One pane of cells (dx/dy: where it starts in sheet pixels) with its part of the selection, and the cell editor when the active cell is in it. -->
 {#snippet pane(rowList: number[], colList: number[], dx: number, dy: number, quad: string)}
   {#each rowList as r (r)}
     <div
@@ -525,8 +754,9 @@
             role="gridcell"
             aria-colindex={c + 1}
             aria-selected={inSel(r, c)}
-            class="xlsx-cell g-abs g-top g-clip g-cell-{cell?.vertical ??
-              'bottom'} border-r border-b border-border/60 px-1 leading-[18px] {cell?.wrap
+            class="xlsx-cell g-abs g-top g-clip g-cell-{cell?.vertical ?? 'bottom'} {showGridlines
+              ? 'border-r border-b border-border/60'
+              : ''} px-1 leading-[18px] {cell?.wrap
               ? 'whitespace-pre-wrap'
               : 'whitespace-pre'} {cell?.kept ? 'xlsx-kept' : ''} {fb ? 'pr-5' : ''}"
             style="left: {colLefts[c]! - dx}px; width: {b ? b.width : colWidth(c)}px; height: {b
@@ -539,7 +769,15 @@
                 : undefined}
             data-ref="{colName(c)}{r + 1}"
           >
-            <span class="block">{cell?.text ?? ''}</span>
+            <span class="block">
+              {#if cell?.runs && cell.runs.length > 0}
+                {#each cell.runs as run, rIdx (rIdx)}
+                  <span style={runCss(run)}>{run.text}</span>
+                {/each}
+              {:else}
+                {cell?.text ?? ''}
+              {/if}
+            </span>
             {#if fb}
               {@const on = filter!.filtered(r, c)}
               {@const what = on
@@ -570,12 +808,51 @@
       {/each}
     </div>
   {/each}
+  {#each extraSelections as er, idx (idx)}
+    {@const eb = clampBoxToGrid(er)}
+    <div
+      class="g-abs g-ghost border border-primary/80 bg-primary/5"
+      style="top: {eb.top - dy}px; left: {eb.left -
+        dx}px; width: {eb.width}px; height: {eb.height}px;"
+      aria-hidden="true"
+    ></div>
+  {/each}
   <div
     class="g-abs g-ghost border border-primary bg-primary/5"
     style="top: {selBox.top - dy}px; left: {selBox.left -
       dx}px; width: {selBox.width}px; height: {selBox.height}px;"
     aria-hidden="true"
   ></div>
+  {#if cutRange}
+    {@const cb = clampBoxToGrid(cutRange)}
+    <div
+      class="g-abs g-ghost border-2 border-dashed border-primary"
+      style="top: {cb.top - dy}px; left: {cb.left -
+        dx}px; width: {cb.width}px; height: {cb.height}px;"
+      aria-hidden="true"
+      data-testid="xlsx-cut-outline"
+    ></div>
+  {/if}
+  {#if fillDrag}
+    {@const fbBox = clampBoxToGrid(fillDrag.target)}
+    <div
+      class="g-abs g-ghost border-2 border-dashed border-primary bg-primary/10"
+      style="top: {fbBox.top - dy}px; left: {fbBox.left -
+        dx}px; width: {fbBox.width}px; height: {fbBox.height}px;"
+      aria-hidden="true"
+      data-testid="xlsx-fill-preview"
+    ></div>
+  {/if}
+  {#each formulaRefs as ref, i (ref.raw + i)}
+    {@const rb = clampBoxToGrid(ref.range)}
+    <div
+      class="g-abs g-ghost border-2 border-dashed"
+      style="top: {rb.top - dy}px; left: {rb.left -
+        dx}px; width: {rb.width}px; height: {rb.height}px; border-color: {ref.color}; background-color: {ref.color}14;"
+      aria-hidden="true"
+      data-testid="xlsx-formula-ref-box"
+    ></div>
+  {/each}
   <div
     class="g-abs g-ghost border-2 border-primary"
     style="top: {activeBox.top - dy - 1}px; left: {activeBox.left -
@@ -584,6 +861,26 @@
     aria-hidden="true"
     data-testid={quad === activeQuad ? 'xlsx-active' : undefined}
   ></div>
+  {#if editable && !editing && onfill && quad === fillQuad}
+    <div
+      class="g-abs g-fill-handle border border-background bg-primary"
+      style="top: {selBox.top - dy + selBox.height - 4}px; left: {selBox.left -
+        dx +
+        selBox.width -
+        4}px;"
+      role="button"
+      tabindex="-1"
+      aria-label={m.drive_sheet_fill_handle()}
+      title={m.drive_sheet_fill_handle()}
+      onpointerdown={onFillHandleDown}
+      ondblclick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onfilldblclick?.(sel)
+      }}
+      data-testid="xlsx-fill-handle"
+    ></div>
+  {/if}
   {#if editing && quad === activeQuad}
     <textarea
       bind:this={cellEditor}
@@ -596,8 +893,15 @@
         ref: `${colName(active.col)}${active.row + 1}`,
       })}
       spellcheck="false"
+      oninput={syncEditorCursor}
+      onclick={syncEditorCursor}
+      onkeyup={syncEditorCursor}
       onkeydown={onEditorKeydown}
-      onblur={() => finishEdit(true)}
+      onblur={(e) => {
+        const rel = e.relatedTarget
+        if (rel instanceof HTMLElement && rel.hasAttribute('data-xlsx-formula-bar')) return
+        finishEdit(true, 'none', false)
+      }}
       data-testid="xlsx-cell-editor"></textarea>
   {/if}
 {/snippet}
@@ -613,7 +917,7 @@
       ? 'bg-primary/10 font-medium text-foreground'
       : ''}"
     style="left: {colLefts[c]! - dx}px; width: {colWidth(c)}px; height: {HEAD_H}px;"
-    onclick={(e) => pickColumn(c, e.shiftKey)}>{colName(c)}</button
+    onclick={(e) => pickColumn(c, e.shiftKey, e.ctrlKey || e.metaKey)}>{colName(c)}</button
   >
   {#if onresize && editable}
     <div
@@ -623,6 +927,11 @@
       aria-orientation="vertical"
       aria-label={m.drive_sheet_fmt_col_resize({ col: colName(c) })}
       onpointerdown={(e) => onHandleDown(e, 'col', c)}
+      ondblclick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onautofit?.('col', c)
+      }}
       data-testid="xlsx-col-resize-{colName(c)}"
     ></div>
   {/if}
@@ -638,7 +947,7 @@
       : ''}"
     style="top: {rowTops[r]! - dy}px; height: {rowHeight(r)}px;"
     aria-label={m.drive_sheet_row_label({ n: r + 1 })}
-    onclick={(e) => pickRow(r, e.shiftKey)}>{r + 1}</button
+    onclick={(e) => pickRow(r, e.shiftKey, e.ctrlKey || e.metaKey)}>{r + 1}</button
   >
   {#if onresize && editable}
     <div
@@ -648,6 +957,11 @@
       aria-orientation="horizontal"
       aria-label={m.drive_sheet_fmt_row_resize({ row: r + 1 })}
       onpointerdown={(e) => onHandleDown(e, 'row', r)}
+      ondblclick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onautofit?.('row', r)
+      }}
       data-testid="xlsx-row-resize-{r + 1}"
     ></div>
   {/if}
@@ -667,18 +981,19 @@
   onscroll={onScroll}
   onkeydown={onKeydown}
   oncopy={onCopy}
+  oncut={onCut}
   onpaste={onPaste}
   data-testid="xlsx-grid"
 >
   <div
     class="g-canvas"
-    style="width: {HEAD_W + colLefts[cols]!}px; height: {HEAD_H + rowTops[rows]!}px;"
+    style="width: {LEFT_OFF + colLefts[cols]!}px; height: {TOP_OFF + rowTops[rows]!}px;"
     role="presentation"
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
     onpointerup={onPointerUp}
     ondblclick={(e) => {
-      if (posFromEvent(e)) void beginEdit(null)
+      if (!pointSelectMode && posFromEvent(e)) void beginEdit(null)
     }}
   >
     {#if resizing}
@@ -689,43 +1004,126 @@
         data-testid="xlsx-resize-guide"
       ></div>
     {/if}
-    <!-- Column letters -->
-    <div class="g-head" style="height: {HEAD_H}px; width: {HEAD_W + colLefts[cols]!}px;" role="row">
+
+    {#if hasColOutline && outline}
       <div
-        class="g-corner border-r border-b border-border bg-muted"
-        style="width: {HEAD_W}px; min-width: {HEAD_W}px;"
-        role="columnheader"
-        aria-label={m.drive_sheet_corner()}
-      ></div>
-      {#if fc > 0}
-        <div
-          class="g-rel g-stick-l g-z25 bg-muted"
-          style="width: {FW}px; min-width: {FW}px; left: {HEAD_W}px;"
-        >
-          {#each frozenColList as c (c)}{@render colHead(c, 0)}{/each}
-        </div>
-      {/if}
-      <div class="g-rel" style="width: {colLefts[cols]! - FW}px;">
-        {#each visibleCols as c (c)}{@render colHead(c, FW)}{/each}
-      </div>
-    </div>
-    {#if fr > 0}
-      <!-- Frozen rows -->
-      <div
-        class="g-frozen-rows"
-        style="top: {HEAD_H}px; height: {FH}px; width: {HEAD_W + colLefts[cols]!}px;"
-        data-testid="xlsx-frozen-rows"
+        class="g-head g-col-outline border-b border-border bg-muted/70"
+        style="height: {OUT_H}px; width: {LEFT_OFF + colLefts[cols]!}px;"
       >
         <div
-          class="g-rowheads bg-muted"
-          style="width: {HEAD_W}px; min-width: {HEAD_W}px; height: {FH}px;"
+          class="g-corner flex shrink-0 items-center justify-center gap-0.5 border-r border-border bg-muted px-0.5"
+          style="width: {LEFT_OFF}px; min-width: {LEFT_OFF}px;"
         >
-          {#each frozenRowList as r (r)}{@render rowHead(r, 0)}{/each}
+          {#each Array.from({ length: outline.maxColLevel + 1 }, (_, i) => i + 1) as lvl (lvl)}
+            <button
+              type="button"
+              class="inline-flex size-4 items-center justify-center rounded border border-border bg-background text-[10px] hover:bg-accent"
+              title={m.drive_sheet_outline_level({ level: lvl })}
+              onclick={(e) => {
+                e.stopPropagation()
+                onoutline?.({ axis: 'col', kind: 'level', level: lvl })
+              }}
+              data-testid="xlsx-outline-col-level-{lvl}">{lvl}</button
+            >
+          {/each}
         </div>
+        <div class="g-rel" style="width: {colLefts[cols]!}px;">
+          {#each outline.cols as g (`c-${g.level}-${g.from}-${g.to}`)}
+            {@const xIdx = Math.max(0, Math.min(cols - 1, g.summaryAt))}
+            <button
+              type="button"
+              class="g-abs top-0.5 inline-flex size-4 items-center justify-center rounded border border-border bg-background text-[11px] leading-none hover:bg-accent"
+              style="left: {colLefts[xIdx]! + 2}px;"
+              title={m.drive_sheet_outline_toggle()}
+              onclick={(e) => {
+                e.stopPropagation()
+                onoutline?.({
+                  axis: 'col',
+                  kind: 'toggle',
+                  from: g.from,
+                  to: g.to,
+                  collapsed: !g.collapsed,
+                })
+              }}
+              data-testid="xlsx-outline-col-toggle-{g.from}-{g.to}"
+              >{g.collapsed ? '+' : '−'}</button
+            >
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if showHeadings}
+      <div
+        class="g-head"
+        style="top: {OUT_H}px; height: {HEAD_H}px; width: {LEFT_OFF + colLefts[cols]!}px;"
+        role="row"
+      >
+        {#if hasRowOutline && outline}
+          <div
+            class="g-corner flex shrink-0 items-center justify-center gap-0.5 border-r border-b border-border bg-muted"
+            style="width: {OUT_W}px; min-width: {OUT_W}px;"
+          >
+            {#each Array.from({ length: Math.min(2, outline.maxRowLevel + 1) }, (_, i) => i + 1) as lvl (lvl)}
+              <button
+                type="button"
+                class="inline-flex size-3.5 items-center justify-center rounded border border-border bg-background text-[9px] hover:bg-accent"
+                title={m.drive_sheet_outline_level({ level: lvl })}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onoutline?.({ axis: 'row', kind: 'level', level: lvl })
+                }}
+                data-testid="xlsx-outline-row-level-{lvl}">{lvl}</button
+              >
+            {/each}
+          </div>
+        {/if}
+        <div
+          class="g-corner border-r border-b border-border bg-muted"
+          style="width: {HEAD_W}px; min-width: {HEAD_W}px; {hasRowOutline
+            ? `left: ${OUT_W}px;`
+            : ''}"
+          role="columnheader"
+          aria-label={m.drive_sheet_corner()}
+        ></div>
+        {#if fc > 0}
+          <div
+            class="g-rel g-stick-l g-z25 bg-muted"
+            style="width: {FW}px; min-width: {FW}px; left: {LEFT_OFF}px;"
+          >
+            {#each frozenColList as c (c)}{@render colHead(c, 0)}{/each}
+          </div>
+        {/if}
+        <div class="g-rel" style="width: {colLefts[cols]! - FW}px;">
+          {#each visibleCols as c (c)}{@render colHead(c, FW)}{/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if fr > 0}
+      <div
+        class="g-frozen-rows"
+        style="top: {TOP_OFF}px; height: {FH}px; width: {LEFT_OFF + colLefts[cols]!}px;"
+        data-testid="xlsx-frozen-rows"
+      >
+        {#if hasRowOutline && outline}
+          <div
+            class="g-outline-rows g-stick-l border-r border-border bg-muted/60"
+            style="left: 0; width: {OUT_W}px; min-width: {OUT_W}px; height: {FH}px; z-index: 18;"
+          ></div>
+        {/if}
+        {#if showHeadings}
+          <div
+            class="g-rowheads bg-muted"
+            style="width: {HEAD_W}px; min-width: {HEAD_W}px; height: {FH}px; left: {OUT_W}px;"
+          >
+            {#each frozenRowList as r (r)}{@render rowHead(r, 0)}{/each}
+          </div>
+        {/if}
         {#if fc > 0}
           <div
             class="g-rel g-stick-l g-z16 g-clip g-freeze-line-r bg-background"
-            style="width: {FW}px; min-width: {FW}px; height: {FH}px; left: {HEAD_W}px;"
+            style="width: {FW}px; min-width: {FW}px; height: {FH}px; left: {LEFT_OFF}px;"
           >
             {@render pane(frozenRowList, frozenColList, 0, 0, 'tl')}
           </div>
@@ -738,26 +1136,56 @@
         </div>
       </div>
     {/if}
+
     <div class="g-body" style="height: {rowTops[rows]! - FH}px;">
-      <!-- Row numbers -->
-      <div
-        class="g-rowheads bg-muted"
-        style="width: {HEAD_W}px; min-width: {HEAD_W}px; height: {rowTops[rows]! - FH}px;"
-      >
-        {#each visibleRows as r (r)}{@render rowHead(r, FH)}{/each}
-      </div>
+      {#if hasRowOutline && outline}
+        <div
+          class="g-outline-rows g-stick-l border-r border-border bg-muted/60"
+          style="left: 0; width: {OUT_W}px; min-width: {OUT_W}px; height: {rowTops[rows]! -
+            FH}px; z-index: 11;"
+        >
+          {#each outline.rows as g (`r-${g.level}-${g.from}-${g.to}`)}
+            {@const rIdx = Math.max(fr, Math.min(rows - 1, g.summaryAt))}
+            <button
+              type="button"
+              class="g-abs left-0.5 inline-flex size-4 items-center justify-center rounded border border-border bg-background text-[11px] leading-none hover:bg-accent"
+              style="top: {rowTops[rIdx]! - FH + 2}px;"
+              title={m.drive_sheet_outline_toggle()}
+              onclick={(e) => {
+                e.stopPropagation()
+                onoutline?.({
+                  axis: 'row',
+                  kind: 'toggle',
+                  from: g.from,
+                  to: g.to,
+                  collapsed: !g.collapsed,
+                })
+              }}
+              data-testid="xlsx-outline-row-toggle-{g.from}-{g.to}"
+              >{g.collapsed ? '+' : '−'}</button
+            >
+          {/each}
+        </div>
+      {/if}
+      {#if showHeadings}
+        <div
+          class="g-rowheads bg-muted"
+          style="width: {HEAD_W}px; min-width: {HEAD_W}px; height: {rowTops[rows]! -
+            FH}px; left: {OUT_W}px;"
+        >
+          {#each visibleRows as r (r)}{@render rowHead(r, FH)}{/each}
+        </div>
+      {/if}
       {#if fc > 0}
-        <!-- Frozen columns -->
         <div
           class="g-rel g-stick-l g-z12 g-clip g-freeze-line-r bg-background"
           style="width: {FW}px; min-width: {FW}px; height: {rowTops[rows]! -
-            FH}px; left: {HEAD_W}px;"
+            FH}px; left: {LEFT_OFF}px;"
           data-testid="xlsx-frozen-cols"
         >
           {@render pane(visibleRows, frozenColList, 0, FH, 'bl')}
         </div>
       {/if}
-      <!-- Cells -->
       <div
         class="g-rel"
         style="width: {colLefts[cols]! - FW}px; height: {rowTops[rows]! - FH}px;"
@@ -786,12 +1214,11 @@
 </div>
 
 <style>
-  /* Layout the grid needs to work at all (positions, scrolling), kept here rather than in utility classes. */
   .g-scroller {
     position: relative;
     flex: 1 1 auto;
     min-height: 16rem;
-    max-height: calc(100vh - 14rem);
+    max-height: calc(100vh - 16rem);
     overflow: auto;
   }
   .g-canvas,
@@ -803,6 +1230,9 @@
     top: 0;
     z-index: 20;
     display: flex;
+  }
+  .g-col-outline {
+    z-index: 22;
   }
   .g-corner {
     position: sticky;
@@ -820,7 +1250,6 @@
   .g-stick-l {
     position: sticky;
   }
-  /* The freeze line, as Excel draws it: below the frozen rows, right of the frozen columns. */
   .g-frozen-rows::after,
   .g-freeze-line-r::after {
     content: '';
@@ -867,6 +1296,9 @@
     left: 0;
     z-index: 10;
   }
+  .g-outline-rows {
+    position: relative;
+  }
   .g-abs {
     position: absolute;
     box-sizing: border-box;
@@ -886,6 +1318,12 @@
   }
   .g-ghost {
     pointer-events: none;
+  }
+  .g-fill-handle {
+    width: 8px;
+    height: 8px;
+    z-index: 6;
+    cursor: crosshair;
   }
   .g-editor {
     z-index: 5;

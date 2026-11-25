@@ -19,6 +19,8 @@ import { createDriveSheetChartTools } from './sheet-chart-tools'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { createDriveSheetPivotTableTools } from './sheet-pivot-table-tools'
+import type { ExportPdfDeps } from '$lib/office/xlsx/print-pdf'
+import { createDriveSheetEditingTools } from './sheet-editing-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -47,6 +49,8 @@ export type DriveToolDeps = {
   roleOf?: (userId: string) => Promise<MemberRole | null>
   /** Where EE_STATE_DIR comes from (the snapshot hand-off dir). */
   env?: Record<string, string | undefined>
+  /** Chromium launcher / probe behind drive.sheet_export_pdf (tests inject a fake). */
+  pdfDeps?: ExportPdfDeps
 }
 
 /** Batch size for one archive/unarchive call (one approval). */
@@ -324,5 +328,9 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetArrangeTools({ service }),
     ...createDriveSheetPivotTableTools({ service }),
     ...createDriveSheetChartTools({ service }),
+    ...createDriveSheetEditingTools({
+      service,
+      ...(opts.pdfDeps ? { pdfDeps: opts.pdfDeps } : {}),
+    }),
   ]
 }
