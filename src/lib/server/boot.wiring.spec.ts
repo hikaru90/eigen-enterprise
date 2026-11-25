@@ -247,6 +247,8 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'org.chart',
   'org.set_position',
   'assistant.conversation_rename',
+  'brand.material_export',
+  'brand.material_text_suggest',
   'brand.social_caption_suggest',
   'brand.social_post_create',
   'brand.social_post_delete',

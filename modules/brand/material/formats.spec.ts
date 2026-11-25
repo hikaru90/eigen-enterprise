@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MATERIAL_KINDS, formatById, formatsOf, sizeLabel } from './formats'
+import { MATERIAL_FORMAT_IDS, MATERIAL_KINDS, exportOf, formatById, formatsOf, sizeLabel } from './formats'
 
 describe('brand material formats', () => {
   it('offers flyer, banner, poster and merch, in that order', () => {
@@ -43,5 +43,33 @@ describe('brand material formats', () => {
   it('sizeLabel prints width × height with the unit', () => {
     expect(sizeLabel(formatById('poster-a1'))).toBe('594 × 841 mm')
     expect(sizeLabel(formatById('banner-social'))).toBe('1500 × 500 px')
+  })
+
+  it('exports print formats as PDF at their page size, the social header and merch as PNG', () => {
+    for (const id of ['flyer-a5', 'banner-rollup', 'poster-a1', 'poster-a2'])
+      expect(exportOf(formatById(id))).toEqual({ kind: 'pdf', mime: 'application/pdf', extension: 'pdf' })
+    expect(exportOf(formatById('banner-social'))).toEqual({
+      kind: 'png',
+      mime: 'image/png',
+      extension: 'png',
+      pixelWidth: 1500,
+      pixelHeight: 500,
+    })
+    // Merch print areas at 300 dpi: 300 × 400 mm → 3543 × 4724 px.
+    expect(exportOf(formatById('merch-shirt'))).toMatchObject({ kind: 'png', pixelWidth: 3543, pixelHeight: 4724 })
+    expect(exportOf(formatById('merch-mug'))).toMatchObject({ pixelWidth: 2362, pixelHeight: 1063 })
+  })
+
+  it('MATERIAL_FORMAT_IDS lists every format once', () => {
+    expect(MATERIAL_FORMAT_IDS).toEqual([
+      'flyer-a5',
+      'banner-social',
+      'banner-rollup',
+      'poster-a1',
+      'poster-a2',
+      'merch-shirt',
+      'merch-mug',
+      'merch-tote',
+    ])
   })
 })

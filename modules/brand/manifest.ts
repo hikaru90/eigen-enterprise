@@ -38,6 +38,8 @@ export const BRAND_TOOL_NAMES = [
   'brand.social_post_upload',
   'brand.social_post_delete',
   'brand.social_caption_suggest',
+  'brand.material_export',
+  'brand.material_text_suggest',
 ] as const
 
 /** Brand writes the approval policy gates (APPROVAL_REQUIRED_TOOLS): deleting a social post and its files. */

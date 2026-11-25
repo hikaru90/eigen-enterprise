@@ -129,6 +129,25 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "brand.material_export": {
+    input: {
+      "body"?: string
+      "cta"?: string
+      "formatId": "flyer-a5" | "banner-social" | "banner-rollup" | "poster-a1" | "poster-a2" | "merch-shirt" | "merch-mug" | "merch-tote"
+      "headline": string
+      "logo"?: boolean
+      "mode"?: "light" | "dark"
+    }
+    output: unknown
+  }
+  "brand.material_text_suggest": {
+    input: {
+      "brief"?: string
+      "formatId": "flyer-a5" | "banner-social" | "banner-rollup" | "poster-a1" | "poster-a2" | "merch-shirt" | "merch-mug" | "merch-tote"
+      "locale"?: string
+    }
+    output: unknown
+  }
   "brand.picker_choose": {
     input: {
       "nodeId": string
@@ -3989,6 +4008,8 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "brand.extract_start",
   "brand.glossary_add",
   "brand.lexicon_add",
+  "brand.material_export",
+  "brand.material_text_suggest",
   "brand.picker_choose",
   "brand.selection_matches",
   "brand.set_activate",

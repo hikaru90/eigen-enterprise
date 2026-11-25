@@ -928,6 +928,121 @@
         "gated": false,
         "risk": null
       },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 300,
+            "type": "string"
+          },
+          "cta": {
+            "maxLength": 40,
+            "type": "string"
+          },
+          "formatId": {
+            "enum": [
+              "flyer-a5",
+              "banner-social",
+              "banner-rollup",
+              "poster-a1",
+              "poster-a2",
+              "merch-shirt",
+              "merch-mug",
+              "merch-tote"
+            ],
+            "type": "string"
+          },
+          "headline": {
+            "maxLength": 90,
+            "minLength": 1,
+            "type": "string"
+          },
+          "logo": {
+            "default": true,
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "light",
+            "enum": [
+              "light",
+              "dark"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "formatId",
+          "headline"
+        ],
+        "type": "object"
+      },
+      "module": "brand",
+      "name": "brand.material_export",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "brief": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "formatId": {
+            "enum": [
+              "flyer-a5",
+              "banner-social",
+              "banner-rollup",
+              "poster-a1",
+              "poster-a2",
+              "merch-shirt",
+              "merch-mug",
+              "merch-tote"
+            ],
+            "type": "string"
+          },
+          "locale": {
+            "maxLength": 35,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "formatId"
+        ],
+        "type": "object"
+      },
+      "module": "brand",
+      "name": "brand.material_text_suggest",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
       "auditClass": "mutate",
       "input": {
         "properties": {
