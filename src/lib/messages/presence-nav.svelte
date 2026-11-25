@@ -52,9 +52,9 @@
     <span class="min-w-0 flex-1">
       <span class="block truncate text-[13px] font-medium" data-testid="shell-user">{name}</span>
       <span
-        class="block truncate text-[11px] {self.error && !view
+        class="block truncate text-xs {self.error && !view
           ? 'text-destructive'
-          : 'text-foreground/50'}"
+          : 'text-muted-foreground'}"
         data-testid="shell-presence-label">{label}</span
       >
     </span>
