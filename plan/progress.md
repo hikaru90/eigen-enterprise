@@ -2,6 +2,27 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-25 — STOPPED: feature-complete xlsx editor, six streams mid-work (owner: "take some open source repo like the one i share [Univer] to clean room code a xlsx editor that is feature complete … why would i want an xlsx editor without charts?", then "stop and write down current state")
+
+- **Goal:** Excel-level editor. Univer's docs/behaviour and Excel's documented behaviour (ECMA-376, Microsoft docs) are the spec. No Univer source is copied. Libraries must be MIT/Apache/BSD (never GPL) and lazy-loaded. Built on our lossless OPC editor (§7).
+- **State:** all six agents were stopped by the owner mid-work. **Nothing from this round is in main.**
+  - The work so far is saved as one local `[wip]` commit per branch. These commits are untested and were made with `--no-verify`, so they are not ready to merge.
+  - The worktrees are kept under `.claude/worktrees/agent-<id>` (gitignored `node_modules`/`.env` symlinks excluded).
+  - No stream had written its UI, registry tools, contract lock or plan section yet.
+
+| Stream | Branch (`worktree-agent-…`) | WIP commit | What exists (files, untested) |
+|---|---|---|---|
+| Charts (owner's top priority) | `af88606afb0d4fa82` | `24949b8d` (+3.6k) | `chart-read/write/data/layout/anchor/color/ops.ts`, `chart.spec.ts`, chart fixtures; small edits in `ops.ts`, messages, sheet-tools spec. Was starting the unit tests. No renderer/overlay UI yet. |
+| Pictures, shapes, notes, threaded comments | `abce1ce53103ad811` | `1ea12ee6` (+2.6k) | `drawing.ts` (shared drawing-part reader/writer), `drawing-ops.ts`, `cell-images.ts`, `image-info.ts`, `notes.ts`, `threads.ts`, `drawing.spec.ts`; edits in `ops.ts`, `sort.ts`, `editor.ts`. |
+| Conditional formatting, validation, hyperlinks, names, protection | `a868d8967340d8f8c` | `588930f0` (+3.5k) | `cond-format.ts`, `rule-formulas.ts`, `validation.ts`, `hyperlinks.ts`, `names.ts`, `protection.ts` (+spec), `sha512.ts`, `sqref.ts`; edits in `ops.ts`, `styles.ts`. Was writing the names/hyperlink/validation tests. |
+| Everyday editing (clipboard, fill, find, rich text, function catalog) | `a76b858543ae93882` | `15f2c3ca` (+2.6k) | `clip.ts`, `fill.ts`, `find.ts`, `cells-edit.ts`, `rich-text.ts`, `function-catalog.ts` (+spec); edit in `ops.ts`. Keyboard, merge, sheet tabs and PDF export not started. |
+| Real-time co-editing | `a17ebcee3b1a78652` | `261b0cb5` (+1.7k) | `src/lib/office/xlsx/collab/`, `src/lib/server/sheet-live/` (protocol/op-log start). Was writing the protocol and replica modules. Transport choice not yet logged. |
+| Pivots, Excel tables, remaining formulas | `a1e0dba3dbd540582` | `7b8248b8` (+1.8k) | `calc-text.ts` (+spec), `calc-agg.ts`, `calc-groupby.ts`, `calc-info.ts`; edits in `calc.ts`, `calc-dynamic.ts`, `calc-values.ts`. Pivots/tables not started. A scratch file `.fxcheck.mjs` is in the commit and must be dropped before merging. |
+
+- **Expected conflicts when resuming:** all six edit `ops.ts`; charts and pictures both touch the drawing part, so charts must plug into `drawing.ts`; and `xlsx-editor.svelte`/`sheet-grid.svelte` once the UIs land.
+- **To resume:** for each branch, continue in its worktree (or `git worktree add .claude/worktrees/<stream> worktree-agent-<id>`). Finish TDD, UI, tools, contract lock and plan section, drop the `[wip]` label, then merge one at a time, starting with charts, as before.
+- **Main at stop:** `6f343bcd` + this entry. The previous round below is merged; the full `ci:local` gate ran green on it (10,911 unit, 1,027 component). **Not pushed, not released.**
+
 ## 2026-11-25 — xlsx editor gaps closed by four parallel subagents (owner: "use whatever open source you can find and then build it. go go go"; merges `9dfd896d`, `221d5461`, `77602535`, `2c84a368`; on main, not pushed, not released)
 
 - **Owner question first:** Univer (dream-num/univer) was considered and **not adopted**. Its Apache-2.0 core has no .xlsx import/export; that and co-editing are Univer Pro (licensed conversion server). It is React-based, owns the file in its own model (lossy round-trip), and keeps edits UI-side (CLI parity). Our lossless OPC editor stays; the gaps were built on it.
