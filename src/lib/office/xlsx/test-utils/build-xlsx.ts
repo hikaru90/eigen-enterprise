@@ -32,6 +32,10 @@ export type BookSpec = {
   calcChain?: boolean
   /** Leave the styles part out. */
   noStyles?: boolean
+  /** Attributes of the workbook's calcPr (default: calcId="191029"). */
+  calcPr?: string
+  /** Extra relationships of the workbook part (metadata …). */
+  workbookRels?: Array<{ type: string; target: string }>
 }
 
 /** A cell: `c('A1', 5)`, `c('B1', 'text')` (shared string index given), `f('C1', 'A1+B1', 7)`. */
@@ -41,6 +45,38 @@ export const str = (ref: string, index: number, s?: number) =>
   `<c r="${ref}" t="s"${s ? ` s="${s}"` : ''}><v>${index}</v></c>`
 export const fml = (ref: string, formula: string, cached?: number | string, s?: number) =>
   `<c r="${ref}"${typeof cached === 'string' ? ' t="str"' : ''}${s ? ` s="${s}"` : ''}><f>${esc(formula)}</f>${cached !== undefined ? `<v>${esc(String(cached))}</v>` : ''}</c>`
+/** An inline-string cell (no shared-strings table needed). */
+export const txt = (ref: string, text: string, s?: number) =>
+  `<c r="${ref}" t="inlineStr"${s ? ` s="${s}"` : ''}><is><t>${esc(text)}</t></is></c>`
+export const bool = (ref: string, v: boolean) => `<c r="${ref}" t="b"><v>${v ? 1 : 0}</v></c>`
+/** A dynamic-array formula anchor (Excel 365): t="array" over its spill range, cell metadata `cm`. */
+export const dyn = (
+  ref: string,
+  spill: string,
+  formula: string,
+  cached?: number | string,
+  cm = 1,
+) =>
+  `<c r="${ref}" cm="${cm}"${typeof cached === 'string' ? ' t="str"' : ''}><f t="array" ref="${spill}">${esc(formula)}</f>${cached !== undefined ? `<v>${esc(String(cached))}</v>` : ''}</c>`
+/** A legacy array (Ctrl+Shift+Enter) formula anchor over `range`. */
+export const cse = (ref: string, range: string, formula: string, cached?: number) =>
+  `<c r="${ref}"><f t="array" ref="${range}">${esc(formula)}</f>${cached !== undefined ? `<v>${cached}</v>` : ''}</c>`
+
+/** The metadata part Excel writes for dynamic arrays (cell metadata 1 = XLDAPR, fDynamic). */
+export const DA_METADATA = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<metadata xmlns="${'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}" xmlns:xda="http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray"><metadataTypes count="1"><metadataType name="XLDAPR" minSupportedVersion="120000" copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1" clearFormats="1" clearComments="1" assign="1" coerce="1" cellMeta="1"/></metadataTypes><futureMetadata name="XLDAPR" count="1"><bk><extLst><ext uri="{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}"><xda:dynamicArrayProperties fDynamic="1" fCollapsed="0"/></ext></extLst></bk></futureMetadata><cellMetadata count="1"><bk><rc t="1" v="0"/></bk></cellMetadata></metadata>`
+
+/** What a book with dynamic-array formulas needs besides its sheets. */
+export const daParts = (): Pick<BookSpec, 'parts' | 'workbookRels'> => ({
+  parts: {
+    '/xl/metadata.xml': {
+      xml: DA_METADATA,
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml',
+    },
+  },
+  workbookRels: [{ type: 'sheetMetadata', target: 'metadata.xml' }],
+})
+
 export const row = (r: number, cells: string, attrs = '') => `<row r="${r}"${attrs}>${cells}</row>`
 
 export function esc(s: string): string {
@@ -115,12 +151,16 @@ export function buildXlsx(spec: BookSpec): Uint8Array {
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<calcChain xmlns="${NS}"><c r="C1" i="1"/></calcChain>`,
     )
   }
+  for (const [i, r] of (spec.workbookRels ?? []).entries())
+    wbRels.push(
+      `<Relationship Id="rId${k + 10 + i}" Type="${r.type.startsWith('http') ? r.type : REL + r.type}" Target="${r.target}"/>`,
+    )
   for (const [name, p] of Object.entries(spec.parts ?? {})) {
     files[name.replace(/^\//, '')] = strToU8(p.xml)
     overrides.push(`<Override PartName="${name}" ContentType="${p.type}"/>`)
   }
   files['xl/workbook.xml'] = strToU8(
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="${NS}" xmlns:r="${R}"><workbookPr/><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheetEls.join('')}</sheets>${spec.definedNames ? `<definedNames>${spec.definedNames}</definedNames>` : ''}<calcPr calcId="191029"/></workbook>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="${NS}" xmlns:r="${R}"><workbookPr/><bookViews><workbookView activeTab="0"/></bookViews><sheets>${sheetEls.join('')}</sheets>${spec.definedNames ? `<definedNames>${spec.definedNames}</definedNames>` : ''}<calcPr ${spec.calcPr ?? 'calcId="191029"'}/></workbook>`,
   )
   files['xl/_rels/workbook.xml.rels'] = strToU8(
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wbRels.join('')}</Relationships>`,

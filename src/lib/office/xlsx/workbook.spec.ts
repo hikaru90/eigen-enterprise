@@ -140,7 +140,7 @@ describe('xlsx calc: formulas evaluated', () => {
             row(
               1,
               num('A1', 5) +
-                fml('B1', 'OFFSET(A1,0,0)', 5) +
+                fml('B1', 'WEBSERVICE(A1)', 5) +
                 fml('C1', 'B1*2', 10) +
                 fml('D1', 'NOSUCHFN(1)', 9),
             ) + row(2, fml('A2', 'B2', 0) + fml('B2', 'A2', 0)),
@@ -148,8 +148,8 @@ describe('xlsx calc: formulas evaluated', () => {
       ],
     })
     const calc = createCalc(openWorkbook(bytes))
-    expect(calc.cell('S', 0, 1)).toEqual({ value: 5, kept: true, reason: 'OFFSET' })
-    expect(calc.cell('S', 0, 2)).toEqual({ value: 10, kept: true, reason: 'OFFSET' })
+    expect(calc.cell('S', 0, 1)).toEqual({ value: 5, kept: true, reason: 'WEBSERVICE' })
+    expect(calc.cell('S', 0, 2)).toEqual({ value: 10, kept: true, reason: 'WEBSERVICE' })
     expect(calc.cell('S', 0, 3)).toEqual({ value: 9, kept: true, reason: 'NOSUCHFN' })
     expect(calc.cell('S', 1, 0)).toMatchObject({
       kept: true,

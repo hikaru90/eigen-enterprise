@@ -43,7 +43,30 @@ export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
 
 export function usedRange(ed: SheetEditor, sheet: string): Range | null {
   const d = ed.wb.sheet(sheet)
-  return d.maxRow < 0 ? null : { top: 0, left: 0, bottom: d.maxRow, right: d.maxCol }
+  let bottom = d.maxRow
+  let right = d.maxCol
+  // Dynamic arrays can spill past the cells the file has.
+  for (const sp of ed.calc().spills(d.info.name)) {
+    bottom = Math.max(bottom, sp.range.bottom)
+    right = Math.max(right, sp.range.right)
+  }
+  return bottom < 0 ? null : { top: 0, left: 0, bottom, right }
+}
+
+/** Cells a dynamic array spilled into that the file does not have yet (shown like filled cells). */
+function spilledCells(ed: SheetEditor, sheet: string, range: Range) {
+  const data = ed.wb.sheet(sheet)
+  const out: Array<{ row: number; col: number; style: number; formula: null }> = []
+  for (const sp of ed.calc().spills(sheet)) {
+    const r = sp.range
+    for (let row = Math.max(r.top, range.top); row <= Math.min(r.bottom, range.bottom); row++)
+      for (let col = Math.max(r.left, range.left); col <= Math.min(r.right, range.right); col++) {
+        const c = data.cells.get(cellKey(row, col))
+        if (!c || (c.value === null && c.formula === null))
+          out.push({ row, col, style: c?.style ?? 0, formula: null })
+      }
+  }
+  return out
 }
 
 /** The non-empty cells of `range` (null: the used range), row by row. At most `max` cells; a larger range is refused, never cut. */
@@ -60,16 +83,17 @@ export function readCells(
   const data = ed.wb.sheet(info.name)
   const styles = ed.wb.styles()
   const calc = ed.calc()
-  const picked = [...data.cells.values()]
-    .filter(
+  const picked: Array<{ row: number; col: number; style: number; formula: string | null }> = [
+    ...[...data.cells.values()].filter(
       (c) =>
         c.row >= range.top &&
         c.row <= range.bottom &&
         c.col >= range.left &&
         c.col <= range.right &&
         (c.value !== null || c.formula !== null),
-    )
-    .sort((a, b) => a.row - b.row || a.col - b.col)
+    ),
+    ...spilledCells(ed, info.name, range),
+  ].sort((a, b) => a.row - b.row || a.col - b.col)
   if (picked.length > max)
     throw new XlsxError(
       `${info.name}!${rangeName(range)} has ${picked.length} filled cells; read at most ${max} at a time (ask for a smaller range).`,
@@ -113,12 +137,12 @@ export function sheetValues(
     const row: string[] = []
     for (let c = range.left; c <= range.right; c++) {
       const cell = data.cells.get(cellKey(r, c))
-      if (!cell) {
+      const v = calc.cell(info.name, r, c).value
+      if (!cell && v === null) {
         row.push('')
         continue
       }
-      const v = calc.cell(info.name, r, c).value
-      const st = styles.xf(cell.style)
+      const st = styles.xf(cell?.style ?? 0)
       row.push(
         isErrorValue(v)
           ? v.error

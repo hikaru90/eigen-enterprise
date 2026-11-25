@@ -12,7 +12,8 @@ import { kid, kids, make, removeAll, setText } from './xml'
 export type CellContent =
   | { kind: 'clear' }
   | { kind: 'value'; value: Exclude<CellValue, null> }
-  | { kind: 'formula'; formula: string }
+  /** `dynamicCm`: a dynamic-array formula (its cell metadata index); its spill range is written on save. */
+  | { kind: 'formula'; formula: string; dynamicCm?: number }
 
 const rowIndex = (el: Element) => Number(el.getAttribute('r')) - 1
 
@@ -135,6 +136,11 @@ export function writeCell(
   if (style !== undefined) applyStyle(cell, style)
   if (content.kind === 'formula') {
     const f = make(doc, 'f')
+    if (content.dynamicCm !== undefined) {
+      f.setAttribute('t', 'array')
+      f.setAttribute('ref', cellName({ row, col }))
+      cell.setAttribute('cm', String(content.dynamicCm))
+    }
     setText(doc, f, content.formula)
     cell.insertBefore(f, cell.firstChild)
     return

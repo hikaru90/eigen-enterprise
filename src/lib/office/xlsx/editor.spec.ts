@@ -161,14 +161,14 @@ describe('xlsx editor: round trip', () => {
   it('a formula it can’t calculate keeps Excel’s last value on save', () => {
     const ed = createSheetEditor(
       buildXlsx({
-        sheets: [{ name: 'S', rows: row(1, num('A1', 1) + fml('B1', 'OFFSET(A1,0,0)', 41)) }],
+        sheets: [{ name: 'S', rows: row(1, num('A1', 1) + fml('B1', 'WEBSERVICE(A1)', 41)) }],
       }),
     )
     ed.apply({ op: 'set_cells', sheet: 'S', cells: [{ ref: 'A1', value: 2 }] })
-    expect(val(ed.toBytes(), 'S', 0, 1)).toMatchObject({ value: 41, formula: 'OFFSET(A1,0,0)' })
+    expect(val(ed.toBytes(), 'S', 0, 1)).toMatchObject({ value: 41, formula: 'WEBSERVICE(A1)' })
     expect(workbookNotes(ed).find((n) => n.kind === 'formulas_kept')).toMatchObject({
       count: 1,
-      detail: 'OFFSET',
+      detail: 'WEBSERVICE',
     })
   })
 

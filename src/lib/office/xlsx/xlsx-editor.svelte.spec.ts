@@ -123,6 +123,18 @@ describe('xlsx editor', () => {
     })
   })
 
+  it('a spilling formula shows its results in the cells below, and saves as a dynamic array', async () => {
+    render(XlsxEditor, props)
+    await expect.poll(() => shown('B4')).toBe('1500')
+    await typeInto('G1', '=SEQUENCE(3)')
+    await expect.poll(() => shown('G1')).toBe('1')
+    await expect.poll(() => shown('G3')).toBe('3')
+    await expect.poll(() => api.writeBytes.mock.calls.length).toBe(1)
+    const saved = savedBook().sheet('Budget').cells
+    expect(saved.get(cellKey(0, 6))).toMatchObject({ dynamic: true, formulaRef: { bottom: 2 } })
+    expect(saved.get(cellKey(2, 6))?.value).toBe(3)
+  })
+
   it('edits through the formula bar', async () => {
     render(XlsxEditor, props)
     await expect.poll(() => shown('B3')).toBe('300')

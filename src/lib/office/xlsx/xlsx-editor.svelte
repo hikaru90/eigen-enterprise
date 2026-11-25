@@ -224,7 +224,9 @@
         firstRow: r === 0,
         filled: false,
       }
-      if (!cell) {
+      const out = calc.cell(d.info.name, r, c)
+      // An empty cell can still show a value: a dynamic array spilled into it.
+      if (!cell && out.value === null && !out.kept) {
         // An empty cell still draws the lines its neighbours put on the edges it shares with them.
         const lines = borderCss(null, near)
         return lines.length > 0
@@ -238,8 +240,7 @@
             }
           : null
       }
-      const st = styles.xf(cell.style)
-      const out = calc.cell(d.info.name, r, c)
+      const st = styles.xf(cell?.style ?? 0)
       const shown = displayValue(out.value, formatCode(st.numFmtId, st.numFmt, locale), locale, {
         date1904,
       })
