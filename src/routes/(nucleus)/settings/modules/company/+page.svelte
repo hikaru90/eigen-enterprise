@@ -71,8 +71,8 @@
           <span class="text-xs text-foreground/70" data-testid="company-module-state" data-state={mod.state}
             >{STATE[mod.state] ?? mod.state}</span
           >
-          {#if mod.version}<span class="text-xs text-foreground/50">v{mod.version}</span>{/if}
-          {#if mod.commit}<span class="font-mono text-xs text-foreground/50">{mod.commit.slice(0, 12)}</span>{/if}
+          {#if mod.version}<span class="text-xs text-muted-foreground">v{mod.version}</span>{/if}
+          {#if mod.commit}<span class="font-mono text-xs text-muted-foreground">{mod.commit.slice(0, 12)}</span>{/if}
         </div>
         {#if mod.sentence}
           <p class="mt-1 text-xs text-foreground/70" data-testid="company-module-sentence">{mod.sentence}</p>
