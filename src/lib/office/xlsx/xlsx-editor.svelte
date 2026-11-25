@@ -4,20 +4,28 @@
   import type { ChartPlacement } from './chart-anchor'
   import type { ChartPosition } from './chart-ops'
   import type { StylePatch } from './format-cells'
+  import type { LinkTarget } from './hyperlinks'
+  import type { Violation } from './validation'
   import ArrowDownAZIcon from '@lucide/svelte/icons/arrow-down-a-z'
   import ArrowDownZAIcon from '@lucide/svelte/icons/arrow-down-z-a'
   import ChartColumnIcon from '@lucide/svelte/icons/chart-column'
+  import CircleAlertIcon from '@lucide/svelte/icons/circle-alert'
   import CopyIcon from '@lucide/svelte/icons/copy'
   import DownloadIcon from '@lucide/svelte/icons/download'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
   import InfoIcon from '@lucide/svelte/icons/info'
+  import LinkIcon from '@lucide/svelte/icons/link'
+  import ListChecksIcon from '@lucide/svelte/icons/list-checks'
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
+  import LockIcon from '@lucide/svelte/icons/lock'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import Redo2Icon from '@lucide/svelte/icons/redo-2'
   import ScissorsIcon from '@lucide/svelte/icons/scissors'
   import SearchIcon from '@lucide/svelte/icons/search'
   import SheetIcon from '@lucide/svelte/icons/sheet'
+  import SparklesIcon from '@lucide/svelte/icons/sparkles'
   import TableIcon from '@lucide/svelte/icons/table'
+  import TagIcon from '@lucide/svelte/icons/tag'
   import Undo2Icon from '@lucide/svelte/icons/undo-2'
   import { onMount, tick, untrack } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
@@ -40,12 +48,14 @@
   import { createOfficeEditSession } from '../edit-session'
   import { OFFICE_MIME } from '../kinds'
   import { OpcError } from '../ooxml/package'
-  import { readClip, type Clip, type PasteMode } from './clip'
-  import { clipFromClipboard, clipToHtml, clipToTsv } from './clip-interop'
   import { chartsOn } from './chart-anchor'
   import ChartDialog from './chart-dialog.svelte'
   import ChartOverlay from './chart-overlay.svelte'
   import ChartView from './chart-view.svelte'
+  import { readClip, type Clip, type PasteMode } from './clip'
+  import { clipFromClipboard, clipToHtml, clipToTsv } from './clip-interop'
+  import { cfEvaluator, cfRulesOf } from './cond-format'
+  import CondFormatPanel from './cond-format-panel.svelte'
   import { createSheetEditor, workbookNotes, type SheetEditor, type WorkbookNote } from './editor'
   import { fillDownTo, fillShortcutRange } from './fill'
   import {
@@ -81,12 +91,23 @@
     insertReferenceAt,
   } from './formula-edit'
   import { borderCss, fontFamilyCss, verticalOf } from './grid-style'
+  import HyperlinkDialog from './hyperlink-dialog.svelte'
+  import { hyperlinksOf, linkAt, resolvePlace } from './hyperlinks'
+  import NameManagerDialog from './name-manager-dialog.svelte'
+  import { listNames } from './names'
   import { toShownFormula, XlsxLossError, type CellWrite, type Loss, type SheetOp } from './ops'
   import PageSetupDialog from './page-setup-dialog.svelte'
   import { frozenOf } from './panes'
   import { pivotCellLook, readSheetPivots } from './pivot'
   import PivotFields, { type PivotLayout } from './pivot-fields.svelte'
   import { pageSetupOf, viewOptionsOf, type PaperSize } from './print'
+  import ProtectDialog from './protect-dialog.svelte'
+  import {
+    cellProtectionReader,
+    guard,
+    sheetProtectionOf,
+    workbookProtectionOf,
+  } from './protection'
   import {
     cellKey,
     cellName,
@@ -116,6 +137,8 @@
   import TableBar from './table-bar.svelte'
   import TableDialog from './table-dialog.svelte'
   import { readSheetTables, tableCellLook, type TableCellLook } from './tables'
+  import { checkWrites, validationReader } from './validation'
+  import ValidationDialog from './validation-dialog.svelte'
   import { pxToWidth, XlsxError } from './workbook'
 
   /**
@@ -191,6 +214,19 @@
   let creating = $state<{ kind: 'table' | 'pivot'; range: string; header: boolean } | null>(null)
   let pivotFieldsOpen = $state(true)
   let sorting = $state<{ range: Range; header: boolean; first: number } | null>(null)
+  let cfOpen = $state(false)
+  let dvDialog = $state(false)
+  let linkDialog = $state(false)
+  let namesDialog = $state(false)
+  let protectDialog = $state(false)
+  let circleInvalid = $state(false)
+  let dvAlert = $state<{
+    pending: CellWrite[]
+    violation: Violation
+    pos: Pos
+    draftText: string
+    sheet: string
+  } | null>(null)
   let extraSelections = $state<Range[]>([])
   let clipState = $state<{
     clip: Clip
@@ -395,6 +431,56 @@
           : 'custom',
   )
 
+  const cfRules = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? cfRulesOf(editor.wb, info.name) : []
+  })
+  const sheetProt = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? sheetProtectionOf(editor.wb, info.name) : null
+  })
+  const wbProt = $derived.by(() => {
+    void rev
+    return editor && ready ? workbookProtectionOf(editor.wb) : null
+  })
+  const namesList = $derived.by(() => {
+    void rev
+    return editor && ready ? listNames(editor.wb) : []
+  })
+  const sheetNames = $derived(sheets.map((s) => s.name))
+  const canEditCell = $derived.by(() => {
+    void rev
+    const ed = editor
+    const s = sheet
+    const prot = sheetProt
+    if (!ed || !prot || info?.kind !== 'worksheet') return undefined
+    const reader = cellProtectionReader(ed.wb, s)
+    return (r: number, c: number) => !reader(r, c).locked
+  })
+  const activeCellProt = $derived.by(() => {
+    void rev
+    if (!editor || info?.kind !== 'worksheet') return { locked: true, hidden: false }
+    return cellProtectionReader(editor.wb, info.name)(active.row, active.col)
+  })
+  const activeHyperlink = $derived.by(() => {
+    void rev
+    if (!editor || info?.kind !== 'worksheet') return null
+    return hyperlinksOf(editor.wb, info.name).find((l) => within(l.range, active)) ?? null
+  })
+  const activeValidation = $derived.by(() => {
+    void rev
+    if (!editor || info?.kind !== 'worksheet') return null
+    return validationReader(editor.wb, editor.calc(), info.name).at(active.row, active.col)
+  })
+  const validationItemsFor = $derived.by(() => {
+    void rev
+    const ed = editor
+    const s = sheet
+    if (!ed || info?.kind !== 'worksheet') return () => []
+    const reader = validationReader(ed.wb, ed.calc(), s)
+    return (r: number, c: number) => reader.items(r, c)
+  })
+
   const colWidth = $derived.by(() => {
     void rev
     const d = data
@@ -422,11 +508,15 @@
     void rev
     const d = data
     const ed = editor
+    const showCircles = circleInvalid
     if (!d || !ed) return () => null
     const styles = ed.wb.styles()
     const plain = styles.xf(0)
     const calc = ed.calc()
     const date1904 = ed.wb.date1904
+    const cfLook = cfEvaluator(ed.wb, calc, d.info.name)
+    const dvRules = validationReader(ed.wb, calc, d.info.name)
+    const links = hyperlinksOf(ed.wb, d.info.name)
     const richMap = richCells(ed.wb, d.info.name)
     const tbl = tables
     const pvt = pivots
@@ -451,17 +541,37 @@
       }
       const out = calc.cell(d.info.name, r, c)
       // A table's or pivot table's style draws under the cell's own format.
-      const look = lookAt(r, c)
+      const tlook = lookAt(r, c)
       const lookCss: string[] = []
-      if (look) {
-        const top = edge(look.borderTop)
-        const bottom = edge(look.borderBottom)
+      if (tlook) {
+        const top = edge(tlook.borderTop)
+        const bottom = edge(tlook.borderBottom)
         if (top) lookCss.push(`border-top: ${top}`)
         if (bottom) lookCss.push(`border-bottom: ${bottom}`)
       }
-      // An empty cell can still show a value: a dynamic array spilled into it.
-      if (!cell && out.value === null && !out.kept && !look) {
-        // An empty cell still draws the lines its neighbours put on the edges it shares with them.
+      const look = cfLook(r, c)
+      const dv = dvRules.at(r, c)
+      const hasDropdown = dvRules.dropdown(r, c)
+      const prompt =
+        dv && dv.showInput && (dv.inputTitle || dv.inputMessage)
+          ? { title: dv.inputTitle, message: dv.inputMessage }
+          : null
+      const invalid = showCircles ? dvRules.invalid(r, c) : false
+      const resolvedLink = linkAt(ed.wb, calc, d.info.name, r, c, links)
+      const explicitLink = links.some((l) => within(l.range, { row: r, col: c }))
+      const link = resolvedLink ? { ...resolvedLink, explicit: explicitLink } : null
+      // An empty cell can still show a value (spill), CF look, validation prompt/dropdown, link or neighbour borders.
+      if (
+        !cell &&
+        out.value === null &&
+        !out.kept &&
+        !look &&
+        !tlook &&
+        !link &&
+        !invalid &&
+        !hasDropdown &&
+        !prompt
+      ) {
         const lines = borderCss(null, near)
         return lines.length > 0
           ? {
@@ -475,9 +585,12 @@
           : null
       }
       const st = styles.xf(cell?.style ?? 0)
-      const shown = displayValue(out.value, formatCode(st.numFmtId, st.numFmt, locale), locale, {
-        date1904,
-      })
+      const shown = displayValue(
+        out.value,
+        look?.numFmt ?? formatCode(st.numFmtId, st.numFmt, locale),
+        locale,
+        { date1904 },
+      )
       const v = out.value
       const natural =
         typeof v === 'number'
@@ -495,37 +608,56 @@
               ? 'left'
               : natural
       const css: string[] = []
-      if (st.font.bold || (look?.bold && !st.fill)) css.push('font-weight: 600')
-      if (st.font.italic) css.push('font-style: italic')
-      const deco = [st.font.underline ? 'underline' : '', st.font.strike ? 'line-through' : '']
+      // Precedence as in Excel: conditional formatting over the cell's own format over a table's style.
+      const bold = look?.bold ?? (st.font.bold || (!!tlook?.bold && !st.fill))
+      const italic = look?.italic ?? st.font.italic
+      const underline = look?.underline ?? (st.font.underline || !!link)
+      const strike = look?.strike ?? st.font.strike
+      if (bold) css.push('font-weight: 600')
+      if (italic) css.push('font-style: italic')
+      const deco = [underline ? 'underline' : '', strike ? 'line-through' : '']
         .filter(Boolean)
         .join(' ')
       if (deco) css.push(`text-decoration: ${deco}`)
-      const color = shown.color ?? st.font.color
+      const effectiveFill = look?.fill ?? st.fill
+      const color = shown.color ?? look?.fontColor ?? st.font.color ?? (link ? '#0563C1' : null)
       // Black text (Excel's default) is left to the theme so dark mode stays readable, unless the cell has a fill.
-      if (color && (st.fill || color.toUpperCase() !== '#000000')) css.push(`color: ${color}`)
-      else if (st.fill) css.push('color: #000')
-      if (st.fill) css.push(`background-color: ${st.fill}`)
-      else if (look?.fill) {
-        css.push(`background-color: ${look.fill}`)
-        if (!color || color.toUpperCase() === '#000000') css.push(`color: ${look.color ?? '#000'}`)
+      if (color && (effectiveFill || color.toUpperCase() !== '#000000')) css.push(`color: ${color}`)
+      else if (effectiveFill) css.push('color: #000')
+      if (effectiveFill) css.push(`background-color: ${effectiveFill}`)
+      else if (tlook?.fill) {
+        css.push(`background-color: ${tlook.fill}`)
+        if (!color || color.toUpperCase() === '#000000') css.push(`color: ${tlook.color ?? '#000'}`)
       }
       if (st.font.sizePt && st.font.sizePt !== 11)
         css.push(`font-size: ${Math.round(st.font.sizePt * 1.27)}px`)
       if (st.indent) css.push(`padding-left: ${4 + st.indent * 9}px`)
       const family = fontFamilyCss(st, plain)
       if (family) css.push(family)
-      css.push(...borderCss(st.border, { ...near, filled: !!st.fill || !!look?.fill }))
+      const bCss = borderCss(st.border, { ...near, filled: !!effectiveFill || !!tlook?.fill })
+      if (look?.border) {
+        const edgeShadow = `inset 0 0 0 1px ${look.border}`
+        const idx = bCss.findIndex((x) => x.startsWith('box-shadow:'))
+        if (idx >= 0) bCss[idx] = `${bCss[idx]}, ${edgeShadow}`
+        else bCss.push(`box-shadow: ${edgeShadow}`)
+      }
+      css.push(...bCss)
       css.push(...lookCss)
       const runs = cell?.formula ? undefined : richMap.get(cellKey(r, c))
       return {
-        text: shown.text,
+        text: look?.hideValue ? '' : shown.text,
         align,
         css: css.join('; '),
         wrap: st.wrap,
         vertical: verticalOf(st),
         kept: out.kept ? out.reason : null,
         unreadFormat: !!shown.unreadFormat,
+        bar: look?.bar,
+        icon: look?.icon,
+        invalid,
+        hasDropdown,
+        prompt,
+        link,
         ...(runs ? { runs } : {}),
       }
     }
@@ -563,6 +695,8 @@
   function contentText(r: number, c: number): string {
     const cell = data?.cells.get(cellKey(r, c))
     if (!cell || !editor) return ''
+    if (cell.formula !== null && sheetProt && cellProtectionReader(editor.wb, sheet)(r, c).hidden)
+      return ''
     const st = editor.wb.styles().xf(cell.style)
     return editText(
       cell.value,
@@ -718,6 +852,9 @@
     editing = false
     extraRows = 0
     extraCols = 0
+    dvAlert = null
+    filterMenu = null
+    sorting = null
     view = { status: 'ready' }
     rev++
   }
@@ -857,9 +994,10 @@
     if (!opts.acceptLosses) {
       let losses: Loss[]
       try {
+        guard(editor.wb, op)
         losses = editor.losses(op)
       } catch (err) {
-        failure = shown(err)
+        failure = err instanceof XlsxError ? { error: err.message, agent: null } : shown(err)
         return false
       }
       if (losses.length > 0 || op.op === 'delete_sheet') {
@@ -955,7 +1093,21 @@
       if (targetSheet !== sheet) sheet = targetSheet
       return
     }
-    await change({ op: 'set_cells', sheet: targetSheet, cells: [writeOf(targetPos, text)] })
+    const writes = [writeOf(targetPos, text)]
+    // Data validation: the entry is checked on the value the cell would hold (Stop / Warning / Information).
+    let violations: Violation[]
+    try {
+      violations = checkWrites(editor.wb, targetSheet, writes)
+    } catch (err) {
+      failure = err instanceof XlsxError ? { error: err.message, agent: null } : shown(err)
+      return
+    }
+    const v = violations.find((x) => !x.silent)
+    if (v) {
+      dvAlert = { pending: writes, violation: v, pos: targetPos, draftText: text, sheet: targetSheet }
+      return
+    }
+    await change({ op: 'set_cells', sheet: targetSheet, cells: writes })
     if (targetSheet !== sheet) {
       sheet = targetSheet
       active = targetPos
@@ -1061,6 +1213,83 @@
     const html = event.clipboardData?.getData('text/html') ?? ''
     const plain = event.clipboardData?.getData('text/plain') ?? ''
     void pasteSpecial('all', { pos, html, plain })
+  }
+
+  async function runModalOp(op: SheetOp): Promise<string | null> {
+    const ok = await change(op, { acceptLosses: true })
+    if (ok) return null
+    const err =
+      failure?.error ??
+      (mode.kind !== 'open' ? m.drive_sheet_view_only() : m.drive_sheet_lock_failed())
+    failure = null
+    return err
+  }
+
+  function cancelDvAlert() {
+    dvAlert = null
+    grid?.focus()
+  }
+
+  async function retryDvAlert() {
+    const a = dvAlert
+    dvAlert = null
+    await tick()
+    if (a && a.pending.length === 1) {
+      active = a.pos
+      anchor = a.pos
+      await tick()
+      grid?.startEdit(a.draftText, true)
+    } else {
+      grid?.focus()
+    }
+  }
+
+  async function keepDvAlert() {
+    const a = dvAlert
+    dvAlert = null
+    if (a) await change({ op: 'set_cells', sheet: a.sheet, cells: a.pending })
+    grid?.focus()
+  }
+
+  function onGridBlocked(pos?: Pos) {
+    if (!canEdit) {
+      notice = m.drive_sheet_view_only()
+      return
+    }
+    if (mode.kind === 'watching') {
+      notice = m.drive_sheet_someone_editing({ name: mode.holder.name })
+      return
+    }
+    if (editor && info?.kind === 'worksheet' && sheetProt && pos) {
+      try {
+        guard(editor.wb, {
+          op: 'set_cells',
+          sheet,
+          cells: [{ ref: cellName(pos), value: null }],
+        })
+      } catch (err) {
+        failure = err instanceof XlsxError ? { error: err.message, agent: null } : shown(err)
+      }
+    }
+  }
+
+  async function followPlace(target: LinkTarget) {
+    if (target.kind !== 'place' || !editor) return
+    const dest = resolvePlace(editor.wb, target.location, sheet)
+    if (!dest) {
+      notice = m.drive_sheet_link_bad_target()
+      return
+    }
+    if (dest.sheet !== sheet) sheet = dest.sheet
+    active = { row: dest.range.top, col: dest.range.left }
+    anchor = { row: dest.range.bottom, col: dest.range.right }
+    await tick()
+    grid?.focus()
+  }
+
+  async function removeActiveLink() {
+    await change({ op: 'hyperlink_remove', sheet, range: rangeName(sel) })
+    grid?.focus()
   }
 
   function copyText(range: Range): string {
@@ -1880,6 +2109,11 @@
 
   function onFormulaFocus() {
     if (!editable) return
+    if (canEditCell && !canEditCell(active.row, active.col)) {
+      onGridBlocked(active)
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      return
+    }
     if (!editing) {
       draft = barText
       draftRuns = editor
@@ -2276,6 +2510,53 @@
           data-testid="xlsx-insert-chart"
           ><ChartColumnIcon class="size-4" aria-hidden="true" />{m.drive_sheet_chart_insert()}</button
         >
+        <button
+          type="button"
+          class="{btn} {cfOpen ? 'bg-muted text-foreground' : ''}"
+          aria-pressed={cfOpen}
+          onclick={() => (cfOpen = !cfOpen)}
+          title={m.drive_sheet_cf_btn_hint()}
+          data-testid="xlsx-cf-open"
+          ><SparklesIcon class="size-4" aria-hidden="true" />{m.drive_sheet_cf_btn()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (dvDialog = true)}
+          data-testid="xlsx-dv-open"
+          ><ListChecksIcon class="size-4" aria-hidden="true" />{m.drive_sheet_dv_btn()}</button
+        >
+        <button
+          type="button"
+          class="{btn} {circleInvalid ? 'bg-muted text-foreground' : ''}"
+          aria-pressed={circleInvalid}
+          onclick={() => (circleInvalid = !circleInvalid)}
+          data-testid="xlsx-dv-circles-toggle"
+          ><CircleAlertIcon class="size-4" aria-hidden="true" />{m.drive_sheet_dv_circles()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (linkDialog = true)}
+          data-testid="xlsx-link-btn"
+          ><LinkIcon class="size-4" aria-hidden="true" />{m.drive_sheet_link_btn()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (namesDialog = true)}
+          data-testid="xlsx-names-open"
+          ><TagIcon class="size-4" aria-hidden="true" />{m.drive_sheet_names_btn()}</button
+        >
+        <button
+          type="button"
+          class="{btn} {sheetProt || wbProt?.structure ? 'bg-muted text-foreground' : ''}"
+          onclick={() => (protectDialog = true)}
+          data-testid="xlsx-protect-open"
+          ><LockIcon class="size-4" aria-hidden="true" />{sheetProt
+            ? m.drive_sheet_protect_on()
+            : m.drive_sheet_protect_btn()}</button
+        >
         <span
           class="ml-auto flex items-center gap-1.5 px-2 text-xs text-muted-foreground"
           role="status"
@@ -2538,6 +2819,7 @@
       {/if}
     {:else if data}
       <div class="flex min-h-0 min-w-0 flex-1">
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col">
       <SheetGrid
         bind:this={grid}
         bind:active
@@ -2555,6 +2837,11 @@
         {rev}
         {editable}
         {data}
+        {canEditCell}
+        validationItems={validationItemsFor}
+        onfollowlink={(t) => void followPlace(t)}
+        onopenlinkedit={() => (linkDialog = true)}
+        onremovelink={() => void removeActiveLink()}
         label={m.drive_sheet_grid_label({ sheet: info?.name ?? '' })}
         editTextOf={contentText}
         oncommit={(pos, text) => void commitCell(pos, text)}
@@ -2588,12 +2875,7 @@
         onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
         onresize={onResize}
         oncellpointerdown={() => (selectedChartId = null)}
-        onblocked={() =>
-          (notice = canEdit
-            ? mode.kind === 'watching'
-              ? m.drive_sheet_someone_editing({ name: mode.holder.name })
-              : notice
-            : m.drive_sheet_view_only())}
+        onblocked={onGridBlocked}
       >
         {#snippet overlay({ colLeft, rowTop, maxCol, maxRow })}
           {#if sheetCharts.length > 0 && editor}
@@ -2615,7 +2897,8 @@
             />
           {/if}
         {/snippet}
-      </SheetGrid>
+          </SheetGrid>
+        </div>
       {#if activePivot && pivotFieldsOpen}
         <PivotFields
           pivot={activePivot}
@@ -2633,6 +2916,18 @@
           data-testid="xlsx-pivot-fields-open">{m.drive_sheet_pivot_fields()}</button
         >
       {/if}
+        {#if cfOpen && editable && info}
+          <CondFormatPanel
+            sheet={info.name}
+            selection={rangeName(sel)}
+            rules={cfRules}
+            onop={(op) => runModalOp(op)}
+            onclose={() => {
+              cfOpen = false
+              grid?.focus()
+            }}
+          />
+        {/if}
       </div>
     {/if}
 
@@ -2990,6 +3285,19 @@
   />
 {/if}
 
+{#if dvDialog && info?.kind === 'worksheet'}
+  <ValidationDialog
+    sheet={info.name}
+    range={rangeName(sel)}
+    current={activeValidation}
+    onop={(op) => runModalOp(op)}
+    onclose={() => {
+      dvDialog = false
+      grid?.focus()
+    }}
+  />
+{/if}
+
 {#if chartDialog && editor}
   {@const cd = chartDialog}
   <ChartDialog
@@ -3006,6 +3314,101 @@
     }}
   />
 {/if}
+
+{#if linkDialog && info?.kind === 'worksheet'}
+  <HyperlinkDialog
+    sheet={info.name}
+    range={rangeName(sel)}
+    current={activeHyperlink}
+    displayText={cellAt(active.row, active.col)?.text ?? ''}
+    onop={(op) => runModalOp(op)}
+    onclose={() => {
+      linkDialog = false
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if namesDialog && ready}
+  <NameManagerDialog
+    names={namesList}
+    sheets={sheetNames}
+    defaultRefersTo="={sheet}!${colName(sel.left)}${sel.top + 1}{sel.top === sel.bottom &&
+    sel.left === sel.right
+      ? ''
+      : `:$${colName(sel.right)}$${sel.bottom + 1}`}"
+    onop={(op) => runModalOp(op)}
+    onclose={() => {
+      namesDialog = false
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if protectDialog && info?.kind === 'worksheet'}
+  <ProtectDialog
+    sheet={info.name}
+    selection={rangeName(sel)}
+    {sheetProt}
+    {wbProt}
+    cellProt={activeCellProt}
+    onop={(op) => runModalOp(op)}
+    onclose={() => {
+      protectDialog = false
+      grid?.focus()
+    }}
+  />
+{/if}
+
+<AlertDialog.Root
+  open={dvAlert !== null}
+  onOpenChange={(open) => {
+    if (!open) dvAlert = null
+  }}
+>
+  <AlertDialog.Content class="max-w-md" data-testid="xlsx-dv-alert">
+    <AlertDialog.Header>
+      <AlertDialog.Title>
+        {dvAlert?.violation.title ??
+          (dvAlert?.violation.errorStyle === 'warning'
+            ? m.drive_sheet_dv_alert_warn_title()
+            : dvAlert?.violation.errorStyle === 'information'
+              ? m.drive_sheet_dv_alert_info_title()
+              : m.drive_sheet_dv_alert_stop_title())}
+      </AlertDialog.Title>
+      <AlertDialog.Description>
+        {dvAlert?.violation.message ??
+          (dvAlert?.violation.errorStyle === 'warning'
+            ? m.drive_sheet_dv_alert_warn_body()
+            : m.drive_sheet_dv_alert_stop_body())}
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      {#if dvAlert?.violation.errorStyle === 'stop'}
+        <Button variant="outline" onclick={cancelDvAlert} data-testid="xlsx-dv-alert-cancel"
+          >{m.drive_sheet_cancel()}</Button
+        >
+        <Button onclick={() => void retryDvAlert()} data-testid="xlsx-dv-retry"
+          >{m.drive_sheet_dv_retry()}</Button
+        >
+      {:else if dvAlert?.violation.errorStyle === 'warning'}
+        <Button variant="outline" onclick={() => void retryDvAlert()} data-testid="xlsx-dv-retry"
+          >{m.drive_sheet_dv_retry()}</Button
+        >
+        <Button onclick={() => void keepDvAlert()} data-testid="xlsx-dv-keep"
+          >{m.drive_sheet_dv_keep()}</Button
+        >
+      {:else}
+        <Button variant="outline" onclick={cancelDvAlert} data-testid="xlsx-dv-alert-cancel"
+          >{m.drive_sheet_cancel()}</Button
+        >
+        <Button onclick={() => void keepDvAlert()} data-testid="xlsx-dv-ok"
+          >{m.drive_sheet_dv_ok()}</Button
+        >
+      {/if}
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
 
 <AlertDialog.Root
   open={confirm !== null}

@@ -83,7 +83,7 @@ function searchText(
 }
 
 /** A cell's content as typed (Excel's "Formulas"): "=A1+1", "12.5", "text", "TRUE". */
-function contentText(_wb: Workbook, cell: CellData): string {
+export function contentText(_wb: Workbook, cell: CellData): string {
   if (cell.formula !== null) return `=${toShownFormula(cell.formula)}`
   const v = cell.value
   if (v === null) return ''

@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  import type { CfLook } from './cond-format'
+  import type { LinkTarget } from './hyperlinks'
   import type { RichRun } from './rich-text'
 
   export type GridCell = {
@@ -13,6 +15,12 @@
     kept: string | null
     /** The number format can't be shown: the plain value is. */
     unreadFormat: boolean
+    bar?: CfLook['bar']
+    icon?: CfLook['icon']
+    invalid?: boolean
+    hasDropdown?: boolean
+    prompt?: { title: string | null; message: string | null } | null
+    link?: { target: LinkTarget; tooltip: string | null; explicit: boolean } | null
     /** Rich-text runs inside the cell (if formatted in substrings). */
     runs?: RichRun[]
   }
@@ -21,14 +29,16 @@
 </script>
 
 <script lang="ts">
-  import type { Snippet } from 'svelte'
   import type { SheetOutline } from './rows-cols'
   import type { SheetData } from './workbook'
+  import type { Snippet } from 'svelte'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
   import { onMount, tick } from 'svelte'
   import { m } from '$lib/paraglide/messages.js'
+  import CfIcon from './cf-icon.svelte'
   import { cycleAbsoluteAt, type FormulaRefHighlight } from './formula-edit'
+  import { openableUrl } from './hyperlinks'
   import { resolveGridKey } from './keyboard'
   import { colName, type Range } from './ref'
   import { runCss } from './rich-text'
@@ -92,6 +102,11 @@
     showHeadings = true,
     onreach,
     onblocked,
+    canEditCell,
+    validationItems,
+    onfollowlink,
+    onopenlinkedit,
+    onremovelink,
     frozenRows = 0,
     frozenCols = 0,
     filter = null,
@@ -150,7 +165,18 @@
     showGridlines?: boolean
     showHeadings?: boolean
     onreach?: (axis: 'row' | 'col') => void
-    onblocked?: () => void
+    /** A key that would edit while editing is not allowed (view only or protected). */
+    onblocked?: (pos?: Pos) => void
+    /** Per-cell edit check (protected sheets). */
+    canEditCell?: (row: number, col: number) => boolean
+    /** Data validation list items for a cell. */
+    validationItems?: (row: number, col: number) => string[]
+    /** Follow an in-workbook hyperlink target. */
+    onfollowlink?: (target: LinkTarget) => void
+    /** Open the hyperlink editor for the active cell. */
+    onopenlinkedit?: () => void
+    /** Remove the hyperlink on the active cell. */
+    onremovelink?: () => void
     frozenRows?: number
     frozenCols?: number
     /** The sheet's AutoFilter and its tables' filters: their ranges (drop-downs on each first row), and which columns filter. */
@@ -195,6 +221,7 @@
   let viewW = $state(800)
   let viewH = $state(400)
   let dragging = false
+  let dvOpen = $state(false)
   let endMode = false
   let pointPickAnchor: Pos | null = null
 
@@ -275,6 +302,10 @@
     ),
   )
   const activeId = $derived(`xlsx-cell-${active.row}-${active.col}`)
+  const activeCell = $derived.by(() => {
+    void rev
+    return cellAt(active.row, active.col)
+  })
 
   onMount(() => {
     if (!scroller) return
@@ -324,6 +355,7 @@
   }
 
   function moveTo(row: number, col: number, extend = false) {
+    dvOpen = false
     const next = {
       row: Math.max(0, Math.min(rows - 1, row)),
       col: Math.max(0, Math.min(cols - 1, col)),
@@ -336,20 +368,34 @@
     void tick().then(reveal)
   }
 
-  async function beginEdit(initial: string | null) {
+  function lockedIn(r: Range): Pos | null {
+    if (!canEditCell) return null
+    for (let row = r.top; row <= r.bottom; row++)
+      for (let col = r.left; col <= r.right; col++) if (!canEditCell(row, col)) return { row, col }
+    return null
+  }
+
+  async function beginEdit(initial: string | null, selectAll = false) {
+    dvOpen = false
     if (!editable) {
-      onblocked?.()
+      onblocked?.(active)
       return
     }
     const mr = mergeAt(active.row, active.col)
+    const at = mr && !mr.start ? { row: mr.range.top, col: mr.range.left } : active
+    if (canEditCell && !canEditCell(at.row, at.col)) {
+      onblocked?.(at)
+      return
+    }
     if (mr && !mr.start) moveTo(mr.range.top, mr.range.left)
     draft = initial ?? editTextOf(active.row, active.col)
     editing = true
     await tick()
     cellEditor?.focus()
     const end = draft.length
-    cellEditor?.setSelectionRange(end, end)
-    oneditcursor?.(end, end)
+    const start = selectAll ? 0 : end
+    cellEditor?.setSelectionRange(start, end)
+    oneditcursor?.(start, end)
   }
 
   /** Ends editing: the text goes to the page (`commit`) or is dropped. */
@@ -370,12 +416,47 @@
     if (refocus) focus()
   }
 
-  export function startEdit(initial: string | null = null) {
-    void beginEdit(initial)
+  /** Starts editing with `initial` (null: the cell's content); `selectAll` selects it, so typing replaces it (validation Retry). */
+  export function startEdit(initial: string | null = null, selectAll = false) {
+    void beginEdit(initial, selectAll)
+  }
+
+  function toggleDvMenu() {
+    if (!editable || editing) {
+      if (!editable) onblocked?.(active)
+      return
+    }
+    if (canEditCell && !canEditCell(active.row, active.col)) {
+      onblocked?.(active)
+      return
+    }
+    dvOpen = !dvOpen
+  }
+
+  function pickDvItem(item: string) {
+    dvOpen = false
+    oncommit({ ...active }, item, 'none')
+    focus()
   }
 
   function onKeydown(event: KeyboardEvent) {
     if (editing || event.defaultPrevented) return
+    // Alt+↓ on a cell with a validation list opens its drop-down (a filter button wins, as in Excel).
+    if (
+      event.altKey &&
+      event.key === 'ArrowDown' &&
+      activeCell?.hasDropdown &&
+      !filterButtonAt(active.row, active.col)
+    ) {
+      event.preventDefault()
+      toggleDvMenu()
+      return
+    }
+    if (event.key === 'Escape' && dvOpen) {
+      event.preventDefault()
+      dvOpen = false
+      return
+    }
     const mr = mergeAt(active.row, active.col)?.range ?? null
     const visRows = Math.max(1, Math.floor(viewH / 20) - 2)
     const visCols = Math.max(1, Math.floor(viewW / 64) - 1)
@@ -431,11 +512,16 @@
       case 'begin_edit':
         void beginEdit(action.initial)
         break
-      case 'clear':
-        if (!editable) onblocked?.()
+      case 'clear': {
+        // Locked cells on a protected sheet refuse clearing, as typing.
+        const locked = !editable
+          ? active
+          : (allSelections.map(lockedIn).find((x) => x !== null) ?? null)
+        if (locked) onblocked?.(locked)
         else if (onclearranges) onclearranges(allSelections)
         else onclear(sel)
         break
+      }
       case 'cancel':
         extraSelections = []
         anchor = { ...active }
@@ -512,6 +598,7 @@
     if (event.button !== 0) return
     const p = posFromEvent(event)
     if (!p) return
+    dvOpen = false
     if (pointSelectMode && onpointselect) {
       event.preventDefault()
       pointPickAnchor = p
@@ -533,6 +620,17 @@
       extraSelections = []
       active = at
       anchor = at
+    }
+    if (event.metaKey || event.ctrlKey) {
+      const link = cellAt(at.row, at.col)?.link
+      if (link) {
+        if (link.target.kind === 'place') onfollowlink?.(link.target)
+        else if (openableUrl(link.target.url))
+          window.open(link.target.url, '_blank', 'noopener,noreferrer')
+        focus()
+        event.preventDefault()
+        return
+      }
     }
     dragging = true
     focus()
@@ -566,6 +664,7 @@
   }
 
   function pickColumn(c: number, extend: boolean, addRange: boolean) {
+    dvOpen = false
     if (editing) finishEdit(true)
     if (extend) {
       anchor = { row: 0, col: anchor.col }
@@ -582,6 +681,7 @@
   }
 
   function pickRow(r: number, extend: boolean, addRange: boolean) {
+    dvOpen = false
     if (editing) finishEdit(true)
     if (extend) {
       anchor = { row: anchor.row, col: 0 }
@@ -620,8 +720,9 @@
   function onPaste(event: ClipboardEvent) {
     if (editing) return
     event.preventDefault()
-    if (!editable) {
-      onblocked?.()
+    const locked = !editable ? active : lockedIn(sel)
+    if (locked) {
+      onblocked?.(locked)
       return
     }
     if (onpasteclip) {
@@ -766,18 +867,57 @@
               ? m.drive_sheet_kept_cell({ reason: cell.kept })
               : cell?.unreadFormat
                 ? m.drive_sheet_unread_format()
-                : undefined}
+                : (cell?.link?.tooltip ?? undefined)}
             data-ref="{colName(c)}{r + 1}"
+            data-invalid={cell?.invalid ? 'true' : undefined}
+            data-has-dropdown={cell?.hasDropdown ? 'true' : undefined}
+            data-link={cell?.link
+              ? cell.link.target.kind === 'url'
+                ? cell.link.target.url
+                : `#${cell.link.target.location}`
+              : undefined}
           >
-            <span class="block">
-              {#if cell?.runs && cell.runs.length > 0}
-                {#each cell.runs as run, rIdx (rIdx)}
-                  <span style={runCss(run)}>{run.text}</span>
-                {/each}
-              {:else}
-                {cell?.text ?? ''}
-              {/if}
-            </span>
+            {#if cell?.bar}
+              {@const bar = cell.bar}
+              {@const bg = bar.gradient
+                ? `linear-gradient(to ${bar.negative ? 'left' : 'right'}, ${bar.color}, #ffffff)`
+                : bar.color}
+              <div
+                aria-hidden="true"
+                data-testid="xlsx-cf-bar"
+                data-negative={bar.negative ? 'true' : undefined}
+                style="position: absolute; top: 2px; bottom: 2px; left: {bar.from}%; width: {Math.max(
+                  0,
+                  bar.to - bar.from,
+                )}%; background: {bg}; {bar.border
+                  ? `border: 1px solid ${bar.border};`
+                  : ''} opacity: 0.65; pointer-events: none;"
+              ></div>
+            {/if}
+            {#if cell?.bar && cell.bar.axis !== null}
+              <div
+                aria-hidden="true"
+                data-testid="xlsx-cf-axis"
+                style="position: absolute; top: 0; bottom: 0; left: {cell.bar
+                  .axis}%; width: 1px; background-color: {cell.bar.axisColor ??
+                  '#000000'}; opacity: 0.7; pointer-events: none;"
+              ></div>
+            {/if}
+            <span class="relative block" style="z-index: 1"
+              >{#if cell?.icon}<span
+                  style="display: inline-flex; vertical-align: middle; margin-right: 4px;"
+                  ><CfIcon set={cell.icon.set} index={cell.icon.index} /></span
+                >{/if}{#if cell?.runs && cell.runs.length > 0}{#each cell.runs as run, rIdx (rIdx)}<span
+                    style={runCss(run)}>{run.text}</span
+                  >{/each}{:else}{cell?.text ?? ''}{/if}</span
+            >
+            {#if cell?.invalid}
+              <div
+                aria-hidden="true"
+                data-testid="xlsx-dv-invalid"
+                style="position: absolute; inset: 1px; border: 2px solid #DC2626; border-radius: 9999px; pointer-events: none; z-index: 2;"
+              ></div>
+            {/if}
             {#if fb}
               {@const on = filter!.filtered(r, c)}
               {@const what = on
@@ -903,6 +1043,116 @@
         finishEdit(true, 'none', false)
       }}
       data-testid="xlsx-cell-editor"></textarea>
+  {/if}
+  {#if quad === activeQuad && !editing && activeCell?.hasDropdown && editable && (!canEditCell || canEditCell(active.row, active.col))}
+    <button
+      type="button"
+      tabindex="-1"
+      class="g-abs inline-flex items-center justify-center rounded-sm border border-border bg-background text-muted-foreground hover:text-foreground"
+      style="top: {activeBox.top - dy + 1}px; left: {activeBox.left -
+        dx +
+        activeBox.width +
+        1}px; width: 18px; height: {Math.min(activeBox.height, 20)}px; z-index: 6;"
+      aria-haspopup="listbox"
+      aria-expanded={dvOpen}
+      aria-label={m.drive_sheet_dv_dropdown_label({
+        ref: `${colName(active.col)}${active.row + 1}`,
+      })}
+      onpointerdown={(e) => e.stopPropagation()}
+      ondblclick={(e) => e.stopPropagation()}
+      onclick={() => toggleDvMenu()}
+      data-testid="xlsx-dv-dropdown-btn"
+      ><ChevronDownIcon class="size-3" aria-hidden="true" /></button
+    >
+    {#if dvOpen && validationItems}
+      {@const items = validationItems(active.row, active.col)}
+      <div
+        role="listbox"
+        tabindex="-1"
+        class="g-abs max-h-48 min-w-28 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md"
+        style="top: {activeBox.top - dy + activeBox.height}px; left: {activeBox.left -
+          dx}px; z-index: 20;"
+        onpointerdown={(e) => e.stopPropagation()}
+        data-testid="xlsx-dv-menu"
+      >
+        {#each items as item, idx (idx)}
+          <button
+            type="button"
+            role="option"
+            aria-selected={activeCell.text === item}
+            class="block w-full rounded px-2 py-1 text-left text-xs hover:bg-muted"
+            ondblclick={(e) => e.stopPropagation()}
+            onclick={() => pickDvItem(item)}
+            data-testid="xlsx-dv-option">{item}</button
+          >
+        {/each}
+      </div>
+    {/if}
+  {/if}
+  {#if quad === activeQuad && !editing && !dvOpen && activeCell?.prompt && (activeCell.prompt.title || activeCell.prompt.message)}
+    <div
+      role="note"
+      class="g-abs g-ghost max-w-60 rounded border border-border bg-popover px-2 py-1 text-xs shadow-sm"
+      style="top: {activeBox.top - dy + activeBox.height + 2}px; left: {activeBox.left -
+        dx}px; z-index: 15;"
+      data-testid="xlsx-dv-prompt"
+    >
+      {#if activeCell.prompt.title}<div class="font-medium">{activeCell.prompt.title}</div>{/if}
+      {#if activeCell.prompt.message}<div>{activeCell.prompt.message}</div>{/if}
+    </div>
+  {/if}
+  {#if quad === activeQuad && !editing && !dvOpen && activeCell?.link}
+    {@const lk = activeCell.link}
+    {@const placeAbove = activeBox.top - dy > 32}
+    <div
+      class="g-abs flex items-center gap-2 rounded border border-border bg-popover px-2 py-1 text-xs shadow-md"
+      style="top: {placeAbove
+        ? activeBox.top - dy - 28
+        : activeBox.top -
+          dy +
+          activeBox.height +
+          (activeCell.prompt ? 46 : 2)}px; left: {activeBox.left - dx}px; z-index: 18;"
+      role="group"
+      aria-label={m.drive_sheet_link_title({ ref: `${colName(active.col)}${active.row + 1}` })}
+      onpointerdown={(e) => e.stopPropagation()}
+      data-testid="xlsx-link-popover"
+    >
+      <span class="max-w-52 truncate text-muted-foreground">
+        {lk.target.kind === 'url' ? lk.target.url : lk.target.location}
+      </span>
+      {#if lk.target.kind === 'url' && openableUrl(lk.target.url)}
+        <!-- eslint-disable svelte/no-navigation-without-resolve -- an external web/mail link from the cell, checked by openableUrl(), not an app route -->
+        <a
+          href={lk.target.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="font-medium text-primary underline"
+          data-testid="xlsx-link-open">{m.drive_sheet_link_open()}</a
+        >
+        <!-- eslint-enable svelte/no-navigation-without-resolve -->
+      {:else if lk.target.kind === 'place'}
+        <button
+          type="button"
+          class="font-medium text-primary underline"
+          onclick={() => onfollowlink?.(lk.target)}
+          data-testid="xlsx-link-open">{m.drive_sheet_link_open()}</button
+        >
+      {/if}
+      {#if editable && lk.explicit && onopenlinkedit && onremovelink}
+        <button
+          type="button"
+          class="text-muted-foreground hover:text-foreground"
+          onclick={() => onopenlinkedit()}
+          data-testid="xlsx-link-chip-edit">{m.drive_sheet_link_edit()}</button
+        >
+        <button
+          type="button"
+          class="text-destructive hover:underline"
+          onclick={() => onremovelink()}
+          data-testid="xlsx-link-chip-remove">{m.drive_sheet_link_remove()}</button
+        >
+      {/if}
+    </div>
   {/if}
 {/snippet}
 

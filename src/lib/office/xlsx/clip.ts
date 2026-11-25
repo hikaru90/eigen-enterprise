@@ -1,12 +1,10 @@
 import type { SheetEditor } from './editor'
 import { translateFormulaToA1, translateFormulaToR1C1 } from '@borgar/fx'
 import { parseA1Ref, stringifyA1Ref, tokenize } from '@borgar/fx/xlsx'
+import { relsPartOf } from '../ooxml/package'
 import { needsDynamicArray } from './calc-static'
 import { CT_CHART } from './chart-anchor'
 import { autoFilterOf } from './filter'
-import { relsPartOf } from '../ooxml/package'
-import { autoExpandTables, readSheetTables, REL_TABLE } from './tables'
-import { WORKSHEET_ORDER } from './sheet-order'
 import { displayValue, formatCode, type SheetLocale } from './format'
 import { ensureDynamicArrayCm } from './metadata'
 import {
@@ -30,6 +28,8 @@ import {
   type Range,
 } from './ref'
 import { richCells, setRichCell, type RichRun } from './rich-text'
+import { carryRules } from './rule-copy'
+import { WORKSHEET_ORDER } from './sheet-order'
 import {
   ensureCell,
   ensureRow,
@@ -42,6 +42,7 @@ import {
 import { BORDER_STYLES, HORIZONTAL, VERTICAL, type BorderStyle } from './style-choices'
 import { xfWithPatch, type EdgeWrite, type XfPatch } from './style-records'
 import { xfWithNumFmt, type CellStyle } from './styles'
+import { autoExpandTables, readSheetTables, REL_TABLE } from './tables'
 import {
   relativeTarget,
   XlsxError,
@@ -109,6 +110,8 @@ export type Clip = {
   cells: Array<Array<ClipCell | null>>
   /** Merged ranges inside the block, relative to its top-left. */
   merges: Range[]
+  /** From another workbook: its conditional formats and validations can't come along (./rule-copy.ts). */
+  foreign?: true
 }
 
 export type PasteMode = 'all' | 'values' | 'formulas' | 'formats'
@@ -221,6 +224,7 @@ export function foreignClip(clip: Clip): Clip {
   return {
     ...clip,
     cells: clip.cells.map((line) => line.map((c) => (c ? { ...c, style: null } : null))),
+    foreign: true,
   }
 }
 
@@ -627,9 +631,54 @@ export function runPaste(wb: Workbook, op: PasteOp): OpResult {
     right: target.left + C * tilesAcross - 1,
   }
   const withMerges = mode === 'all' || mode === 'formats'
-  if (op.cut) return cutPaste(wb, info, op, placements, merges, area)
+  // Conditional formats (all, formats) and validations (all) come along from this workbook's cells.
+  const tiles: Array<{ row: number; col: number }> = []
+  for (let ti = 0; ti < tilesDown; ti++)
+    for (let tj = 0; tj < tilesAcross; tj++)
+      tiles.push({ row: target.top + ti * R, col: target.left + tj * C })
+  const carry = (cut: boolean) => {
+    if (clip.foreign || !clip.sheet || op.transpose || !wb.findSheet(clip.sheet)) return
+    if (mode !== 'all' && mode !== 'formats') return
+    carryRules(wb, {
+      srcSheet: wb.requireWorksheet(clip.sheet).name,
+      src: {
+        top: clip.origin.row,
+        left: clip.origin.col,
+        bottom: clip.origin.row + clip.rows - 1,
+        right: clip.origin.col + clip.cols - 1,
+      },
+      dstSheet: info.name,
+      tiles,
+      area,
+      cf: true,
+      dv: mode === 'all',
+      cut,
+    })
+  }
+  if (op.cut) {
+    // The rules are read before the cells move (the source's rules are cleared by the move).
+    const res = cutPasteWithRules(wb, info, op, placements, merges, area, () => carry(true))
+    return res
+  }
+  carry(false)
   writePlacements(wb, info, placements, withMerges ? { area, merges } : {})
   return { sheets: [info.name] }
+}
+
+/** Cut and paste with the rules moved first (their source ranges are read from the cells as they were). */
+function cutPasteWithRules(
+  wb: Workbook,
+  info: SheetInfo,
+  op: PasteOp,
+  placements: Placement[],
+  merges: Range[],
+  area: Range,
+  moveRules: () => void,
+): OpResult {
+  moveRules()
+  const res = cutPaste(wb, info, op, placements, merges, area)
+  const src = wb.findSheet(op.clip.sheet ?? '')
+  return src && !res.sheets.includes(src.name) ? { ...res, sheets: [...res.sheets, src.name] } : res
 }
 
 function contentOf(

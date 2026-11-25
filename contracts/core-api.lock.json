@@ -11905,6 +11905,563 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "priority": {
+            "description": "Delete the rule with this priority",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Clear rules from these cells (or null to clear all rules on the sheet)"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_conditional_format_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_conditional_format_list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "move_to": {
+            "description": "New priority position (used with priority)",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "priority": {
+            "description": "Existing rule priority (1 = highest) to update or move; omit to add a new rule at priority 1",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "range": {
+            "description": "Target cells (required when adding a new rule)",
+            "maxLength": 1000,
+            "minLength": 2,
+            "type": "string"
+          },
+          "rule": {
+            "additionalProperties": false,
+            "description": "Conditional format rule definition (required when adding)",
+            "properties": {
+              "bar": {
+                "additionalProperties": false,
+                "properties": {
+                  "axis": {
+                    "enum": [
+                      "automatic",
+                      "middle",
+                      "none"
+                    ],
+                    "type": "string"
+                  },
+                  "border": {
+                    "type": "boolean"
+                  },
+                  "color": {
+                    "description": "A colour like #63BE7B",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                  },
+                  "gradient": {
+                    "type": "boolean"
+                  },
+                  "max": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "min",
+                          "max",
+                          "num",
+                          "percent",
+                          "percentile",
+                          "formula",
+                          "autoMin",
+                          "autoMax"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "min": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "min",
+                          "max",
+                          "num",
+                          "percent",
+                          "percentile",
+                          "formula",
+                          "autoMin",
+                          "autoMax"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "negative_color": {
+                    "description": "A colour like #63BE7B",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                  },
+                  "show_value": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "color"
+                ],
+                "type": "object"
+              },
+              "below": {
+                "type": "boolean"
+              },
+              "bottom": {
+                "type": "boolean"
+              },
+              "equal_average": {
+                "type": "boolean"
+              },
+              "formula1": {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "formula2": {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              "icons": {
+                "additionalProperties": false,
+                "properties": {
+                  "custom": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "index": {
+                          "maximum": 4,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "set": {
+                          "enum": [
+                            "3Arrows",
+                            "3ArrowsGray",
+                            "3Flags",
+                            "3TrafficLights1",
+                            "3TrafficLights2",
+                            "3Signs",
+                            "3Symbols",
+                            "3Symbols2",
+                            "3Stars",
+                            "3Triangles",
+                            "4Arrows",
+                            "4ArrowsGray",
+                            "4RedToBlack",
+                            "4Rating",
+                            "4TrafficLights",
+                            "5Arrows",
+                            "5ArrowsGray",
+                            "5Rating",
+                            "5Quarters",
+                            "5Boxes",
+                            "NoIcons"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "index",
+                        "set"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 5,
+                    "minItems": 3,
+                    "type": "array"
+                  },
+                  "reverse": {
+                    "type": "boolean"
+                  },
+                  "set": {
+                    "enum": [
+                      "3Arrows",
+                      "3ArrowsGray",
+                      "3Flags",
+                      "3TrafficLights1",
+                      "3TrafficLights2",
+                      "3Signs",
+                      "3Symbols",
+                      "3Symbols2",
+                      "3Stars",
+                      "3Triangles",
+                      "4Arrows",
+                      "4ArrowsGray",
+                      "4RedToBlack",
+                      "4Rating",
+                      "4TrafficLights",
+                      "5Arrows",
+                      "5ArrowsGray",
+                      "5Rating",
+                      "5Quarters",
+                      "5Boxes"
+                    ],
+                    "type": "string"
+                  },
+                  "show_value": {
+                    "type": "boolean"
+                  },
+                  "thresholds": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "gte": {
+                          "type": "boolean"
+                        },
+                        "kind": {
+                          "enum": [
+                            "min",
+                            "max",
+                            "num",
+                            "percent",
+                            "percentile",
+                            "formula",
+                            "autoMin",
+                            "autoMax"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "maxLength": 1000,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "value"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 4,
+                    "minItems": 2,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "set"
+                ],
+                "type": "object"
+              },
+              "operator": {
+                "enum": [
+                  "between",
+                  "notBetween",
+                  "equal",
+                  "notEqual",
+                  "greaterThan",
+                  "lessThan",
+                  "greaterThanOrEqual",
+                  "lessThanOrEqual"
+                ],
+                "type": "string"
+              },
+              "percent": {
+                "type": "boolean"
+              },
+              "period": {
+                "enum": [
+                  "today",
+                  "yesterday",
+                  "tomorrow",
+                  "last7Days",
+                  "thisWeek",
+                  "lastWeek",
+                  "nextWeek",
+                  "thisMonth",
+                  "lastMonth",
+                  "nextMonth"
+                ],
+                "type": "string"
+              },
+              "points": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "description": "A colour like #63BE7B",
+                      "pattern": "^#[0-9A-Fa-f]{6}$",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "min",
+                        "max",
+                        "num",
+                        "percent",
+                        "percentile",
+                        "formula",
+                        "autoMin",
+                        "autoMax"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "maxLength": 1000,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "color",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 3,
+                "minItems": 2,
+                "type": "array"
+              },
+              "rank": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "std_dev": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "stop_if_true": {
+                "type": "boolean"
+              },
+              "style": {
+                "additionalProperties": false,
+                "properties": {
+                  "bold": {
+                    "type": "boolean"
+                  },
+                  "border": {
+                    "description": "A colour like #63BE7B",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                  },
+                  "fill": {
+                    "description": "A colour like #63BE7B",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                  },
+                  "font_color": {
+                    "description": "A colour like #63BE7B",
+                    "pattern": "^#[0-9A-Fa-f]{6}$",
+                    "type": "string"
+                  },
+                  "italic": {
+                    "type": "boolean"
+                  },
+                  "num_fmt": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "strike": {
+                    "type": "boolean"
+                  },
+                  "underline": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "text": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "cellIs",
+                  "expression",
+                  "colorScale",
+                  "dataBar",
+                  "iconSet",
+                  "top10",
+                  "aboveAverage",
+                  "duplicateValues",
+                  "uniqueValues",
+                  "containsText",
+                  "notContainsText",
+                  "beginsWith",
+                  "endsWith",
+                  "containsBlanks",
+                  "notContainsBlanks",
+                  "containsErrors",
+                  "notContainsErrors",
+                  "timePeriod"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_conditional_format_set",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "cut": {
             "description": "Move the cells instead of copying (same workbook only)",
             "type": "boolean"
@@ -12698,6 +13255,125 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "A cell or range like B3 or A1:C1",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "range",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_hyperlink_remove",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "A cell or range like B3 or A1:C1",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "description": "External URL (http/https/mailto/ftp) or internal place (Sheet2!A1, #Sheet2!A1, defined name)",
+            "maxLength": 2079,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 32767,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tooltip": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "file_id",
+          "range",
+          "sheet",
+          "target"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_hyperlink_set",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "accept_losses": {
             "description": "Merge even when lower/right non-empty cell values inside the merge would be cleared",
             "type": "boolean"
@@ -12821,6 +13497,162 @@
       },
       "module": "drive",
       "name": "drive.sheet_merge",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "description": "The sheet (tab) name",
+                "maxLength": 31,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sheet name for a sheet-scoped name; omit or null for workbook scope"
+          }
+        },
+        "required": [
+          "file_id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_names_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_names_list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "new_name": {
+            "description": "New name when renaming an existing defined name",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "refers_to": {
+            "description": "Formula or reference (e.g. =Sheet1!$A$1:$A$10)",
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "description": "The sheet (tab) name",
+                "maxLength": 31,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sheet name for a sheet-scoped name; omit or null for workbook scope"
+          }
+        },
+        "required": [
+          "file_id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_names_set",
       "output": null,
       "permission": {
         "roles": [
@@ -13226,6 +14058,130 @@
       },
       "module": "drive",
       "name": "drive.sheet_pivot_update",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "protect_sheet",
+              "unprotect_sheet",
+              "protect_workbook",
+              "unprotect_workbook",
+              "set_cell_protection"
+            ],
+            "type": "string"
+          },
+          "allow": {
+            "additionalProperties": false,
+            "description": "Actions allowed when the sheet is protected",
+            "properties": {
+              "auto_filter": {
+                "type": "boolean"
+              },
+              "delete_columns": {
+                "type": "boolean"
+              },
+              "delete_rows": {
+                "type": "boolean"
+              },
+              "format_cells": {
+                "type": "boolean"
+              },
+              "format_columns": {
+                "type": "boolean"
+              },
+              "format_rows": {
+                "type": "boolean"
+              },
+              "insert_columns": {
+                "type": "boolean"
+              },
+              "insert_hyperlinks": {
+                "type": "boolean"
+              },
+              "insert_rows": {
+                "type": "boolean"
+              },
+              "objects": {
+                "type": "boolean"
+              },
+              "pivot_tables": {
+                "type": "boolean"
+              },
+              "scenarios": {
+                "type": "boolean"
+              },
+              "select_locked_cells": {
+                "type": "boolean"
+              },
+              "select_unlocked_cells": {
+                "type": "boolean"
+              },
+              "sort": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional password (hashed in the file; never logged or returned)"
+          },
+          "range": {
+            "description": "Cell range for set_cell_protection",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Required for sheet and cell protection actions",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_protect",
       "output": null,
       "permission": {
         "roles": [
@@ -14551,6 +15507,208 @@
       },
       "module": "drive",
       "name": "drive.sheet_table_update",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "Cell range or range list, e.g. A1:C10 or A1:A5 C1:C5",
+            "maxLength": 1000,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "range",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_validation_clear",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_blank": {
+            "type": "boolean"
+          },
+          "dropdown": {
+            "type": "boolean"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "maxLength": 225,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_style": {
+            "enum": [
+              "stop",
+              "warning",
+              "information"
+            ],
+            "type": "string"
+          },
+          "error_title": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "formula1": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "formula2": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "input_message": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_title": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "description": "Inline list items (for type \"list\" without formula1)",
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 255,
+            "minItems": 1,
+            "type": "array"
+          },
+          "operator": {
+            "enum": [
+              "between",
+              "notBetween",
+              "equal",
+              "notEqual",
+              "greaterThan",
+              "lessThan",
+              "greaterThanOrEqual",
+              "lessThanOrEqual"
+            ],
+            "type": "string"
+          },
+          "range": {
+            "description": "Cell range or range list, e.g. A1:C10 or A1:A5 C1:C5",
+            "maxLength": 1000,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "show_error": {
+            "type": "boolean"
+          },
+          "show_input": {
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "any",
+              "whole",
+              "decimal",
+              "list",
+              "date",
+              "time",
+              "textLength",
+              "custom"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "range",
+          "sheet",
+          "type"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_validation_set",
       "output": null,
       "permission": {
         "roles": [

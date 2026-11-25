@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import type { ExportPdfDeps } from '$lib/office/xlsx/print-pdf'
 import { roleCan } from '$lib/server/auth/capabilities'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { EeClient } from '$lib/server/ee/client'
@@ -17,10 +18,10 @@ import { DOCUMENT_KINDS } from './service'
 import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
 import { createDriveSheetChartTools } from './sheet-chart-tools'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
+import { createDriveSheetEditingTools } from './sheet-editing-tools'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { createDriveSheetPivotTableTools } from './sheet-pivot-table-tools'
-import type { ExportPdfDeps } from '$lib/office/xlsx/print-pdf'
-import { createDriveSheetEditingTools } from './sheet-editing-tools'
+import { createDriveSheetRulesTools } from './sheet-rules-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -332,5 +333,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       service,
       ...(opts.pdfDeps ? { pdfDeps: opts.pdfDeps } : {}),
     }),
+    ...createDriveSheetRulesTools({ service }),
   ]
 }
