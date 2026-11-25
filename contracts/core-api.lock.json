@@ -59,6 +59,16 @@
     {
       "module": "calendar",
       "payload": null,
+      "type": "calendar.call_added"
+    },
+    {
+      "module": "calendar",
+      "payload": null,
+      "type": "calendar.call_removed"
+    },
+    {
+      "module": "calendar",
+      "payload": null,
       "type": "calendar.default_visibility_set"
     },
     {
@@ -90,6 +100,11 @@
       "module": "calendar",
       "payload": null,
       "type": "calendar.proposal_filed"
+    },
+    {
+      "module": "calendar",
+      "payload": null,
+      "type": "calendar.reminder_set"
     },
     {
       "module": "calendar",
@@ -2128,6 +2143,48 @@
       "approval": {
         "always": false,
         "gated": true,
+        "risk": "external"
+      },
+      "auditClass": "external",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "description": "link a call the person is already in (calls.list) instead of booking one",
+            "minLength": 1,
+            "type": "string"
+          },
+          "external_url": {
+            "description": "book it on another provider’s link (Zoom, Teams, Meet …) instead of our own call server",
+            "format": "uri",
+            "type": "string"
+          },
+          "id": {
+            "description": "the event (a timed event that does not repeat)",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "calendar",
+      "name": "calendar.add_call",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
         "risk": "internal"
       },
       "auditClass": "mutate",
@@ -2435,6 +2492,37 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "module": "calendar",
+      "name": "calendar.remove_call",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "visibility": {
             "enum": [
               "company",
@@ -2451,6 +2539,69 @@
       },
       "module": "calendar",
       "name": "calendar.set_default_visibility",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "minutes": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "minutes before each event: one of 0, 5, 10, 15, 30, 60 (0 = when it starts); null = no reminders"
+          }
+        },
+        "required": [
+          "minutes"
+        ],
+        "type": "object"
+      },
+      "module": "calendar",
+      "name": "calendar.set_reminder",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "calendar",
+      "name": "calendar.settings_get",
       "output": null,
       "permission": {
         "roles": [

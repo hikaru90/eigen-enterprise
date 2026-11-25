@@ -4,7 +4,7 @@ import { dbCalendarStore } from './db-store'
 /**
  * Live wiring: the DB store over the app pool (company-level tables, no RLS),
  * company roles and member names from the members tables, kernel events for
- * the audit trail.
+ * the audit trail, Calls for a call on an event (wired outside modules/).
  */
 
 let depsPromise: Promise<CalendarDeps> | null = null
@@ -22,11 +22,13 @@ export function calendarDeps(): Promise<CalendarDeps> {
     const { appSql, createScopedDrizzle } = await import('$lib/server/db')
     const { getUserRole } = await import('$lib/server/auth/user-role')
     const { dbMemberStore } = await import('$lib/server/members/db-store')
+    const { liveCalendarCalls } = await import('$lib/server/calendar/calls-port')
     return {
       store: dbCalendarStore(createScopedDrizzle(appSql)),
       members: async () => (await dbMemberStore.listMembers()).map((m) => ({ id: m.id, name: m.name, email: m.email })),
       roleOf: getUserRole,
       audit: kernelAudit,
+      calls: liveCalendarCalls(),
     }
   })().catch((err) => {
     depsPromise = null

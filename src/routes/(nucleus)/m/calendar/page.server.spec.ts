@@ -299,6 +299,78 @@ describe('/m/calendar', () => {
   })
 })
 
+describe('/m/calendar: reminders and calls (K3)', () => {
+  const booked: string[] = []
+  beforeEach(() => {
+    booked.length = 0
+    f.deps.calls = {
+      book: async (userId, input) => {
+        booked.push(`${userId}:${input.title}`)
+        return { callId: `call-${booked.length}`, invited: 0 }
+      },
+      canJoin: async () => false,
+    }
+  })
+  const save = (extra: Array<[string, string]> = []) =>
+    post([
+      ['title', 'Customer call'],
+      ['startDay', '2026-11-16'],
+      ['startTime', '10:00'],
+      ['endDay', '2026-11-16'],
+      ['endTime', '10:30'],
+      ['timeZone', 'Europe/Berlin'],
+      ['visibility', 'busy'],
+      ['repeat', 'none'],
+      ['guest', 'ben'],
+      ...extra,
+    ])
+
+  it('the reminder setting: 10 minutes until chosen, saved per person, a bad one comes back with the reason', async () => {
+    const reminderOf = async (id: string) =>
+      ((await load({ locals: signedIn(id), url: at('') } as never)) as Loaded & { reminderMinutes: number | null })
+        .reminderMinutes
+    expect(await reminderOf('ana')).toBe(10)
+    expect(
+      await actions.reminder({ locals: signedIn('ana'), request: post([['reminderMinutes', '30']]) } as never),
+    ).toEqual({ action: 'reminder', ok: true })
+    expect(await reminderOf('ana')).toBe(30)
+    await actions.reminder({ locals: signedIn('ana'), request: post([['reminderMinutes', 'off']]) } as never)
+    expect(await reminderOf('ana')).toBeNull()
+    expect(await reminderOf('ben')).toBe(10)
+    expect(
+      await actions.reminder({ locals: signedIn('ana'), request: post([['reminderMinutes', '7']]) } as never),
+    ).toMatchObject({ status: 400, data: { action: 'reminder' } })
+  })
+
+  it('a new event “With a video call” is saved with its call; Join goes to the call', async () => {
+    expect(await actions.save({ locals: signedIn('ana'), request: save([['withCall', 'on']]) } as never)).toEqual({
+      action: 'save',
+      ok: true,
+    })
+    expect(booked).toEqual(['ana:Customer call'])
+    const [occ] = await listCalendar(f.deps, user('ana'), NOV)
+    expect(occ.event).toMatchObject({ callId: 'call-1', joinUrl: '/calls/call-1' })
+  })
+
+  it('Add a call and Remove call on a saved event', async () => {
+    const e = await createEvent(f.deps, user('ana'), timed('2026-11-16', '10:00', '11:00', { attendees: [{ memberId: 'ben' }] }))
+    expect(await actions.addCall({ locals: signedIn('ana'), request: post([['id', e.id]]) } as never)).toEqual({
+      action: 'addCall',
+      ok: true,
+    })
+    expect((await getEvent(f.deps, user('ana'), e.id)).callId).toBe('call-1')
+    expect(await actions.addCall({ locals: signedIn('ana'), request: post([['id', e.id]]) } as never)).toMatchObject({
+      status: 400,
+      data: { action: 'addCall' },
+    })
+    expect(await actions.removeCall({ locals: signedIn('ana'), request: post([['id', e.id]]) } as never)).toEqual({
+      action: 'removeCall',
+      ok: true,
+    })
+    expect((await getEvent(f.deps, user('ana'), e.id)).callId).toBeNull()
+  })
+})
+
 describe('/m/calendar: appointments from mail (K7)', () => {
   it('lists the person’s open proposals — only theirs — and ?proposal= opens one for editing', async () => {
     const ana = (await load({

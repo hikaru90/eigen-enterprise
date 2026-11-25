@@ -1,12 +1,19 @@
-import type { AttendeeRow, CalendarStore, EventRow } from './store'
+import type { AttendeeRow, CalendarStore, EventRow, ReminderKey } from './store'
 import type { Visibility } from './types'
 
 /** In-memory CalendarStore for unit tests (same semantics as the DB store). */
-export function memoryCalendarStore(): CalendarStore & { events: Map<string, EventRow>; guests: Map<string, AttendeeRow> } {
+export function memoryCalendarStore(): CalendarStore & {
+  events: Map<string, EventRow>
+  guests: Map<string, AttendeeRow>
+  claimed: Map<string, ReminderKey>
+} {
   const events = new Map<string, EventRow>()
   const guests = new Map<string, AttendeeRow>()
   const prefs = new Map<string, Visibility>()
   const weekNumbers = new Map<string, boolean>()
+  const reminderLeads = new Map<string, number | null>()
+  const claimed = new Map<string, ReminderKey>()
+  const claimKey = (k: ReminderKey) => `${k.eventId}|${k.occurrenceStart.getTime()}|${k.memberId}`
   const copy = (r: EventRow): EventRow => ({ ...r, exdates: r.exdates.map((d) => new Date(d)) })
   const t = (d: Date) => d.getTime()
 
@@ -18,6 +25,7 @@ export function memoryCalendarStore(): CalendarStore & { events: Map<string, Eve
   return {
     events,
     guests,
+    claimed,
     async insertEvent(row, attendees) {
       if (events.has(row.id)) throw new Error(`event ${row.id} exists`)
       if (row.recurrenceId) {
@@ -41,6 +49,7 @@ export function memoryCalendarStore(): CalendarStore & { events: Map<string, Eve
       for (const e of [...events.values()]) if (e.recurrenceId === id) events.delete(e.id)
       events.delete(id)
       for (const g of [...guests.values()]) if (!events.has(g.eventId)) guests.delete(g.id)
+      for (const [k, c] of [...claimed]) if (!events.has(c.eventId)) claimed.delete(k)
     },
     async replaceAttendees(eventId, rows) {
       for (const g of guestsOf(eventId)) guests.delete(g.id)
@@ -78,6 +87,30 @@ export function memoryCalendarStore(): CalendarStore & { events: Map<string, Eve
     },
     async setWeekNumbers(memberId, on) {
       weekNumbers.set(memberId, on)
+    },
+    async reminderMinutes(memberIds) {
+      return new Map(memberIds.filter((id) => reminderLeads.has(id)).map((id) => [id, reminderLeads.get(id)!]))
+    },
+    async setReminderMinutes(memberId, minutes) {
+      reminderLeads.set(memberId, minutes)
+    },
+    async claimReminder(key) {
+      if (!events.has(key.eventId)) throw new Error(`event ${key.eventId} not found`)
+      if (claimed.has(claimKey(key))) return false
+      claimed.set(claimKey(key), { ...key })
+      return true
+    },
+    async releaseReminder(key) {
+      claimed.delete(claimKey(key))
+    },
+    async pruneReminders(before) {
+      let n = 0
+      for (const [k, v] of [...claimed]) {
+        if (t(v.occurrenceStart) >= t(before)) continue
+        claimed.delete(k)
+        n++
+      }
+      return n
     },
   }
 }

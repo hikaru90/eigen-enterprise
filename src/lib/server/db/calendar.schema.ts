@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
 import { inboxMessages, mailboxes } from './inbox.schema'
 
 /**
@@ -76,14 +76,35 @@ export const calendarAttendees = pgTable(
 
 /**
  * A member's calendar settings: what colleagues see of a new event by
- * default, and whether their views show ISO week numbers (migration 0154).
+ * default, whether their views show ISO week numbers (migration 0154), and
+ * how many minutes before an event their phone is reminded (migration 0186;
+ * null = no reminders).
  */
 export const calendarPreferences = pgTable('calendar_preferences', {
   memberId: text('member_id').primaryKey(),
   defaultVisibility: text('default_visibility', { enum: ['company', 'busy', 'private'] }).notNull().default('busy'),
   showWeekNumbers: boolean('show_week_numbers').notNull().default(false),
+  reminderMinutes: integer('reminder_minutes').default(10),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+/**
+ * Reminders already sent (migration 0186, plan/calendar.md K3): one row per
+ * event occurrence and person, claimed before the push goes out, so no
+ * reminder is sent twice. Rows of occurrences long past are pruned.
+ */
+export const calendarRemindersSent = pgTable(
+  'calendar_reminders_sent',
+  {
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    occurrenceStart: timestamp('occurrence_start', { withTimezone: true }).notNull(),
+    memberId: text('member_id').notNull(),
+    sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.occurrenceStart, t.memberId] })],
+)
 
 /**
  * An appointment the gateway found agreed in a mail of a personal inbox

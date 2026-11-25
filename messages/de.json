@@ -647,5 +647,21 @@
   "coworkers_avatar_hint": "Wähle ein eigenEnterprise-CI-Emblem oder lade ein Bild hoch (wird quadratisch auf 256×256 WebP zugeschnitten).",
   "coworkers_reports_to_multi_hint": "Wähle eine oder mehrere Leitungen. Ist niemand gewählt, antwortet sie der Inhaber:in.",
   "org_reports_to_multi_hint": "Wähle eine oder mehrere Leitungen (alle abwählen für niemandem).",
-  "table_sort_by": "Nach {column} sortieren"
+  "table_sort_by": "Nach {column} sortieren",
+  "calendar_reminder_body": "In {minutes} Min. · {time}",
+  "calendar_reminder_body_now": "Beginnt jetzt · {time}",
+  "calendar_reminder_join": "Tippen, um dem Anruf beizutreten",
+  "calendar_reminder_label": "Erinnerung",
+  "calendar_reminder_off": "Keine Erinnerungen",
+  "calendar_reminder_at_start": "Zu Beginn",
+  "calendar_reminder_before": "{minutes} Min. vorher",
+  "calendar_reminder_hint": "Eine Mitteilung aufs Handy vor jedem deiner Termine. Dafür braucht es die installierte App mit eingeschalteten Mitteilungen.",
+  "calendar_call_label": "Videoanruf",
+  "calendar_call_join": "Anruf beitreten",
+  "calendar_call_add": "Videoanruf hinzufügen",
+  "calendar_call_add_hint": "Für die Zeit dieses Termins gebucht: Kolleg:innen treten aus dem Termin bei, Gäste von außen bekommen den Link per E-Mail.",
+  "calendar_call_with": "Mit Videoanruf",
+  "calendar_call_remove": "Anruf entfernen",
+  "calendar_call_keeps_time": "Der Anruf ist für diese Zeit gebucht. Um den Termin zu verschieben, entferne zuerst den Anruf und füge ihn danach wieder hinzu.",
+  "calendar_save": "Speichern"
 }

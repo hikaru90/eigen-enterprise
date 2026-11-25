@@ -35,6 +35,19 @@ export const CALENDAR_LIMITS = {
   freeBusyMembers: 50,
 } as const
 
+/**
+ * Reminders (plan/calendar.md K3, Contribute df14e05a): a push to the phone
+ * this many minutes before an event starts — each person's own choice, the
+ * same for every timed event they own or are a guest of (not declined).
+ * 0 = when it starts; null = no reminders. 10 minutes until they choose.
+ */
+export const REMINDER_CHOICES = [0, 5, 10, 15, 30, 60] as const
+export type ReminderMinutes = (typeof REMINDER_CHOICES)[number]
+export const DEFAULT_REMINDER_MINUTES: ReminderMinutes = 10
+
+/** Where a call on an event is joined (the Calls screen; it opens another provider's link itself). */
+export const callJoinPath = (callId: string): string => `/calls/${encodeURIComponent(callId)}`
+
 /** What a colleague sees instead of the title. */
 export const LIMITED_TITLE = { busy: 'Busy', private: 'Out of office' } as const satisfies Record<Exclude<Visibility, 'company'>, string>
 
@@ -78,7 +91,9 @@ export type EventDto = {
   seriesId: string | null
   originalStart: string | null
   attendees: AttendeeDto[]
+  /** The video call it carries (Calls), and where to join it; null without one. */
   callId: string | null
+  joinUrl: string | null
   source: EventSource
   /** Only the owner (or the agent working for them) changes or deletes it. */
   canEdit: boolean

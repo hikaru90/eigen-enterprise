@@ -649,5 +649,21 @@
   "coworkers_avatar_hint": "Pick an eigenEnterprise CI emblem or upload a square image (cropped to 256×256 WebP).",
   "coworkers_reports_to_multi_hint": "Select one or more managers. If none are checked, it answers to the owner.",
   "org_reports_to_multi_hint": "Select one or more managers (leave all unchecked for nobody).",
-  "table_sort_by": "Sort by {column}"
+  "table_sort_by": "Sort by {column}",
+  "calendar_reminder_body": "In {minutes} min · {time}",
+  "calendar_reminder_body_now": "Starts now · {time}",
+  "calendar_reminder_join": "Tap to join the call",
+  "calendar_reminder_label": "Reminder",
+  "calendar_reminder_off": "No reminders",
+  "calendar_reminder_at_start": "When it starts",
+  "calendar_reminder_before": "{minutes} min before",
+  "calendar_reminder_hint": "A push to your phone before each of your events. It needs the installed app with notifications on.",
+  "calendar_call_label": "Video call",
+  "calendar_call_join": "Join call",
+  "calendar_call_add": "Add a video call",
+  "calendar_call_add_hint": "Booked for this event’s time: colleagues join from the event, guests outside get the call link by email.",
+  "calendar_call_with": "With a video call",
+  "calendar_call_remove": "Remove call",
+  "calendar_call_keeps_time": "The call is booked for this time. To move the event, remove the call first, then add it again.",
+  "calendar_save": "Save"
 }

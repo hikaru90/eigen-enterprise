@@ -1,6 +1,6 @@
 import type { AttendeeRow, CalendarStore, EventRow } from './store'
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
-import { calendarAttendees, calendarEvents, calendarPreferences } from '$lib/server/db/calendar.schema'
+import { calendarAttendees, calendarEvents, calendarPreferences, calendarRemindersSent } from '$lib/server/db/calendar.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 
 /** CalendarStore over Postgres (company-level tables, migration 0138). */
@@ -127,6 +127,46 @@ export function dbCalendarStore(db: AppDatabase): CalendarStore {
         .insert(calendarPreferences)
         .values({ memberId, showWeekNumbers: on, updatedAt: at })
         .onConflictDoUpdate({ target: calendarPreferences.memberId, set: { showWeekNumbers: on, updatedAt: at } })
+    },
+    async reminderMinutes(memberIds) {
+      if (memberIds.length === 0) return new Map()
+      const rows = await db
+        .select({ memberId: calendarPreferences.memberId, minutes: calendarPreferences.reminderMinutes })
+        .from(calendarPreferences)
+        .where(inArray(calendarPreferences.memberId, [...memberIds]))
+      return new Map(rows.map((r) => [r.memberId, r.minutes]))
+    },
+    async setReminderMinutes(memberId, minutes, at) {
+      await db
+        .insert(calendarPreferences)
+        .values({ memberId, reminderMinutes: minutes, updatedAt: at })
+        .onConflictDoUpdate({ target: calendarPreferences.memberId, set: { reminderMinutes: minutes, updatedAt: at } })
+    },
+    async claimReminder(key, at) {
+      const rows = await db
+        .insert(calendarRemindersSent)
+        .values({ eventId: key.eventId, occurrenceStart: key.occurrenceStart, memberId: key.memberId, sentAt: at })
+        .onConflictDoNothing()
+        .returning({ eventId: calendarRemindersSent.eventId })
+      return rows.length === 1
+    },
+    async releaseReminder(key) {
+      await db
+        .delete(calendarRemindersSent)
+        .where(
+          and(
+            eq(calendarRemindersSent.eventId, key.eventId),
+            eq(calendarRemindersSent.occurrenceStart, key.occurrenceStart),
+            eq(calendarRemindersSent.memberId, key.memberId),
+          ),
+        )
+    },
+    async pruneReminders(before) {
+      const rows = await db
+        .delete(calendarRemindersSent)
+        .where(lt(calendarRemindersSent.occurrenceStart, before))
+        .returning({ eventId: calendarRemindersSent.eventId })
+      return rows.length
     },
   }
 }

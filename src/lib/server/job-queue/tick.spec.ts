@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock, rhythmsTickMock } = vi.hoisted(() => ({
+const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock, rhythmsTickMock, calendarTickMock } = vi.hoisted(() => ({
+  calendarTickMock: vi.fn(async () => {}),
   domainsTickMock: vi.fn(async () => {}),
   rhythmsTickMock: vi.fn(async () => {}),
   shareTickMock: vi.fn(async () => {}),
@@ -35,6 +36,9 @@ vi.mock('./drive-blobs-tick', () => ({
 }))
 vi.mock('./contribute-share-tick', () => ({
   tickContributeShare: shareTickMock,
+}))
+vi.mock('./calendar-reminders-tick', () => ({
+  tickCalendarReminders: calendarTickMock,
 }))
 vi.mock('./coworker-rhythms-tick', () => ({
   tickCoworkerRhythms: rhythmsTickMock,
@@ -116,5 +120,15 @@ describe('tickGlobalJobQueue', () => {
     expect(emailTickMock).toHaveBeenCalledOnce()
     // Bought domains become mail domains with the email work (managed-domains DM5).
     expect(domainsTickMock).toHaveBeenCalledOnce()
+  })
+
+  it('sends calendar reminders while Calendar is on, never while it is off', async () => {
+    const { tickGlobalJobQueue } = await import('./tick')
+    await tickGlobalJobQueue()
+    expect(calendarTickMock).toHaveBeenCalledOnce()
+    expect(pluginOnMock).toHaveBeenCalledWith('calendar', 'calendar reminders')
+    pluginOnMock.mockImplementation(async (plugin: string) => plugin !== 'calendar')
+    await tickGlobalJobQueue()
+    expect(calendarTickMock).toHaveBeenCalledOnce()
   })
 })

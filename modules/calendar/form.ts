@@ -86,6 +86,9 @@ export type EventDraft = {
   externalGuests: Array<{ email: string; name: string | null }>
   /** An appointment found in mail (K7): Save accepts it (the event + the invitation). */
   proposalId: string | null
+  /** The event's video call (K3): where to join it; null without one (and for a new event). */
+  callId: string | null
+  joinUrl: string | null
 }
 
 function plusHour(day: string, time: string): { day: string; time: string } {
@@ -121,6 +124,8 @@ export function newDraft(at: { day: string; time: string | null; timeZone: strin
     guestLabels: [],
     externalGuests: [],
     proposalId: null,
+    callId: null,
+    joinUrl: null,
   }
 }
 
@@ -154,6 +159,8 @@ export function editDraft(occ: OccurrenceDto): EventDraft {
     guestLabels: e.attendees.map((a) => a.name),
     externalGuests: e.attendees.filter((a) => a.email !== null).map((a) => ({ email: a.email!, name: a.name === a.email ? null : a.name })),
     proposalId: null,
+    callId: e.callId,
+    joinUrl: e.joinUrl,
   }
 }
 
@@ -181,8 +188,14 @@ const text = (form: FormData, key: string): string => {
 }
 const all = (form: FormData, key: string): string[] => form.getAll(key).filter((v): v is string => typeof v === 'string')
 
-/** The posted dialog → which event (and instance) and the service input. */
-export function eventFormInput(form: FormData): { id: string | null; occurrenceStart: string | null; proposalId: string | null; input: EventInput } {
+/** The posted dialog → which event (and instance), the service input, and whether a new event gets a video call. */
+export function eventFormInput(form: FormData): {
+  id: string | null
+  occurrenceStart: string | null
+  proposalId: string | null
+  withCall: boolean
+  input: EventInput
+} {
   const allDay = form.get('allDay') === 'on'
   const one = text(form, 'scope') === 'one'
   const input: EventInput = {
@@ -216,7 +229,13 @@ export function eventFormInput(form: FormData): { id: string | null; occurrenceS
   }
   const id = text(form, 'id')
   const proposalId = text(form, 'proposalId')
-  return { id: id === '' ? null : id, occurrenceStart: one ? text(form, 'occurrenceStart') : null, proposalId: proposalId === '' ? null : proposalId, input }
+  return {
+    id: id === '' ? null : id,
+    occurrenceStart: one ? text(form, 'occurrenceStart') : null,
+    proposalId: proposalId === '' ? null : proposalId,
+    withCall: form.get('withCall') === 'on',
+    input,
+  }
 }
 
 /** Today in a zone (`YYYY-MM-DD`). */

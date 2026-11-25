@@ -1,20 +1,24 @@
-import { actsAsMember } from '$lib/kernel/principals'
 import { z } from 'zod'
+import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
+import { addCall, removeCall } from './event-calls'
 import { CALENDAR_MODULE_ID } from './manifest'
 import { acceptProposal, dismissProposal, openProposals, type ProposalDeps } from './proposals'
+import { reminderMinutes, setReminderMinutes } from './reminders'
 import {
   createEvent,
+  defaultVisibility,
   deleteEvent,
   freeBusy,
   listCalendar,
   setDefaultVisibility,
+  showWeekNumbers,
   updateEvent,
   type Actor,
   type CalendarDeps,
   type EventInput,
 } from './service'
-import { CALENDAR_LIMITS, VISIBILITIES } from './types'
+import { CALENDAR_LIMITS, REMINDER_CHOICES, VISIBILITIES } from './types'
 
 /**
  * calendar.* kernel tools: the agent's view of calendars and its hands in the
@@ -155,6 +159,31 @@ const acceptInput = z
   })
   .strict()
 const visibilityInput = z.object({ visibility: z.enum(VISIBILITIES) }).strict()
+const reminderInput = z
+  .object({
+    minutes: z
+      .number()
+      .int()
+      .nullable()
+      .describe(`minutes before each event: one of ${REMINDER_CHOICES.join(', ')} (0 = when it starts); null = no reminders`),
+  })
+  .strict()
+const addCallInput = z
+  .object({
+    id: z.string().min(1).describe('the event (a timed event that does not repeat)'),
+    call_id: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('link a call the person is already in (calls.list) instead of booking one'),
+    external_url: z
+      .string()
+      .url()
+      .optional()
+      .describe('book it on another provider’s link (Zoom, Teams, Meet …) instead of our own call server'),
+  })
+  .strict()
+const eventIdInput = z.object({ id: z.string().min(1) }).strict()
 
 type EventFields = Partial<z.infer<typeof eventInput>>
 
@@ -269,6 +298,24 @@ export function createCalendarTools(opts: CalendarToolDeps = {}): ToolDescriptor
       handler: async (ctx, input) => {
         emptyInput.parse(input)
         return { proposals: await openProposals(await proposalDeps(), await actorOf(ctx)) }
+      },
+    },
+    {
+      name: 'calendar.settings_get',
+      module: CALENDAR_MODULE_ID,
+      summary:
+        'The calendar settings of the person you work for: the default visibility of new events, whether week numbers show, and how many minutes before an event their phone is reminded (null = no reminders).',
+      auditClass: 'read',
+      inputSchema: emptyInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        emptyInput.parse(input)
+        const [d, actor] = [await deps(), await actorOf(ctx)]
+        return {
+          default_visibility: await defaultVisibility(d, actor),
+          week_numbers: await showWeekNumbers(d, actor),
+          reminder_minutes: await reminderMinutes(d, actor),
+        }
       },
     },
     {
@@ -388,6 +435,64 @@ export function createCalendarTools(opts: CalendarToolDeps = {}): ToolDescriptor
           await actorOf(ctx),
           visibilityInput.parse(input).visibility,
         ),
+      }),
+    },
+    {
+      name: 'calendar.set_reminder',
+      module: CALENDAR_MODULE_ID,
+      summary: `How many minutes before each of their events the person's phone gets a reminder (push): ${REMINDER_CHOICES.join(', ')} (0 = when it starts), or null for none. For an event with a call the reminder opens the call.`,
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: { minutes?: number | null }) =>
+        input.minutes === null
+          ? 'Turned calendar reminders off'
+          : `Set calendar reminders to ${input.minutes ?? ''} minutes before`,
+      inputSchema: reminderInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => ({
+        minutes: await setReminderMinutes(
+          await deps(),
+          await actorOf(ctx),
+          reminderInput.parse(input).minutes,
+        ),
+      }),
+    },
+    {
+      name: 'calendar.add_call',
+      module: CALENDAR_MODULE_ID,
+      summary:
+        'Put a video call on an event of the person you work for: books a meeting for the event’s time with its guests (colleagues join from the event; guests outside the company get the call link by email), or links a call they are in (call_id). Join from the event (event.joinUrl) or from its reminder. Timed events that don’t repeat only; while it has a call the event keeps its time.',
+      auditClass: 'external',
+      approvalRisk: 'external',
+      activity: (input: { id?: string; call_id?: string }) =>
+        input.call_id
+          ? `Linked call ${input.call_id} to calendar event ${input.id ?? ''}`.trim()
+          : `Booked a video call for calendar event ${input.id ?? ''}`.trim(),
+      inputSchema: addCallInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = addCallInput.parse(input)
+        return {
+          event: await addCall(await deps(), await actorOf(ctx), i.id, {
+            callId: i.call_id,
+            externalUrl: i.external_url,
+          }),
+        }
+      },
+    },
+    {
+      name: 'calendar.remove_call',
+      module: CALENDAR_MODULE_ID,
+      summary:
+        'Take the video call off an event of the person you work for. The meeting itself stays booked (calls.end ends it).',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: { id?: string }) =>
+        `Removed the call from calendar event ${input.id ?? ''}`.trim(),
+      inputSchema: eventIdInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => ({
+        event: await removeCall(await deps(), await actorOf(ctx), eventIdInput.parse(input).id),
       }),
     },
   ]

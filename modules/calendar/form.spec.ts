@@ -59,6 +59,7 @@ describe('eventFormInput', () => {
       id: null,
       occurrenceStart: null,
       proposalId: null,
+      withCall: false,
       input: {
         title: ' Planning ',
         allDay: false,
@@ -141,11 +142,14 @@ describe('drafts for the dialog', () => {
           { memberId: null, email: 'mara@northwind.example', name: 'Mara Voss', role: 'required', rsvp: 'needs_action' },
         ],
         callId: null,
+        joinUrl: null,
         source: 'local',
         canEdit: true,
       },
     } satisfies OccurrenceDto
     const d = editDraft(occ)
+    const withCall = editDraft({ ...occ, event: { ...occ.event, callId: 'c1', joinUrl: '/calls/c1' } })
+    expect(withCall).toMatchObject({ callId: 'c1', joinUrl: '/calls/c1' })
     expect(d).toMatchObject({
       id: 's1',
       occurrenceStart: '2026-11-16T09:00:00.000Z',
@@ -206,5 +210,19 @@ describe('the dialog for an appointment found in mail (K7 Edit)', () => {
     form.set('title', 'x')
     expect(eventFormInput(form).proposalId).toBe('p-1')
     expect(eventFormInput(new FormData()).proposalId).toBeNull()
+  })
+})
+
+describe('a video call on the event (K3)', () => {
+  it('the posted form says whether a new event gets a call', () => {
+    const form = new FormData()
+    form.set('title', 'x')
+    form.set('withCall', 'on')
+    expect(eventFormInput(form).withCall).toBe(true)
+    expect(eventFormInput(new FormData()).withCall).toBe(false)
+  })
+
+  it('a draft carries the event’s call and where to join it; a new one has none', () => {
+    expect(newDraft({ day: '2026-11-16', time: null, timeZone: 'Europe/Berlin', visibility: 'busy' })).toMatchObject({ callId: null, joinUrl: null })
   })
 })

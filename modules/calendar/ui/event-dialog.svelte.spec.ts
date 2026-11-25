@@ -49,6 +49,7 @@ describe('event-dialog.svelte', () => {
       id: null,
       occurrenceStart: null,
       proposalId: null,
+      withCall: false,
       input: {
         title: 'Call with Northwind',
         allDay: false,
@@ -171,5 +172,59 @@ describe('event-dialog.svelte', () => {
     })
     await expect.element(page.getByTestId('event-error').getByRole('alert')).toHaveTextContent('An event must end after it starts.')
     await expect.element(page.getByRole('button', { name: 'Copy agent instructions' })).toBeVisible()
+  })
+
+  describe('a video call on the event (K3)', () => {
+    const saved: EventDraft = {
+      ...newDraft({ day: '2026-11-16', time: '10:00', timeZone: 'Europe/Berlin', visibility: 'busy' }),
+      id: 'e1',
+      title: 'Customer call',
+      guests: ['ben'],
+    }
+
+    it('a new timed event can be saved “With a video call”; all day or repeating, it can’t', async () => {
+      render(EventDialog, {
+        open: true,
+        draft: newDraft({ day: '2026-11-16', time: '14:00', timeZone: 'Europe/Berlin', visibility: 'busy' }),
+        members,
+        timeZones,
+      })
+      await page.getByRole('checkbox', { name: /With a video call/ }).click()
+      expect(posted().withCall).toBe(true)
+      await page.getByRole('combobox', { name: 'Repeat' }).selectOptions('WEEKLY')
+      await expect.element(page.getByTestId('event-with-call')).not.toBeInTheDocument()
+      await page.getByRole('combobox', { name: 'Repeat' }).selectOptions('none')
+      await page.getByRole('checkbox', { name: 'All day' }).click()
+      await expect.element(page.getByTestId('event-with-call')).not.toBeInTheDocument()
+    })
+
+    it('a saved event without a call offers “Add a video call” (posts the event)', async () => {
+      render(EventDialog, { open: true, draft: saved, members, timeZones })
+      const add = page.getByRole('button', { name: 'Add a video call' })
+      await expect.element(add).toBeInTheDocument()
+      const form = add.element().closest('form')!
+      expect(form.getAttribute('action')).toBe('?/addCall')
+      expect(new FormData(form).get('id')).toBe('e1')
+    })
+
+    it('an event with a call: Join goes to the call, Remove call takes it off, the time stays', async () => {
+      render(EventDialog, { open: true, draft: { ...saved, callId: 'c1', joinUrl: '/calls/c1' }, members, timeZones })
+      await expect.element(page.getByRole('link', { name: 'Join call' })).toHaveAttribute('href', '/calls/c1')
+      const remove = page.getByRole('button', { name: 'Remove call' })
+      expect(remove.element().closest('form')!.getAttribute('action')).toBe('?/removeCall')
+      await expect.element(page.getByText(/To move the event, remove the call first/)).toBeInTheDocument()
+      await expect.element(page.getByRole('button', { name: 'Add a video call' })).not.toBeInTheDocument()
+    })
+
+    it('a guest joins from someone else’s event too', async () => {
+      render(EventDialog, {
+        open: true,
+        draft: { ...saved, canEdit: false, ownerName: 'Ben Ode', callId: 'c1', joinUrl: '/calls/c1' },
+        members,
+        timeZones,
+      })
+      await expect.element(page.getByRole('link', { name: 'Join call' })).toHaveAttribute('href', '/calls/c1')
+      await expect.element(page.getByRole('button', { name: 'Remove call' })).not.toBeInTheDocument()
+    })
   })
 })

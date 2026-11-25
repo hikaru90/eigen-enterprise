@@ -111,9 +111,12 @@ export const UI_PARITY: Record<string, UiParity> = {
 
   // ─── Calendar ─────────────────────────────────────────────────────────────
   '/(nucleus)/m/calendar ?/acceptProposal': tool('calendar.accept_proposal'),
+  '/(nucleus)/m/calendar ?/addCall': tool('calendar.add_call'),
   '/(nucleus)/m/calendar ?/delete': tool('calendar.delete_event'),
   '/(nucleus)/m/calendar ?/dismissProposal': tool('calendar.dismiss_proposal'),
   '/(nucleus)/m/calendar ?/preferences': tool('calendar.set_default_visibility'),
+  '/(nucleus)/m/calendar ?/reminder': tool('calendar.set_reminder'),
+  '/(nucleus)/m/calendar ?/removeCall': tool('calendar.remove_call'),
   '/(nucleus)/m/calendar ?/save': tool('calendar.update_event'),
   '/(nucleus)/m/calendar ?/weekNumbers': noEffect(VIEW_STATE),
 
