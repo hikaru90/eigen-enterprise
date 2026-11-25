@@ -114,7 +114,7 @@
           {#if c.tags.length > 0}
             <ul class="flex flex-wrap gap-1.5" aria-label="Tags">
               {#each c.tags as tag (tag)}
-                <li class="rounded-full border border-border px-2 py-0.5 text-[11px]">{tag}</li>
+                <li class="rounded-full border border-border px-2 py-0.5 text-xs">{tag}</li>
               {/each}
             </ul>
           {/if}
