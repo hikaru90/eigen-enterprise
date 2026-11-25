@@ -1475,6 +1475,15 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.delete_forever_many": {
+    input: {
+      "items": Array<{
+        "id": string
+        "type": "file" | "folder"
+      }>
+    }
+    output: unknown
+  }
   "drive.get_sharing": {
     input: {
       "id": string
@@ -1507,6 +1516,16 @@ export type CoreApiTools = {
       "folder_id": string | null
       "id": string
       "type": "file" | "folder"
+    }
+    output: unknown
+  }
+  "drive.move_many": {
+    input: {
+      "folder_id": string | null
+      "items": Array<{
+        "id": string
+        "type": "file" | "folder"
+      }>
     }
     output: unknown
   }
@@ -1730,6 +1749,15 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.restore_many": {
+    input: {
+      "items": Array<{
+        "id": string
+        "type": "file" | "folder"
+      }>
+    }
+    output: unknown
+  }
   "drive.restore_revision": {
     input: {
       "file_id": string
@@ -1763,6 +1791,27 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.share_many": {
+    input: {
+      "grants": Array<{
+        "level": "view" | "edit" | "manage"
+        "subject": ({
+          "kind": "user"
+          "userId": string
+        }) | ({
+          "groupId": string
+          "kind": "group"
+        }) | ({
+          "kind": "company"
+        })
+      }>
+      "items": Array<{
+        "id": string
+        "type": "file" | "folder"
+      }>
+    }
+    output: unknown
+  }
   "drive.shared_with_me": {
     input: Record<string, never>
     output: unknown
@@ -1777,6 +1826,15 @@ export type CoreApiTools = {
     input: {
       "id": string
       "type": "file" | "folder"
+    }
+    output: unknown
+  }
+  "drive.trash_many": {
+    input: {
+      "items": Array<{
+        "id": string
+        "type": "file" | "folder"
+      }>
     }
     output: unknown
   }
@@ -4094,12 +4152,14 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.create_document",
   "drive.create_folder",
   "drive.delete_forever",
+  "drive.delete_forever_many",
   "drive.get_sharing",
   "drive.list",
   "drive.list_archived",
   "drive.list_revisions",
   "drive.list_trash",
   "drive.move",
+  "drive.move_many",
   "drive.pdf_add_note",
   "drive.pdf_delete_pages",
   "drive.pdf_edit_annotations",
@@ -4116,12 +4176,15 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.read",
   "drive.rename",
   "drive.restore",
+  "drive.restore_many",
   "drive.restore_revision",
   "drive.save_file_bytes",
   "drive.set_sharing",
+  "drive.share_many",
   "drive.shared_with_me",
   "drive.suggest_archive",
   "drive.trash",
+  "drive.trash_many",
   "drive.unarchive",
   "drive.upload",
   "drive.write_text",

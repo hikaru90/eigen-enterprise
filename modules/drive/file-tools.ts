@@ -36,10 +36,26 @@ const fileInput = z.object({ file_id: z.string().min(1) }).strict()
 const restoreRevisionInput = z.object({ file_id: z.string().min(1), revision_id: z.string().min(1) }).strict()
 const sharingInput = z.object({ ...itemRef, grants: grantsBody.shape.grants }).strict()
 const emptyInput = z.object({}).strict()
+/** The selection bar's acts: up to BULK_MAX items per call (one approval); the UI sends a larger selection in chunks. */
+export const BULK_MAX = 100
+const bulkItems = z.array(z.object(itemRef).strict()).min(1).max(BULK_MAX)
+const bulkInput = z.object({ items: bulkItems }).strict()
+const moveManyInput = z.object({ items: bulkItems, folder_id: z.string().min(1).nullable() }).strict()
+const shareManyInput = z.object({ items: bulkItems, grants: grantsBody.shape.grants.min(1) }).strict()
 
 function decode(b64: string): Uint8Array {
   if (!BASE64.test(b64)) throw new DriveError('invalid', 'content_base64 must be standard base64.')
   return new Uint8Array(Buffer.from(b64, 'base64'))
+}
+
+type Batch = { errors?: unknown[] } & Record<string, unknown>
+/** "Moved 3 items in Drive (1 could not be)": what a batch did, for the activity feed. */
+const batchActivity = (key: string, verb: string, where: string) => (_input: unknown, output: unknown) => {
+  const out = output as Batch | undefined
+  const done = (out?.[key] as Array<{ name?: string }> | undefined) ?? []
+  const failed = out?.errors?.length ?? 0
+  const what = done.length === 1 && done[0]?.name ? done[0].name : `${done.length} item${done.length === 1 ? '' : 's'}`
+  return `${verb} ${what} ${where}${failed > 0 ? ` (${failed} could not be)` : ''}`
 }
 
 const named = (output: unknown, key: 'item' | 'file' | 'folder') => (output as Record<string, { name?: string } | undefined> | undefined)?.[key]?.name
@@ -216,6 +232,59 @@ export function createDriveFileTools(deps: { service: () => Promise<DriveService
       handler: async (ctx, input) => {
         const i = sharingInput.parse(input)
         return { grants: await (await service()).setGrants(actorOf(ctx), i.type, i.id, i.grants) }
+      },
+    },
+    {
+      name: 'drive.move_many',
+      module: DRIVE_MODULE_ID,
+      summary: `Move several Drive files and folders (items: [{ type, id }], at most ${BULK_MAX}) into one folder (folder_id; null for the top level). Each item is checked like drive.move; the result lists what moved and, under errors, which items could not be and why.`,
+      ...write,
+      activity: batchActivity('moved', 'Moved', 'in Drive'),
+      inputSchema: moveManyInput,
+      handler: async (ctx, input) => {
+        const i = moveManyInput.parse(input)
+        return (await service()).moveMany(actorOf(ctx), i.items, i.folder_id)
+      },
+    },
+    {
+      name: 'drive.trash_many',
+      module: DRIVE_MODULE_ID,
+      summary: `Move several Drive files and folders (items: [{ type, id }], at most ${BULK_MAX}) to the trash; each can be restored until it is deleted forever. Each item is checked like drive.trash; errors names the ones that could not be and why.`,
+      ...write,
+      activity: batchActivity('trashed', 'Moved', 'to the Drive trash'),
+      inputSchema: bulkInput,
+      handler: async (ctx, input) => (await service()).trashMany(actorOf(ctx), bulkInput.parse(input).items),
+    },
+    {
+      name: 'drive.restore_many',
+      module: DRIVE_MODULE_ID,
+      summary: `Restore several Drive files and folders (items: [{ type, id }] from drive.list_trash, at most ${BULK_MAX}) from the trash. Each item is checked like drive.restore; errors names the ones that could not be and why.`,
+      ...write,
+      activity: batchActivity('restored', 'Restored', 'from the Drive trash'),
+      inputSchema: bulkInput,
+      handler: async (ctx, input) => (await service()).restoreMany(actorOf(ctx), bulkInput.parse(input).items),
+    },
+    {
+      name: 'drive.delete_forever_many',
+      module: DRIVE_MODULE_ID,
+      summary: `Delete several trashed Drive files and folders (items: [{ type, id }], at most ${BULK_MAX}) and everything in them for good. Cannot be undone; each needs manage access and must be in the trash. errors names the ones that could not be deleted and why.`,
+      auditClass: 'mutate',
+      approvalRisk: 'destructive',
+      permission: { roles: DRIVE_ROLES },
+      activity: batchActivity('deleted', 'Deleted', 'from Drive forever'),
+      inputSchema: bulkInput,
+      handler: async (ctx, input) => (await service()).deleteForeverMany(actorOf(ctx), bulkInput.parse(input).items),
+    },
+    {
+      name: 'drive.share_many',
+      module: DRIVE_MODULE_ID,
+      summary: `Share several Drive files and folders (items: [{ type, id }], at most ${BULK_MAX}) with the same people: adds grants ([{ subject: { kind: "user", userId } | { kind: "group", groupId } | { kind: "company" }, level: "view"|"edit"|"manage" }]) to each item. It only adds access: whoever already has as much or more keeps it, nobody is removed (to replace an item's sharing, use drive.set_sharing). Each item needs manage access; errors names the ones that could not be shared and why.`,
+      ...write,
+      activity: batchActivity('shared', 'Shared', 'in Drive'),
+      inputSchema: shareManyInput,
+      handler: async (ctx, input) => {
+        const i = shareManyInput.parse(input)
+        return (await service()).shareMany(actorOf(ctx), i.items, i.grants)
       },
     },
   ]

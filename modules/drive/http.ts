@@ -75,6 +75,11 @@ export const grantsBody = z.object({ grants: z.array(z.object({ subject, level }
 export const archiveBody = z
   .object({ items: z.array(z.object({ type: z.enum(['file', 'folder']), id: z.string().min(1) }).strict()).min(1).max(100) })
   .strict()
+/** The selection bar's acts (several items at once; the UI sends a larger selection in chunks of 100). */
+const selectedItems = z.array(z.object({ type: z.enum(['file', 'folder']), id: z.string().min(1) }).strict()).min(1).max(100)
+export const batchBody = z.object({ items: selectedItems }).strict()
+export const batchMoveBody = z.object({ items: selectedItems, folderId: z.string().min(1).nullable() }).strict()
+export const batchShareBody = z.object({ items: selectedItems, grants: grantsBody.shape.grants.min(1) }).strict()
 export const suggestBody = z.object({ olderThanDays: z.number().int() }).strict()
 export type GrantEntry = { subject: GrantSubject; level: AccessLevel }
 

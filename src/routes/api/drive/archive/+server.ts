@@ -8,3 +8,11 @@ export const POST: RequestHandler = (event) =>
     const b = await parseBody(event.request, archiveBody)
     return (await driveService()).archiveMany(actor, b.items)
   })
+
+/** DELETE { items }: the selection bar's Unarchive — brings back each item the person may edit; says why for the rest. */
+export const DELETE: RequestHandler = (event) =>
+  driveJson(event, async () => {
+    const actor = requestActor(event)
+    const b = await parseBody(event.request, archiveBody)
+    return (await driveService()).unarchiveMany(actor, b.items)
+  })

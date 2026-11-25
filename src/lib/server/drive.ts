@@ -23,6 +23,9 @@ export {
 } from '../../../modules/drive/index'
 export {
   archiveBody,
+  batchBody,
+  batchMoveBody,
+  batchShareBody,
   drivePage,
   grantsBody,
   itemType,

@@ -1,4 +1,5 @@
 import type { AccessLevel, DriveAccessPort, Grant, GrantSubject } from './access-port'
+import { LEVEL_RANK } from './access-port'
 import type { BlobStore } from './storage'
 import type { DriveFile, DriveFolder, DriveRevision, DriveStore } from './store'
 import { randomUUID } from 'node:crypto'
@@ -190,6 +191,10 @@ export type ArchiveCandidate = {
 /** A batch archive/unarchive names items by type and id; each one it couldn't do gets a plain sentence. */
 export type ItemRef = { type: ItemType; id: string }
 export type BatchError = ItemRef & { error: string }
+
+/** One key per grant subject (a person, a group, or everyone). */
+const subjectKey = (s: GrantSubject) =>
+  s.kind === 'user' ? `u:${s.userId}` : s.kind === 'group' ? `g:${s.groupId}` : 'c'
 
 /** The owner id of the folders Messages keeps attachments in (its system actor). */
 export const MESSAGES_SYSTEM_OWNER = 'messages'
@@ -756,6 +761,24 @@ export function createDriveService(deps: DriveDeps) {
       }
     }
     return { done, errors }
+  }
+
+  /**
+   * The items ordered by how deep each sits (stable within a depth): inside
+   * out ('deepest') or outside in ('shallowest'). An item that isn't there
+   * keeps its place at depth 0; its own act then says why.
+   */
+  async function byDepth(
+    items: readonly ItemRef[],
+    order: 'deepest' | 'shallowest',
+  ): Promise<ItemRef[]> {
+    const depths = new Map<ItemRef, number>()
+    for (const r of items) {
+      const item = await load(r.type, r.id)
+      depths.set(r, item ? (await chainFrom(parentOf(item))).length : 0)
+    }
+    const sign = order === 'deepest' ? -1 : 1
+    return [...items].sort((a, b) => sign * (depths.get(a)! - depths.get(b)!))
   }
 
   const sorted = <T extends ItemView>(items: T[]): T[] => [
@@ -1496,6 +1519,92 @@ export function createDriveService(deps: DriveDeps) {
         }
       })
       return { unarchived: done, errors }
+    },
+
+    /*
+     * The selection bar's acts (several items at once): each item goes
+     * through the single act — the same access checks, the same sentences —
+     * and the answer is per item. Order is by depth where it matters, so a
+     * folder and something inside it selected together never fail each
+     * other: trash and delete forever go inside out, restore outside in.
+     */
+
+    async moveMany(
+      actor: Actor,
+      items: readonly ItemRef[],
+      targetFolderId: string | null,
+    ): Promise<{ moved: ItemView[]; errors: BatchError[] }> {
+      const { done, errors } = await eachItem(items, (r) =>
+        service.move(actor, r.type, r.id, targetFolderId),
+      )
+      return { moved: done, errors }
+    },
+
+    async trashMany(
+      actor: Actor,
+      items: readonly ItemRef[],
+    ): Promise<{ trashed: ItemView[]; errors: BatchError[] }> {
+      const { done, errors } = await eachItem(await byDepth(items, 'deepest'), async (r) => {
+        await service.moveToTrash(actor, r.type, r.id)
+        return view(r.type, r.id)
+      })
+      return { trashed: done, errors }
+    },
+
+    async restoreMany(
+      actor: Actor,
+      items: readonly ItemRef[],
+    ): Promise<{ restored: ItemView[]; errors: BatchError[] }> {
+      const { done, errors } = await eachItem(await byDepth(items, 'shallowest'), (r) =>
+        service.restore(actor, r.type, r.id),
+      )
+      return { restored: done, errors }
+    },
+
+    async deleteForeverMany(
+      actor: Actor,
+      items: readonly ItemRef[],
+    ): Promise<{ deleted: Array<ItemRef & { name: string }>; errors: BatchError[] }> {
+      const { done, errors } = await eachItem(await byDepth(items, 'deepest'), async (r) => {
+        const name = (await load(r.type, r.id))?.name
+        await service.deleteForever(actor, r.type, r.id)
+        return { type: r.type, id: r.id, name: name ?? '' }
+      })
+      return { deleted: done, errors }
+    },
+
+    /**
+     * Shares several items at once: adds the grants to each item the actor
+     * may manage. It only ever adds access — a person or group who already
+     * has as much or more keeps it, nobody is removed.
+     */
+    async shareMany(
+      actor: Actor,
+      items: readonly ItemRef[],
+      entries: ReadonlyArray<{ subject: GrantSubject; level: AccessLevel }>,
+    ): Promise<{ shared: ItemView[]; errors: BatchError[] }> {
+      const seen = new Set<string>()
+      for (const e of entries) {
+        const key = subjectKey(e.subject)
+        if (seen.has(key)) throw new DriveError('invalid', 'Each person or group can be named once.')
+        seen.add(key)
+      }
+      const { done, errors } = await eachItem(items, async (r) => {
+        const merged = new Map(
+          (await service.getGrants(actor, r.type, r.id)).map((g) => [
+            subjectKey(g.subject),
+            { subject: g.subject, level: g.level },
+          ]),
+        )
+        for (const e of entries) {
+          const have = merged.get(subjectKey(e.subject))
+          if (!have || LEVEL_RANK[have.level] < LEVEL_RANK[e.level])
+            merged.set(subjectKey(e.subject), { subject: e.subject, level: e.level })
+        }
+        await service.setGrants(actor, r.type, r.id, [...merged.values()])
+        return view(r.type, r.id)
+      })
+      return { shared: done, errors }
     },
 
     /**
