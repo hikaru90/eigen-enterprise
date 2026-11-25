@@ -299,7 +299,7 @@ describe('xlsx editor: conditional formatting, validation, hyperlinks, names & p
     // Click Open to navigate to Target!B3
     await page.getByTestId('xlsx-link-open').click()
     await expect.poll(() => shown('B3')).toBe('77')
-    await expect.element(page.getByTestId('xlsx-ref')).toHaveTextContent('B3')
+    await expect.element(page.getByTestId('xlsx-ref')).toHaveValue('B3')
 
     // Switch back to Data and edit D3 to external URL, then remove hyperlink keeping text
     await page.getByTestId('xlsx-tab').first().click()

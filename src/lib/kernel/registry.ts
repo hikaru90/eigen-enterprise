@@ -2,6 +2,7 @@ import type { AuditClass, ToolContext, ToolDescriptor, ToolPrincipal } from './t
 import type { VcsCommitter } from './vcs'
 import type { ZodType } from 'zod'
 import { randomUUID } from 'node:crypto'
+import { redactForLog } from '../server/observability/redact-for-log'
 import {
   InMemoryApprovalStore,
   sameApprovalInput,
@@ -9,7 +10,6 @@ import {
   type ApprovalPolicy,
   type ApprovalStore,
 } from './approvals'
-import { redactForLog } from '../server/observability/redact-for-log'
 import { moduleSource } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'

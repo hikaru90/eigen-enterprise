@@ -1,3 +1,4 @@
+import { contentText, replacedText } from './find'
 import { finishSheet, restyle, sheetDoc, stylesDoc } from './ops'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
 import { SHEET_ALLOW, type SheetAllow } from './rules-choices'
@@ -264,7 +265,7 @@ export function cellProtectionReader(
 // Guard: what each operation may do on a protected sheet / workbook
 
 /** An operation as the guard sees it (any SheetOp). */
-type AnyOp = { op: string; sheet?: string; [k: string]: unknown }
+type AnyOp = { op: string; sheet?: string | null; [k: string]: unknown }
 
 const SHEET_ACTION: Record<
   string,
@@ -315,10 +316,60 @@ const SHEET_ACTION: Record<
   chart_update: { allow: 'objects', what: 'change charts' },
   chart_move: { allow: 'objects', what: 'move charts' },
   chart_delete: { allow: 'objects', what: 'delete charts' },
+  // Everyday editing (§7.7): pasted, filled, cleared and rich-text cells must be unlocked.
+  paste: { cells: (op) => pasteArea(op), what: 'paste into locked cells' },
+  fill: { cells: (op) => fillArea(op), what: 'fill locked cells' },
+  clear_range: { cells: (op) => [requireRange(String(op.range))], what: 'clear locked cells' },
+  set_rich_text: { cells: (op) => [requireRange(String(op.ref))], what: 'change locked cells' },
+  shift_decimals: { allow: 'formatCells', what: 'format cells' },
+  // Excel greys Merge & Center out on a protected sheet, and the outline buttons too.
+  merge_cells: { never: true, what: 'merge or unmerge cells' },
+  group_columns: { never: true, what: 'group columns' },
+  ungroup_columns: { never: true, what: 'ungroup columns' },
+  group_rows: { never: true, what: 'group rows' },
+  ungroup_rows: { never: true, what: 'ungroup rows' },
+  collapse_columns: { never: true, what: 'collapse or expand groups' },
+  collapse_rows: { never: true, what: 'collapse or expand groups' },
+  set_outline_level: { never: true, what: 'change the outline' },
+  hide_columns: { allow: 'formatColumns', what: 'hide or unhide columns' },
+  hide_rows: { allow: 'formatRows', what: 'hide or unhide rows' },
+  autofit_columns: { allow: 'formatColumns', what: 'change column widths' },
+  autofit_rows: { allow: 'formatRows', what: 'change row heights' },
 }
 
-/** Workbook-level operations a locked structure refuses. */
-const STRUCTURE_OPS = new Set(['add_sheet', 'rename_sheet', 'delete_sheet'])
+/** The cells a paste writes: its target block (tiled to the target range when that is a multiple). */
+function pasteArea(op: AnyOp): Range[] {
+  const at = requireRange(String(op.at))
+  const clip = op.clip as { rows: number; cols: number }
+  const R = op.transpose ? clip.cols : clip.rows
+  const C = op.transpose ? clip.rows : clip.cols
+  const single = at.top === at.bottom && at.left === at.right
+  return [
+    single ? { top: at.top, left: at.left, bottom: at.top + R - 1, right: at.left + C - 1 } : at,
+  ]
+}
+
+/** The cells a fill writes: the target without its source. */
+function fillArea(op: AnyOp): Range[] {
+  const src = requireRange(String(op.source))
+  const t = requireRange(String(op.target))
+  if (t.bottom > src.bottom) return [{ ...t, top: src.bottom + 1 }]
+  if (t.top < src.top) return [{ ...t, bottom: src.top - 1 }]
+  if (t.right > src.right) return [{ ...t, left: src.right + 1 }]
+  if (t.left < src.left) return [{ ...t, right: src.left - 1 }]
+  return []
+}
+
+/** Workbook-level operations a locked structure refuses (sheet tabs: move, colour, hide/unhide, duplicate too). */
+const STRUCTURE_OPS = new Set([
+  'add_sheet',
+  'rename_sheet',
+  'delete_sheet',
+  'move_sheet',
+  'set_sheet_color',
+  'set_sheet_visibility',
+  'duplicate_sheet',
+])
 /** Never refused by protection: they change protection or nothing on a sheet's cells. */
 const FREE_OPS = new Set([
   'protect_sheet',
@@ -329,6 +380,11 @@ const FREE_OPS = new Set([
   'name_update',
   'name_delete',
   'freeze_panes',
+  // Page setup and gridlines/headings stay available on a protected sheet (Excel).
+  'set_page_setup',
+  'set_view_options',
+  // Each operation of a batch is guarded on its own.
+  'batch',
 ])
 
 function cellsOf(op: AnyOp): Range[] {
@@ -347,6 +403,27 @@ function lines(op: AnyOp, axis: 'rows' | 'cols'): Range[] {
 /** Throws the reason when protection forbids `op`; does nothing otherwise. */
 export function guard(wb: Workbook, op: AnyOp) {
   if (FREE_OPS.has(op.op)) return
+  if (op.op === 'replace') return guardReplace(wb, op)
+  // A cut takes the cells away from its source too: locked source cells refuse it.
+  if (op.op === 'paste' && op.cut) {
+    const clip = op.clip as {
+      sheet: string | null
+      origin: { row: number; col: number }
+      rows: number
+      cols: number
+    }
+    if (clip.sheet)
+      guard(wb, {
+        op: 'clear_range',
+        sheet: clip.sheet,
+        range: rangeName({
+          top: clip.origin.row,
+          left: clip.origin.col,
+          bottom: clip.origin.row + clip.rows - 1,
+          right: clip.origin.col + clip.cols - 1,
+        }),
+      })
+  }
   if (STRUCTURE_OPS.has(op.op)) {
     if (workbookProtectionOf(wb)?.structure)
       throw new XlsxError(
@@ -383,6 +460,43 @@ export function guard(wb: Workbook, op: AnyOp) {
       throw new XlsxError(
         `${info.name}!${locked} is locked and the sheet is protected. Unprotect the sheet first${prot.hasPassword ? ' (it has a password)' : ''}.`,
       )
+  }
+}
+
+/** Replace refuses when a cell it would change is locked on a protected sheet (Excel stops there). */
+function guardReplace(wb: Workbook, op: AnyOp) {
+  const only = op.cells as Array<{ sheet: string; ref: string }> | undefined
+  const sheets = op.sheet
+    ? [wb.requireWorksheet(String(op.sheet))]
+    : wb.sheets().filter((s) => s.kind === 'worksheet')
+  for (const info of sheets) {
+    const prot = sheetProtectionOf(wb, info.name)
+    if (!prot) continue
+    const read = cellProtectionReader(wb, info.name)
+    const key = info.name.toLowerCase()
+    for (const cell of wb.sheet(info.name).cells.values()) {
+      if (cell.value === null && cell.formula === null) continue
+      if (
+        only &&
+        !only.some(
+          (c) =>
+            c.sheet.toLowerCase() === key &&
+            c.ref.toUpperCase().replace(/\$/g, '') === cellName(cell),
+        )
+      )
+        continue
+      if (!read(cell.row, cell.col).locked) continue
+      const next = replacedText(contentText(wb, cell), {
+        find: String(op.find),
+        replace: String(op.replace),
+        matchCase: op.matchCase === true,
+        wholeCell: op.wholeCell === true,
+      })
+      if (next !== null)
+        throw new XlsxError(
+          `${info.name}!${cellName(cell)} is locked and the sheet is protected, so it can’t be replaced. Unprotect the sheet first${prot.hasPassword ? ' (it has a password)' : ''}.`,
+        )
+    }
   }
 }
 

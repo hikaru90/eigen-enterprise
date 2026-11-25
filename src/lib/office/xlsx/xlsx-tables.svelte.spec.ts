@@ -70,7 +70,9 @@ async function click(ref: string) {
 describe('xlsx editor: tables and pivot tables', () => {
   beforeEach(() => {
     for (const fn of Object.values(api)) fn.mockReset()
-    api.readBytes.mockImplementation(async () => api.writeBytes.mock.calls.at(-1)?.[1] ?? sales())
+    // One build per test: a ZIP built again a second later has other timestamps (another SHA), which the editor reads as a newer version.
+    const original = sales()
+    api.readBytes.mockImplementation(async () => api.writeBytes.mock.calls.at(-1)?.[1] ?? original)
     api.acquireLock.mockResolvedValue({ state: 'held', since: '2026-11-25T10:00:00Z' })
     api.heartbeatLock.mockResolvedValue({ state: 'held', since: '2026-11-25T10:00:00Z' })
     api.releaseLock.mockResolvedValue(undefined)

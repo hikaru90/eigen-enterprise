@@ -23,7 +23,7 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-chart-tools.ts, ./sheet-pivot-table-tools.ts, ./sheet-rules-tools.ts, the Drive's spreadsheet editor): reads and writes. */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-chart-tools.ts, ./sheet-pivot-table-tools.ts, ./sheet-editing-tools.ts, ./sheet-rules-tools.ts, the Drive's spreadsheet editor): reads + writes. */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
@@ -43,6 +43,13 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_chart_create',
   'drive.sheet_chart_update',
   'drive.sheet_chart_delete',
+  'drive.sheet_copy_range',
+  'drive.sheet_fill',
+  'drive.sheet_find_replace',
+  'drive.sheet_merge',
+  'drive.sheet_rows_cols',
+  'drive.sheet_tab',
+  'drive.sheet_export_pdf',
   'drive.sheet_conditional_format_list',
   'drive.sheet_conditional_format_set',
   'drive.sheet_conditional_format_delete',
@@ -74,6 +81,12 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_chart_create',
   'drive.sheet_chart_update',
   'drive.sheet_chart_delete',
+  'drive.sheet_copy_range',
+  'drive.sheet_fill',
+  'drive.sheet_find_replace',
+  'drive.sheet_merge',
+  'drive.sheet_rows_cols',
+  'drive.sheet_tab',
   'drive.sheet_conditional_format_set',
   'drive.sheet_conditional_format_delete',
   'drive.sheet_validation_set',

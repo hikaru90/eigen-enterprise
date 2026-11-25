@@ -1,4 +1,3 @@
-import { moveRulesWithSort } from './rule-sort'
 import type { SheetEditor } from './editor'
 import type { Loss } from './ops'
 import { translateFormulaToA1, translateFormulaToR1C1 } from '@borgar/fx'
@@ -17,6 +16,7 @@ import {
   requireRange,
   type Range,
 } from './ref'
+import { moveRulesWithSort } from './rule-sort'
 import { dropEmptyRow, ensureRow, sheetDataOf, unshareFormulas } from './sheet-xml'
 import { clearTableSortStates, readSheetTables, setTableSortState, type ExcelTable } from './tables'
 import { isErrorValue, XlsxError, type CellValue, type SheetInfo, type Workbook } from './workbook'

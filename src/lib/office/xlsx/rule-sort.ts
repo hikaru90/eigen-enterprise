@@ -51,7 +51,9 @@ function moveTarget(doc: XMLDocument, t: Target, body: Range, dest: Map<number, 
   const covered = new Map<number, Set<number>>()
   let changes = false
   for (let c = body.left; c <= body.right; c++) {
-    const rows = moved.filter((r) => t.ranges.some((x) => r >= x.top && r <= x.bottom && c >= x.left && c <= x.right))
+    const rows = moved.filter((r) =>
+      t.ranges.some((x) => r >= x.top && r <= x.bottom && c >= x.left && c <= x.right),
+    )
     if (rows.length > 0 && rows.length < moved.length) changes = true
   }
   if (!changes) return
