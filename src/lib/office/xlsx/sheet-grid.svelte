@@ -26,6 +26,7 @@
 </script>
 
 <script lang="ts">
+  import type { Snippet } from 'svelte'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
   import { onMount, tick } from 'svelte'
@@ -77,6 +78,8 @@
     filter = null,
     onfilter,
     onresize,
+    overlay,
+    oncellpointerdown,
   }: {
     rows: number
     cols: number
@@ -114,12 +117,25 @@
     /** Rows from the top / columns from the left that stay in place. */
     frozenRows?: number
     frozenCols?: number
-    /** The sheet's AutoFilter: its range, and which columns filter. */
-    filter?: { range: Range; filtered: (col: number) => boolean } | null
-    /** A filter button (or Alt+↓) asked for column `col`'s menu, shown at `at`. */
-    onfilter?: (col: number, at: DOMRect) => void
+    /** The sheet's AutoFilter and its tables' filters: their ranges (drop-downs on each first row), and which columns filter. */
+    filter?: { ranges: Range[]; filtered: (row: number, col: number) => boolean } | null
+    /** A filter button (or Alt+↓) asked for the menu of column `col` of the filter whose header row is `row`, shown at `at`. */
+    onfilter?: (col: number, at: DOMRect, row: number) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
+    /** Floating sheet overlay (charts) positioned in sheet pixel space. */
+    overlay?: Snippet<
+      [
+        {
+          colLeft: (c: number) => number
+          rowTop: (r: number) => number
+          maxCol: number
+          maxRow: number
+        },
+      ]
+    >
+    /** Fired when pointer goes down on a cell (used to clear floating object selection). */
+    oncellpointerdown?: () => void
   } = $props()
 
   const HEAD_H = 24
@@ -357,7 +373,7 @@
     if (event.altKey && event.key === 'ArrowDown') {
       if (filterButtonAt(active.row, active.col)) {
         event.preventDefault()
-        openFilter(active.col, document.getElementById(activeId))
+        openFilter(active.col, document.getElementById(activeId), active.row)
         return
       }
       if (activeCell?.hasDropdown) {
@@ -458,6 +474,7 @@
     const p = posFromEvent(event)
     if (!p) return
     dvOpen = false
+    oncellpointerdown?.()
     if (editing) finishEdit(true)
     const mr = mergeAt(p.row, p.col)
     const at = mr ? { row: mr.range.top, col: mr.range.left } : p
@@ -568,12 +585,12 @@
     r >= sel.top && r <= sel.bottom && c >= sel.left && c <= sel.right
 
   const filterButtonAt = (r: number, c: number) =>
-    !!filter && r === filter.range.top && c >= filter.range.left && c <= filter.range.right
+    !!filter && filter.ranges.some((x) => r === x.top && c >= x.left && c <= x.right)
 
-  function openFilter(c: number, el: Element | null) {
+  function openFilter(c: number, el: Element | null, r: number) {
     if (!el || !onfilter) return
     if (editing) finishEdit(true)
-    onfilter(c, el.getBoundingClientRect())
+    onfilter(c, el.getBoundingClientRect(), r)
   }
 </script>
 
@@ -658,7 +675,7 @@
               ></div>
             {/if}
             {#if fb}
-              {@const on = filter!.filtered(c)}
+              {@const on = filter!.filtered(r, c)}
               {@const what = on
                 ? m.drive_sheet_filter_button_on({ col: colName(c) })
                 : m.drive_sheet_filter_button({ col: colName(c) })}
@@ -673,7 +690,7 @@
                 title={what}
                 onpointerdown={(e) => e.stopPropagation()}
                 ondblclick={(e) => e.stopPropagation()}
-                onclick={(e) => openFilter(c, e.currentTarget)}
+                onclick={(e) => openFilter(c, e.currentTarget, r)}
                 data-testid="xlsx-filter-button"
                 data-col={colName(c)}
                 >{#if on}<FunnelIcon class="size-3" aria-hidden="true" />{:else}<ChevronDownIcon
@@ -993,6 +1010,22 @@
         {@render pane(visibleRows, visibleCols, FW, FH, 'br')}
       </div>
     </div>
+    {#if overlay}
+      <div
+        class="g-abs g-ghost g-z6"
+        style="top: {HEAD_H}px; left: {HEAD_W}px; width: {colLefts[cols]!}px; height: {rowTops[
+          rows
+        ]!}px;"
+        role="presentation"
+      >
+        {@render overlay({
+          colLeft: (c) => colLefts[Math.max(0, Math.min(c, cols))]!,
+          rowTop: (r) => rowTops[Math.max(0, Math.min(r, rows))]!,
+          maxCol: cols - 1,
+          maxRow: rows - 1,
+        })}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -1052,6 +1085,9 @@
     bottom: 0;
     right: 0;
     width: 1px;
+  }
+  .g-z6 {
+    z-index: 6;
   }
   .g-z12 {
     z-index: 12;

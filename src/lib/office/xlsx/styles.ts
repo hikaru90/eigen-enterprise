@@ -44,6 +44,8 @@ export type CellStyle = {
 export type Styles = {
   count: number
   xf(index: number): CellStyle
+  /** The format code of a number format id (custom or built-in; unknown ids read General). */
+  numFmtCode(id: number): string
 }
 
 /** Built-in number formats (§18.8.30). Id 14 is the locale's short date. */
@@ -294,7 +296,8 @@ export function colorReader(
 }
 
 export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): Styles {
-  if (!doc) return { count: 1, xf: () => GENERAL }
+  if (!doc)
+    return { count: 1, xf: () => GENERAL, numFmtCode: (id) => BUILTIN_NUMFMT[id] ?? 'General' }
   const root = doc.documentElement!
   const color = colorReader(doc, theme)
   const numFmts = new Map<number, string>()
@@ -339,6 +342,7 @@ export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): 
   const cache = new Map<number, CellStyle>()
   return {
     count: Math.max(1, xfs.length),
+    numFmtCode: (id) => numFmts.get(id) ?? BUILTIN_NUMFMT[id] ?? 'General',
     xf(index) {
       const hit = cache.get(index)
       if (hit) return hit

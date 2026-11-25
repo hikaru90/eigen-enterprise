@@ -1,7 +1,7 @@
-import { actsAsMember } from '$lib/kernel/principals'
 import type { Actor, DriveService } from './service'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { roleCan } from '$lib/server/auth/capabilities'
 import type { MemberRole } from '$lib/server/auth/roles'
@@ -13,10 +13,12 @@ import { createDriveFileTools } from './file-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
-import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { DOCUMENT_KINDS } from './service'
-import { createDriveSheetCopyTools } from './sheet-copy-tools'
 import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
+import { createDriveSheetChartTools } from './sheet-chart-tools'
+import { createDriveSheetCopyTools } from './sheet-copy-tools'
+import { createDriveSheetFormatTools } from './sheet-format-tools'
+import { createDriveSheetPivotTableTools } from './sheet-pivot-table-tools'
 import { createDriveSheetRulesTools } from './sheet-rules-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
@@ -321,6 +323,8 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetFormatTools({ service }),
     ...createDriveSheetCopyTools({ service }),
     ...createDriveSheetArrangeTools({ service }),
+    ...createDriveSheetPivotTableTools({ service }),
+    ...createDriveSheetChartTools({ service }),
     ...createDriveSheetRulesTools({ service }),
   ]
 }

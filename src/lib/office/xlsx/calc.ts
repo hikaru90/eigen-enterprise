@@ -2,7 +2,27 @@ import { parse } from '@borgar/fx'
 import { parseA1Ref } from '@borgar/fx/xlsx'
 import * as F from '@formulajs/formulajs'
 import { format as formatNumber } from 'numfmt'
+import {
+  AGG_FUNCTIONS,
+  aggregateValues,
+  filterRanges,
+  isNestedTotal,
+  mdeterm,
+  minverse,
+  needsReference,
+} from './calc-agg'
 import { callDynamic, DYNAMIC, findIndex, runMatch, vector, type Arg } from './calc-dynamic'
+import { FIN_FUNCTIONS } from './calc-fin'
+import { groupBy, percentOf, pivotBy, type Aggregator } from './calc-groupby'
+import {
+  cellInfo,
+  formulaText,
+  infoValue,
+  isFormula,
+  sheetCount,
+  sheetNumber,
+  trimRange,
+} from './calc-info'
 import { paramClass } from './calc-params'
 import {
   offsetRef,
@@ -14,12 +34,14 @@ import {
   type At,
   type Table,
 } from './calc-refs'
+import { TEXT_FUNCTIONS, type TArg } from './calc-text'
 import {
   asMatrix,
   binary,
   cols,
   dateToSerial,
   err,
+  isAreas,
   isLambda,
   isMatrix,
   isMulti,
@@ -28,8 +50,10 @@ import {
   liftN,
   rows,
   toNumber,
+  toText,
   truthy,
   Unsupported,
+  type AreasVal,
   type Env,
   type LambdaVal,
   type Matrix,
@@ -37,6 +61,7 @@ import {
   type RefVal,
   type Val,
 } from './calc-values'
+import { evaluateGetPivotData } from './pivot'
 import { cellKey, cellName, MAX_COLS, MAX_ROWS, parseCell, rangeName, type Range } from './ref'
 import { parseableTokens } from './shift'
 import {
@@ -108,9 +133,6 @@ type Ctx = {
 
 /** Functions this engine refuses rather than approximate. */
 const REFUSED = new Set([
-  'CELL',
-  'INFO',
-  'GETPIVOTDATA',
   'CUBEVALUE',
   'CUBEMEMBER',
   'CUBESET',
@@ -172,7 +194,7 @@ export function createCalc(wb: Workbook): Calc {
         t.type === 'func'
           ? { ...t, value: t.value.replace(PREFIX, '') }
           : t.type === 'range_named'
-            ? { ...t, value: t.value.replace(/^_xlpm\./i, '') }
+            ? { ...t, value: t.value.replace(/^_xl(pm|eta)\./i, '') }
             : t,
       )
       node = parse(toks as never) as unknown as Node
@@ -539,6 +561,7 @@ export function createCalc(wb: Workbook): Calc {
 
   /** A value for an operator or single-value parameter: older Excel intersects a range with the formula's cell. */
   function operand(v: Val, ctx: Ctx): CellValue | Matrix {
+    if (isAreas(v)) throw new Unsupported(UNION_HERE)
     if (isLambda(v)) return err('#CALC!')
     if (isOmitted(v)) return null
     if (!isRef(v)) return v
@@ -548,6 +571,7 @@ export function createCalc(wb: Workbook): Calc {
 
   /** A whole value (a range or array taken as it is). */
   function whole(v: Val): CellValue | Matrix {
+    if (isAreas(v)) throw new Unsupported(UNION_HERE)
     if (isLambda(v)) return err('#CALC!')
     if (isOmitted(v)) return null
     return isRef(v) ? materialize(v) : v
@@ -565,6 +589,7 @@ export function createCalc(wb: Workbook): Calc {
 
   /** The @ operator (and how a single-cell formula ends): a range intersected, an array's top-left value. */
   function single(v: Val, ctx: Ctx): CellValue {
+    if (isAreas(v)) throw new Unsupported(UNION_HERE)
     if (isLambda(v)) return err('#CALC!')
     if (isOmitted(v)) return null
     if (isRef(v)) return isMulti(v.ref) ? intersect(v, ctx) : (materialize(v) as CellValue)
@@ -573,6 +598,7 @@ export function createCalc(wb: Workbook): Calc {
   }
 
   function toMatrix(v: Val): Matrix {
+    if (isAreas(v)) throw new Unsupported(UNION_HERE)
     if (isLambda(v)) return [[err('#CALC!')]]
     if (isOmitted(v)) return [[null]]
     return asMatrix(isRef(v) ? materialize(v) : v)
@@ -647,6 +673,10 @@ export function createCalc(wb: Workbook): Calc {
     const k = name.toLowerCase()
     const t = tables().find((x) => x.name.toLowerCase() === k)
     if (t) return tableData(t)
+    // An eta-reduced lambda: a worksheet function passed by its name (GROUPBY(…,SUM), BYROW(…,MAX)).
+    const fn = name.toUpperCase()
+    if (canEvaluate(fn))
+      return { lambda: { params: [], body: null, env: null, home: ctx.home, eta: fn } }
     return err('#NAME?')
   }
 
@@ -680,12 +710,14 @@ export function createCalc(wb: Workbook): Calc {
       case 'BinaryExpression': {
         const op = node.operator as string
         const [l, r] = node.arguments as Node[]
-        if (op === ',') throw new Unsupported('range unions')
+        if (op === ',') return union(evalNode(l!, ctx), evalNode(r!, ctx))
         if (op === ':' || op === ' ') {
           const a = evalNode(l!, ctx)
           const b = evalNode(r!, ctx)
           if (isErrorValue(a)) return a
           if (isErrorValue(b)) return b
+          if (isAreas(a) || isAreas(b))
+            throw new Unsupported(`a range union with the “${op}” operator`)
           if (!isRef(a) || !isRef(b)) return err('#VALUE!')
           if (a.ref.sheet !== b.ref.sheet) return err('#VALUE!')
           const x = a.ref
@@ -754,7 +786,33 @@ export function createCalc(wb: Workbook): Calc {
     return { ref: { sheet: info.name, ...res.rect } }
   }
 
+  /** The union operator: the areas of both sides, in order (one sheet). */
+  function union(a: Val, b: Val): Val {
+    if (isErrorValue(a)) return a
+    if (isErrorValue(b)) return b
+    const areas = (v: Val): AreasVal['areas'] => {
+      if (isRef(v)) return [v.ref]
+      if (isAreas(v)) return v.areas
+      throw new Unsupported('a range union of something that is not a reference')
+    }
+    const all = [...areas(a), ...areas(b)]
+    if (all.some((x) => x.sheet !== all[0]!.sheet))
+      throw new Unsupported('a range union over several sheets')
+    return { areas: all }
+  }
+
   function invoke(fn: LambdaVal, args: Val[], ctx: Ctx): Val {
+    if (fn.lambda.eta) {
+      // An eta-reduced function: called with the arguments bound to names of their own.
+      const id = (i: number) => `\u0000eta${i}`
+      const names = new Map<string, Val>(args.map((a, i) => [id(i), a]))
+      const node = {
+        type: 'CallExpression',
+        callee: { type: 'Identifier', name: fn.lambda.eta },
+        arguments: args.map((_, i) => ({ type: 'ReferenceIdentifier', kind: 'name', value: id(i) })),
+      }
+      return evalNode(node, { ...ctx, env: { names, parent: null }, depth: ctx.depth + 1 })
+    }
     const { params, body, env, home } = fn.lambda
     if (args.length !== params.length || body === null) return err('#VALUE!')
     if (ctx.depth > MAX_DEPTH) throw new Unsupported('a LAMBDA that calls itself too deeply')
@@ -876,9 +934,17 @@ export function createCalc(wb: Workbook): Calc {
           ? left + 1
           : [Array.from({ length: right - left + 1 }, (_, i) => left + i + 1)]
       }
+      case 'AREAS': {
+        const r = arg(0)
+        if (isErrorValue(r)) return r
+        if (isAreas(r)) return r.areas.length
+        if (isRef(r)) return 1
+        throw new Unsupported('AREAS of something that is not a reference')
+      }
       case 'ROWS':
       case 'COLUMNS': {
         const r = arg(0)
+        if (isAreas(r)) return err('#REF!')
         if (isRef(r))
           return name === 'ROWS' ? r.ref.bottom - r.ref.top + 1 : r.ref.right - r.ref.left + 1
         const m = whole(r)
@@ -887,7 +953,7 @@ export function createCalc(wb: Workbook): Calc {
       }
       case 'ISREF': {
         const v = args[0] ? evalNode(args[0], ctx) : null
-        return isRef(v)
+        return isRef(v) || isAreas(v)
       }
       case 'OFFSET': {
         const base = arg(0)
@@ -930,6 +996,101 @@ export function createCalc(wb: Workbook): Calc {
       }
       case 'INDEX':
         return index(args, ctx)
+      case 'SUBTOTAL':
+      case 'AGGREGATE':
+        return totals(name, args, ctx)
+      case 'CELL':
+        return cellInfo(
+          { wb, home: ctx.home, value: (sh, r, c) => refCell(sh, r, c) },
+          scalarArg(args[0]!, ctx, name),
+          args[1] === undefined || args[1] === null ? undefined : evalNode(args[1], ctx),
+        )
+      case 'INFO':
+        return infoValue(wb, scalarArg(args[0]!, ctx, name))
+      case 'SHEET':
+      case 'SHEETS': {
+        const v = args[0] === undefined || args[0] === null ? undefined : evalNode(args[0], ctx)
+        const val = v !== undefined && !isRef(v) && !isAreas(v) ? operand(v, ctx) : v
+        if (isMatrix(val)) throw new Unsupported(`${name} of an array`)
+        return name === 'SHEET'
+          ? sheetNumber(wb, ctx.home, val as Val | undefined)
+          : sheetCount(wb, val as Val | undefined)
+      }
+      case 'ISFORMULA':
+      case 'FORMULATEXT': {
+        const deps = { wb, legacyAnchor: legacyAnchorOf }
+        let v = arg(0)
+        if (isRef(v) && isMulti(v.ref) && ctx.legacy && !ctx.arrayCtx) {
+          if (!ctx.at) throw new Unsupported('implicit intersection without a cell')
+          const { sheet, top, left, bottom, right } = v.ref
+          const r = top === bottom ? top : ctx.at.row >= top && ctx.at.row <= bottom ? ctx.at.row : -1
+          const c = left === right ? left : ctx.at.col >= left && ctx.at.col <= right ? ctx.at.col : -1
+          v = r < 0 || c < 0 ? err('#VALUE!') : { ref: { sheet, top: r, left: c, bottom: r, right: c } }
+        }
+        return name === 'ISFORMULA' ? isFormula(deps, v) : formulaText(deps, v)
+      }
+      case 'GETPIVOTDATA': {
+        if (args.length < 2 || args.length % 2 !== 0 || !args[0] || !args[1]) return err('#VALUE!')
+        const df = scalarArg(args[0], ctx, name)
+        if (isErrorValue(df)) return df
+        const pt = evalNode(args[1], ctx)
+        if (isErrorValue(pt)) return pt
+        if (!isRef(pt)) return err('#REF!')
+        const dfText = toText(df)
+        if (isErrorValue(dfText)) return dfText
+        const pairs: Array<[string, CellValue]> = []
+        for (let i = 2; i < args.length; i += 2) {
+          if (!args[i] || !args[i + 1]) return err('#VALUE!')
+          const f = scalarArg(args[i]!, ctx, name)
+          if (isErrorValue(f)) return f
+          const v = scalarArg(args[i + 1]!, ctx, name)
+          if (isErrorValue(v)) return v
+          const ft = toText(f)
+          if (isErrorValue(ft)) return ft
+          pairs.push([ft, v])
+        }
+        return evaluateGetPivotData(
+          wb,
+          pt.ref.sheet,
+          pt.ref.top,
+          pt.ref.left,
+          dfText,
+          pairs,
+        )
+      }
+      case 'TRIMRANGE': {
+        const tr = numArg(args[1], ctx, name, 3)
+        const tc = numArg(args[2], ctx, name, 3)
+        if (isErrorValue(tr)) return tr
+        if (isErrorValue(tc)) return tc
+        return trimRange(
+          arg(0),
+          Math.trunc(tr),
+          Math.trunc(tc),
+          (sh, r, c) => refCell(sh, r, c) === null,
+        )
+      }
+      case 'GROUPBY':
+      case 'PIVOTBY': {
+        const fnAt = name === 'GROUPBY' ? 2 : 3
+        const f = arg(fnAt)
+        if (isErrorValue(f)) return f
+        if (!isLambda(f)) return err('#VALUE!')
+        const values: TArg[] = args.map((a, i) => {
+          if (i === fnAt || a === null) return undefined
+          const v = evalNode(a, { ...ctx, arrayCtx: true })
+          return isOmitted(v) ? undefined : whole(v)
+        })
+        const agg = aggregator(f, ctx, name)
+        return name === 'GROUPBY' ? groupBy(values, agg) : pivotBy(values, agg)
+      }
+      case 'PERCENTOF':
+        return percentOf(asMatrix(whole(arg(0))), asMatrix(whole(arg(1))))
+      case 'MDETERM':
+      case 'MINVERSE': {
+        const m = asMatrix(whole(evalNode(args[0] ?? null, { ...ctx, arrayCtx: true })))
+        return name === 'MDETERM' ? mdeterm(m) : minverse(m)
+      }
       case 'XLOOKUP':
         return xlookup(args, ctx)
       case 'XMATCH': {
@@ -1029,6 +1190,8 @@ export function createCalc(wb: Workbook): Calc {
       return callDynamic(name, values)
     }
     if (LOCAL[name]) return generic(name, args, ctx, LOCAL[name]!)
+    const text = TEXT_FUNCTIONS[name]
+    if (text) return generic(name, args, ctx, (...xs) => text(xs as TArg[]), true)
     const named = definedName(name, ctx)
     if (named !== undefined) {
       if (!isLambda(named)) return err('#NAME?')
@@ -1062,14 +1225,22 @@ export function createCalc(wb: Workbook): Calc {
     args: Node[],
     ctx: Ctx,
     f: (...xs: Array<CellValue | Matrix>) => CellValue | Matrix,
+    /** Left-out arguments come as undefined (not as an empty value). */
+    keepOmitted = false,
   ): CellValue | Matrix {
     const classes = args.map((_, i) => paramClass(name, i))
-    const values = args.map((a, i) => {
+    const values = args.flatMap((a, i): Array<CellValue | Matrix> => {
+      if (keepOmitted && a === null) return [undefined as unknown as CellValue]
       const cls = classes[i]!
       const sub = cls === 'array' && !ctx.arrayCtx ? { ...ctx, arrayCtx: true } : ctx
       const v = evalNode(a, sub)
-      return cls === 'value' ? operand(v, sub) : whole(v)
+      // SUM((A1:B2,D4)) is SUM(A1:B2,D4) for the functions over any number of ranges.
+      if (isAreas(v) && cls === 'range' && UNION_SPREAD.has(name))
+        return v.areas.map((ref) => materialize({ ref }))
+      return [cls === 'value' ? operand(v, sub) : whole(v)]
     })
+    // A spread union: every argument is a range, taken whole.
+    if (values.length !== args.length) return f(...values)
     const lifted = values.map((v, i) => classes[i] === 'value' && isMatrix(v))
     if (!lifted.some(Boolean)) return f(...values)
     const liftArgs = values.filter((_, i) => lifted[i]) as Matrix[]
@@ -1082,13 +1253,20 @@ export function createCalc(wb: Workbook): Calc {
   }
 
   function index(args: Node[], ctx: Ctx): Val {
-    const base = evalNode(args[0] ?? null, ctx.legacy ? { ...ctx, arrayCtx: true } : ctx)
+    let base = evalNode(args[0] ?? null, ctx.legacy ? { ...ctx, arrayCtx: true } : ctx)
     if (isErrorValue(base)) return base
+    let areaNum = 1
     if (args[3] !== undefined && args[3] !== null) {
       const area = numArg(args[3], ctx, 'INDEX', 1)
       if (isErrorValue(area)) return area
-      if (Math.trunc(area) !== 1) throw new Unsupported('INDEX over several areas')
+      areaNum = Math.trunc(area)
     }
+    // INDEX(reference, row, column, area_num): the area picked first.
+    if (areaNum < 1) return err('#VALUE!')
+    if (isAreas(base)) {
+      if (areaNum > base.areas.length) return err('#REF!')
+      base = { ref: base.areas[areaNum - 1]! }
+    } else if (areaNum !== 1) return err('#REF!')
     const h = isRef(base) ? base.ref.bottom - base.ref.top + 1 : rows(asMatrix(whole(base)))
     const w = isRef(base) ? base.ref.right - base.ref.left + 1 : cols(asMatrix(whole(base)))
     const rArg = numArg(args[1], ctx, 'INDEX', 0)
@@ -1172,6 +1350,115 @@ export function createCalc(wb: Workbook): Calc {
     })
   }
 
+  /** The anchor of the legacy array formula whose range holds a cell (FORMULATEXT, ISFORMULA). */
+  function legacyAnchorOf(sheet: string, row: number, col: number) {
+    const a = arrayAnchors(sheet, false).find(
+      (x) =>
+        x.formulaRef &&
+        row >= x.formulaRef.top &&
+        row <= x.formulaRef.bottom &&
+        col >= x.formulaRef.left &&
+        col <= x.formulaRef.right,
+    )
+    return a ? { row: a.row, col: a.col } : null
+  }
+
+  /** A LAMBDA or eta-reduced function as GROUPBY/PIVOTBY's aggregation. */
+  function aggregator(f: LambdaVal, ctx: Ctx, fn: string): Aggregator {
+    const arity = f.lambda.eta
+      ? f.lambda.eta === 'PERCENTOF'
+        ? 2
+        : 1
+      : f.lambda.params.length
+    if (arity !== 1 && arity !== 2)
+      throw new Unsupported(`${fn} with a LAMBDA of ${arity} parameters`)
+    return {
+      arity,
+      run(subset, total) {
+        const out = whole(invoke(f, arity === 1 ? [subset] : [subset, total], ctx))
+        if (!isMatrix(out)) return out
+        if (rows(out) === 1 && cols(out) === 1) return out[0]![0]!
+        throw new Unsupported(`${fn} with a function that returns an array`)
+      },
+    }
+  }
+
+  /** SUBTOTAL(function_num, ref1, …) and AGGREGATE(function_num, options, ref1, … | array, k). */
+  function totals(name: string, args: Node[], ctx: Ctx): Val {
+    const n = numArg(args[0], ctx, name, NaN)
+    if (isErrorValue(n)) return n
+    const fnNum = Math.trunc(n)
+    let base: number
+    let skipHidden: 'all' | 'filtered'
+    let skipNested = true
+    let ignoreErrors = false
+    let refsFrom: number
+    if (name === 'SUBTOTAL') {
+      if (fnNum >= 1 && fnNum <= 11) base = fnNum
+      else if (fnNum >= 101 && fnNum <= 111) base = fnNum - 100
+      else return err('#VALUE!')
+      skipHidden = fnNum > 100 ? 'all' : 'filtered'
+      refsFrom = 1
+    } else {
+      if (fnNum < 1 || fnNum > 19) return err('#VALUE!')
+      base = fnNum
+      const o = args[1] === undefined || args[1] === null ? 0 : numArg(args[1], ctx, name, 0)
+      if (isErrorValue(o)) return o
+      const opt = Math.trunc(o)
+      if (opt < 0 || opt > 7) return err('#VALUE!')
+      skipNested = opt <= 3
+      skipHidden = opt === 1 || opt === 3 || opt === 5 || opt === 7 ? 'all' : 'filtered'
+      ignoreErrors = opt === 2 || opt === 3 || opt === 6 || opt === 7
+      refsFrom = 2
+    }
+    if (args.length <= refsFrom) return err('#VALUE!')
+    const arrayForm = base >= 14
+    const inputs = arrayForm ? [args[refsFrom]!] : args.slice(refsFrom)
+    const collected: CellValue[] = []
+    for (const a of inputs) {
+      const v = evalNode(a, { ...ctx, arrayCtx: true })
+      if (isErrorValue(v)) return v
+      if (isRef(v)) collected.push(...refValues(v, skipHidden, skipNested))
+      else if (isAreas(v) && !arrayForm)
+        for (const ref of v.areas) collected.push(...refValues({ ref }, skipHidden, skipNested))
+      else if (arrayForm && !isAreas(v) && !isLambda(v) && !isOmitted(v))
+        collected.push(...asMatrix(v).flat())
+      else throw needsReference(name)
+    }
+    let k: CellValue | undefined
+    if (arrayForm) {
+      const kNode = args[refsFrom + 1]
+      if (kNode === undefined || kNode === null) return err('#VALUE!')
+      k = scalarArg(kNode, ctx, name)
+    }
+    if (AGG_FUNCTIONS[base] === undefined) return err('#VALUE!')
+    return aggregateValues(base, collected, ignoreErrors, k)
+  }
+
+  /** A reference's cells for SUBTOTAL/AGGREGATE: hidden or filtered rows and nested totals left out. */
+  function refValues(v: RefVal, skipHidden: 'all' | 'filtered', skipNested: boolean): CellValue[] {
+    const { sheet, top, left, bottom, right } = v.ref
+    const info = wb.findSheet(sheet)!
+    const data = wb.sheet(info.name)
+    const filters = filterRanges(wb, info)
+    const out: CellValue[] = []
+    for (let r = top; r <= bottom; r++) {
+      if (data.rows.get(r)?.hidden) {
+        if (skipHidden === 'all') continue
+        const filtered = filters.some(
+          (f) => r >= f.top && r <= f.bottom && left <= f.right && right >= f.left,
+        )
+        if (filtered) continue
+      }
+      for (let c = left; c <= right; c++) {
+        const cd = data.cells.get(cellKey(r, c))
+        if (skipNested && cd?.formula && isNestedTotal(cd.formula)) continue
+        out.push(refCell(info.name, r, c))
+      }
+    }
+    return out
+  }
+
   // ---------------------------------------------------------------------------
 
   function spillOf(sheet: string, row: number, col: number): Spill | null {
@@ -1235,9 +1522,163 @@ const sameRange = (a: Range | null, b: Range | null) =>
 const overlaps = (a: Rect, b: Rect) =>
   a.top <= b.bottom && b.top <= a.bottom && a.left <= b.right && b.left <= a.right
 
+const UNION_HERE =
+  'a range union (A1,B2) where it is not one of the ranges of SUM, COUNT, MAX …, AREAS or INDEX'
+
+/** Functions over any number of ranges: a union argument is the same as its areas given one by one. */
+const UNION_SPREAD = new Set([
+  'SUM',
+  'SUMSQ',
+  'PRODUCT',
+  'AVERAGE',
+  'AVERAGEA',
+  'COUNT',
+  'COUNTA',
+  'MAX',
+  'MAXA',
+  'MIN',
+  'MINA',
+  'MEDIAN',
+  'MODE',
+  'MODE.SNGL',
+  'MODE.MULT',
+  'STDEV',
+  'STDEV.S',
+  'STDEV.P',
+  'STDEVA',
+  'STDEVP',
+  'STDEVPA',
+  'VAR',
+  'VAR.S',
+  'VAR.P',
+  'VARA',
+  'VARP',
+  'VARPA',
+  'AVEDEV',
+  'DEVSQ',
+  'GEOMEAN',
+  'HARMEAN',
+  'KURT',
+  'SKEW',
+  'SKEW.P',
+  'GCD',
+  'LCM',
+  'AND',
+  'OR',
+  'XOR',
+  'CONCAT',
+  'TEXTJOIN',
+])
+
+/** Older names Excel keeps for compatibility: the same calculation as the newer function. */
+const ALIASES: Record<string, string> = {
+  STDEV: 'STDEV.S',
+  STDEVP: 'STDEV.P',
+  VAR: 'VAR.S',
+  VARP: 'VAR.P',
+  MODE: 'MODE.SNGL',
+  PERCENTILE: 'PERCENTILE.INC',
+  QUARTILE: 'QUARTILE.INC',
+  RANK: 'RANK.EQ',
+  PERCENTRANK: 'PERCENTRANK.INC',
+  POISSON: 'POISSON.DIST',
+  WEIBULL: 'WEIBULL.DIST',
+  CONFIDENCE: 'CONFIDENCE.NORM',
+  CHIDIST: 'CHISQ.DIST.RT',
+  CHIINV: 'CHISQ.INV.RT',
+  FDIST: 'F.DIST.RT',
+  FINV: 'F.INV.RT',
+  'ECMA.CEILING': 'CEILING.PRECISE',
+  'FORECAST.LINEAR': 'FORECAST',
+  'ERF.PRECISE': 'ERF',
+  'ERFC.PRECISE': 'ERFC',
+}
+
+/** Functions the evaluator handles itself (calc.ts's switch and its families), not through formulajs. */
+export const ENGINE_FUNCTIONS: ReadonlySet<string> = new Set([
+  'IF',
+  'IFERROR',
+  'IFNA',
+  'CHOOSE',
+  'ISOMITTED',
+  'SINGLE',
+  'ANCHORARRAY',
+  'ROW',
+  'COLUMN',
+  'AREAS',
+  'ROWS',
+  'COLUMNS',
+  'ISREF',
+  'OFFSET',
+  'INDIRECT',
+  'INDEX',
+  'XLOOKUP',
+  'XMATCH',
+  'MAP',
+  'REDUCE',
+  'SCAN',
+  'BYROW',
+  'BYCOL',
+  'MAKEARRAY',
+  'SUBTOTAL',
+  'AGGREGATE',
+  'CELL',
+  'INFO',
+  'SHEET',
+  'SHEETS',
+  'ISFORMULA',
+  'FORMULATEXT',
+  'TRIMRANGE',
+  'GROUPBY',
+  'PIVOTBY',
+  'PERCENTOF',
+  'MDETERM',
+  'MINVERSE',
+  'GETPIVOTDATA',
+  'LET',
+  'LAMBDA',
+  ...Object.keys(DYNAMIC),
+  ...Object.keys(TEXT_FUNCTIONS),
+])
+
+/** Whether this engine calculates the function (itself, or through formulajs). */
+export function canEvaluate(name: string): boolean {
+  const n = name.toUpperCase()
+  if (REFUSED.has(n)) return false
+  return ENGINE_FUNCTIONS.has(n) || n in LOCAL || lookupFunction(n) !== null
+}
+
 /** Scalar worksheet functions of our own (their parameters lift over arrays). */
 const LOCAL: Record<string, (...xs: Array<CellValue | Matrix>) => CellValue> = {
+  ...FIN_FUNCTIONS,
   ISBLANK: (v) => v === null,
+  TYPE: (v) => {
+    if (isMatrix(v)) return 64
+    if (isErrorValue(v)) return 16
+    if (typeof v === 'boolean') return 4
+    if (typeof v === 'string') return 2
+    return 1
+  },
+  'T.DIST': (xv, dfv, cumv) => {
+    if (isMatrix(xv) || isMatrix(dfv) || isMatrix(cumv)) return err('#VALUE!')
+    if (isErrorValue(xv)) return xv
+    if (isErrorValue(dfv)) return dfv
+    if (isErrorValue(cumv)) return cumv
+    const x = toNumber(xv ?? null)
+    const dfRaw = toNumber(dfv ?? null)
+    const cum = truthy(cumv ?? null)
+    if (isErrorValue(x)) return x
+    if (isErrorValue(dfRaw)) return dfRaw
+    if (isErrorValue(cum)) return cum
+    const df = Math.trunc(dfRaw)
+    if (df < 1) return err('#NUM!')
+    if (cum) {
+      const p = 0.5 * (F.BETA.DIST(df / (df + x * x), df / 2, 0.5, true) as number)
+      return x >= 0 ? 1 - p : p
+    }
+    const lnC = (F.GAMMALN((df + 1) / 2) as number) - (F.GAMMALN(df / 2) as number)
+    return (Math.exp(lnC) / Math.sqrt(df * Math.PI)) * Math.pow(1 + (x * x) / df, -(df + 1) / 2)
+  },
   TEXT: (v, code) => {
     if (isErrorValue(v)) return v as ErrorValue
     if (isErrorValue(code)) return code as ErrorValue
@@ -1252,7 +1693,8 @@ const LOCAL: Record<string, (...xs: Array<CellValue | Matrix>) => CellValue> = {
 }
 
 /** The @formulajs/formulajs implementation of an Excel function name ("STDEV.S" → F.STDEV.S), else null. */
-function lookupFunction(name: string): ((...a: unknown[]) => unknown) | null {
+function lookupFunction(nameIn: string): ((...a: unknown[]) => unknown) | null {
+  const name = ALIASES[nameIn] ?? nameIn
   const lib = F as unknown as Record<string, unknown>
   let cur: unknown = lib
   for (const part of name.split('.')) {
@@ -1278,6 +1720,12 @@ function fromFormulaJs(out: unknown, name: string): CellValue | Matrix {
   if (typeof out === 'string' || typeof out === 'boolean') return out
   if (out === null) return null
   if (Array.isArray(out)) {
+    if ((name === 'FREQUENCY' || name === 'MODE.MULT') && !Array.isArray(out[0])) {
+      return out.map((x) => {
+        const v = fromFormulaJs(x, name)
+        return [isMatrix(v) ? (v[0]?.[0] ?? null) : v]
+      })
+    }
     const grid = (Array.isArray(out[0]) ? out : [out]) as unknown[][]
     return grid.map((row) =>
       row.map((x) => {

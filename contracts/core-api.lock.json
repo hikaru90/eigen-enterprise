@@ -11199,33 +11199,181 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "at": {
+            "description": "Anchor cell range on the sheet, e.g. E2:L18; omitted: placed next to data",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
           "file_id": {
             "minLength": 1,
             "type": "string"
           },
-          "priority": {
-            "description": "Delete the rule with this priority",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
+          "grouping": {
+            "description": "clustered, stacked, percentStacked, or standard",
+            "enum": [
+              "clustered",
+              "stacked",
+              "percentStacked",
+              "standard"
+            ],
+            "type": "string"
           },
-          "range": {
+          "legend": {
             "anyOf": [
               {
-                "maxLength": 1000,
-                "minLength": 2,
+                "enum": [
+                  "r",
+                  "l",
+                  "t",
+                  "b",
+                  "tr"
+                ],
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Clear rules from these cells (or null to clear all rules on the sheet)"
+            "description": "Legend position (r, l, t, b, tr); null hides it"
           },
-          "sheet": {
-            "description": "The sheet (tab) name",
+          "new_sheet": {
+            "description": "Create the chart as a full chart sheet with this name",
             "maxLength": 31,
             "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "Selection range to chart, e.g. A1:C5 (series guessed from header/orientation)",
+            "maxLength": 40,
+            "minLength": 2,
+            "type": "string"
+          },
+          "series": {
+            "description": "Explicit series instead of range",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "categories": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Category labels (x values for scatter/bubble), e.g. A2:A9"
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Literal series name"
+                },
+                "name_ref": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Cell reference for the series name, e.g. B1"
+                },
+                "secondary": {
+                  "description": "Plot against the secondary (right) value axis",
+                  "type": "boolean"
+                },
+                "sizes": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Bubble sizes range (bubble charts)"
+                },
+                "type": {
+                  "description": "Combo chart: this series own chart type",
+                  "enum": [
+                    "column",
+                    "bar",
+                    "line",
+                    "area",
+                    "pie",
+                    "doughnut",
+                    "scatter",
+                    "bubble",
+                    "radar",
+                    "stock"
+                  ],
+                  "type": "string"
+                },
+                "values": {
+                  "description": "Values range (y values for scatter/bubble), e.g. B2:B9 or Data!$B$2:$B$9",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "Sheet where the data lives (and where the chart is placed unless new_sheet is set)",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chart title; null omits it"
+          },
+          "type": {
+            "default": "column",
+            "description": "Chart type (default: column)",
+            "enum": [
+              "column",
+              "bar",
+              "line",
+              "area",
+              "pie",
+              "doughnut",
+              "scatter",
+              "bubble",
+              "radar",
+              "stock"
+            ],
             "type": "string"
           }
         },
@@ -11236,7 +11384,52 @@
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_conditional_format_delete",
+      "name": "drive.sheet_chart_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "chart": {
+            "description": "Chart id (e.g. chart1) or name (e.g. Chart 1)",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "chart",
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_chart_delete",
       "output": null,
       "permission": {
         "roles": [
@@ -11261,20 +11454,19 @@
             "type": "string"
           },
           "sheet": {
-            "description": "The sheet (tab) name",
+            "description": "Limit to charts on this sheet; omit for all sheets",
             "maxLength": 31,
             "minLength": 1,
             "type": "string"
           }
         },
         "required": [
-          "file_id",
-          "sheet"
+          "file_id"
         ],
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_conditional_format_list",
+      "name": "drive.sheet_chart_list",
       "output": null,
       "permission": {
         "roles": [
@@ -11294,449 +11486,406 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "axes": {
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "anyOf": [
+                      {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Number format code, e.g. #,##0 €; null links to cell format"
+                  },
+                  "gridlines": {
+                    "description": "Show major gridlines",
+                    "type": "boolean"
+                  },
+                  "max": {
+                    "description": "Fixed maximum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "Fixed minimum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Axis title; null removes it"
+                  }
+                },
+                "type": "object"
+              },
+              "secondary": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "anyOf": [
+                      {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Number format code, e.g. #,##0 €; null links to cell format"
+                  },
+                  "gridlines": {
+                    "description": "Show major gridlines",
+                    "type": "boolean"
+                  },
+                  "max": {
+                    "description": "Fixed maximum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "Fixed minimum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Axis title; null removes it"
+                  }
+                },
+                "type": "object"
+              },
+              "value": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "anyOf": [
+                      {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Number format code, e.g. #,##0 €; null links to cell format"
+                  },
+                  "gridlines": {
+                    "description": "Show major gridlines",
+                    "type": "boolean"
+                  },
+                  "max": {
+                    "description": "Fixed maximum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "Fixed minimum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Axis title; null removes it"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "chart": {
+            "description": "Chart id (e.g. chart1) or name (e.g. Chart 1)",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colors": {
+            "description": "Per-series colours (#RRGGBB; null resets to theme automatic)",
+            "items": {
+              "anyOf": [
+                {
+                  "description": "A hex colour like #4472C4",
+                  "pattern": "^#[0-9A-Fa-f]{6}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
           "file_id": {
             "minLength": 1,
             "type": "string"
           },
-          "move_to": {
-            "description": "New priority position (used with priority)",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
+          "grouping": {
+            "enum": [
+              "clustered",
+              "stacked",
+              "percentStacked",
+              "standard"
+            ],
+            "type": "string"
           },
-          "priority": {
-            "description": "Existing rule priority (1 = highest) to update or move; omit to add a new rule at priority 1",
-            "maximum": 9007199254740991,
-            "minimum": 1,
-            "type": "integer"
+          "labels": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "category": {
+                    "type": "boolean"
+                  },
+                  "percent": {
+                    "description": "Pie/doughnut share percentage",
+                    "type": "boolean"
+                  },
+                  "position": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "ctr",
+                          "inEnd",
+                          "outEnd",
+                          "inBase",
+                          "t",
+                          "b",
+                          "l",
+                          "r",
+                          "bestFit"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "series": {
+                    "type": "boolean"
+                  },
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data labels; null removes them"
           },
-          "range": {
-            "description": "Target cells (required when adding a new rule)",
-            "maxLength": 1000,
+          "legend": {
+            "anyOf": [
+              {
+                "enum": [
+                  "r",
+                  "l",
+                  "t",
+                  "b",
+                  "tr"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Legend position; null hides it"
+          },
+          "markers": {
+            "description": "Show markers on line/scatter/radar series",
+            "type": "boolean"
+          },
+          "position": {
+            "description": "Move or resize the chart to cover this cell range, e.g. H3:N20",
+            "maxLength": 30,
             "minLength": 2,
             "type": "string"
           },
-          "rule": {
-            "additionalProperties": false,
-            "description": "Conditional format rule definition (required when adding)",
-            "properties": {
-              "bar": {
-                "additionalProperties": false,
-                "properties": {
-                  "axis": {
-                    "enum": [
-                      "automatic",
-                      "middle",
-                      "none"
-                    ],
-                    "type": "string"
-                  },
-                  "border": {
-                    "type": "boolean"
-                  },
-                  "color": {
-                    "description": "A colour like #63BE7B",
-                    "pattern": "^#[0-9A-Fa-f]{6}$",
-                    "type": "string"
-                  },
-                  "gradient": {
-                    "type": "boolean"
-                  },
-                  "max": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "enum": [
-                          "min",
-                          "max",
-                          "num",
-                          "percent",
-                          "percentile",
-                          "formula",
-                          "autoMin",
-                          "autoMax"
-                        ],
-                        "type": "string"
-                      },
-                      "value": {
-                        "anyOf": [
-                          {
-                            "maxLength": 1000,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": [
-                      "kind"
-                    ],
-                    "type": "object"
-                  },
-                  "min": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "enum": [
-                          "min",
-                          "max",
-                          "num",
-                          "percent",
-                          "percentile",
-                          "formula",
-                          "autoMin",
-                          "autoMax"
-                        ],
-                        "type": "string"
-                      },
-                      "value": {
-                        "anyOf": [
-                          {
-                            "maxLength": 1000,
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      }
-                    },
-                    "required": [
-                      "kind"
-                    ],
-                    "type": "object"
-                  },
-                  "negative_color": {
-                    "description": "A colour like #63BE7B",
-                    "pattern": "^#[0-9A-Fa-f]{6}$",
-                    "type": "string"
-                  },
-                  "show_value": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "color"
-                ],
-                "type": "object"
-              },
-              "below": {
-                "type": "boolean"
-              },
-              "bottom": {
-                "type": "boolean"
-              },
-              "equal_average": {
-                "type": "boolean"
-              },
-              "formula1": {
-                "maxLength": 8000,
-                "minLength": 1,
-                "type": "string"
-              },
-              "formula2": {
-                "maxLength": 8000,
-                "minLength": 1,
-                "type": "string"
-              },
-              "icons": {
-                "additionalProperties": false,
-                "properties": {
-                  "custom": {
-                    "items": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "index": {
-                          "maximum": 4,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
-                        "set": {
-                          "enum": [
-                            "3Arrows",
-                            "3ArrowsGray",
-                            "3Flags",
-                            "3TrafficLights1",
-                            "3TrafficLights2",
-                            "3Signs",
-                            "3Symbols",
-                            "3Symbols2",
-                            "3Stars",
-                            "3Triangles",
-                            "4Arrows",
-                            "4ArrowsGray",
-                            "4RedToBlack",
-                            "4Rating",
-                            "4TrafficLights",
-                            "5Arrows",
-                            "5ArrowsGray",
-                            "5Rating",
-                            "5Quarters",
-                            "5Boxes",
-                            "NoIcons"
-                          ],
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "index",
-                        "set"
-                      ],
-                      "type": "object"
-                    },
-                    "maxItems": 5,
-                    "minItems": 3,
-                    "type": "array"
-                  },
-                  "reverse": {
-                    "type": "boolean"
-                  },
-                  "set": {
-                    "enum": [
-                      "3Arrows",
-                      "3ArrowsGray",
-                      "3Flags",
-                      "3TrafficLights1",
-                      "3TrafficLights2",
-                      "3Signs",
-                      "3Symbols",
-                      "3Symbols2",
-                      "3Stars",
-                      "3Triangles",
-                      "4Arrows",
-                      "4ArrowsGray",
-                      "4RedToBlack",
-                      "4Rating",
-                      "4TrafficLights",
-                      "5Arrows",
-                      "5ArrowsGray",
-                      "5Rating",
-                      "5Quarters",
-                      "5Boxes"
-                    ],
-                    "type": "string"
-                  },
-                  "show_value": {
-                    "type": "boolean"
-                  },
-                  "thresholds": {
-                    "items": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "gte": {
-                          "type": "boolean"
-                        },
-                        "kind": {
-                          "enum": [
-                            "min",
-                            "max",
-                            "num",
-                            "percent",
-                            "percentile",
-                            "formula",
-                            "autoMin",
-                            "autoMax"
-                          ],
-                          "type": "string"
-                        },
-                        "value": {
-                          "maxLength": 1000,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "kind",
-                        "value"
-                      ],
-                      "type": "object"
-                    },
-                    "maxItems": 4,
-                    "minItems": 2,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "set"
-                ],
-                "type": "object"
-              },
-              "operator": {
-                "enum": [
-                  "between",
-                  "notBetween",
-                  "equal",
-                  "notEqual",
-                  "greaterThan",
-                  "lessThan",
-                  "greaterThanOrEqual",
-                  "lessThanOrEqual"
-                ],
-                "type": "string"
-              },
-              "percent": {
-                "type": "boolean"
-              },
-              "period": {
-                "enum": [
-                  "today",
-                  "yesterday",
-                  "tomorrow",
-                  "last7Days",
-                  "thisWeek",
-                  "lastWeek",
-                  "nextWeek",
-                  "thisMonth",
-                  "lastMonth",
-                  "nextMonth"
-                ],
-                "type": "string"
-              },
-              "points": {
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "color": {
-                      "description": "A colour like #63BE7B",
-                      "pattern": "^#[0-9A-Fa-f]{6}$",
+          "series": {
+            "description": "Replace series definitions",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "categories": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
                       "type": "string"
                     },
-                    "kind": {
-                      "enum": [
-                        "min",
-                        "max",
-                        "num",
-                        "percent",
-                        "percentile",
-                        "formula",
-                        "autoMin",
-                        "autoMax"
-                      ],
-                      "type": "string"
-                    },
-                    "value": {
-                      "anyOf": [
-                        {
-                          "maxLength": 1000,
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
+                    {
+                      "type": "null"
                     }
-                  },
-                  "required": [
-                    "color",
-                    "kind"
                   ],
-                  "type": "object"
+                  "description": "Category labels (x values for scatter/bubble), e.g. A2:A9"
                 },
-                "maxItems": 3,
-                "minItems": 2,
-                "type": "array"
-              },
-              "rank": {
-                "maximum": 1000,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "std_dev": {
-                "maximum": 3,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "stop_if_true": {
-                "type": "boolean"
-              },
-              "style": {
-                "additionalProperties": false,
-                "properties": {
-                  "bold": {
-                    "type": "boolean"
-                  },
-                  "border": {
-                    "description": "A colour like #63BE7B",
-                    "pattern": "^#[0-9A-Fa-f]{6}$",
-                    "type": "string"
-                  },
-                  "fill": {
-                    "description": "A colour like #63BE7B",
-                    "pattern": "^#[0-9A-Fa-f]{6}$",
-                    "type": "string"
-                  },
-                  "font_color": {
-                    "description": "A colour like #63BE7B",
-                    "pattern": "^#[0-9A-Fa-f]{6}$",
-                    "type": "string"
-                  },
-                  "italic": {
-                    "type": "boolean"
-                  },
-                  "num_fmt": {
-                    "maxLength": 255,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "strike": {
-                    "type": "boolean"
-                  },
-                  "underline": {
-                    "type": "boolean"
-                  }
+                "name": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Literal series name"
                 },
-                "type": "object"
+                "name_ref": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Cell reference for the series name, e.g. B1"
+                },
+                "secondary": {
+                  "description": "Plot against the secondary (right) value axis",
+                  "type": "boolean"
+                },
+                "sizes": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Bubble sizes range (bubble charts)"
+                },
+                "type": {
+                  "description": "Combo chart: this series own chart type",
+                  "enum": [
+                    "column",
+                    "bar",
+                    "line",
+                    "area",
+                    "pie",
+                    "doughnut",
+                    "scatter",
+                    "bubble",
+                    "radar",
+                    "stock"
+                  ],
+                  "type": "string"
+                },
+                "values": {
+                  "description": "Values range (y values for scatter/bubble), e.g. B2:B9 or Data!$B$2:$B$9",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                }
               },
-              "text": {
-                "maxLength": 255,
-                "minLength": 1,
-                "type": "string"
-              },
-              "type": {
-                "enum": [
-                  "cellIs",
-                  "expression",
-                  "colorScale",
-                  "dataBar",
-                  "iconSet",
-                  "top10",
-                  "aboveAverage",
-                  "duplicateValues",
-                  "uniqueValues",
-                  "containsText",
-                  "notContainsText",
-                  "beginsWith",
-                  "endsWith",
-                  "containsBlanks",
-                  "notContainsBlanks",
-                  "containsErrors",
-                  "notContainsErrors",
-                  "timePeriod"
-                ],
-                "type": "string"
-              }
+              "required": [
+                "values"
+              ],
+              "type": "object"
             },
-            "required": [
-              "type"
-            ],
-            "type": "object"
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
           },
           "sheet": {
-            "description": "The sheet (tab) name",
+            "description": "Sheet (or chart sheet) holding the chart",
             "maxLength": 31,
             "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chart title; null removes it"
+          },
+          "type": {
+            "enum": [
+              "column",
+              "bar",
+              "line",
+              "area",
+              "pie",
+              "doughnut",
+              "scatter",
+              "bubble",
+              "radar",
+              "stock"
+            ],
             "type": "string"
           }
         },
         "required": [
+          "chart",
           "file_id",
           "sheet"
         ],
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_conditional_format_set",
+      "name": "drive.sheet_chart_update",
       "output": null,
       "permission": {
         "roles": [
@@ -11823,6 +11972,12 @@
           "sheet": {
             "description": "The sheet (tab) name",
             "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "table": {
+            "description": "Filter this Excel table’s columns instead of the sheet’s AutoFilter (its drop-downs are on with drive.sheet_table_update auto_filter)",
+            "maxLength": 255,
             "minLength": 1,
             "type": "string"
           }
@@ -12187,14 +12342,173 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "col_grand_totals": {
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
           "file_id": {
             "minLength": 1,
             "type": "string"
           },
-          "range": {
-            "description": "A cell or range like B3 or A1:C1",
-            "maxLength": 30,
+          "filters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "selected_item": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "row_grand_totals": {
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "source": {
+            "description": "Source range (A1:D20, Sheet!A1:D20) or table name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subtotals": {
+            "type": "boolean"
+          },
+          "target_cell": {
+            "description": "Top-left anchor cell (default A3 on new sheet)",
+            "maxLength": 16,
             "minLength": 2,
+            "type": "string"
+          },
+          "target_sheet": {
+            "description": "Omitted creates a new worksheet (PivotTable1, …)",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agg": {
+                  "enum": [
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "product",
+                    "countNums",
+                    "stdDev",
+                    "var"
+                  ],
+                  "type": "string"
+                },
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "num_fmt": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "source"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "keep_values": {
+            "type": "boolean"
+          },
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
             "type": "string"
           },
           "sheet": {
@@ -12206,13 +12520,13 @@
         },
         "required": [
           "file_id",
-          "range",
+          "pivot",
           "sheet"
         ],
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_hyperlink_remove",
+      "name": "drive.sheet_pivot_delete",
       "output": null,
       "permission": {
         "roles": [
@@ -12236,10 +12550,9 @@
             "minLength": 1,
             "type": "string"
           },
-          "range": {
-            "description": "A cell or range like B3 or A1:C1",
-            "maxLength": 30,
-            "minLength": 2,
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
             "type": "string"
           },
           "sheet": {
@@ -12247,46 +12560,17 @@
             "maxLength": 31,
             "minLength": 1,
             "type": "string"
-          },
-          "target": {
-            "description": "External URL (http/https/mailto/ftp) or internal place (Sheet2!A1, #Sheet2!A1, defined name)",
-            "maxLength": 2079,
-            "minLength": 1,
-            "type": "string"
-          },
-          "text": {
-            "anyOf": [
-              {
-                "maxLength": 32767,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "tooltip": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "required": [
           "file_id",
-          "range",
-          "sheet",
-          "target"
+          "pivot",
+          "sheet"
         ],
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_hyperlink_set",
+      "name": "drive.sheet_pivot_refresh",
       "output": null,
       "permission": {
         "roles": [
@@ -12306,267 +12590,144 @@
       "input": {
         "additionalProperties": false,
         "properties": {
-          "file_id": {
-            "minLength": 1,
-            "type": "string"
+          "col_grand_totals": {
+            "type": "boolean"
           },
-          "name": {
-            "maxLength": 255,
-            "minLength": 1,
-            "type": "string"
-          },
-          "scope": {
-            "anyOf": [
-              {
-                "description": "The sheet (tab) name",
-                "maxLength": 31,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Sheet name for a sheet-scoped name; omit or null for workbook scope"
-          }
-        },
-        "required": [
-          "file_id",
-          "name"
-        ],
-        "type": "object"
-      },
-      "module": "drive",
-      "name": "drive.sheet_names_delete",
-      "output": null,
-      "permission": {
-        "roles": [
-          "admin",
-          "agent",
-          "member"
-        ]
-      }
-    },
-    {
-      "approval": {
-        "always": false,
-        "gated": false,
-        "risk": null
-      },
-      "auditClass": "read",
-      "input": {
-        "additionalProperties": false,
-        "properties": {
-          "file_id": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "file_id"
-        ],
-        "type": "object"
-      },
-      "module": "drive",
-      "name": "drive.sheet_names_list",
-      "output": null,
-      "permission": {
-        "roles": [
-          "admin",
-          "agent",
-          "member"
-        ]
-      }
-    },
-    {
-      "approval": {
-        "always": false,
-        "gated": true,
-        "risk": "internal"
-      },
-      "auditClass": "mutate",
-      "input": {
-        "additionalProperties": false,
-        "properties": {
-          "comment": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "columns": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
           },
           "file_id": {
             "minLength": 1,
             "type": "string"
           },
-          "name": {
-            "maxLength": 255,
-            "minLength": 1,
-            "type": "string"
+          "filters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "selected_item": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
           },
-          "new_name": {
-            "description": "New name when renaming an existing defined name",
-            "maxLength": 255,
-            "minLength": 1,
-            "type": "string"
-          },
-          "refers_to": {
-            "description": "Formula or reference (e.g. =Sheet1!$A$1:$A$10)",
-            "maxLength": 8000,
-            "minLength": 1,
-            "type": "string"
-          },
-          "scope": {
-            "anyOf": [
-              {
-                "description": "The sheet (tab) name",
-                "maxLength": 31,
-                "minLength": 1,
+          "hidden_items": {
+            "additionalProperties": {
+              "items": {
                 "type": "string"
               },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Sheet name for a sheet-scoped name; omit or null for workbook scope"
-          }
-        },
-        "required": [
-          "file_id",
-          "name"
-        ],
-        "type": "object"
-      },
-      "module": "drive",
-      "name": "drive.sheet_names_set",
-      "output": null,
-      "permission": {
-        "roles": [
-          "admin",
-          "agent",
-          "member"
-        ]
-      }
-    },
-    {
-      "approval": {
-        "always": false,
-        "gated": true,
-        "risk": "internal"
-      },
-      "auditClass": "mutate",
-      "input": {
-        "additionalProperties": false,
-        "properties": {
-          "action": {
-            "enum": [
-              "protect_sheet",
-              "unprotect_sheet",
-              "protect_workbook",
-              "unprotect_workbook",
-              "set_cell_protection"
-            ],
-            "type": "string"
-          },
-          "allow": {
-            "additionalProperties": false,
-            "description": "Actions allowed when the sheet is protected",
-            "properties": {
-              "auto_filter": {
-                "type": "boolean"
-              },
-              "delete_columns": {
-                "type": "boolean"
-              },
-              "delete_rows": {
-                "type": "boolean"
-              },
-              "format_cells": {
-                "type": "boolean"
-              },
-              "format_columns": {
-                "type": "boolean"
-              },
-              "format_rows": {
-                "type": "boolean"
-              },
-              "insert_columns": {
-                "type": "boolean"
-              },
-              "insert_hyperlinks": {
-                "type": "boolean"
-              },
-              "insert_rows": {
-                "type": "boolean"
-              },
-              "objects": {
-                "type": "boolean"
-              },
-              "pivot_tables": {
-                "type": "boolean"
-              },
-              "scenarios": {
-                "type": "boolean"
-              },
-              "select_locked_cells": {
-                "type": "boolean"
-              },
-              "select_unlocked_cells": {
-                "type": "boolean"
-              },
-              "sort": {
-                "type": "boolean"
-              }
+              "type": "array"
+            },
+            "propertyNames": {
+              "type": "string"
             },
             "type": "object"
           },
-          "file_id": {
+          "name": {
+            "maxLength": 255,
             "minLength": 1,
             "type": "string"
           },
-          "hidden": {
-            "type": "boolean"
-          },
-          "locked": {
-            "type": "boolean"
-          },
-          "password": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional password (hashed in the file; never logged or returned)"
-          },
-          "range": {
-            "description": "Cell range for set_cell_protection",
-            "maxLength": 30,
-            "minLength": 2,
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
             "type": "string"
           },
+          "row_grand_totals": {
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
           "sheet": {
-            "description": "Required for sheet and cell protection actions",
+            "description": "The sheet (tab) name",
             "maxLength": 31,
             "minLength": 1,
             "type": "string"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subtotals": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agg": {
+                  "enum": [
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "product",
+                    "countNums",
+                    "stdDev",
+                    "var"
+                  ],
+                  "type": "string"
+                },
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "num_fmt": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
           }
         },
         "required": [
-          "action",
-          "file_id"
+          "file_id",
+          "pivot",
+          "sheet"
         ],
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_protect",
+      "name": "drive.sheet_pivot_update",
       "output": null,
       "permission": {
         "roles": [
@@ -12976,19 +13137,39 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "auto_filter": {
+            "description": "Include AutoFilter drop-downs (default true)",
+            "type": "boolean"
+          },
           "file_id": {
             "minLength": 1,
             "type": "string"
           },
+          "has_headers": {
+            "description": "Whether the first row holds column headers (default true; false shifts data down for headers)",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Table name (e.g. Orders; omitted: Table1, Table2, …)",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
           "range": {
-            "description": "Cell range or range list, e.g. A1:C10 or A1:A5 C1:C5",
-            "maxLength": 1000,
+            "description": "Range like A1:D10 (or a single cell to expand its current region)",
+            "maxLength": 60,
             "minLength": 2,
             "type": "string"
           },
           "sheet": {
             "description": "The sheet (tab) name",
             "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "description": "Built-in style like TableStyleMedium2",
+            "maxLength": 64,
             "minLength": 1,
             "type": "string"
           }
@@ -13001,7 +13182,7 @@
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_validation_clear",
+      "name": "drive.sheet_table_create",
       "output": null,
       "permission": {
         "roles": [
@@ -13021,105 +13202,77 @@
       "input": {
         "additionalProperties": false,
         "properties": {
-          "allow_blank": {
-            "type": "boolean"
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
           },
-          "dropdown": {
-            "type": "boolean"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "maxLength": 225,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error_style": {
+          "mode": {
+            "description": "convert_to_range (default: keeps values & rewrites structured refs to A1) or delete_cells",
             "enum": [
-              "stop",
-              "warning",
-              "information"
+              "convert_to_range",
+              "delete_cells"
             ],
             "type": "string"
           },
-          "error_title": {
-            "anyOf": [
-              {
-                "maxLength": 32,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "table": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "table"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_table_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_filter": {
+            "type": "boolean"
           },
           "file_id": {
             "minLength": 1,
             "type": "string"
           },
-          "formula1": {
-            "maxLength": 8000,
+          "header_row": {
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Rename the table (structured refs follow)",
+            "maxLength": 255,
             "minLength": 1,
             "type": "string"
           },
-          "formula2": {
-            "maxLength": 8000,
-            "minLength": 1,
-            "type": "string"
-          },
-          "input_message": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "input_title": {
-            "anyOf": [
-              {
-                "maxLength": 32,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "items": {
-            "description": "Inline list items (for type \"list\" without formula1)",
-            "items": {
-              "maxLength": 255,
-              "minLength": 1,
-              "type": "string"
-            },
-            "maxItems": 255,
-            "minItems": 1,
-            "type": "array"
-          },
-          "operator": {
-            "enum": [
-              "between",
-              "notBetween",
-              "equal",
-              "notEqual",
-              "greaterThan",
-              "lessThan",
-              "greaterThanOrEqual",
-              "lessThanOrEqual"
-            ],
-            "type": "string"
-          },
-          "range": {
-            "description": "Cell range or range list, e.g. A1:C10 or A1:A5 C1:C5",
-            "maxLength": 1000,
+          "ref": {
+            "description": "Resize table range, e.g. A1:E12",
+            "maxLength": 60,
             "minLength": 2,
             "type": "string"
           },
@@ -13129,36 +13282,93 @@
             "minLength": 1,
             "type": "string"
           },
-          "show_error": {
+          "show_column_stripes": {
             "type": "boolean"
           },
-          "show_input": {
+          "show_first_column": {
             "type": "boolean"
           },
-          "type": {
-            "enum": [
-              "any",
-              "whole",
-              "decimal",
-              "list",
-              "date",
-              "time",
-              "textLength",
-              "custom"
-            ],
+          "show_last_column": {
+            "type": "boolean"
+          },
+          "show_row_stripes": {
+            "type": "boolean"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
             "type": "string"
+          },
+          "table": {
+            "description": "Current name of the table",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "totals_columns": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "column": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "formula": {
+                  "maxLength": 4000,
+                  "type": "string"
+                },
+                "function": {
+                  "enum": [
+                    "none",
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "countNums",
+                    "stdDev",
+                    "var",
+                    "custom"
+                  ],
+                  "type": "string"
+                },
+                "label": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "column",
+                "function"
+              ],
+              "type": "object"
+            },
+            "maxItems": 256,
+            "type": "array"
+          },
+          "totals_row": {
+            "type": "boolean"
           }
         },
         "required": [
           "file_id",
-          "range",
           "sheet",
-          "type"
+          "table"
         ],
         "type": "object"
       },
       "module": "drive",
-      "name": "drive.sheet_validation_set",
+      "name": "drive.sheet_table_update",
       "output": null,
       "permission": {
         "roles": [

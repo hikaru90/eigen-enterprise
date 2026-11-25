@@ -268,7 +268,7 @@ type AnyOp = { op: string; sheet?: string; [k: string]: unknown }
 
 const SHEET_ACTION: Record<
   string,
-  { allow?: SheetAllow; cells?: (op: AnyOp) => Range[]; what: string }
+  { allow?: SheetAllow; never?: true; cells?: (op: AnyOp) => Range[]; what: string }
 > = {
   set_cells: { cells: (op) => cellsOf(op), what: 'change locked cells' },
   set_format: { allow: 'formatCells', what: 'format cells' },
@@ -301,6 +301,20 @@ const SHEET_ACTION: Record<
   validation_set: { allow: 'formatCells', what: 'change data validation' },
   validation_clear: { allow: 'formatCells', what: 'change data validation' },
   set_cell_protection: { allow: 'formatCells', what: 'lock or unlock cells' },
+  // Excel tables can't be made, changed or removed on a protected sheet (Excel greys Table Design out).
+  create_table: { never: true, what: 'make tables' },
+  update_table: { never: true, what: 'change tables' },
+  delete_table: { never: true, what: 'remove tables' },
+  // PivotTables: only when the protection allows "Use PivotTable & PivotChart".
+  create_pivot: { allow: 'pivotTables', what: 'put PivotTables' },
+  update_pivot: { allow: 'pivotTables', what: 'change PivotTables' },
+  refresh_pivot: { allow: 'pivotTables', what: 'refresh PivotTables' },
+  delete_pivot: { allow: 'pivotTables', what: 'remove PivotTables' },
+  // Charts are objects: only when the protection allows "Edit objects".
+  chart_create: { allow: 'objects', what: 'insert charts' },
+  chart_update: { allow: 'objects', what: 'change charts' },
+  chart_move: { allow: 'objects', what: 'move charts' },
+  chart_delete: { allow: 'objects', what: 'delete charts' },
 }
 
 /** Workbook-level operations a locked structure refuses. */
@@ -340,8 +354,17 @@ export function guard(wb: Workbook, op: AnyOp) {
       )
     return
   }
-  if (!op.sheet) return
-  const info = wb.findSheet(op.sheet)
+  // Operations that add a sheet as they go: a new chart sheet, a PivotTable on a new sheet.
+  const addsSheet =
+    (op.op === 'chart_create' && !!op.newSheet) || (op.op === 'create_pivot' && !op.targetSheet)
+  if (addsSheet && workbookProtectionOf(wb)?.structure)
+    throw new XlsxError(
+      'The workbook’s structure is protected: no sheet can be added for this. Unprotect the workbook first.',
+    )
+  // A PivotTable lands on its target sheet; a new one is not protected yet.
+  const sheetName = op.op === 'create_pivot' ? (op.targetSheet as string | undefined) : op.sheet
+  if (!sheetName || (op.op === 'chart_create' && op.newSheet)) return
+  const info = wb.findSheet(sheetName)
   if (!info || info.kind !== 'worksheet') return
   const prot = sheetProtectionOf(wb, info.name)
   if (!prot) return
@@ -352,6 +375,7 @@ export function guard(wb: Workbook, op: AnyOp) {
     )
   }
   if (!action) refuse(`make this change (${op.op.replace(/_/g, ' ')})`)
+  if (action!.never) refuse(action!.what)
   if (action!.allow && !prot.allow[action!.allow]) refuse(action!.what)
   if (action!.cells) {
     const locked = firstLocked(wb, info.name, action!.cells(op), prot)

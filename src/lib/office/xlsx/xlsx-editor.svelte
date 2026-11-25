@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { OfficeViewerProps } from '../viewers'
+  import type { ChartPlacement } from './chart-anchor'
+  import type { ChartPosition } from './chart-ops'
   import type { StylePatch } from './format-cells'
   import type { LinkTarget } from './hyperlinks'
   import type { Violation } from './validation'
@@ -19,6 +21,8 @@
   import Redo2Icon from '@lucide/svelte/icons/redo-2'
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
   import TagIcon from '@lucide/svelte/icons/tag'
+  import SheetIcon from '@lucide/svelte/icons/sheet'
+  import TableIcon from '@lucide/svelte/icons/table'
   import Undo2Icon from '@lucide/svelte/icons/undo-2'
   import { onMount, tick, untrack } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
@@ -43,8 +47,18 @@
   import { OpcError } from '../ooxml/package'
   import { cfEvaluator, cfRulesOf } from './cond-format'
   import CondFormatPanel from './cond-format-panel.svelte'
+  import { chartsOn } from './chart-anchor'
+  import ChartDialog from './chart-dialog.svelte'
+  import ChartOverlay from './chart-overlay.svelte'
+  import ChartView from './chart-view.svelte'
   import { createSheetEditor, workbookNotes, type SheetEditor, type WorkbookNote } from './editor'
-  import { autoFilterOf, columnChoices, currentRegion, type FilterChoice } from './filter'
+  import {
+    autoFilterOf,
+    columnChoices,
+    currentRegion,
+    sheetFilters,
+    type FilterChoice,
+  } from './filter'
   import FilterMenu from './filter-menu.svelte'
   import {
     displayValue,
@@ -70,12 +84,27 @@
     sheetProtectionOf,
     workbookProtectionOf,
   } from './protection'
-  import { cellKey, cellName, colName, MAX_COLS, MAX_ROWS, rangeName, type Range } from './ref'
+  import { pivotCellLook, readSheetPivots } from './pivot'
+  import PivotFields, { type PivotLayout } from './pivot-fields.svelte'
+  import {
+    cellKey,
+    cellName,
+    colName,
+    MAX_COLS,
+    MAX_ROWS,
+    parseCell,
+    rangeName,
+    type Range,
+  } from './ref'
   import SheetGrid, { type GridCell, type Pos } from './sheet-grid.svelte'
+  import { quoteSheet } from './shift'
   import { guessHeader, type SortKey } from './sort'
   import SortDialog from './sort-dialog.svelte'
   import { checkWrites, validationReader } from './validation'
   import ValidationDialog from './validation-dialog.svelte'
+  import TableBar from './table-bar.svelte'
+  import TableDialog from './table-dialog.svelte'
+  import { readSheetTables, tableCellLook, type TableCellLook } from './tables'
   import { pxToWidth, XlsxError } from './workbook'
 
   /**
@@ -141,7 +170,15 @@
   let renameText = $state('')
   let confirm = $state<{ op: SheetOp; title: string; losses: Loss[] } | null>(null)
   let grid = $state<ReturnType<typeof SheetGrid> | null>(null)
-  let filterMenu = $state<{ col: number; at: DOMRect; choices: FilterChoice[] } | null>(null)
+  let filterMenu = $state<{
+    col: number
+    row: number
+    at: DOMRect
+    choices: FilterChoice[]
+  } | null>(null)
+  /** Create Table (Ctrl+T) / Create PivotTable: the dialog's starting range. */
+  let creating = $state<{ kind: 'table' | 'pivot'; range: string; header: boolean } | null>(null)
+  let pivotFieldsOpen = $state(true)
   let sorting = $state<{ range: Range; header: boolean; first: number } | null>(null)
   let cfOpen = $state(false)
   let dvDialog = $state(false)
@@ -155,6 +192,11 @@
     pos: Pos
     draftText: string
   } | null>(null)
+  let selectedChartId = $state<string | null>(null)
+  let chartDialog = $state<
+    { mode: 'create'; range: string } | { mode: 'edit'; placement: ChartPlacement } | null
+  >(null)
+  let chartSheetBox = $state({ width: 760, height: 460 })
 
   let editor: SheetEditor | null = null
   /** The bytes as the server has them (last loaded or saved) and their SHA-256 (the save's base). */
@@ -213,8 +255,30 @@
     void rev
     return editor && info?.kind === 'worksheet' ? editor.wb.sheet(info.name) : null
   })
-  const rows = $derived(Math.min(MAX_ROWS, Math.max((data?.maxRow ?? 0) + 31, 60) + extraRows))
-  const cols = $derived(Math.min(MAX_COLS, Math.max((data?.maxCol ?? 0) + 6, 26) + extraCols))
+  const sheetCharts = $derived.by(() => {
+    void rev
+    return editor && info ? chartsOn(editor.wb, info) : []
+  })
+  const chartMax = $derived.by(() => {
+    let row = 0
+    let col = 0
+    for (const c of sheetCharts) {
+      if (c.anchor.kind === 'twoCell') {
+        row = Math.max(row, c.anchor.to.row)
+        col = Math.max(col, c.anchor.to.col)
+      } else if (c.anchor.kind === 'oneCell') {
+        row = Math.max(row, c.anchor.from.row + 15)
+        col = Math.max(col, c.anchor.from.col + 8)
+      }
+    }
+    return { row, col }
+  })
+  const rows = $derived(
+    Math.min(MAX_ROWS, Math.max((data?.maxRow ?? 0) + 31, chartMax.row + 6, 60) + extraRows),
+  )
+  const cols = $derived(
+    Math.min(MAX_COLS, Math.max((data?.maxCol ?? 0) + 6, chartMax.col + 3, 26) + extraCols),
+  )
   const sel = $derived<Range>({
     top: Math.min(active.row, anchor.row),
     bottom: Math.max(active.row, anchor.row),
@@ -236,13 +300,34 @@
     void rev
     return editor && info?.kind === 'worksheet' ? autoFilterOf(editor.wb, info.name) : null
   })
+  /** Excel tables and pivot tables of the sheet on screen; the filters there are (the sheet's and its tables'). */
+  const tables = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? readSheetTables(editor.wb, info.name) : []
+  })
+  const pivots = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? readSheetPivots(editor.wb, info.name) : []
+  })
+  const filters = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? sheetFilters(editor.wb, info.name) : []
+  })
+  const inRect = (r: Range, p: Pos) =>
+    p.row >= r.top && p.row <= r.bottom && p.col >= r.left && p.col <= r.right
+  const activeTable = $derived(tables.find((t) => inRect(t.ref, active)) ?? null)
+  const activePivot = $derived(pivots.find((p) => inRect(p.location, active)) ?? null)
   const gridFilter = $derived(
-    autoFilter
+    filters.length > 0
       ? {
-          range: autoFilter.range,
-          filtered: (c: number) => autoFilter.columns.some((x) => x.col === c),
+          ranges: filters.map((f) => f.range),
+          filtered: (r: number, c: number) =>
+            filters.some((f) => f.range.top === r && f.columns.some((x) => x.col === c)),
         }
       : null,
+  )
+  const menuFilter = $derived(
+    filterMenu ? (filters.find((f) => f.range.top === filterMenu!.row) ?? null) : null,
   )
   const filterStatus = $derived.by(() => {
     if (!autoFilter || autoFilter.columns.length === 0 || !data) return null
@@ -346,6 +431,14 @@
     const cfLook = cfEvaluator(ed.wb, calc, d.info.name)
     const dvRules = validationReader(ed.wb, calc, d.info.name)
     const links = hyperlinksOf(ed.wb, d.info.name)
+    const tbl = tables
+    const pvt = pivots
+    const lookAt = (r: number, c: number): TableCellLook | null =>
+      pivotCellLook(ed.wb, pvt, r, c) ?? tableCellLook(tbl, r, c)
+    const edge = (e: { style: string; color?: string | null } | undefined) =>
+      e
+        ? `${e.style === 'double' ? '3px double' : e.style === 'medium' ? '2px solid' : '1px solid'} ${e.color ?? 'currentColor'}`
+        : null
     const bordersAt = (r: number, c: number) => {
       const x = d.cells.get(cellKey(r, c))
       return x ? styles.xf(x.style).border : null
@@ -360,6 +453,15 @@
         filled: false,
       }
       const out = calc.cell(d.info.name, r, c)
+      // A table's or pivot table's style draws under the cell's own format.
+      const tlook = lookAt(r, c)
+      const lookCss: string[] = []
+      if (tlook) {
+        const top = edge(tlook.borderTop)
+        const bottom = edge(tlook.borderBottom)
+        if (top) lookCss.push(`border-top: ${top}`)
+        if (bottom) lookCss.push(`border-bottom: ${bottom}`)
+      }
       const look = cfLook(r, c)
       const dv = dvRules.at(r, c)
       const hasDropdown = dvRules.dropdown(r, c)
@@ -377,6 +479,7 @@
         out.value === null &&
         !out.kept &&
         !look &&
+        !tlook &&
         !link &&
         !invalid &&
         !hasDropdown &&
@@ -418,7 +521,8 @@
               ? 'left'
               : natural
       const css: string[] = []
-      const bold = look?.bold ?? st.font.bold
+      // Precedence as in Excel: conditional formatting over the cell's own format over a table's style.
+      const bold = look?.bold ?? (st.font.bold || (!!tlook?.bold && !st.fill))
       const italic = look?.italic ?? st.font.italic
       const underline = look?.underline ?? (st.font.underline || !!link)
       const strike = look?.strike ?? st.font.strike
@@ -434,12 +538,16 @@
       if (color && (effectiveFill || color.toUpperCase() !== '#000000')) css.push(`color: ${color}`)
       else if (effectiveFill) css.push('color: #000')
       if (effectiveFill) css.push(`background-color: ${effectiveFill}`)
+      else if (tlook?.fill) {
+        css.push(`background-color: ${tlook.fill}`)
+        if (!color || color.toUpperCase() === '#000000') css.push(`color: ${tlook.color ?? '#000'}`)
+      }
       if (st.font.sizePt && st.font.sizePt !== 11)
         css.push(`font-size: ${Math.round(st.font.sizePt * 1.27)}px`)
       if (st.indent) css.push(`padding-left: ${4 + st.indent * 9}px`)
       const family = fontFamilyCss(st, plain)
       if (family) css.push(family)
-      const bCss = borderCss(st.border, { ...near, filled: !!effectiveFill })
+      const bCss = borderCss(st.border, { ...near, filled: !!effectiveFill || !!tlook?.fill })
       if (look?.border) {
         const edgeShadow = `inset 0 0 0 1px ${look.border}`
         const idx = bCss.findIndex((x) => x.startsWith('box-shadow:'))
@@ -447,6 +555,7 @@
         else bCss.push(`box-shadow: ${edgeShadow}`)
       }
       css.push(...bCss)
+      css.push(...lookCss)
       return {
         text: look?.hideValue ? '' : shown.text,
         align,
@@ -1071,6 +1180,7 @@
     if (!data || !editor) return null
     if (autoFilter && within(autoFilter.range, active))
       return { range: autoFilter.range, header: true }
+    if (activeTable) return { range: activeTable.ref, header: activeTable.headerRowCount > 0 }
     if (sel.top === sel.bottom && sel.left === sel.right) {
       const range = currentRegion(data, active)
       return { range, header: guessHeader(editor, sheet, range) }
@@ -1110,29 +1220,43 @@
 
   async function toggleFilter() {
     filterMenu = null
-    if (autoFilter) await change({ op: 'set_autofilter', sheet, range: null })
+    if (activeTable && activeTable.headerRowCount > 0)
+      await updateTable({ autoFilter: activeTable.autoFilter === null })
+    else if (autoFilter) await change({ op: 'set_autofilter', sheet, range: null })
     else await change({ op: 'set_autofilter', sheet, range: rangeName(sel) })
     grid?.focus()
   }
 
-  function openFilterMenu(col: number, at: DOMRect) {
+  function openFilterMenu(col: number, at: DOMRect, row: number) {
     if (!editor) return
+    const f = filters.find((x) => x.range.top === row)
     try {
-      filterMenu = { col, at, choices: columnChoices(editor, sheet, col, locale) }
+      filterMenu = { col, row, at, choices: columnChoices(editor, sheet, col, locale, f?.table) }
     } catch (err) {
       failure = shown(err)
     }
   }
 
   async function applyFilter(col: number, values: string[] | null, blanks: boolean) {
+    const table = menuFilter?.table
     filterMenu = null
-    await change({ op: 'filter_column', sheet, col, values, blanks })
+    await change({
+      op: 'filter_column',
+      sheet,
+      col,
+      values,
+      blanks,
+      ...(table ? { table } : {}),
+    })
     grid?.focus()
   }
 
   async function sortFromFilter(col: number, descending: boolean) {
+    const f = menuFilter
     filterMenu = null
-    if (autoFilter) await sortBy([{ col, descending }], { range: autoFilter.range, header: true })
+    if (!f) return
+    const t = f.table ? tables.find((x) => x.displayName === f.table) : null
+    await sortBy([{ col, descending }], { range: t ? t.ref : f.range, header: true })
   }
 
   async function freeze(choice: string) {
@@ -1146,6 +1270,89 @@
             : [0, 0]
     await change({ op: 'freeze_panes', sheet, rows, cols })
     grid?.focus()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tables and pivot tables (./tables.ts, ./pivot.ts; = drive.sheet_table_*, drive.sheet_pivot_*)
+
+  /** Ctrl+T / PivotTable: the selection, or the block of cells around the active cell (a PivotTable in a table: the table). */
+  function openCreate(kind: 'table' | 'pivot') {
+    if (!data || !editor) return
+    if (kind === 'table' && activeTable) return
+    if (kind === 'pivot' && activeTable) {
+      creating = { kind, range: activeTable.displayName, header: true }
+      return
+    }
+    const single = sel.top === sel.bottom && sel.left === sel.right
+    const range = single ? currentRegion(data, active) : sel
+    const text = rangeName(range)
+    creating = {
+      kind,
+      range: kind === 'pivot' ? `${quoteSheet(sheet)}!${text}` : text,
+      header: kind === 'table' ? true : guessHeader(editor, sheet, range),
+    }
+  }
+
+  async function created(out: { range: string; header: boolean; at: string | null }) {
+    const c = creating
+    creating = null
+    if (!c) return
+    if (c.kind === 'table') {
+      await change({ op: 'create_table', sheet, range: out.range, hasHeaders: out.header })
+      grid?.focus()
+      return
+    }
+    const at = out.at !== null ? parseCell(out.at) : null
+    if (out.at !== null && !at) {
+      failure = { error: m.drive_sheet_pivot_bad_cell({ ref: out.at }), agent: null }
+      return
+    }
+    const ok = await change({
+      op: 'create_pivot',
+      source: out.range,
+      ...(at ? { targetSheet: sheet, targetCell: out.at! } : {}),
+    })
+    if (!ok) return
+    const pos = at ?? { row: 2, col: 0 }
+    active = pos
+    anchor = pos
+    pivotFieldsOpen = true
+  }
+
+  async function updateTable(patch: Record<string, unknown>) {
+    const t = activeTable
+    if (!t) return
+    await change({ op: 'update_table', sheet, table: t.displayName, ...patch })
+  }
+
+  async function convertTable() {
+    const t = activeTable
+    if (t)
+      await change({ op: 'delete_table', sheet, table: t.displayName, mode: 'convert_to_range' })
+  }
+
+  async function layoutPivot(l: PivotLayout) {
+    const p = activePivot
+    if (!p) return
+    await change({
+      op: 'update_pivot',
+      sheet,
+      pivot: p.name,
+      rowFields: l.rows,
+      colFields: l.columns,
+      pageFields: l.filters,
+      dataFields: l.values,
+    })
+  }
+
+  async function refreshPivot() {
+    const p = activePivot
+    if (p) await change({ op: 'refresh_pivot', sheet, pivot: p.name })
+  }
+
+  async function deletePivot() {
+    const p = activePivot
+    if (p) await change({ op: 'delete_pivot', sheet, pivot: p.name })
   }
 
   async function undo() {
@@ -1163,9 +1370,67 @@
   function afterHistory() {
     if (!editor) return
     if (!editor.wb.findSheet(sheet)) sheet = editor.wb.sheets()[0]!.name
+    selectedChartId = null
     rev++
     autosave.change(String(editor.version()))
     touchIdle()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Charts (./chart-ops.ts, ./chart-overlay.svelte, ./chart-dialog.svelte)
+
+  function openInsertChart() {
+    if (!editable || !data) return
+    if (editing) grid?.finishEdit(true)
+    const single = sel.top === sel.bottom && sel.left === sel.right
+    const range = single ? rangeName(currentRegion(data, active)) : rangeName(sel)
+    chartDialog = { mode: 'create', range }
+  }
+
+  async function applyChartOp(op: SheetOp): Promise<string | null> {
+    if (await change(op)) return null
+    const msg = failure?.error ?? null
+    failure = null
+    return msg
+  }
+
+  function moveChart(chartId: string, to: ChartPosition) {
+    void change({ op: 'chart_move', sheet, chart: chartId, to })
+  }
+
+  function deleteChart(chartId: string) {
+    if (selectedChartId === chartId) selectedChartId = null
+    void change({ op: 'chart_delete', sheet, chart: chartId })
+  }
+
+  function observeChartSheet(node: HTMLElement) {
+    let raf = 0
+    const measure = () => {
+      const nextW = Math.max(240, node.clientWidth || 760)
+      const nextH = Math.max(200, node.clientHeight || 460)
+      if (
+        Math.abs(nextW - chartSheetBox.width) > 2 ||
+        Math.abs(nextH - chartSheetBox.height) > 2
+      ) {
+        chartSheetBox = { width: nextW, height: nextH }
+      }
+    }
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        measure()
+      })
+    }
+    measure()
+    const ro = new ResizeObserver(schedule)
+    ro.observe(node)
+    return {
+      destroy: () => {
+        if (raf) cancelAnimationFrame(raf)
+        ro.disconnect()
+      },
+    }
   }
 
   function onRootKeydown(event: KeyboardEvent) {
@@ -1190,6 +1455,11 @@
     } else if (key === 'y') {
       event.preventDefault()
       void redo()
+    } else if ((key === 't' || key === 'l') && !event.shiftKey && !event.altKey) {
+      // Excel: Ctrl+T (and Ctrl+L) create a table.
+      event.preventDefault()
+      if (editing) grid?.finishEdit(true)
+      openCreate('table')
     }
   }
 
@@ -1228,6 +1498,7 @@
   async function pickSheet(n: string) {
     if (editing) grid?.finishEdit(true)
     sheet = n
+    selectedChartId = null
     active = { row: 0, col: 0 }
     anchor = { row: 0, col: 0 }
     extraRows = 0
@@ -1421,6 +1692,24 @@
           data-testid="xlsx-filter-toggle"
           ><FunnelIcon class="size-4" aria-hidden="true" />{m.drive_sheet_filter()}</button
         >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => openCreate('table')}
+          disabled={!!activeTable}
+          title={m.drive_sheet_table_hint()}
+          aria-keyshortcuts="Control+T"
+          data-testid="xlsx-table-create-open"
+          ><TableIcon class="size-4" aria-hidden="true" />{m.drive_sheet_table()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => openCreate('pivot')}
+          title={m.drive_sheet_pivot_hint()}
+          data-testid="xlsx-pivot-create-open"
+          ><SheetIcon class="size-4" aria-hidden="true" />{m.drive_sheet_pivot()}</button
+        >
         <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span class="sr-only sm:not-sr-only">{m.drive_sheet_freeze()}</span>
           <select
@@ -1439,6 +1728,15 @@
           </select>
         </label>
         <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
+        <button
+          type="button"
+          class={btn}
+          disabled={info?.kind !== 'worksheet'}
+          onclick={openInsertChart}
+          title={m.drive_sheet_chart_insert()}
+          data-testid="xlsx-insert-chart"
+          ><ChartColumnIcon class="size-4" aria-hidden="true" />{m.drive_sheet_chart_insert()}</button
+        >
         <button
           type="button"
           class="{btn} {cfOpen ? 'bg-muted text-foreground' : ''}"
@@ -1606,6 +1904,15 @@
       </div>
     {/if}
 
+    {#if activeTable}
+      <TableBar
+        table={activeTable}
+        {editable}
+        onupdate={(patch) => void updateTable(patch)}
+        onconvert={() => void convertTable()}
+      />
+    {/if}
+
     <!-- Formula bar -->
     <div class="flex items-center gap-2 border-b px-2 py-1">
       <span
@@ -1628,15 +1935,44 @@
     </div>
 
     {#if info && info.kind !== 'worksheet'}
-      <div
-        class="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-sm text-muted-foreground"
-        data-testid="xlsx-chart-sheet"
-      >
-        <ChartColumnIcon class="size-8" aria-hidden="true" />
-        <p>{m.drive_sheet_chart_sheet({ name: info.name })}</p>
-      </div>
+      {#if info.kind === 'chartsheet' && sheetCharts[0] && editor}
+        {@const chart = sheetCharts[0]}
+        <div class="flex min-h-0 flex-1 flex-col" data-testid="xlsx-chart-sheet">
+          {#if editable}
+            <div class="flex items-center gap-2 border-b bg-muted/20 px-3 py-1.5 text-sm">
+              <span class="font-medium text-foreground">{chart.name}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                class="ml-auto"
+                onclick={() => (chartDialog = { mode: 'edit', placement: chart })}
+                data-testid="xlsx-chart-sheet-edit">{m.drive_sheet_chart_edit()}</Button
+              >
+            </div>
+          {/if}
+          <div class="chart-sheet-host min-h-[24rem] flex-1 overflow-hidden p-4" use:observeChartSheet>
+            <ChartView
+              wb={editor.wb}
+              calc={() => editor!.calc()}
+              placement={chart}
+              width={chartSheetBox.width - 32}
+              height={chartSheetBox.height - 32}
+              {locale}
+              {rev}
+            />
+          </div>
+        </div>
+      {:else}
+        <div
+          class="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-sm text-muted-foreground"
+          data-testid="xlsx-chart-sheet"
+        >
+          <ChartColumnIcon class="size-8" aria-hidden="true" />
+          <p>{m.drive_sheet_chart_sheet({ name: info.name })}</p>
+        </div>
+      {/if}
     {:else if data}
-      <div class="flex min-h-0 flex-1">
+      <div class="flex min-h-0 min-w-0 flex-1">
         <div class="flex min-h-0 min-w-0 flex-1 flex-col">
           <SheetGrid
             bind:this={grid}
@@ -1670,8 +2006,47 @@
             onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
             onresize={onResize}
             onblocked={onGridBlocked}
-          />
+            oncellpointerdown={() => (selectedChartId = null)}
+          >
+            {#snippet overlay({ colLeft, rowTop, maxCol, maxRow })}
+          {#if sheetCharts.length > 0 && editor}
+            <ChartOverlay
+              wb={editor.wb}
+              calc={() => editor!.calc()}
+              charts={sheetCharts}
+              {colLeft}
+              {rowTop}
+              {maxCol}
+              {maxRow}
+              {locale}
+              {rev}
+              {editable}
+              bind:selected={selectedChartId}
+              onmove={moveChart}
+              onedit={(placement) => (chartDialog = { mode: 'edit', placement })}
+              ondelete={deleteChart}
+            />
+          {/if}
+        {/snippet}
+          </SheetGrid>
         </div>
+      {#if activePivot && pivotFieldsOpen}
+        <PivotFields
+          pivot={activePivot}
+          {editable}
+          onchange={(l) => void layoutPivot(l)}
+          onrefresh={() => void refreshPivot()}
+          ondelete={() => void deletePivot()}
+          onclose={() => (pivotFieldsOpen = false)}
+        />
+      {:else if activePivot}
+        <button
+          type="button"
+          class="{btn} self-start"
+          onclick={() => (pivotFieldsOpen = true)}
+          data-testid="xlsx-pivot-fields-open">{m.drive_sheet_pivot_fields()}</button
+        >
+      {/if}
         {#if cfOpen && editable && info}
           <CondFormatPanel
             sheet={info.name}
@@ -1771,18 +2146,33 @@
   </div>
 {/if}
 
-{#if filterMenu && autoFilter}
+{#if filterMenu && menuFilter}
   {@const fm = filterMenu}
   <FilterMenu
     col={colName(fm.col)}
     choices={fm.choices}
-    current={autoFilter.columns.find((c) => c.col === fm.col)}
+    current={menuFilter.columns.find((c) => c.col === fm.col)}
     at={fm.at}
     {editable}
     onapply={(values, blanks) => void applyFilter(fm.col, values, blanks)}
     onsort={(descending) => void sortFromFilter(fm.col, descending)}
     onclose={() => {
       filterMenu = null
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if creating}
+  {@const cr = creating}
+  <TableDialog
+    kind={cr.kind}
+    range={cr.range}
+    header={cr.header}
+    at={activeRef}
+    oncreate={(out) => void created(out)}
+    onclose={() => {
+      creating = null
       grid?.focus()
     }}
   />
@@ -1812,6 +2202,23 @@
     onop={(op) => runModalOp(op)}
     onclose={() => {
       dvDialog = false
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if chartDialog && editor}
+  {@const cd = chartDialog}
+  <ChartDialog
+    mode={cd.mode}
+    {sheet}
+    wb={editor.wb}
+    initialRange={cd.mode === 'create' ? cd.range : ''}
+    placement={cd.mode === 'edit' ? cd.placement : null}
+    onsubmit={applyChartOp}
+    ondelete={cd.mode === 'edit' ? () => deleteChart(cd.placement.id) : undefined}
+    onclose={() => {
+      chartDialog = null
       grid?.focus()
     }}
   />
@@ -1946,3 +2353,14 @@
     </AlertDialog.Footer>
   </AlertDialog.Content>
 </AlertDialog.Root>
+
+<style>
+  .chart-sheet-host {
+    min-height: 24rem;
+    height: 28rem;
+    flex: 1 1 0%;
+    overflow: hidden;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+</style>

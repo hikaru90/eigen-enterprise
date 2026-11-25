@@ -1866,89 +1866,95 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
-  "drive.sheet_conditional_format_delete": {
+  "drive.sheet_chart_create": {
     input: {
+      "at"?: string
       "file_id": string
-      "priority"?: number
-      "range"?: string | null
-      "sheet": string
-    }
-    output: unknown
-  }
-  "drive.sheet_conditional_format_list": {
-    input: {
-      "file_id": string
-      "sheet": string
-    }
-    output: unknown
-  }
-  "drive.sheet_conditional_format_set": {
-    input: {
-      "file_id": string
-      "move_to"?: number
-      "priority"?: number
+      "grouping"?: "clustered" | "stacked" | "percentStacked" | "standard"
+      "legend"?: ("r" | "l" | "t" | "b" | "tr") | null
+      "new_sheet"?: string
       "range"?: string
-      "rule"?: {
-        "bar"?: {
-          "axis"?: "automatic" | "middle" | "none"
-          "border"?: boolean
-          "color": string
-          "gradient"?: boolean
-          "max"?: {
-            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
-            "value"?: string | null
-          }
-          "min"?: {
-            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
-            "value"?: string | null
-          }
-          "negative_color"?: string
-          "show_value"?: boolean
-        }
-        "below"?: boolean
-        "bottom"?: boolean
-        "equal_average"?: boolean
-        "formula1"?: string
-        "formula2"?: string
-        "icons"?: {
-          "custom"?: Array<{
-            "index": number
-            "set": "3Arrows" | "3ArrowsGray" | "3Flags" | "3TrafficLights1" | "3TrafficLights2" | "3Signs" | "3Symbols" | "3Symbols2" | "3Stars" | "3Triangles" | "4Arrows" | "4ArrowsGray" | "4RedToBlack" | "4Rating" | "4TrafficLights" | "5Arrows" | "5ArrowsGray" | "5Rating" | "5Quarters" | "5Boxes" | "NoIcons"
-          }>
-          "reverse"?: boolean
-          "set": "3Arrows" | "3ArrowsGray" | "3Flags" | "3TrafficLights1" | "3TrafficLights2" | "3Signs" | "3Symbols" | "3Symbols2" | "3Stars" | "3Triangles" | "4Arrows" | "4ArrowsGray" | "4RedToBlack" | "4Rating" | "4TrafficLights" | "5Arrows" | "5ArrowsGray" | "5Rating" | "5Quarters" | "5Boxes"
-          "show_value"?: boolean
-          "thresholds"?: Array<{
-            "gte"?: boolean
-            "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
-            "value": string
-          }>
-        }
-        "operator"?: "between" | "notBetween" | "equal" | "notEqual" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual"
-        "percent"?: boolean
-        "period"?: "today" | "yesterday" | "tomorrow" | "last7Days" | "thisWeek" | "lastWeek" | "nextWeek" | "thisMonth" | "lastMonth" | "nextMonth"
-        "points"?: Array<{
-          "color": string
-          "kind": "min" | "max" | "num" | "percent" | "percentile" | "formula" | "autoMin" | "autoMax"
-          "value"?: string | null
-        }>
-        "rank"?: number
-        "std_dev"?: number
-        "stop_if_true"?: boolean
-        "style"?: {
-          "bold"?: boolean
-          "border"?: string
-          "fill"?: string
-          "font_color"?: string
-          "italic"?: boolean
-          "num_fmt"?: string
-          "strike"?: boolean
-          "underline"?: boolean
-        }
-        "text"?: string
-        "type": "cellIs" | "expression" | "colorScale" | "dataBar" | "iconSet" | "top10" | "aboveAverage" | "duplicateValues" | "uniqueValues" | "containsText" | "notContainsText" | "beginsWith" | "endsWith" | "containsBlanks" | "notContainsBlanks" | "containsErrors" | "notContainsErrors" | "timePeriod"
-      }
+      "series"?: Array<{
+        "categories"?: string | null
+        "name"?: string | null
+        "name_ref"?: string | null
+        "secondary"?: boolean
+        "sizes"?: string | null
+        "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+        "values": string
+      }>
       "sheet": string
+      "title"?: string | null
+      "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_delete": {
+    input: {
+      "chart": string
+      "file_id": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_list": {
+    input: {
+      "file_id": string
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_chart_update": {
+    input: {
+      "axes"?: {
+        "category"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+        "secondary"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+        "value"?: {
+          "format"?: string | null
+          "gridlines"?: boolean
+          "max"?: number | null
+          "min"?: number | null
+          "title"?: string | null
+        }
+      }
+      "chart": string
+      "colors"?: Array<string | null>
+      "file_id": string
+      "grouping"?: "clustered" | "stacked" | "percentStacked" | "standard"
+      "labels"?: ({
+        "category"?: boolean
+        "percent"?: boolean
+        "position"?: ("ctr" | "inEnd" | "outEnd" | "inBase" | "t" | "b" | "l" | "r" | "bestFit") | null
+        "series"?: boolean
+        "value"?: boolean
+      }) | null
+      "legend"?: ("r" | "l" | "t" | "b" | "tr") | null
+      "markers"?: boolean
+      "position"?: string
+      "series"?: Array<{
+        "categories"?: string | null
+        "name"?: string | null
+        "name_ref"?: string | null
+        "secondary"?: boolean
+        "sizes"?: string | null
+        "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
+        "values": string
+      }>
+      "sheet": string
+      "title"?: string | null
+      "type"?: "column" | "bar" | "line" | "area" | "pie" | "doughnut" | "scatter" | "bubble" | "radar" | "stock"
     }
     output: unknown
   }
@@ -1963,6 +1969,7 @@ export type CoreApiTools = {
       "off"?: true
       "range"?: string
       "sheet": string
+      "table"?: string
     }
     output: unknown
   }
@@ -2011,76 +2018,73 @@ export type CoreApiTools = {
     }
     output: unknown
   }
-  "drive.sheet_hyperlink_remove": {
+  "drive.sheet_pivot_create": {
+    input: {
+      "col_grand_totals"?: boolean
+      "columns"?: Array<string>
+      "file_id": string
+      "filters"?: Array<{
+        "field": string
+        "selected_item"?: string
+      }>
+      "name"?: string
+      "row_grand_totals"?: boolean
+      "rows"?: Array<string>
+      "source": string
+      "source_sheet"?: string
+      "style"?: string
+      "subtotals"?: boolean
+      "target_cell"?: string
+      "target_sheet"?: string
+      "values"?: Array<{
+        "agg"?: "sum" | "count" | "average" | "min" | "max" | "product" | "countNums" | "stdDev" | "var"
+        "field": string
+        "name"?: string
+        "num_fmt"?: string
+      }>
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_delete": {
     input: {
       "file_id": string
-      "range": string
+      "keep_values"?: boolean
+      "pivot": string
       "sheet": string
     }
     output: unknown
   }
-  "drive.sheet_hyperlink_set": {
+  "drive.sheet_pivot_refresh": {
     input: {
       "file_id": string
-      "range": string
+      "pivot": string
       "sheet": string
-      "target": string
-      "text"?: string | null
-      "tooltip"?: string | null
     }
     output: unknown
   }
-  "drive.sheet_names_delete": {
+  "drive.sheet_pivot_update": {
     input: {
+      "col_grand_totals"?: boolean
+      "columns"?: Array<string>
       "file_id": string
-      "name": string
-      "scope"?: string | null
-    }
-    output: unknown
-  }
-  "drive.sheet_names_list": {
-    input: {
-      "file_id": string
-    }
-    output: unknown
-  }
-  "drive.sheet_names_set": {
-    input: {
-      "comment"?: string | null
-      "file_id": string
-      "name": string
-      "new_name"?: string
-      "refers_to"?: string
-      "scope"?: string | null
-    }
-    output: unknown
-  }
-  "drive.sheet_protect": {
-    input: {
-      "action": "protect_sheet" | "unprotect_sheet" | "protect_workbook" | "unprotect_workbook" | "set_cell_protection"
-      "allow"?: {
-        "auto_filter"?: boolean
-        "delete_columns"?: boolean
-        "delete_rows"?: boolean
-        "format_cells"?: boolean
-        "format_columns"?: boolean
-        "format_rows"?: boolean
-        "insert_columns"?: boolean
-        "insert_hyperlinks"?: boolean
-        "insert_rows"?: boolean
-        "objects"?: boolean
-        "pivot_tables"?: boolean
-        "scenarios"?: boolean
-        "select_locked_cells"?: boolean
-        "select_unlocked_cells"?: boolean
-        "sort"?: boolean
-      }
-      "file_id": string
-      "hidden"?: boolean
-      "locked"?: boolean
-      "password"?: string | null
-      "range"?: string
-      "sheet"?: string
+      "filters"?: Array<{
+        "field": string
+        "selected_item"?: string
+      }>
+      "hidden_items"?: Record<string, Array<string>>
+      "name"?: string
+      "pivot": string
+      "row_grand_totals"?: boolean
+      "rows"?: Array<string>
+      "sheet": string
+      "style"?: string
+      "subtotals"?: boolean
+      "values"?: Array<{
+        "agg"?: "sum" | "count" | "average" | "min" | "max" | "product" | "countNums" | "stdDev" | "var"
+        "field": string
+        "name"?: string
+        "num_fmt"?: string
+      }>
     }
     output: unknown
   }
@@ -2144,33 +2148,48 @@ export type CoreApiTools = {
     }
     output: unknown
   }
-  "drive.sheet_validation_clear": {
+  "drive.sheet_table_create": {
     input: {
+      "auto_filter"?: boolean
       "file_id": string
+      "has_headers"?: boolean
+      "name"?: string
       "range": string
       "sheet": string
+      "style"?: string
     }
     output: unknown
   }
-  "drive.sheet_validation_set": {
+  "drive.sheet_table_delete": {
     input: {
-      "allow_blank"?: boolean
-      "dropdown"?: boolean
-      "error_message"?: string | null
-      "error_style"?: "stop" | "warning" | "information"
-      "error_title"?: string | null
       "file_id": string
-      "formula1"?: string
-      "formula2"?: string
-      "input_message"?: string | null
-      "input_title"?: string | null
-      "items"?: Array<string>
-      "operator"?: "between" | "notBetween" | "equal" | "notEqual" | "greaterThan" | "lessThan" | "greaterThanOrEqual" | "lessThanOrEqual"
-      "range": string
+      "mode"?: "convert_to_range" | "delete_cells"
       "sheet": string
-      "show_error"?: boolean
-      "show_input"?: boolean
-      "type": "any" | "whole" | "decimal" | "list" | "date" | "time" | "textLength" | "custom"
+      "table": string
+    }
+    output: unknown
+  }
+  "drive.sheet_table_update": {
+    input: {
+      "auto_filter"?: boolean
+      "file_id": string
+      "header_row"?: boolean
+      "name"?: string
+      "ref"?: string
+      "sheet": string
+      "show_column_stripes"?: boolean
+      "show_first_column"?: boolean
+      "show_last_column"?: boolean
+      "show_row_stripes"?: boolean
+      "style"?: string
+      "table": string
+      "totals_columns"?: Array<{
+        "column": string | number
+        "formula"?: string
+        "function": "none" | "sum" | "count" | "average" | "min" | "max" | "countNums" | "stdDev" | "var" | "custom"
+        "label"?: string
+      }>
+      "totals_row"?: boolean
     }
     output: unknown
   }
@@ -4673,23 +4692,23 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.set_sharing",
   "drive.share_many",
   "drive.shared_with_me",
-  "drive.sheet_conditional_format_delete",
-  "drive.sheet_conditional_format_list",
-  "drive.sheet_conditional_format_set",
+  "drive.sheet_chart_create",
+  "drive.sheet_chart_delete",
+  "drive.sheet_chart_list",
+  "drive.sheet_chart_update",
   "drive.sheet_filter",
   "drive.sheet_format",
   "drive.sheet_freeze",
-  "drive.sheet_hyperlink_remove",
-  "drive.sheet_hyperlink_set",
-  "drive.sheet_names_delete",
-  "drive.sheet_names_list",
-  "drive.sheet_names_set",
-  "drive.sheet_protect",
+  "drive.sheet_pivot_create",
+  "drive.sheet_pivot_delete",
+  "drive.sheet_pivot_refresh",
+  "drive.sheet_pivot_update",
   "drive.sheet_read",
   "drive.sheet_sort",
   "drive.sheet_structure",
-  "drive.sheet_validation_clear",
-  "drive.sheet_validation_set",
+  "drive.sheet_table_create",
+  "drive.sheet_table_delete",
+  "drive.sheet_table_update",
   "drive.sheet_write",
   "drive.suggest_archive",
   "drive.trash",

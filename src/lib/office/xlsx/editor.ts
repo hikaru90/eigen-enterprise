@@ -115,9 +115,7 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
       .length,
   )
   let drawings = 0
-  let pivots = 0
   let comments = 0
-  let tables = 0
   let cf = 0
   let dv = 0
   const kept = new Map<string, number>()
@@ -125,9 +123,7 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
     if (s.kind !== 'worksheet') continue
     for (const r of wb.pkg.relationships(s.part)) {
       if (r.type === `${REL}drawing`) drawings++
-      else if (r.type === `${REL}pivotTable`) pivots++
       else if (r.type === `${REL}comments`) comments++
-      else if (r.type === `${REL}table`) tables++
     }
     const doc = wb.pkg.xml(s.part)
     cf += all(doc, 'conditionalFormatting').length
@@ -149,9 +145,7 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
         wb.pkg.relationships(p).every((r) => r.type === `${REL}chart`),
     ).length
   add('drawings', drawings - chartOnly)
-  add('pivot_tables', pivots)
   add('comments', comments)
-  add('tables', tables)
   add('conditional_formats', cf)
   add('data_validations', dv)
   add(

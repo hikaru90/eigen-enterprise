@@ -1,11 +1,14 @@
 import type { SheetEditor } from './editor'
+import { describeCharts } from './chart-ops'
 import { autoFilterOf, describeAutoFilter } from './filter'
 import { displayValue, formatCode, type SheetLocale } from './format'
 import { styleSummary, type StyleSummary } from './format-cells'
 import { toShownFormula } from './ops'
 import { frozenOf } from './panes'
 import { sheetProtectionOf } from './protection'
+import { pivotSummary, readSheetPivots } from './pivot'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
+import { readSheetTables, tableSummary } from './tables'
 import { isErrorValue, XlsxError, type CellValue } from './workbook'
 
 /**
@@ -13,6 +16,14 @@ import { isErrorValue, XlsxError, type CellValue } from './workbook'
  * sheets with their used ranges, and the cells of a range with their values
  * (calculated), formulas, shown text and number format.
  */
+
+export type SheetChartRef = {
+  id: string
+  name: string
+  types: string[]
+  title: string | null
+  position: string | null
+}
 
 export type SheetSummary = {
   name: string
@@ -25,6 +36,12 @@ export type SheetSummary = {
   frozen?: { rows: number; columns: number }
   /** Whether the sheet is protected. */
   protected?: true
+  /** Excel tables on this sheet, when it has any. */
+  tables?: Array<ReturnType<typeof tableSummary>>
+  /** Pivot tables on this sheet, when it has any. */
+  pivots?: Array<ReturnType<typeof pivotSummary>>
+  /** Charts on this sheet, when it has any. */
+  charts?: SheetChartRef[]
 }
 
 export type ReadCell = {
@@ -52,12 +69,25 @@ export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
       hidden: s.state !== 'visible',
       used: used ? rangeName(used) : null,
     }
+    const charts = describeCharts(ed.wb, s.name)
+    if (charts.length > 0)
+      out.charts = charts.map((c) => ({
+        id: c.id,
+        name: c.name,
+        types: c.types,
+        title: c.title,
+        position: c.position,
+      }))
     if (s.kind !== 'worksheet') return out
     const af = autoFilterOf(ed.wb, s.name)
     if (af) out.filter = describeAutoFilter(af)
     const frozen = frozenOf(ed.wb, s.name)
     if (frozen) out.frozen = { rows: frozen.rows, columns: frozen.cols }
     if (sheetProtectionOf(ed.wb, s.name)) out.protected = true
+    const tables = readSheetTables(ed.wb, s.name)
+    if (tables.length > 0) out.tables = tables.map(tableSummary)
+    const pivots = readSheetPivots(ed.wb, s.name)
+    if (pivots.length > 0) out.pivots = pivots.map(pivotSummary)
     return out
   })
 }
