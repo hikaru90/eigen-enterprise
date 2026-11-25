@@ -9,6 +9,11 @@ import { toFileText, toShownText } from './formula-text'
 import { ensureDynamicArrayCm } from './metadata'
 import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
 import { freezePanes, type FreezeOp } from './panes'
+import { runCfOp, type CfOp } from './cond-format'
+import { runHyperlinkOp, type HyperlinkOp } from './hyperlinks'
+import { runNameOp, type NameOp } from './names'
+import { guard, runProtectionOp, type ProtectionOp } from './protection'
+import { runValidationOp, type ValidationOp } from './validation'
 import {
   cellKey,
   cellName,
@@ -117,6 +122,12 @@ export type SheetOp =
   | AutoFilterOp
   | FilterColumnOp
   | FreezeOp
+  /** Conditional formats, validation, links, names, protection (./cond-format.ts … ./protection.ts). */
+  | CfOp
+  | ValidationOp
+  | HyperlinkOp
+  | NameOp
+  | ProtectionOp
 
 /** A feature that would end up wrong after an operation (what, and how many). */
 export type Loss = { feature: LossFeature; count: number; detail?: string }
@@ -512,6 +523,8 @@ export function applyOp(
 }
 
 function run(wb: Workbook, op: SheetOp): OpResult {
+  // Protected sheets and a protected workbook structure refuse what they don't allow.
+  guard(wb, op)
   switch (op.op) {
     case 'set_cells':
       return setCells(wb, op.sheet, op.cells)
@@ -537,6 +550,29 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'filter_column':
     case 'freeze_panes':
       return arrange(wb, op)
+    case 'cf_add':
+    case 'cf_update':
+    case 'cf_delete':
+    case 'cf_clear':
+    case 'cf_move':
+      return { sheets: runCfOp(wb, op) }
+    case 'validation_set':
+    case 'validation_clear':
+      return { sheets: runValidationOp(wb, op) }
+    case 'hyperlink_set':
+    case 'hyperlink_remove':
+      return { sheets: runHyperlinkOp(wb, op) }
+    case 'name_add':
+    case 'name_update':
+    case 'name_delete':
+      runNameOp(wb, op)
+      return { sheets: wb.sheets().filter((s) => s.kind === 'worksheet').map((s) => s.name) }
+    case 'protect_sheet':
+    case 'unprotect_sheet':
+    case 'protect_workbook':
+    case 'unprotect_workbook':
+    case 'set_cell_protection':
+      return { sheets: runProtectionOp(wb, op) }
   }
 }
 
@@ -829,7 +865,7 @@ function renameSheet(wb: Workbook, sheet: string, nameIn: string): OpResult {
  * Rewrites every formula of the workbook — cells, defined names, conditional
  * formats and data validations — editing only the parts where one changes.
  */
-function rewriteAllFormulas(wb: Workbook, rewrite: (formula: string, home: string) => string) {
+export function rewriteAllFormulas(wb: Workbook, rewrite: (formula: string, home: string) => string) {
   for (const s of wb.sheets()) {
     if (s.kind !== 'worksheet') continue
     const doc = wb.pkg.xml(s.part)

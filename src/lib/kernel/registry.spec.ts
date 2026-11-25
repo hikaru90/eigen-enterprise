@@ -620,7 +620,12 @@ describe('KernelRegistry: always-ask tools (approvalAlways)', () => {
       makeTool({
         name: toolName,
         module: 'settings',
-        inputSchema: z.object({ value: z.string(), extra: z.number().optional() }),
+        inputSchema: z.object({
+          value: z.string(),
+          extra: z.number().optional(),
+          password: z.string().optional(),
+          apiKey: z.string().optional(),
+        }),
         auditClass: 'mutate',
         approvalRisk: 'internal',
         approvalAlways: true,
@@ -679,6 +684,19 @@ describe('KernelRegistry: always-ask tools (approvalAlways)', () => {
     const fresh = await store.listPending()
     expect(fresh).toHaveLength(1)
     expect(fresh[0].input).toEqual({ value: 'b' })
+  })
+
+  it('stores only a redacted input (no passwords, keys, tokens, secrets); the approved call runs with the real value', async () => {
+    const { registry, store, ran } = setup()
+    const ctx = makeCtx()
+    const call = { value: 'a', password: 'hunter2', apiKey: 'k-123' }
+    await registry.execute(toolName, call, ctx).catch(() => undefined)
+    const [pending] = await store.listPending()
+    expect(JSON.stringify(pending)).not.toMatch(/hunter2|k-123/)
+    expect(pending.input).toEqual({ value: 'a', password: '[REDACTED]', apiKey: '[REDACTED]' })
+    await store.decide(pending.id, 'approved', 'the-owner')
+    await registry.execute(toolName, call, ctx)
+    expect(ran).toEqual([call])
   })
 
   it('input equality ignores key order (jsonb does not keep it)', async () => {

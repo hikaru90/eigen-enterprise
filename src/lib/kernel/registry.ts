@@ -9,6 +9,7 @@ import {
   type ApprovalPolicy,
   type ApprovalStore,
 } from './approvals'
+import { redactForLog } from '../server/observability/redact-for-log'
 import { moduleSource } from './cloudevents'
 import { KernelError } from './errors'
 import { emitKernelEvent, InMemoryEventSink, type EventSink } from './events'
@@ -224,10 +225,13 @@ export class KernelRegistry {
         })
       }
       if (latest?.status !== 'approved') {
+        // Only a redacted copy is stored (and shown to the approver): secret-named fields
+        // (passwords, keys, tokens, secrets) never land in the approval record. The approved
+        // call runs on its own input when it is made again.
         const created = await this.approvalStore.create({
           id: randomUUID(),
           toolName: name,
-          input,
+          input: redactForLog(input),
           principalId: ctx.principal.id,
           status: 'pending',
         })
@@ -275,8 +279,11 @@ export class KernelRegistry {
    * consumed atomically before the handler runs. Anything else waits.
    */
   private async alwaysAskGate(name: string, input: unknown, ctx: ToolContext): Promise<void> {
+    // Stored inputs are redacted (secret-named fields), so the call is matched on its redacted form:
+    // an approval covers exactly its input apart from the secrets' values.
+    const redacted = redactForLog(input)
     const open = (await this.approvalStore.openFor(name, ctx.principal.id)).filter((r) =>
-      sameApprovalInput(r.input, input),
+      sameApprovalInput(r.input, redacted),
     )
     for (const approved of open.filter((r) => r.status === 'approved')) {
       if (await this.approvalStore.consume(approved.id)) return
@@ -291,7 +298,7 @@ export class KernelRegistry {
     const created = await this.approvalStore.create({
       id: randomUUID(),
       toolName: name,
-      input,
+      input: redacted,
       principalId: ctx.principal.id,
       status: 'pending',
     })

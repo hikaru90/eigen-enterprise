@@ -4,6 +4,7 @@ import { displayValue, formatCode, type SheetLocale } from './format'
 import { styleSummary, type StyleSummary } from './format-cells'
 import { toShownFormula } from './ops'
 import { frozenOf } from './panes'
+import { sheetProtectionOf } from './protection'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
 import { isErrorValue, XlsxError, type CellValue } from './workbook'
 
@@ -22,6 +23,8 @@ export type SheetSummary = {
   filter?: ReturnType<typeof describeAutoFilter>
   /** Frozen panes (rows from the top, columns from the left), when it has them. */
   frozen?: { rows: number; columns: number }
+  /** Whether the sheet is protected. */
+  protected?: true
 }
 
 export type ReadCell = {
@@ -54,6 +57,7 @@ export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
     if (af) out.filter = describeAutoFilter(af)
     const frozen = frozenOf(ed.wb, s.name)
     if (frozen) out.frozen = { rows: frozen.rows, columns: frozen.cols }
+    if (sheetProtectionOf(ed.wb, s.name)) out.protected = true
     return out
   })
 }

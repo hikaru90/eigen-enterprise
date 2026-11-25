@@ -23,7 +23,7 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, the Drive's spreadsheet editor): one read, six writes. */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-rules-tools.ts): reads and writes. */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
@@ -32,6 +32,17 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_conditional_format_list',
+  'drive.sheet_conditional_format_set',
+  'drive.sheet_conditional_format_delete',
+  'drive.sheet_validation_set',
+  'drive.sheet_validation_clear',
+  'drive.sheet_hyperlink_set',
+  'drive.sheet_hyperlink_remove',
+  'drive.sheet_names_list',
+  'drive.sheet_names_set',
+  'drive.sheet_names_delete',
+  'drive.sheet_protect',
 ] as const
 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
@@ -42,6 +53,15 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_conditional_format_set',
+  'drive.sheet_conditional_format_delete',
+  'drive.sheet_validation_set',
+  'drive.sheet_validation_clear',
+  'drive.sheet_hyperlink_set',
+  'drive.sheet_hyperlink_remove',
+  'drive.sheet_names_set',
+  'drive.sheet_names_delete',
+  'drive.sheet_protect',
 ] as const
 
 /** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */
