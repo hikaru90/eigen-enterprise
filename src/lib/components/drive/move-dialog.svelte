@@ -7,14 +7,26 @@
   import { driveApi, type DriveItem } from '$lib/drive/api'
   import { driveShownError } from '$lib/drive/shown-error'
   import type { ShownError } from '$lib/errors/agent-report'
+  import { m } from '$lib/paraglide/messages.js'
 
-  /** Pick a target folder: walk My drive's folders, move here. */
+  /** Pick a target folder: walk My drive's folders, move here — one item (a row) or several (a selection). */
   let {
     item,
+    items,
     submit,
     onclose,
-  }: { item: DriveItem; submit: (folderId: string | null) => Promise<void>; onclose: () => void } =
-    $props()
+  }: {
+    item?: DriveItem
+    items?: DriveItem[]
+    submit: (folderId: string | null) => Promise<void>
+    onclose: () => void
+  } = $props()
+
+  const moving = $derived(items ?? (item ? [item] : []))
+  /** A folder being moved is no target (nor anything shown inside it). */
+  const movingFolders = $derived(
+    new Set(moving.filter((i) => i.type === 'folder').map((i) => i.id)),
+  )
 
   let open = $state(true)
   let at = $state<string | null>(null)
@@ -30,9 +42,7 @@
       at = id
       path = out.path
       canEdit = out.canEdit
-      folders = out.items.filter(
-        (i) => i.type === 'folder' && !(item.type === 'folder' && i.id === item.id),
-      )
+      folders = out.items.filter((i) => i.type === 'folder' && !movingFolders.has(i.id))
     } catch (err) {
       error = driveShownError(err)
     }
@@ -55,8 +65,14 @@
 >
   <Dialog.Content class="max-w-md grid-cols-[minmax(0,1fr)]" data-testid="drive-move-dialog">
     <Dialog.Header>
-      <Dialog.Title>Move “{item.name}”</Dialog.Title>
-      <Dialog.Description>Choose the folder to move it into.</Dialog.Description>
+      <Dialog.Title
+        >{moving.length === 1
+          ? `Move “${moving[0]!.name}”`
+          : m.drive_move_many_title({ count: moving.length })}</Dialog.Title
+      >
+      <Dialog.Description
+        >Choose the folder to move {moving.length === 1 ? 'it' : 'them'} into.</Dialog.Description
+      >
     </Dialog.Header>
     <nav class="flex flex-wrap gap-1 text-sm" aria-label="Target folder path">
       <button class="text-muted-foreground hover:text-foreground" onclick={() => go(null)}

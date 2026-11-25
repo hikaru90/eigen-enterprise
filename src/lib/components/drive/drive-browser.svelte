@@ -20,7 +20,7 @@
   import UploadIcon from '@lucide/svelte/icons/upload'
   import UsersIcon from '@lucide/svelte/icons/users'
   import { onMount } from 'svelte'
-  import { goto, invalidateAll } from '$app/navigation'
+  import { afterNavigate, goto, invalidateAll } from '$app/navigation'
   import { resolve } from '$app/paths'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -40,6 +40,16 @@
     shortWhen,
     type DriveItemKind,
   } from '$lib/drive/display'
+  import { bulkOutcome, runBulk, type BulkOutcome, type BulkRequest } from '$lib/drive/bulk'
+  import {
+    bulkActions,
+    clickSelect,
+    headerState,
+    keepOnly,
+    selKey,
+    toggleAll,
+    type Selection,
+  } from '$lib/drive/selection'
   import { driveShownError } from '$lib/drive/shown-error'
   import {
     collectDropped,
@@ -54,11 +64,13 @@
     type UploadProgress,
   } from '$lib/drive/upload'
   import type { ShownError } from '$lib/errors/agent-report'
+  import { m } from '$lib/paraglide/messages.js'
   import { nextSort, sortRows, type SortState } from '$lib/table/sort'
   import SortableHead from '$lib/table/sortable-head.svelte'
   import DriveItemActions from './drive-item-actions.svelte'
   import DriveTextPreview from './drive-text-preview.svelte'
   import NameDialog from './name-dialog.svelte'
+  import SelectionBar from './selection-bar.svelte'
   import UploadConflictDialog from './upload-conflict-dialog.svelte'
 
   /**
@@ -71,6 +83,11 @@
    * folder's tree is recreated, then its files go up one by one with
    * progress, and every file that didn't land is listed with why. Items the
    * person may edit can be dragged onto a folder row to move them there.
+   * Rows can be selected (a checkbox each, the header's for the page,
+   * shift-click for a range, Space on a row, Escape clears): a bar then
+   * offers the acts valid for every selected item, sent as bulk tool calls
+   * with every failed item named. The selection survives sorting and paging
+   * and clears on navigation.
    * Drop targets are whatever folder rows are rendered now (looked up from
    * the drop's own element), so a folder created in this view takes drops at
    * once. The server checks every act again; the buttons only hide what the
@@ -144,6 +161,7 @@
     submit: (name: string) => Promise<void>
   } | null>(null)
   let fileInput = $state<HTMLInputElement | null>(null)
+  let listEl = $state<HTMLElement | null>(null)
   let folderInput = $state<HTMLInputElement | null>(null)
   /** The Drive row being dragged (a move), while it is. */
   let draggedItem = $state<Listed | null>(null)
@@ -162,6 +180,9 @@
   /** User-selected origin pill tied to the `origin` prop it was chosen under (resets when `origin` changes). */
   let pickedOrigin = $state.raw<{ forProp: string | null; value: string } | null>(null)
   let kindFilter = $state<KindFilter>('all')
+  let selection = $state.raw<Selection>({ keys: new Set(), anchor: null })
+  /** The last bulk act's failures (each item and why) and a call that failed as a whole. */
+  let bulkFailed = $state.raw<BulkOutcome | null>(null)
 
   const hasOverviewOrigins = $derived(
     !trashView && !results && items.some((i) => i.origin !== undefined),
@@ -266,6 +287,12 @@
   const firstShown = $derived((currentPage - 1) * PAGE_SIZE)
   const visible = $derived(shown.slice(firstShown, firstShown + PAGE_SIZE))
   const sortBy = (key: ColKey) => (sort = nextSort(sort, key))
+  /** Shift-click ranges follow the list as shown (sorted, across pages). */
+  const shownKeys = $derived(shown.map(selKey))
+  const pageKeys = $derived(visible.map(selKey))
+  const selectedItems = $derived(shown.filter((i) => selection.keys.has(selKey(i))))
+  const pageState = $derived(headerState(selection.keys, pageKeys))
+  const selectActions = $derived(bulkActions(selectedItems, trashView ? 'trash' : 'drive'))
   const dropEnabled = $derived(canEdit && !trashView)
   const dragging = $derived(dragDepth > 0)
   const dropDestination = $derived(
@@ -282,7 +309,12 @@
     dropEnabled && item.type === 'folder' && item.canEdit === true && item.id !== draggedItem?.id
   const draggable = (item: Listed) => !trashView && item.canEdit === true
 
+  // A new place (folder, search, another list) starts with nothing selected.
+  afterNavigate(() => clearSelection())
+
   onMount(() => {
+    // Keyboard selection is the list's, delegated from its rows (Space on a row, Escape anywhere in it).
+    listEl?.addEventListener('keydown', onListKeydown)
     try {
       const stored = localStorage.getItem(VIEW_KEY)
       if (stored === 'grid' || stored === 'list') view = stored
@@ -311,17 +343,73 @@
   function selectOrigin(next: string) {
     pickedOrigin = { forProp: origin, value: next }
     paging = { of: null, page: 1 }
+    keepShownSelected()
   }
 
   function selectKind(next: KindFilter) {
     kindFilter = next
     paging = { of: null, page: 1 }
+    keepShownSelected()
   }
 
   function resetFilters() {
     pickedOrigin = { forProp: origin, value: 'all' }
     kindFilter = 'all'
     paging = { of: null, page: 1 }
+    keepShownSelected()
+  }
+
+  function clearSelection() {
+    selection = { keys: new Set(), anchor: null }
+  }
+  /** A filter hides rows: what it hides is no longer selected (no act on rows out of sight). */
+  function keepShownSelected() {
+    selection = { keys: keepOnly(selection.keys, shownKeys), anchor: selection.anchor }
+  }
+  function onCheck(event: MouseEvent, item: Listed) {
+    selection = clickSelect(selection, shownKeys, selKey(item), event.shiftKey)
+  }
+  function onToggleAll() {
+    selection = { keys: toggleAll(selection.keys, pageKeys), anchor: selection.anchor }
+  }
+  /** Space on a row (not on its own buttons or fields) toggles it; Escape clears the selection. */
+  function onListKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && selection.keys.size > 0) {
+      clearSelection()
+      return
+    }
+    if (event.key !== ' ' || !(event.target instanceof Element)) return
+    if (event.target.closest('button, input, select, textarea')) return
+    const key = event.target.closest('[data-sel-key]')?.getAttribute('data-sel-key')
+    if (!key) return
+    event.preventDefault()
+    selection = clickSelect(selection, shownKeys, key, event.shiftKey)
+  }
+
+  /** Runs a bulk act on the selection; failed items stay selected and are listed with why. */
+  async function runSelected(req: BulkRequest) {
+    const items = selectedItems
+    const names = new Map(items.map((i) => [selKey(i), i.name]))
+    error = null
+    notice = null
+    failures = []
+    bulkFailed = null
+    busy = true
+    try {
+      const out = bulkOutcome(
+        req.action,
+        await runBulk(req, items),
+        (r) => names.get(selKey(r)) ?? r.id,
+      )
+      notice = out.notice
+      bulkFailed = out.failed ? out : null
+      selection = { keys: out.stopped ? new Set(names.keys()) : out.failedKeys, anchor: null }
+      await invalidateAll()
+    } catch (err) {
+      error = driveShownError(err)
+    } finally {
+      busy = false
+    }
   }
 
   const folderHref = (id: string) => resolve(`/drive/folder/${id}`)
@@ -335,6 +423,7 @@
     error = null
     notice = null
     failures = []
+    bulkFailed = null
     busy = true
     try {
       const out = await act()
@@ -675,6 +764,7 @@
   ondragover={onDragOver}
   ondragleave={onDragLeave}
   ondrop={onDrop}
+  bind:this={listEl}
   aria-label="Files"
 >
   <header
@@ -970,6 +1060,27 @@
         </ul>
       </ErrorNotice>
     {/if}
+    {#if bulkFailed?.failed}
+      <ErrorNotice
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2"
+        testid="drive-bulk-failures"
+        error={bulkFailed.failed.heading}
+        attempted={m.drive_bulk_attempted()}
+      >
+        {#if bulkFailed.failed.rows.length > 0}
+          <ul class="max-h-48 list-disc overflow-y-auto pl-5 text-red-600">
+            {#each bulkFailed.failed.rows as row (row.key)}
+              <li data-testid="drive-bulk-failure">
+                <span class="font-medium">{row.name}</span> — {row.reason}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if bulkFailed.stopped}
+          <p data-testid="drive-bulk-stopped">{bulkFailed.stopped}</p>
+        {/if}
+      </ErrorNotice>
+    {/if}
     {#if notice}
       <p
         class="rounded-md border px-3 py-2 text-sm text-muted-foreground"
@@ -986,6 +1097,20 @@
       </p>
     {/if}
   </div>
+
+  {#if selectedItems.length > 0}
+    <div class="px-4 pt-2 sm:px-6">
+      <SelectionBar
+        items={selectedItems}
+        actions={selectActions}
+        page={pageState}
+        {busy}
+        ontoggleall={onToggleAll}
+        onclear={clearSelection}
+        onrun={runSelected}
+      />
+    </div>
+  {/if}
 
   <div class="min-h-0 flex-1 overflow-auto px-2 pb-10 sm:px-4" data-testid="drive-dropzone">
     {#if shown.length === 0}
@@ -1064,6 +1189,17 @@
         <table class="w-full table-fixed text-sm" data-testid="drive-list">
           <thead class="sticky top-0 z-10 bg-background text-left text-xs text-muted-foreground">
             <tr class="border-b border-border">
+              <th scope="col" class="w-10 py-2 pr-1 pl-3">
+                <input
+                  type="checkbox"
+                  class="size-4 align-middle accent-primary"
+                  checked={pageState === 'all'}
+                  indeterminate={pageState === 'some'}
+                  aria-label={m.drive_select_page()}
+                  data-testid="drive-select-page"
+                  onclick={onToggleAll}
+                />
+              </th>
               <SortableHead label="Name" sortKey="name" {sort} class="px-3 py-2" onsort={sortBy} />
               <SortableHead
                 label="Owner"
@@ -1102,12 +1238,15 @@
               {@const Icon = ICONS[kind]}
               {@const thumb = hasThumbnail(item) && !trashView}
               {@const desc = descOf(item)}
+              {@const picked = selection.keys.has(selKey(item))}
               <tr
                 class="group border-b border-border/60 last:border-0 hover:bg-muted/50 {dropFolder?.id ===
                 item.id
                   ? 'bg-primary/10 outline-2 -outline-offset-2 outline-primary'
-                  : ''}"
+                  : ''} {picked ? 'bg-primary/5' : ''}"
                 data-testid="drive-row"
+                data-sel-key={selKey(item)}
+                data-selected={picked ? 'true' : undefined}
                 data-name={item.name}
                 data-type={item.type}
                 data-origin={item.origin}
@@ -1116,6 +1255,16 @@
                 ondragstart={(e) => draggable(item) && onRowDragStart(e, item)}
                 ondragend={onRowDragEnd}
               >
+                <td class="py-2 pr-1 pl-3">
+                  <input
+                    type="checkbox"
+                    class="size-4 align-middle accent-primary"
+                    checked={picked}
+                    aria-label={m.drive_select_row({ name: item.name })}
+                    data-testid="drive-select"
+                    onclick={(e) => onCheck(e, item)}
+                  />
+                </td>
                 <td class="px-3 py-2">
                   <span class="flex min-w-0 items-center gap-2.5">
                     <span
@@ -1235,12 +1384,15 @@
           {@const thumb = hasThumbnail(item) && !trashView}
           {@const textPreview = trashView ? null : textPreviewOf(item)}
           {@const desc = descOf(item)}
+          {@const picked = selection.keys.has(selKey(item))}
           <li
             class="group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md {dropFolder?.id ===
-            item.id
+              item.id || picked
               ? 'border-primary ring-2 ring-primary'
               : 'border-border'}"
             data-testid="drive-row"
+            data-sel-key={selKey(item)}
+            data-selected={picked ? 'true' : undefined}
             data-name={item.name}
             data-type={item.type}
             data-origin={item.origin}
@@ -1335,6 +1487,21 @@
             >
               <DriveItemActions {item} {trashView} {run} />
             </div>
+            <span
+              class="absolute top-1.5 left-1.5 flex size-7 items-center justify-center rounded-md bg-background/90 shadow-sm transition-opacity {picked ||
+              selectedItems.length > 0
+                ? ''
+                : 'md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100'}"
+            >
+              <input
+                type="checkbox"
+                class="size-4 accent-primary"
+                checked={picked}
+                aria-label={m.drive_select_row({ name: item.name })}
+                data-testid="drive-select"
+                onclick={(e) => onCheck(e, item)}
+              />
+            </span>
           </li>
         {/each}
       </ul>

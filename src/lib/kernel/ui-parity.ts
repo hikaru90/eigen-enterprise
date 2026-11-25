@@ -307,8 +307,14 @@ export const UI_PARITY: Record<string, UiParity> = {
 
   // ─── Drive ────────────────────────────────────────────────────────────────
   '/api/drive/apps/[previewId] DELETE': tool('drive.app_stop'),
+  '/api/drive/archive DELETE': tool('drive.unarchive'),
   '/api/drive/archive POST': tool('drive.archive'),
   '/api/drive/archive/suggestions POST': tool('drive.suggest_archive'),
+  '/api/drive/batch/delete-forever POST': tool('drive.delete_forever_many'),
+  '/api/drive/batch/move POST': tool('drive.move_many'),
+  '/api/drive/batch/restore POST': tool('drive.restore_many'),
+  '/api/drive/batch/share POST': tool('drive.share_many'),
+  '/api/drive/batch/trash POST': tool('drive.trash_many'),
   '/api/drive/documents POST': tool('drive.create_document'),
   '/api/drive/files/[id]/content PUT': tool('drive.save_file_bytes'),
   '/api/drive/files/[id]/lock DELETE': transport(EDIT_LOCK),

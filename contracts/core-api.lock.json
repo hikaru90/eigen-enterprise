@@ -9001,6 +9001,59 @@
     {
       "approval": {
         "always": false,
+        "gated": true,
+        "risk": "destructive"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "file",
+                    "folder"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.delete_forever_many",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
         "gated": false,
         "risk": null
       },
@@ -9191,6 +9244,71 @@
       },
       "module": "drive",
       "name": "drive.move",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "folder_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "file",
+                    "folder"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "folder_id",
+          "items"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.move_many",
       "output": null,
       "permission": {
         "roles": [
@@ -10494,6 +10612,59 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "file",
+                    "folder"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.restore_many",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "file_id": {
             "minLength": 1,
             "type": "string"
@@ -10673,6 +10844,135 @@
     {
       "approval": {
         "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "grants": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "level": {
+                  "enum": [
+                    "view",
+                    "edit",
+                    "manage"
+                  ],
+                  "type": "string"
+                },
+                "subject": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "user",
+                          "type": "string"
+                        },
+                        "userId": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "userId"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "groupId": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "const": "group",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "groupId",
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "const": "company",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "level",
+                "subject"
+              ],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "file",
+                    "folder"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "grants",
+          "items"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.share_many",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
         "gated": false,
         "risk": null
       },
@@ -10752,6 +11052,59 @@
       },
       "module": "drive",
       "name": "drive.trash",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "file",
+                    "folder"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.trash_many",
       "output": null,
       "permission": {
         "roles": [

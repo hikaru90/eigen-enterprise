@@ -40,6 +40,15 @@ export const DRIVE_FILE_TOOL_NAMES = [
   'drive.set_sharing',
 ] as const
 
+/** The selection bar's acts on several items at once (./file-tools.ts; per-item results). */
+export const DRIVE_BULK_TOOL_NAMES = [
+  'drive.move_many',
+  'drive.trash_many',
+  'drive.restore_many',
+  'drive.delete_forever_many',
+  'drive.share_many',
+] as const
+
 /** The file-management writes: each waits on the approval mode (wired in modules/index.ts). */
 export const DRIVE_WRITE_TOOLS = [
   'drive.create_folder',
@@ -52,6 +61,7 @@ export const DRIVE_WRITE_TOOLS = [
   'drive.restore',
   'drive.delete_forever',
   'drive.set_sharing',
+  ...DRIVE_BULK_TOOL_NAMES,
 ] as const
 
 export const DRIVE_TOOL_NAMES = [
@@ -68,6 +78,7 @@ export const DRIVE_TOOL_NAMES = [
   'drive.app_run',
   'drive.app_stop',
   ...DRIVE_FILE_TOOL_NAMES,
+  ...DRIVE_BULK_TOOL_NAMES,
   ...DRIVE_PDF_TOOL_NAMES,
   ...DRIVE_PDF_ANNOTATE_TOOL_NAMES,
 ] as const

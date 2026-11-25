@@ -16,7 +16,7 @@ const { gotoMock, invalidateAllMock, api } = vi.hoisted(() => ({
     readText: vi.fn(),
   },
 }))
-vi.mock('$app/navigation', () => ({ goto: gotoMock, invalidateAll: invalidateAllMock }))
+vi.mock('$app/navigation', () => ({ goto: gotoMock, invalidateAll: invalidateAllMock, afterNavigate: vi.fn() }))
 vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }))
 vi.mock('$lib/drive/api', async (importOriginal) => {
   const real = await importOriginal<typeof import('$lib/drive/api')>()
