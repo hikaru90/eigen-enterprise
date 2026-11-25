@@ -392,6 +392,9 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   // --- Tasks between two people (work, not marked private: full) ------------
   assigned_tasks: full,
   assigned_task_comments: full,
+  // Handover pages every member reads (0184): company records, full.
+  handovers: full,
+  handover_entries: full,
 
   // --- Brand, website, repos, GitHub, contribute --------------------------------
   brand_assets: full,

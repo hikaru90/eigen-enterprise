@@ -1,5 +1,6 @@
 import { decisionKindCatalog } from '$lib/server/decisions/kind'
 import { coworkerEventMine } from './coworkers/decision-kinds'
+import { memoryHandoverStatus } from './memory/decision-kinds'
 import { websitePageAudience } from './website/decision-kinds'
 
 /**
@@ -9,4 +10,4 @@ import { websitePageAudience } from './website/decision-kinds'
  * catalog fails at load when two kinds share an id. decisions.kinds reads it; a question in
  * Needs you is answered from its kind's closed set.
  */
-export const DECISION_KINDS = decisionKindCatalog([websitePageAudience, coworkerEventMine])
+export const DECISION_KINDS = decisionKindCatalog([websitePageAudience, coworkerEventMine, memoryHandoverStatus])

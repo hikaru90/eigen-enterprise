@@ -32,7 +32,7 @@ function setup(writer: { kind: 'self' | 'assistant'; userId: string } | null = {
 
 describe('tasks.* tools', () => {
   it('the memory module owns the tasks namespace and lists every task tool', () => {
-    expect(memoryManifest.toolNamespaces).toEqual(['memory', 'tasks', 'reminders'])
+    expect(memoryManifest.toolNamespaces).toEqual(['memory', 'tasks', 'reminders', 'handover'])
     for (const name of TASK_TOOL_NAMES) expect(memoryManifest.tools).toContain(name)
   })
 

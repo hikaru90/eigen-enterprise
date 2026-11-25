@@ -3,6 +3,7 @@ import { DECISION_STATUSES } from '$lib/server/db/decisions.schema'
 import { coworkerEventMine } from './coworkers/decision-kinds'
 import { DECISION_KINDS } from './decision-kinds'
 import { moduleManifests } from './index'
+import { memoryHandoverStatus } from './memory/decision-kinds'
 import { websitePageAudience } from './website/decision-kinds'
 
 describe('the decision kinds catalog', () => {
@@ -16,6 +17,12 @@ describe('the decision kinds catalog', () => {
     expect(coworkerEventMine.status).toBe('shadow')
     expect(coworkerEventMine.choices).toEqual(['yes', 'no'])
     expect(coworkerEventMine.lowConfidence).toBe(0)
+  })
+
+  it('declares Memory’s handover_status kind: three statuses, enforced, asking the owner when unsure', () => {
+    expect(DECISION_KINDS.get('memory.handover_status')).toBe(memoryHandoverStatus)
+    expect(memoryHandoverStatus.status).toBe('enforced')
+    expect(memoryHandoverStatus.choices).toEqual(['decision_needed', 'in_progress', 'for_info'])
   })
 
   it('every kind has a unique id, a status of shadow or enforced, and belongs to a registered module', () => {

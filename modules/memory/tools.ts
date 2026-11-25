@@ -11,6 +11,7 @@ import {
   requireWriter,
   type MemoryWriter,
 } from './assistant-writes'
+import { createHandoverTools, type HandoverToolDeps } from './handover-tools'
 import { MEMORY_TOOL_NAMES } from './manifest'
 import { createOwnTaskTools, type OwnTaskToolDeps } from './own-task-tools'
 import { createProjectScheduleTools, type ProjectScheduleToolDeps } from './project-schedule-tools'
@@ -50,6 +51,8 @@ export type MemoryToolDeps = {
   thoughts?: ThoughtToolDeps
   /** Projects, scheduled tasks, timeline items (project-schedule-tools.ts); they share writerOf unless given their own. */
   projectSchedule?: ProjectScheduleToolDeps
+  /** The handover.* tools (handover-tools.ts); they share writerOf unless given their own. */
+  handover?: HandoverToolDeps
 }
 
 /** Every member's own Memory: members, admins, and agent principals that are a person (MCP keys). */
@@ -307,6 +310,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
     ...createReminderTools({ writerOf: opts.writerOf, ...opts.reminders }),
     ...createProjectScheduleTools({ writerOf: opts.writerOf, ...opts.projectSchedule }),
+    ...createHandoverTools({ writerOf: opts.writerOf, ...opts.handover }),
   ].map(refusingCoworkerWhereHumanOnly)
 }
 

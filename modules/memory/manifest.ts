@@ -71,6 +71,18 @@ export const REMINDER_TOOL_NAMES = [
   'reminders.snooze',
 ] as const
 
+/** Handover pages (handover-tools.ts, plan/handover.md): the `handover` namespace belongs to Memory. */
+export const HANDOVER_TOOL_NAMES = [
+  'handover.create',
+  'handover.list',
+  'handover.get',
+  'handover.add_entry',
+  'handover.update_entry',
+  'handover.remove_entry',
+  'handover.assign_entry',
+  'handover.draft_entry',
+] as const
+
 /** Projects, scheduled tasks, timeline items, assigned-task "seen" (project-schedule-tools.ts). */
 export const PROJECT_SCHEDULE_TOOL_NAMES = [
   'memory.create_project',
@@ -98,7 +110,7 @@ export const memoryManifest: ModuleManifest = {
   version: '0.1.0',
   description:
     'Thought capture, hybrid retrieval, and GTD project/text-note tools over the eigen memory system.',
-  toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders'],
-  tools: [...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES],
+  toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders', 'handover'],
+  tools: [...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES, ...HANDOVER_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

@@ -18,7 +18,7 @@ vi.mock('$lib/server/mcp/tools', () => ({
 }))
 
 import type { ToolContext } from '$lib/kernel/types'
-import { MEMORY_TOOL_NAMES, memoryManifest, OWN_TASK_TOOL_NAMES, PROJECT_SCHEDULE_TOOL_NAMES, REMINDER_TOOL_NAMES, TASK_TOOL_NAMES, THOUGHT_TOOL_NAMES } from './manifest'
+import { HANDOVER_TOOL_NAMES, MEMORY_TOOL_NAMES, memoryManifest, OWN_TASK_TOOL_NAMES, PROJECT_SCHEDULE_TOOL_NAMES, REMINDER_TOOL_NAMES, TASK_TOOL_NAMES, THOUGHT_TOOL_NAMES } from './manifest'
 import { createMemoryTools } from './tools'
 
 const ctx: ToolContext = {
@@ -29,10 +29,11 @@ const ctx: ToolContext = {
 describe('memoryManifest', () => {
   it('owns the namespaced memory tool names', () => {
     expect(memoryManifest.id).toBe('memory')
-    expect(memoryManifest.tools).toEqual([...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES])
+    expect(memoryManifest.tools).toEqual([...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES, ...HANDOVER_TOOL_NAMES])
     expect([...MEMORY_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES].every((name) => name.startsWith('memory.'))).toBe(true)
     expect(TASK_TOOL_NAMES.every((name) => name.startsWith('tasks.'))).toBe(true)
     expect(REMINDER_TOOL_NAMES.every((name) => name.startsWith('reminders.'))).toBe(true)
+    expect(HANDOVER_TOOL_NAMES.every((name) => name.startsWith('handover.'))).toBe(true)
   })
 })
 
