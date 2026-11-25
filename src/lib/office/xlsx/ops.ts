@@ -10,6 +10,7 @@ import { runFormatOp, type FormatOp } from './format-cells'
 import { toFileText, toShownText } from './formula-text'
 import { ensureDynamicArrayCm } from './metadata'
 import { freezePanes, type FreezeOp } from './panes'
+import { createPivot, deletePivot, refreshPivot, updatePivot, type PivotOp } from './pivot'
 import {
   cellKey,
   cellName,
@@ -47,6 +48,7 @@ import {
 } from './shift'
 import { sortLosses, sortRange, type SortOp } from './sort'
 import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
+import { autoExpandTables, createTable, deleteTable, updateTable, type TableOp } from './tables'
 import {
   isErrorValue,
   relativeTarget,
@@ -118,6 +120,10 @@ export type SheetOp =
   | AutoFilterOp
   | FilterColumnOp
   | FreezeOp
+  /** Excel tables (./tables.ts). */
+  | TableOp
+  /** Pivot tables (./pivot.ts). */
+  | PivotOp
   /** Insert, change, move, delete charts (./chart-ops.ts). */
   | ChartOp
 
@@ -216,6 +222,7 @@ const FUTURE_FUNCTIONS = new Set([
   'DAYS',
   'DECIMAL',
   'DROP',
+  'ENCODEURL',
   'ERF.PRECISE',
   'ERFC.PRECISE',
   'EXPAND',
@@ -229,11 +236,13 @@ const FUTURE_FUNCTIONS = new Set([
   'FLOOR.MATH',
   'FLOOR.PRECISE',
   'FORECAST.LINEAR',
+  'FORMULATEXT',
   'GAMMA',
   'GAMMA.DIST',
   'GAMMA.INV',
   'GAMMALN.PRECISE',
   'GAUSS',
+  'GROUPBY',
   'HSTACK',
   'HYPGEOM.DIST',
   'IFNA',
@@ -246,6 +255,7 @@ const FUTURE_FUNCTIONS = new Set([
   'IMSECH',
   'IMSINH',
   'IMTAN',
+  'ISFORMULA',
   'ISOWEEKNUM',
   'LET',
   'LOGNORM.DIST',
@@ -264,16 +274,21 @@ const FUTURE_FUNCTIONS = new Set([
   'PDURATION',
   'PERCENTILE.EXC',
   'PERCENTILE.INC',
+  'PERCENTOF',
   'PERCENTRANK.EXC',
   'PERCENTRANK.INC',
   'PERMUTATIONA',
   'PHI',
+  'PIVOTBY',
   'POISSON.DIST',
   'QUARTILE.EXC',
   'QUARTILE.INC',
   'RANDARRAY',
   'RANK.AVG',
   'RANK.EQ',
+  'REGEXEXTRACT',
+  'REGEXREPLACE',
+  'REGEXTEST',
   'RRI',
   'SEC',
   'SECH',
@@ -296,6 +311,7 @@ const FUTURE_FUNCTIONS = new Set([
   'TEXTJOIN',
   'TOCOL',
   'TOROW',
+  'TRIMRANGE',
   'UNICHAR',
   'UNICODE',
   'UNIQUE',
@@ -540,6 +556,43 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'filter_column':
     case 'freeze_panes':
       return arrange(wb, op)
+    case 'create_table':
+      return { sheets: createTable(wb, op).sheets }
+    case 'update_table': {
+      const normalized =
+        op.totalsColumns && op.totalsColumns.some((c) => c.formula !== undefined)
+          ? {
+              ...op,
+              totalsColumns: op.totalsColumns.map((c) =>
+                c.formula !== undefined
+                  ? {
+                      ...c,
+                      formula: toFileFormula(
+                        c.formula,
+                        `${op.sheet}!${op.table}[${String(c.column)}]`,
+                      ),
+                    }
+                  : c,
+              ),
+            }
+          : op
+      return { sheets: updateTable(wb, normalized).sheets }
+    }
+    case 'delete_table':
+      return deleteTable(wb, op)
+    case 'create_pivot': {
+      const res = createPivot(wb, op, (name) => {
+        addSheet(wb, name)
+        return wb.requireWorksheet(name)
+      })
+      return res.focus ? { sheets: res.sheets, focus: res.focus } : { sheets: res.sheets }
+    }
+    case 'update_pivot':
+      return { sheets: updatePivot(wb, op).sheets }
+    case 'refresh_pivot':
+      return { sheets: refreshPivot(wb, op).sheets }
+    case 'delete_pivot':
+      return deletePivot(wb, op)
     case 'chart_create':
     case 'chart_update':
     case 'chart_move':
@@ -656,6 +709,21 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
     if (p.content) writeCell(wb, doc, p.addr.row, p.addr.col, p.content, style)
     else if (style !== undefined) restyle(wb, doc, p.addr.row, p.addr.col, style)
   }
+  const expandedWrites = planned.flatMap((p) =>
+    p.content && p.content.kind !== 'clear'
+      ? [
+          {
+            row: p.addr.row,
+            col: p.addr.col,
+            text:
+              p.content.kind === 'value' && p.content.value !== null
+                ? String(p.content.value)
+                : null,
+          },
+        ]
+      : [],
+  )
+  autoExpandTables(wb, info, doc, expandedWrites)
   finishSheet(wb, info, doc)
   return { sheets: [info.name] }
 }

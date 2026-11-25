@@ -1,5 +1,5 @@
-import { cellName, parseCell } from './ref'
-import { isErrorValue, XlsxError, type CellValue, type Workbook } from './workbook'
+import { cellKey, cellName, parseCell, type CellAddr, type Range } from './ref'
+import { isErrorValue, XlsxError, type CellValue, type SheetData, type Workbook } from './workbook'
 import { kid, kids, make, removeAll, setText } from './xml'
 
 /**
@@ -208,6 +208,53 @@ export function unshareFormulas(
 export function setDimension(doc: XMLDocument, ref: string) {
   const dim = kid(doc.documentElement!, 'dimension')
   if (dim) dim.setAttribute('ref', ref)
+}
+
+export function setRowHidden(doc: XMLDocument, r: number, hide: boolean) {
+  if (hide) {
+    ensureRow(doc, r).setAttribute('hidden', '1')
+    return
+  }
+  const rowEl = findRow(doc, r)
+  if (!rowEl || !rowEl.hasAttribute('hidden')) return
+  rowEl.removeAttribute('hidden')
+  dropEmptyRow(rowEl)
+}
+
+const cellFilled = (d: SheetData, r: number, c: number) => {
+  const cell = d.cells.get(cellKey(r, c))
+  return !!cell && (cell.value !== null || cell.formula !== null)
+}
+
+/** Excel's current region: the block of filled cells around `at`, grown while a neighbouring row or column (diagonals too) has something. */
+export function currentRegion(d: SheetData, at: CellAddr): Range {
+  const r: Range = { top: at.row, left: at.col, bottom: at.row, right: at.col }
+  const anyIn = (top: number, left: number, bottom: number, right: number) => {
+    for (let y = Math.max(0, top); y <= Math.min(bottom, d.maxRow); y++)
+      for (let x = Math.max(0, left); x <= Math.min(right, d.maxCol); x++)
+        if (cellFilled(d, y, x)) return true
+    return false
+  }
+  for (let grown = true; grown; ) {
+    grown = false
+    if (r.top > 0 && anyIn(r.top - 1, r.left - 1, r.top - 1, r.right + 1)) {
+      r.top--
+      grown = true
+    }
+    if (r.bottom < d.maxRow && anyIn(r.bottom + 1, r.left - 1, r.bottom + 1, r.right + 1)) {
+      r.bottom++
+      grown = true
+    }
+    if (r.left > 0 && anyIn(r.top - 1, r.left - 1, r.bottom + 1, r.left - 1)) {
+      r.left--
+      grown = true
+    }
+    if (r.right < d.maxCol && anyIn(r.top - 1, r.right + 1, r.bottom + 1, r.right + 1)) {
+      r.right++
+      grown = true
+    }
+  }
+  return r
 }
 
 export { removeAll }

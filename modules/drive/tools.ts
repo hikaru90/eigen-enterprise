@@ -18,6 +18,7 @@ import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
 import { createDriveSheetChartTools } from './sheet-chart-tools'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
+import { createDriveSheetPivotTableTools } from './sheet-pivot-table-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -321,6 +322,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetFormatTools({ service }),
     ...createDriveSheetCopyTools({ service }),
     ...createDriveSheetArrangeTools({ service }),
+    ...createDriveSheetPivotTableTools({ service }),
     ...createDriveSheetChartTools({ service }),
   ]
 }

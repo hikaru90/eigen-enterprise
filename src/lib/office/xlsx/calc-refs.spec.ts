@@ -158,8 +158,27 @@ describe('xlsx calc: references from functions', () => {
     expect(ev('ROW()')).toEqual({ kept: expect.stringMatching(/cell/) })
   })
 
-  it('unions of ranges stay uncalculated, never guessed', () => {
-    expect(ev('SUM((B1,B3))')).toEqual({ kept: expect.stringMatching(/union/) })
+  it('range unions work in multi-range aggregates and multi-area INDEX; unsupported uses stay uncalculated', () => {
+    expect(ev('SUM((B1,B3))')).toBe(13)
+    expect(ev('SUM((B1:B2,B4:B5))')).toBe(12)
+    expect(ev('AVERAGE((B1:B2,B5))')).toBe(3)
+    expect(ev('COUNT((B1,B3:B5))')).toBe(4)
+    expect(ev('MAX((B1,B4:B5))')).toBe(5)
+    expect(ev('MIN((B1,B4:B5))')).toBe(1)
+    expect(ev('CONCAT((A1,A3))')).toBe('AppleCherry')
+    expect(ev('TEXTJOIN(",",TRUE,(A1,A4:A5))')).toBe('Apple,Date,Elder')
+    expect(ev('AREAS((A1:B2,C3:C5,B1))')).toBe(3)
+    expect(ev('ISREF((B1,B3))')).toBe(true)
+    expect(ev('ROWS((B1,B3))')).toEqual(e('#REF!'))
+    expect(ev('INDEX((A1:B2,B4:C5),2,1,2)')).toBe(1)
+    expect(ev('INDEX((A1:B2,B4:C5),1,2,2)')).toBe(2.5)
+    expect(ev('SUM(INDEX((A1:B2,B4:C5),0,1,2))')).toBe(4)
+    expect(ev('INDEX((A1:B2,B4:C5),1,1,3)')).toEqual(e('#REF!'))
+    expect(ev('INDEX((A1:B2,B4:C5),1,1,0)')).toEqual(e('#VALUE!'))
+    expect(ev('(B1,B3)+1')).toEqual({ kept: expect.stringMatching(/union/) })
+    expect(ev('VLOOKUP("Apple",(A1:B2,A4:B5),2,FALSE)')).toEqual({
+      kept: expect.stringMatching(/union/),
+    })
   })
 })
 

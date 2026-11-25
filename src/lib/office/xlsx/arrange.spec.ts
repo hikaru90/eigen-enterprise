@@ -254,7 +254,7 @@ describe('sort_range', () => {
             type: 'application/vnd.openxmlformats-officedocument.drawing+xml',
           },
           '/xl/tables/table1.xml': {
-            xml: `<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="T" ref="A1:C5"/>`,
+            xml: `<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="T" ref="A1:B5"/>`,
             type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml',
           },
           '/xl/comments1.xml': {

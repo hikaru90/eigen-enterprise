@@ -13,6 +13,8 @@
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import Redo2Icon from '@lucide/svelte/icons/redo-2'
+  import SheetIcon from '@lucide/svelte/icons/sheet'
+  import TableIcon from '@lucide/svelte/icons/table'
   import Undo2Icon from '@lucide/svelte/icons/undo-2'
   import { onMount, tick, untrack } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
@@ -40,7 +42,13 @@
   import ChartOverlay from './chart-overlay.svelte'
   import ChartView from './chart-view.svelte'
   import { createSheetEditor, workbookNotes, type SheetEditor, type WorkbookNote } from './editor'
-  import { autoFilterOf, columnChoices, currentRegion, type FilterChoice } from './filter'
+  import {
+    autoFilterOf,
+    columnChoices,
+    currentRegion,
+    sheetFilters,
+    type FilterChoice,
+  } from './filter'
   import FilterMenu from './filter-menu.svelte'
   import {
     displayValue,
@@ -55,10 +63,25 @@
   import { borderCss, fontFamilyCss, verticalOf } from './grid-style'
   import { toShownFormula, XlsxLossError, type CellWrite, type Loss, type SheetOp } from './ops'
   import { frozenOf } from './panes'
-  import { cellKey, cellName, colName, MAX_COLS, MAX_ROWS, rangeName, type Range } from './ref'
+  import { pivotCellLook, readSheetPivots } from './pivot'
+  import PivotFields, { type PivotLayout } from './pivot-fields.svelte'
+  import {
+    cellKey,
+    cellName,
+    colName,
+    MAX_COLS,
+    MAX_ROWS,
+    parseCell,
+    rangeName,
+    type Range,
+  } from './ref'
   import SheetGrid, { type GridCell, type Pos } from './sheet-grid.svelte'
+  import { quoteSheet } from './shift'
   import { guessHeader, type SortKey } from './sort'
   import SortDialog from './sort-dialog.svelte'
+  import TableBar from './table-bar.svelte'
+  import TableDialog from './table-dialog.svelte'
+  import { readSheetTables, tableCellLook, type TableCellLook } from './tables'
   import { pxToWidth, XlsxError } from './workbook'
 
   /**
@@ -124,7 +147,15 @@
   let renameText = $state('')
   let confirm = $state<{ op: SheetOp; title: string; losses: Loss[] } | null>(null)
   let grid = $state<ReturnType<typeof SheetGrid> | null>(null)
-  let filterMenu = $state<{ col: number; at: DOMRect; choices: FilterChoice[] } | null>(null)
+  let filterMenu = $state<{
+    col: number
+    row: number
+    at: DOMRect
+    choices: FilterChoice[]
+  } | null>(null)
+  /** Create Table (Ctrl+T) / Create PivotTable: the dialog's starting range. */
+  let creating = $state<{ kind: 'table' | 'pivot'; range: string; header: boolean } | null>(null)
+  let pivotFieldsOpen = $state(true)
   let sorting = $state<{ range: Range; header: boolean; first: number } | null>(null)
   let selectedChartId = $state<string | null>(null)
   let chartDialog = $state<
@@ -234,13 +265,34 @@
     void rev
     return editor && info?.kind === 'worksheet' ? autoFilterOf(editor.wb, info.name) : null
   })
+  /** Excel tables and pivot tables of the sheet on screen; the filters there are (the sheet's and its tables'). */
+  const tables = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? readSheetTables(editor.wb, info.name) : []
+  })
+  const pivots = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? readSheetPivots(editor.wb, info.name) : []
+  })
+  const filters = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? sheetFilters(editor.wb, info.name) : []
+  })
+  const inRect = (r: Range, p: Pos) =>
+    p.row >= r.top && p.row <= r.bottom && p.col >= r.left && p.col <= r.right
+  const activeTable = $derived(tables.find((t) => inRect(t.ref, active)) ?? null)
+  const activePivot = $derived(pivots.find((p) => inRect(p.location, active)) ?? null)
   const gridFilter = $derived(
-    autoFilter
+    filters.length > 0
       ? {
-          range: autoFilter.range,
-          filtered: (c: number) => autoFilter.columns.some((x) => x.col === c),
+          ranges: filters.map((f) => f.range),
+          filtered: (r: number, c: number) =>
+            filters.some((f) => f.range.top === r && f.columns.some((x) => x.col === c)),
         }
       : null,
+  )
+  const menuFilter = $derived(
+    filterMenu ? (filters.find((f) => f.range.top === filterMenu!.row) ?? null) : null,
   )
   const filterStatus = $derived.by(() => {
     if (!autoFilter || autoFilter.columns.length === 0 || !data) return null
@@ -290,6 +342,14 @@
     const plain = styles.xf(0)
     const calc = ed.calc()
     const date1904 = ed.wb.date1904
+    const tbl = tables
+    const pvt = pivots
+    const lookAt = (r: number, c: number): TableCellLook | null =>
+      pivotCellLook(ed.wb, pvt, r, c) ?? tableCellLook(tbl, r, c)
+    const edge = (e: { style: string; color?: string | null } | undefined) =>
+      e
+        ? `${e.style === 'double' ? '3px double' : e.style === 'medium' ? '2px solid' : '1px solid'} ${e.color ?? 'currentColor'}`
+        : null
     const bordersAt = (r: number, c: number) => {
       const x = d.cells.get(cellKey(r, c))
       return x ? styles.xf(x.style).border : null
@@ -304,8 +364,17 @@
         filled: false,
       }
       const out = calc.cell(d.info.name, r, c)
+      // A table's or pivot table's style draws under the cell's own format.
+      const look = lookAt(r, c)
+      const lookCss: string[] = []
+      if (look) {
+        const top = edge(look.borderTop)
+        const bottom = edge(look.borderBottom)
+        if (top) lookCss.push(`border-top: ${top}`)
+        if (bottom) lookCss.push(`border-bottom: ${bottom}`)
+      }
       // An empty cell can still show a value: a dynamic array spilled into it.
-      if (!cell && out.value === null && !out.kept) {
+      if (!cell && out.value === null && !out.kept && !look) {
         // An empty cell still draws the lines its neighbours put on the edges it shares with them.
         const lines = borderCss(null, near)
         return lines.length > 0
@@ -340,7 +409,7 @@
               ? 'left'
               : natural
       const css: string[] = []
-      if (st.font.bold) css.push('font-weight: 600')
+      if (st.font.bold || (look?.bold && !st.fill)) css.push('font-weight: 600')
       if (st.font.italic) css.push('font-style: italic')
       const deco = [st.font.underline ? 'underline' : '', st.font.strike ? 'line-through' : '']
         .filter(Boolean)
@@ -351,12 +420,17 @@
       if (color && (st.fill || color.toUpperCase() !== '#000000')) css.push(`color: ${color}`)
       else if (st.fill) css.push('color: #000')
       if (st.fill) css.push(`background-color: ${st.fill}`)
+      else if (look?.fill) {
+        css.push(`background-color: ${look.fill}`)
+        if (!color || color.toUpperCase() === '#000000') css.push(`color: ${look.color ?? '#000'}`)
+      }
       if (st.font.sizePt && st.font.sizePt !== 11)
         css.push(`font-size: ${Math.round(st.font.sizePt * 1.27)}px`)
       if (st.indent) css.push(`padding-left: ${4 + st.indent * 9}px`)
       const family = fontFamilyCss(st, plain)
       if (family) css.push(family)
-      css.push(...borderCss(st.border, { ...near, filled: !!st.fill }))
+      css.push(...borderCss(st.border, { ...near, filled: !!st.fill || !!look?.fill }))
+      css.push(...lookCss)
       return {
         text: shown.text,
         align,
@@ -865,6 +939,7 @@
     if (!data || !editor) return null
     if (autoFilter && within(autoFilter.range, active))
       return { range: autoFilter.range, header: true }
+    if (activeTable) return { range: activeTable.ref, header: activeTable.headerRowCount > 0 }
     if (sel.top === sel.bottom && sel.left === sel.right) {
       const range = currentRegion(data, active)
       return { range, header: guessHeader(editor, sheet, range) }
@@ -904,29 +979,43 @@
 
   async function toggleFilter() {
     filterMenu = null
-    if (autoFilter) await change({ op: 'set_autofilter', sheet, range: null })
+    if (activeTable && activeTable.headerRowCount > 0)
+      await updateTable({ autoFilter: activeTable.autoFilter === null })
+    else if (autoFilter) await change({ op: 'set_autofilter', sheet, range: null })
     else await change({ op: 'set_autofilter', sheet, range: rangeName(sel) })
     grid?.focus()
   }
 
-  function openFilterMenu(col: number, at: DOMRect) {
+  function openFilterMenu(col: number, at: DOMRect, row: number) {
     if (!editor) return
+    const f = filters.find((x) => x.range.top === row)
     try {
-      filterMenu = { col, at, choices: columnChoices(editor, sheet, col, locale) }
+      filterMenu = { col, row, at, choices: columnChoices(editor, sheet, col, locale, f?.table) }
     } catch (err) {
       failure = shown(err)
     }
   }
 
   async function applyFilter(col: number, values: string[] | null, blanks: boolean) {
+    const table = menuFilter?.table
     filterMenu = null
-    await change({ op: 'filter_column', sheet, col, values, blanks })
+    await change({
+      op: 'filter_column',
+      sheet,
+      col,
+      values,
+      blanks,
+      ...(table ? { table } : {}),
+    })
     grid?.focus()
   }
 
   async function sortFromFilter(col: number, descending: boolean) {
+    const f = menuFilter
     filterMenu = null
-    if (autoFilter) await sortBy([{ col, descending }], { range: autoFilter.range, header: true })
+    if (!f) return
+    const t = f.table ? tables.find((x) => x.displayName === f.table) : null
+    await sortBy([{ col, descending }], { range: t ? t.ref : f.range, header: true })
   }
 
   async function freeze(choice: string) {
@@ -940,6 +1029,89 @@
             : [0, 0]
     await change({ op: 'freeze_panes', sheet, rows, cols })
     grid?.focus()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tables and pivot tables (./tables.ts, ./pivot.ts; = drive.sheet_table_*, drive.sheet_pivot_*)
+
+  /** Ctrl+T / PivotTable: the selection, or the block of cells around the active cell (a PivotTable in a table: the table). */
+  function openCreate(kind: 'table' | 'pivot') {
+    if (!data || !editor) return
+    if (kind === 'table' && activeTable) return
+    if (kind === 'pivot' && activeTable) {
+      creating = { kind, range: activeTable.displayName, header: true }
+      return
+    }
+    const single = sel.top === sel.bottom && sel.left === sel.right
+    const range = single ? currentRegion(data, active) : sel
+    const text = rangeName(range)
+    creating = {
+      kind,
+      range: kind === 'pivot' ? `${quoteSheet(sheet)}!${text}` : text,
+      header: kind === 'table' ? true : guessHeader(editor, sheet, range),
+    }
+  }
+
+  async function created(out: { range: string; header: boolean; at: string | null }) {
+    const c = creating
+    creating = null
+    if (!c) return
+    if (c.kind === 'table') {
+      await change({ op: 'create_table', sheet, range: out.range, hasHeaders: out.header })
+      grid?.focus()
+      return
+    }
+    const at = out.at !== null ? parseCell(out.at) : null
+    if (out.at !== null && !at) {
+      failure = { error: m.drive_sheet_pivot_bad_cell({ ref: out.at }), agent: null }
+      return
+    }
+    const ok = await change({
+      op: 'create_pivot',
+      source: out.range,
+      ...(at ? { targetSheet: sheet, targetCell: out.at! } : {}),
+    })
+    if (!ok) return
+    const pos = at ?? { row: 2, col: 0 }
+    active = pos
+    anchor = pos
+    pivotFieldsOpen = true
+  }
+
+  async function updateTable(patch: Record<string, unknown>) {
+    const t = activeTable
+    if (!t) return
+    await change({ op: 'update_table', sheet, table: t.displayName, ...patch })
+  }
+
+  async function convertTable() {
+    const t = activeTable
+    if (t)
+      await change({ op: 'delete_table', sheet, table: t.displayName, mode: 'convert_to_range' })
+  }
+
+  async function layoutPivot(l: PivotLayout) {
+    const p = activePivot
+    if (!p) return
+    await change({
+      op: 'update_pivot',
+      sheet,
+      pivot: p.name,
+      rowFields: l.rows,
+      colFields: l.columns,
+      pageFields: l.filters,
+      dataFields: l.values,
+    })
+  }
+
+  async function refreshPivot() {
+    const p = activePivot
+    if (p) await change({ op: 'refresh_pivot', sheet, pivot: p.name })
+  }
+
+  async function deletePivot() {
+    const p = activePivot
+    if (p) await change({ op: 'delete_pivot', sheet, pivot: p.name })
   }
 
   async function undo() {
@@ -1042,6 +1214,11 @@
     } else if (key === 'y') {
       event.preventDefault()
       void redo()
+    } else if ((key === 't' || key === 'l') && !event.shiftKey && !event.altKey) {
+      // Excel: Ctrl+T (and Ctrl+L) create a table.
+      event.preventDefault()
+      if (editing) grid?.finishEdit(true)
+      openCreate('table')
     }
   }
 
@@ -1269,6 +1446,24 @@
           data-testid="xlsx-filter-toggle"
           ><FunnelIcon class="size-4" aria-hidden="true" />{m.drive_sheet_filter()}</button
         >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => openCreate('table')}
+          disabled={!!activeTable}
+          title={m.drive_sheet_table_hint()}
+          aria-keyshortcuts="Control+T"
+          data-testid="xlsx-table-create-open"
+          ><TableIcon class="size-4" aria-hidden="true" />{m.drive_sheet_table()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => openCreate('pivot')}
+          title={m.drive_sheet_pivot_hint()}
+          data-testid="xlsx-pivot-create-open"
+          ><SheetIcon class="size-4" aria-hidden="true" />{m.drive_sheet_pivot()}</button
+        >
         <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span class="sr-only sm:not-sr-only">{m.drive_sheet_freeze()}</span>
           <select
@@ -1416,6 +1611,15 @@
       </div>
     {/if}
 
+    {#if activeTable}
+      <TableBar
+        table={activeTable}
+        {editable}
+        onupdate={(patch) => void updateTable(patch)}
+        onconvert={() => void convertTable()}
+      />
+    {/if}
+
     <!-- Formula bar -->
     <div class="flex items-center gap-2 border-b px-2 py-1">
       <span
@@ -1475,6 +1679,7 @@
         </div>
       {/if}
     {:else if data}
+      <div class="flex min-h-0 min-w-0 flex-1">
       <SheetGrid
         bind:this={grid}
         bind:active
@@ -1530,6 +1735,24 @@
           {/if}
         {/snippet}
       </SheetGrid>
+      {#if activePivot && pivotFieldsOpen}
+        <PivotFields
+          pivot={activePivot}
+          {editable}
+          onchange={(l) => void layoutPivot(l)}
+          onrefresh={() => void refreshPivot()}
+          ondelete={() => void deletePivot()}
+          onclose={() => (pivotFieldsOpen = false)}
+        />
+      {:else if activePivot}
+        <button
+          type="button"
+          class="{btn} self-start"
+          onclick={() => (pivotFieldsOpen = true)}
+          data-testid="xlsx-pivot-fields-open">{m.drive_sheet_pivot_fields()}</button
+        >
+      {/if}
+      </div>
     {/if}
 
     <!-- Sheet tabs -->
@@ -1616,18 +1839,33 @@
   </div>
 {/if}
 
-{#if filterMenu && autoFilter}
+{#if filterMenu && menuFilter}
   {@const fm = filterMenu}
   <FilterMenu
     col={colName(fm.col)}
     choices={fm.choices}
-    current={autoFilter.columns.find((c) => c.col === fm.col)}
+    current={menuFilter.columns.find((c) => c.col === fm.col)}
     at={fm.at}
     {editable}
     onapply={(values, blanks) => void applyFilter(fm.col, values, blanks)}
     onsort={(descending) => void sortFromFilter(fm.col, descending)}
     onclose={() => {
       filterMenu = null
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if creating}
+  {@const cr = creating}
+  <TableDialog
+    kind={cr.kind}
+    range={cr.range}
+    header={cr.header}
+    at={activeRef}
+    oncreate={(out) => void created(out)}
+    onclose={() => {
+      creating = null
       grid?.focus()
     }}
   />

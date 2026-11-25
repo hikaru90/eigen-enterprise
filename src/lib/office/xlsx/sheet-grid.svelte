@@ -91,10 +91,10 @@
     /** Rows from the top / columns from the left that stay in place. */
     frozenRows?: number
     frozenCols?: number
-    /** The sheet's AutoFilter: its range, and which columns filter. */
-    filter?: { range: Range; filtered: (col: number) => boolean } | null
-    /** A filter button (or Alt+↓) asked for column `col`'s menu, shown at `at`. */
-    onfilter?: (col: number, at: DOMRect) => void
+    /** The sheet's AutoFilter and its tables' filters: their ranges (drop-downs on each first row), and which columns filter. */
+    filter?: { ranges: Range[]; filtered: (row: number, col: number) => boolean } | null
+    /** A filter button (or Alt+↓) asked for the menu of column `col` of the filter whose header row is `row`, shown at `at`. */
+    onfilter?: (col: number, at: DOMRect, row: number) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
     /** Floating sheet overlay (charts) positioned in sheet pixel space. */
@@ -308,7 +308,7 @@
     const ext = event.shiftKey
     if (event.altKey && event.key === 'ArrowDown' && filterButtonAt(active.row, active.col)) {
       event.preventDefault()
-      openFilter(active.col, document.getElementById(activeId))
+      openFilter(active.col, document.getElementById(activeId), active.row)
       return
     }
     switch (event.key) {
@@ -496,12 +496,12 @@
     r >= sel.top && r <= sel.bottom && c >= sel.left && c <= sel.right
 
   const filterButtonAt = (r: number, c: number) =>
-    !!filter && r === filter.range.top && c >= filter.range.left && c <= filter.range.right
+    !!filter && filter.ranges.some((x) => r === x.top && c >= x.left && c <= x.right)
 
-  function openFilter(c: number, el: Element | null) {
+  function openFilter(c: number, el: Element | null, r: number) {
     if (!el || !onfilter) return
     if (editing) finishEdit(true)
-    onfilter(c, el.getBoundingClientRect())
+    onfilter(c, el.getBoundingClientRect(), r)
   }
 </script>
 
@@ -541,7 +541,7 @@
           >
             <span class="block">{cell?.text ?? ''}</span>
             {#if fb}
-              {@const on = filter!.filtered(c)}
+              {@const on = filter!.filtered(r, c)}
               {@const what = on
                 ? m.drive_sheet_filter_button_on({ col: colName(c) })
                 : m.drive_sheet_filter_button({ col: colName(c) })}
@@ -556,7 +556,7 @@
                 title={what}
                 onpointerdown={(e) => e.stopPropagation()}
                 ondblclick={(e) => e.stopPropagation()}
-                onclick={(e) => openFilter(c, e.currentTarget)}
+                onclick={(e) => openFilter(c, e.currentTarget, r)}
                 data-testid="xlsx-filter-button"
                 data-col={colName(c)}
                 >{#if on}<FunnelIcon class="size-3" aria-hidden="true" />{:else}<ChevronDownIcon
