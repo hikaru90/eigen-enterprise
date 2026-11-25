@@ -21,6 +21,14 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 - **Expected conflicts when resuming:** all six edit `ops.ts`; charts and pictures both touch the drawing part, so charts must plug into `drawing.ts`; and `xlsx-editor.svelte`/`sheet-grid.svelte` once the UIs land.
 - **To resume:** for each branch, continue in its worktree (or `git worktree add .claude/worktrees/<stream> worktree-agent-<id>`). Finish TDD, UI, tools, contract lock and plan section, drop the `[wip]` label, then merge one at a time, starting with charts, as before.
+- **Update (usage limit):** the streams were resumed, then stopped again when the usage limit was reached. The latest commits on each branch are below. They are untested; charts' was a normal commit and it was running lint when stopped:
+  - charts `d6a9b877`
+  - pictures/comments `3b53e4e5`
+  - cf/validation `e3c243a5`
+  - editing `b20e5839`
+  - co-editing `94d404e0`
+  - pivots/formulas `b13609ef`
+  These supersede the commit column in the table.
 - **Main at stop:** `6f343bcd` + this entry. The previous round below is merged; the full `ci:local` gate ran green on it (10,911 unit, 1,027 component). **Not pushed, not released.**
 
 ## 2026-11-25 — xlsx editor gaps closed by four parallel subagents (owner: "use whatever open source you can find and then build it. go go go"; merges `9dfd896d`, `221d5461`, `77602535`, `2c84a368`; on main, not pushed, not released)
