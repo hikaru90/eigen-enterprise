@@ -79,7 +79,7 @@
             >{f.active} in progress · {f.completed} done</span
           >
           <span
-            class="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium {f.status ===
+            class="rounded-full border border-border px-2 py-0.5 text-xs font-medium {f.status ===
             'active'
               ? 'border-primary/40'
               : 'text-muted-foreground'}">{STATUS[f.status]}</span

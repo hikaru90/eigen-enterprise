@@ -538,7 +538,7 @@
           >
             <label
               for="inbox-box"
-              class="px-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase"
+              class="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
               >Mailbox</label
             >
             <select

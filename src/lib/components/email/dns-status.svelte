@@ -18,7 +18,7 @@
 </script>
 
 <span
-  class="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium {tone}"
+  class="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium {tone}"
   data-testid="dns-status"
   ><span
     class="size-1.5 rounded-full {status === 'SUCCESS'

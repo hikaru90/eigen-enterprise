@@ -81,7 +81,7 @@
   <div class="mt-2 flex flex-wrap items-center gap-3">
     <h2 class="text-base font-semibold tracking-tight">{data.flow.name}</h2>
     <span
-      class="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium"
+      class="rounded-full border border-border px-2 py-0.5 text-xs font-medium"
       data-testid="flow-status">{STATUS[data.flow.status]}</span
     >
     {#if isAdmin}

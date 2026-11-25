@@ -85,7 +85,7 @@
       <dt class="text-muted-foreground">Tags</dt>
       <dd class="flex flex-wrap gap-1.5">
         {#each c.tags as tag (tag)}<span
-            class="rounded-full border border-border px-2 py-0.5 text-[11px]">{tag}</span
+            class="rounded-full border border-border px-2 py-0.5 text-xs">{tag}</span
           >{/each}
       </dd>
     {/if}

@@ -78,7 +78,7 @@
           <Icon class="size-4 shrink-0" aria-hidden="true" />
           <span class="min-w-0 flex-1 truncate">{f.label}</span>
           {#if showUnread}
-            <span class="text-[11px] font-semibold text-foreground tabular-nums" data-testid={`inbox-folder-${folder}-unread`}
+            <span class="text-xs font-semibold text-foreground tabular-nums" data-testid={`inbox-folder-${folder}-unread`}
               >{f.unread}<span class="sr-only">&nbsp;unread</span></span
             >
           {/if}
@@ -100,7 +100,7 @@
 
   <div class="flex flex-col gap-1">
     <div class="flex items-center justify-between px-2.5">
-      <h3 class="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Labels</h3>
+      <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Labels</h3>
       <button
         type="button"
         class="rounded-md p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"

@@ -106,7 +106,7 @@
         </span>
         {#if s.isDefault}
           <span
-            class="rounded-full border border-primary/40 px-2 py-0.5 text-[11px] font-medium"
+            class="rounded-full border border-primary/40 px-2 py-0.5 text-xs font-medium"
             data-testid="sender-default">Default</span
           >
         {:else if data.email.isAdmin && s.id}

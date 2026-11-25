@@ -369,7 +369,7 @@
         >
         <div class="relative mt-3">
           <pre
-            class="overflow-x-auto rounded-md bg-muted px-3 py-2 pr-10 font-mono text-[11px] leading-relaxed"
+            class="overflow-x-auto rounded-md bg-muted px-3 py-2 pr-10 font-mono text-xs leading-relaxed"
             data-testid="tpl-api-example">{apiExample}</pre>
           <div class="absolute top-1.5 right-1.5">
             <CopyButton value={apiExample} label="Copy the example" />
