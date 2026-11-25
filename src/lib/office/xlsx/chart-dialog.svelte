@@ -1,5 +1,4 @@
 <script lang="ts">
-  import DictationField from '$lib/voice/dictation-field.svelte'
   import type { ChartPlacement } from './chart-anchor'
   import type { ChartKind, Grouping, LegendPos } from './chart-read'
   import type { SeriesDef } from './chart-write'
@@ -11,6 +10,7 @@
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { m } from '$lib/paraglide/messages.js'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import { themeOf } from './chart-color'
   import { CHART_KINDS, readChart } from './chart-read'
   import { hasAxes } from './chart-write'

@@ -8,7 +8,6 @@ import { describeCharts, seriesFromRange } from './chart-ops'
 import { readChart } from './chart-read'
 import { CHART_ORDER, plotAreaRank, serOrderOf } from './chart-write'
 import { createSheetEditor, type SheetEditor } from './editor'
-import { XlsxLossError } from './ops'
 import { buildXlsx, num, row, str } from './test-utils/build-xlsx'
 import {
   AXES,
@@ -536,15 +535,16 @@ describe('rows and columns moving under charts', () => {
     expect(data(ed)[0]![0]!.cached).toBe(true)
   })
 
-  it('a chart that doesn’t move with cells (editAs absolute) stays; a picture is still a loss', () => {
+  it('a chart that doesn’t move with cells (editAs absolute) stays; a picture beside it moves once, no loss asked', () => {
     const ed = createSheetEditor(
       salesBook(undefined, { editAs: 'absolute', drawingExtra: picAnchorXml }),
     )
     const op = { op: 'insert_rows', sheet: 'Data', at: 0, count: 1 } as const
-    expect(ed.losses(op).map((l) => l.feature)).toEqual(['drawings'])
-    expect(() => ed.apply(op)).toThrow(XlsxLossError)
-    ed.apply(op, { acceptLosses: true })
+    expect(ed.losses(op)).toEqual([])
+    ed.apply(op)
     expect(describeCharts(ed.wb)[0]!.position).toBe('E2:L16')
+    // The picture's anchor (row 9) moved one row, and only once (drawing.ts is the one anchor mover).
+    expect(ed.wb.pkg.text('/xl/drawings/drawing1.xml')).toContain('<xdr:row>9</xdr:row>')
   })
 
   it('oneCell and editAs="oneCell" anchors move without resizing on insert/delete; chart sheets follow source cells', () => {

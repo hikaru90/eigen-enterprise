@@ -13,27 +13,35 @@
   import CopyIcon from '@lucide/svelte/icons/copy'
   import DownloadIcon from '@lucide/svelte/icons/download'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
+  import ImageIcon from '@lucide/svelte/icons/image'
   import InfoIcon from '@lucide/svelte/icons/info'
   import LinkIcon from '@lucide/svelte/icons/link'
   import ListChecksIcon from '@lucide/svelte/icons/list-checks'
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
   import LockIcon from '@lucide/svelte/icons/lock'
+  import MessageSquareIcon from '@lucide/svelte/icons/message-square'
+  import PencilIcon from '@lucide/svelte/icons/pencil'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import Redo2Icon from '@lucide/svelte/icons/redo-2'
   import ScissorsIcon from '@lucide/svelte/icons/scissors'
   import SearchIcon from '@lucide/svelte/icons/search'
+  import ShapesIcon from '@lucide/svelte/icons/shapes'
   import SheetIcon from '@lucide/svelte/icons/sheet'
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
   import TableIcon from '@lucide/svelte/icons/table'
   import TagIcon from '@lucide/svelte/icons/tag'
+  import TrashIcon from '@lucide/svelte/icons/trash'
+  import Trash2Icon from '@lucide/svelte/icons/trash-2'
+  import TypeIcon from '@lucide/svelte/icons/type'
   import Undo2Icon from '@lucide/svelte/icons/undo-2'
+  import UploadIcon from '@lucide/svelte/icons/upload'
   import { onMount, tick, untrack } from 'svelte'
   import { beforeNavigate, goto } from '$app/navigation'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
-  import type { LockHolder } from '$lib/drive/api'
+  import type { DriveItem, LockHolder } from '$lib/drive/api'
   import { DriveApiError, driveApi } from '$lib/drive/api'
   import {
     createAutosave,
@@ -48,14 +56,18 @@
   import { createOfficeEditSession } from '../edit-session'
   import { OFFICE_MIME } from '../kinds'
   import { OpcError } from '../ooxml/package'
+  import { readCellImages } from './cell-images'
   import { chartsOn } from './chart-anchor'
   import ChartDialog from './chart-dialog.svelte'
-  import ChartOverlay from './chart-overlay.svelte'
   import ChartView from './chart-view.svelte'
   import { readClip, type Clip, type PasteMode } from './clip'
   import { clipFromClipboard, clipToHtml, clipToTsv } from './clip-interop'
+  import CommentPanel from './comment-panel.svelte'
   import { cfEvaluator, cfRulesOf } from './cond-format'
   import CondFormatPanel from './cond-format-panel.svelte'
+  import { markerAt, readDrawing, sheetGeometry, type Box } from './drawing'
+  import { cellOrigin, SHAPE_GEOMETRIES, type ShapeGeometry } from './drawing-ops'
+  import DrawingOverlay from './drawing-overlay.svelte'
   import { createSheetEditor, workbookNotes, type SheetEditor, type WorkbookNote } from './editor'
   import { fillDownTo, fillShortcutRange } from './fill'
   import {
@@ -93,8 +105,10 @@
   import { borderCss, fontFamilyCss, verticalOf } from './grid-style'
   import HyperlinkDialog from './hyperlink-dialog.svelte'
   import { hyperlinksOf, linkAt, resolvePlace } from './hyperlinks'
+  import ImagePicker from './image-picker.svelte'
   import NameManagerDialog from './name-manager-dialog.svelte'
   import { listNames } from './names'
+  import { readNotes, type Note } from './notes'
   import { toShownFormula, XlsxLossError, type CellWrite, type Loss, type SheetOp } from './ops'
   import PageSetupDialog from './page-setup-dialog.svelte'
   import { frozenOf } from './panes'
@@ -137,6 +151,7 @@
   import TableBar from './table-bar.svelte'
   import TableDialog from './table-dialog.svelte'
   import { readSheetTables, tableCellLook, type TableCellLook } from './tables'
+  import { readThreads, type Member, type Thread } from './threads'
   import { checkWrites, validationReader } from './validation'
   import ValidationDialog from './validation-dialog.svelte'
   import { pxToWidth, XlsxError } from './workbook'
@@ -165,6 +180,8 @@
     canEdit,
     heartbeatMs,
     onsaved,
+    folderId = null,
+    author,
     saveDelayMs = 1200,
     idleMs = 60_000,
     source,
@@ -214,6 +231,14 @@
   let creating = $state<{ kind: 'table' | 'pivot'; range: string; header: boolean } | null>(null)
   let pivotFieldsOpen = $state(true)
   let sorting = $state<{ range: Range; header: boolean; first: number } | null>(null)
+  let selectedDrawingId = $state<string | null>(null)
+  let imagePickerOpen = $state(false)
+  let commentsOpen = $state(false)
+  let commentFocusRef = $state<string | null>(null)
+  let hoverNote = $state<{ ref: string; at: DOMRect; note?: Note; thread?: Thread } | null>(null)
+  let members = $state<Member[]>([])
+  let fileInputEl = $state<HTMLInputElement | null>(null)
+  let mediaUrls = $state<Record<string, string>>({})
   let cfOpen = $state(false)
   let dvDialog = $state(false)
   let linkDialog = $state(false)
@@ -255,13 +280,16 @@
   let acIndex = $state(0)
   let editOrigin = $state<{ sheet: string; pos: Pos } | null>(null)
   let draftRuns = $state<RichRun[] | null>(null)
-  let selectedChartId = $state<string | null>(null)
   let chartDialog = $state<
     { mode: 'create'; range: string } | { mode: 'edit'; placement: ChartPlacement } | null
   >(null)
   let chartSheetBox = $state({ width: 760, height: 460 })
 
   let editor: SheetEditor | null = null
+  let membersLoaded = false
+  let lastCreatedId: string | null = null
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- holds blob object URLs keyed by OPC part path, exposed as reactive mediaUrls state
+  const mediaCache = new Map<string, { bytes: Uint8Array; url: string }>()
   /** The bytes as the server has them (last loaded or saved) and their SHA-256 (the save's base). */
   let base: Uint8Array | null = null
   let baseSha: string | null = null
@@ -504,6 +532,42 @@
     }
   })
 
+  const geometry = $derived.by(() => {
+    void rev
+    return data ? sheetGeometry(data) : null
+  })
+  const sheetDrawings = $derived.by(() => {
+    void rev
+    return editor && data && geometry ? readDrawing(editor.wb, data.info, geometry) : []
+  })
+  const selectedDrawing = $derived(
+    selectedDrawingId ? (sheetDrawings.find((d) => d.id === selectedDrawingId) ?? null) : null,
+  )
+  const cellNotes = $derived.by(() => {
+    void rev
+    return editor && data ? readNotes(editor.wb, data.info) : []
+  })
+  const sheetThreads = $derived.by(() => {
+    void rev
+    return editor && data ? readThreads(editor.wb, data.info) : []
+  })
+  const cellImages = $derived.by(() => {
+    void rev
+    return editor && data ? readCellImages(editor.wb, data.info) : []
+  })
+  const visibleNotes = $derived.by(() => {
+    void rev
+    if (!editor || !data) return []
+    const ed = editor
+    const s = data.info.name
+    return cellNotes
+      .filter((n) => n.visible)
+      .map((n) => {
+        const pt = cellOrigin(ed.wb, s, n.row, n.col)
+        return { note: n, x: pt.x + colWidth(n.col) + 8, y: Math.max(0, pt.y + 2) }
+      })
+  })
+
   const cellAt = $derived.by(() => {
     void rev
     const d = data
@@ -514,6 +578,10 @@
     const plain = styles.xf(0)
     const calc = ed.calc()
     const date1904 = ed.wb.date1904
+    const urls = mediaUrls
+    const noteSet = new Set(cellNotes.map((n) => n.ref))
+    const threadMap = new Map(sheetThreads.map((t) => [t.ref, t]))
+    const cellImgMap = new Map(cellImages.map((ci) => [ci.ref, ci]))
     const cfLook = cfEvaluator(ed.wb, calc, d.info.name)
     const dvRules = validationReader(ed.wb, calc, d.info.name)
     const links = hyperlinksOf(ed.wb, d.info.name)
@@ -532,6 +600,12 @@
     }
     return (r: number, c: number): GridCell | null => {
       const cell = d.cells.get(cellKey(r, c))
+      const ref = cellName({ row: r, col: c })
+      const hasNote = noteSet.has(ref)
+      const th = threadMap.get(ref)
+      const thread = th ? { count: th.comments.length, resolved: th.resolved } : null
+      const ci = cellImgMap.get(ref)
+      const imageUrl = ci ? (urls[ci.part] ?? null) : null
       const near = {
         right: bordersAt(r, c + 1),
         below: bordersAt(r + 1, c),
@@ -573,7 +647,7 @@
         !prompt
       ) {
         const lines = borderCss(null, near)
-        return lines.length > 0
+        return lines.length > 0 || hasNote || thread || imageUrl
           ? {
               text: '',
               align: 'left',
@@ -581,6 +655,9 @@
               wrap: false,
               kept: null,
               unreadFormat: false,
+              ...(hasNote ? { hasNote } : {}),
+              ...(thread ? { thread } : {}),
+              ...(imageUrl ? { imageUrl, imageAlt: ci?.alt } : {}),
             }
           : null
       }
@@ -652,6 +729,9 @@
         vertical: verticalOf(st),
         kept: out.kept ? out.reason : null,
         unreadFormat: !!shown.unreadFormat,
+        ...(hasNote ? { hasNote } : {}),
+        ...(thread ? { thread } : {}),
+        ...(imageUrl ? { imageUrl, imageAlt: ci?.alt } : {}),
         bar: look?.bar,
         icon: look?.icon,
         invalid,
@@ -797,6 +877,7 @@
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload)
       clearIdle()
+      revokeAllMedia()
       if (session.held()) void autosave.flush().then(() => session.stop())
     }
   })
@@ -852,11 +933,58 @@
     editing = false
     extraRows = 0
     extraCols = 0
+    selectedDrawingId = null
+    hoverNote = null
     dvAlert = null
     filterMenu = null
     sorting = null
     view = { status: 'ready' }
     rev++
+    syncMediaUrls()
+  }
+
+  function revokeAllMedia() {
+    for (const entry of mediaCache.values()) URL.revokeObjectURL(entry.url)
+    mediaCache.clear()
+    mediaUrls = {}
+  }
+
+  function syncMediaUrls() {
+    if (!editor) return
+    const infoNow = editor.wb.findSheet(sheet)
+    if (!infoNow || infoNow.kind !== 'worksheet') {
+      revokeAllMedia()
+      return
+    }
+    // Plain bookkeeping inside one call (not state): which media parts the sheet shows, with their types.
+    const needed: Record<string, string> = {}
+    const addObj = (o: { image?: { part: string; contentType: string } | null; children?: Array<{ image?: { part: string; contentType: string } | null }> }) => {
+      if (o.image?.part) needed[o.image.part] = o.image.contentType
+      if (o.children) for (const c of o.children) addObj(c)
+    }
+    for (const o of readDrawing(editor.wb, infoNow)) addObj(o)
+    for (const ci of readCellImages(editor.wb, infoNow)) needed[ci.part] = ci.contentType
+    for (const [part, entry] of [...mediaCache]) {
+      if (!(part in needed)) {
+        URL.revokeObjectURL(entry.url)
+        mediaCache.delete(part)
+      }
+    }
+    const next: Record<string, string> = {}
+    for (const [part, ct] of Object.entries(needed)) {
+      if (!editor.wb.pkg.has(part)) continue
+      const bytes = editor.wb.pkg.bytes(part)
+      const have = mediaCache.get(part)
+      if (have && have.bytes === bytes) {
+        next[part] = have.url
+        continue
+      }
+      if (have) URL.revokeObjectURL(have.url)
+      const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: ct }))
+      mediaCache.set(part, { bytes, url })
+      next[part] = url
+    }
+    mediaUrls = next
   }
 
   // ---------------------------------------------------------------------------
@@ -1008,6 +1136,7 @@
     if (!(await ensureLock())) return false
     try {
       const result = editor.apply(op, { acceptLosses: true })
+      lastCreatedId = result.created ?? null
       if (result.focus) sheet = result.focus
     } catch (err) {
       failure =
@@ -1017,6 +1146,7 @@
       return false
     }
     rev++
+    syncMediaUrls()
     autosave.change(String(editor.version()))
     touchIdle()
     return true
@@ -1912,14 +2042,14 @@
   function afterHistory() {
     if (!editor) return
     if (!editor.wb.findSheet(sheet)) sheet = editor.wb.sheets()[0]!.name
-    selectedChartId = null
     rev++
+    syncMediaUrls()
     autosave.change(String(editor.version()))
     touchIdle()
   }
 
   // ---------------------------------------------------------------------------
-  // Charts (./chart-ops.ts, ./chart-overlay.svelte, ./chart-dialog.svelte)
+  // Charts (./chart-ops.ts, drawn and moved in ./drawing-overlay.svelte's frame snippet, ./chart-dialog.svelte)
 
   function openInsertChart() {
     if (!editable || !data) return
@@ -1941,7 +2071,6 @@
   }
 
   function deleteChart(chartId: string) {
-    if (selectedChartId === chartId) selectedChartId = null
     void change({ op: 'chart_delete', sheet, chart: chartId })
   }
 
@@ -1983,6 +2112,16 @@
       t instanceof HTMLSelectElement
     )
       return
+    if (event.key === 'Escape') {
+      selectedDrawingId = null
+      hoverNote = null
+      return
+    }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && editable && selectedDrawingId && !editing) {
+      event.preventDefault()
+      void deleteDrawing(selectedDrawingId)
+      return
+    }
     const mod = event.metaKey || event.ctrlKey
     if (event.key === 'F5' && !mod && !event.altKey) {
       event.preventDefault()
@@ -2023,6 +2162,152 @@
       event.preventDefault()
       if (editing) grid?.finishEdit(true)
       openCreate('table')
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawings (pictures, shapes, text boxes) and comments/notes
+
+  const shapeLabel = (g: ShapeGeometry): string =>
+    ({
+      rect: m.drive_sheet_shape_rect(),
+      roundRect: m.drive_sheet_shape_roundRect(),
+      ellipse: m.drive_sheet_shape_ellipse(),
+      triangle: m.drive_sheet_shape_triangle(),
+      diamond: m.drive_sheet_shape_diamond(),
+      rightArrow: m.drive_sheet_shape_rightArrow(),
+      leftArrow: m.drive_sheet_shape_leftArrow(),
+      upArrow: m.drive_sheet_shape_upArrow(),
+      downArrow: m.drive_sheet_shape_downArrow(),
+      line: m.drive_sheet_shape_line(),
+      arrow: m.drive_sheet_shape_arrow(),
+    })[g]
+
+  async function loadMembers() {
+    if (membersLoaded) return
+    membersLoaded = true
+    try {
+      const res = await driveApi.shareTargets()
+      const list: Member[] = res.people.map((p) => ({ id: p.id, name: p.name || p.email }))
+      if (author && !list.some((x) => x.id === author.id)) list.unshift(author)
+      members = list
+    } catch {
+      members = author ? [author] : []
+    }
+  }
+
+  function openCommentsPanel(focusRef?: string) {
+    commentsOpen = true
+    commentFocusRef = focusRef ?? null
+    void loadMembers()
+  }
+
+  function onCellHover(pos: Pos | null, at: DOMRect | null) {
+    if (!pos || !at) {
+      hoverNote = null
+      return
+    }
+    const ref = cellName(pos)
+    const note = cellNotes.find((n) => n.ref === ref && !n.visible)
+    const thread = sheetThreads.find((t) => t.ref === ref)
+    if (!note && !thread) {
+      hoverNote = null
+      return
+    }
+    hoverNote = { ref, at, note, thread }
+  }
+
+  async function insertPictureBytes(bytes: Uint8Array) {
+    if (!editor || !data) return
+    const pt = cellOrigin(editor.wb, data.info.name, active.row, active.col)
+    if (await change({ op: 'insert_picture', sheet: data.info.name, image: bytes, x: pt.x, y: pt.y })) {
+      selectedDrawingId = lastCreatedId
+    }
+  }
+
+  async function onFilePicked(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    await insertPictureBytes(bytes)
+  }
+
+  async function onDriveImagePicked(item: DriveItem) {
+    try {
+      const bytes = await driveApi.readBytes(item.id)
+      await insertPictureBytes(bytes)
+    } catch (err) {
+      failure = driveShownError(err)
+    }
+  }
+
+  async function insertShape(geometry: ShapeGeometry, textbox = false) {
+    if (!editor || !data) return
+    const pt = cellOrigin(editor.wb, data.info.name, active.row, active.col)
+    const isLine = geometry === 'line' || geometry === 'arrow'
+    if (
+      await change({
+        op: 'insert_shape',
+        sheet: data.info.name,
+        geometry,
+        textbox,
+        x: pt.x,
+        y: pt.y,
+        width: isLine ? 140 : 160,
+        height: isLine ? 40 : 80,
+        text: textbox ? 'Text' : undefined,
+      })
+    ) {
+      selectedDrawingId = lastCreatedId
+    }
+  }
+
+  async function updateDrawing(
+    id: string,
+    patch: {
+      box?: Box
+      name?: string
+      alt?: string
+      rotation?: number
+      text?: string
+      fill?: string | null
+      line?: string | null
+    },
+  ) {
+    if (!data) return
+    const chart = chartOfDrawing(id)
+    if (chart) {
+      if (patch.box && geometry) {
+        const b = patch.box
+        moveChart(chart.id, {
+          from: markerAt(geometry, b.x, b.y),
+          to: markerAt(geometry, b.x + b.w, b.y + b.h),
+        })
+      }
+      return
+    }
+    await change({ op: 'update_drawing', sheet: data.info.name, id, ...patch })
+  }
+
+  /** The chart a drawing object holds (charts are edited by their own ops, ./chart-ops.ts). */
+  function chartOfDrawing(id: string): ChartPlacement | null {
+    const o = sheetDrawings.find((d) => d.id === id)
+    if (!o || o.kind !== 'chart' || !o.chartPart) return null
+    return sheetCharts.find((c) => c.part === o.chartPart) ?? null
+  }
+
+  async function deleteDrawing(id: string) {
+    if (!data) return
+    const chart = chartOfDrawing(id)
+    if (chart) {
+      if (selectedDrawingId === id) selectedDrawingId = null
+      deleteChart(chart.id)
+      return
+    }
+    if (await change({ op: 'delete_drawing', sheet: data.info.name, id })) {
+      if (selectedDrawingId === id) selectedDrawingId = null
     }
   }
 
@@ -2211,11 +2496,14 @@
     sheet = n
     tabMenuSheet = null
     extraSelections = []
-    selectedChartId = null
     active = { row: 0, col: 0 }
     anchor = { row: 0, col: 0 }
     extraRows = 0
     extraCols = 0
+    selectedDrawingId = null
+    commentFocusRef = null
+    hoverNote = null
+    syncMediaUrls()
     await tick()
     grid?.focus()
   }
@@ -2501,6 +2789,60 @@
           data-testid="xlsx-page-setup-btn">{m.drive_sheet_page_setup()}</button
         >
         <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/bmp"
+          class="sr-only"
+          bind:this={fileInputEl}
+          onchange={(e) => void onFilePicked(e)}
+          data-testid="xlsx-picture-input"
+        />
+        <button
+          type="button"
+          class={btn}
+          onclick={() => fileInputEl?.click()}
+          data-testid="xlsx-insert-picture-file"
+        >
+          <UploadIcon class="size-4" aria-hidden="true" />
+          {m.drive_sheet_insert_picture_file()}
+        </button>
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (imagePickerOpen = true)}
+          data-testid="xlsx-insert-picture-drive"
+        >
+          <ImageIcon class="size-4" aria-hidden="true" />
+          {m.drive_sheet_insert_picture_drive()}
+        </button>
+        <label class="flex items-center gap-1 text-xs text-muted-foreground">
+          <ShapesIcon class="size-4" aria-hidden="true" />
+          <select
+            class="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+            aria-label={m.drive_sheet_insert_shape()}
+            value=""
+            onchange={(e) => {
+              const v = e.currentTarget.value as ShapeGeometry | ''
+              e.currentTarget.value = ''
+              if (v) void insertShape(v, false)
+            }}
+            data-testid="xlsx-insert-shape"
+          >
+            <option value="" disabled>{m.drive_sheet_insert_shape()}</option>
+            {#each SHAPE_GEOMETRIES as g (g)}
+              <option value={g}>{shapeLabel(g)}</option>
+            {/each}
+          </select>
+        </label>
+        <button
+          type="button"
+          class={btn}
+          onclick={() => void insertShape('rect', true)}
+          data-testid="xlsx-insert-textbox"
+        >
+          <TypeIcon class="size-4" aria-hidden="true" />
+          {m.drive_sheet_insert_textbox()}
+        </button>
         <button
           type="button"
           class={btn}
@@ -2590,6 +2932,95 @@
           onshiftdecimals={(delta) => void shiftSelDecimals(delta)}
           onrowcolaction={(act) => void runRowColAction(act)}
         />
+      {/if}
+      {#if selectedDrawing && (selectedDrawing.kind === 'picture' || selectedDrawing.kind === 'shape' || selectedDrawing.kind === 'textbox' || selectedDrawing.kind === 'connector')}
+        {@const sd = selectedDrawing}
+        <div
+          class="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-2 py-1 text-xs"
+          data-testid="xlsx-drawing-bar"
+        >
+          <span class="font-medium">{sd.name}</span>
+          <label class="flex items-center gap-1 text-muted-foreground">
+            <span>{m.drive_sheet_drawing_alt()}</span>
+            <input
+              type="text"
+              class="h-7 w-40 rounded border border-input bg-background px-1.5 text-xs text-foreground"
+              value={sd.alt}
+              onchange={(e) => void updateDrawing(sd.id, { alt: e.currentTarget.value })}
+              data-testid="xlsx-drawing-alt"
+            />
+          </label>
+          <label class="flex items-center gap-1 text-muted-foreground">
+            <span>{m.drive_sheet_drawing_rotation()}</span>
+            <input
+              type="number"
+              class="h-7 w-16 rounded border border-input bg-background px-1.5 text-xs text-foreground tabular-nums"
+              value={sd.rotation}
+              onchange={(e) => {
+                const v = Number(e.currentTarget.value)
+                if (Number.isFinite(v)) void updateDrawing(sd.id, { rotation: v })
+              }}
+              data-testid="xlsx-drawing-rotation"
+            />
+          </label>
+          {#if sd.kind === 'shape' || sd.kind === 'textbox'}
+            <label class="flex items-center gap-1 text-muted-foreground">
+              <span>{m.drive_sheet_drawing_text()}</span>
+              <input
+                type="text"
+                class="h-7 w-40 rounded border border-input bg-background px-1.5 text-xs text-foreground"
+                value={sd.text ?? ''}
+                onchange={(e) => void updateDrawing(sd.id, { text: e.currentTarget.value })}
+                data-testid="xlsx-drawing-text"
+              />
+            </label>
+            <label class="flex items-center gap-1 text-muted-foreground">
+              <span>{m.drive_sheet_drawing_fill()}</span>
+              <input
+                type="color"
+                class="h-7 w-8 cursor-pointer rounded border border-input bg-background p-0.5"
+                value={sd.fill ?? '#FFFFFF'}
+                onchange={(e) => void updateDrawing(sd.id, { fill: e.currentTarget.value })}
+                data-testid="xlsx-drawing-fill"
+              />
+            </label>
+            <button
+              type="button"
+              class="h-7 rounded border px-1.5 text-xs hover:bg-muted"
+              onclick={() => void updateDrawing(sd.id, { fill: null })}
+              data-testid="xlsx-drawing-no-fill">{m.drive_sheet_drawing_no_fill()}</button
+            >
+          {/if}
+          {#if sd.kind === 'shape' || sd.kind === 'textbox' || sd.kind === 'connector'}
+            <label class="flex items-center gap-1 text-muted-foreground">
+              <span>{m.drive_sheet_drawing_outline()}</span>
+              <input
+                type="color"
+                class="h-7 w-8 cursor-pointer rounded border border-input bg-background p-0.5"
+                value={sd.line?.color ?? '#000000'}
+                onchange={(e) => void updateDrawing(sd.id, { line: e.currentTarget.value })}
+                data-testid="xlsx-drawing-line"
+              />
+            </label>
+            <button
+              type="button"
+              class="h-7 rounded border px-1.5 text-xs hover:bg-muted"
+              onclick={() => void updateDrawing(sd.id, { line: null })}
+              data-testid="xlsx-drawing-no-line">{m.drive_sheet_drawing_no_outline()}</button
+            >
+          {/if}
+          <Button
+            type="button"
+            size="xs"
+            variant="destructive"
+            class="ml-auto"
+            onclick={() => void deleteDrawing(sd.id)}
+            data-testid="xlsx-drawing-delete"
+          >
+            <TrashIcon class="mr-1 size-3.5" aria-hidden="true" />
+            {m.drive_sheet_drawing_delete()}
+          </Button>
+        </div>
       {/if}
     {:else if ready}
       <div class="flex flex-wrap items-center gap-1 border-b px-2 py-1" role="toolbar">
@@ -2778,6 +3209,27 @@
           />
         {/if}
       </div>
+      {#if data}
+        {@const annCount = sheetThreads.length + cellNotes.length}
+        <button
+          type="button"
+          class="{btn} shrink-0 {commentsOpen ? 'bg-muted text-foreground' : ''}"
+          aria-pressed={commentsOpen}
+          onclick={() => {
+            if (commentsOpen) commentsOpen = false
+            else openCommentsPanel()
+          }}
+          data-testid="xlsx-comments-toggle"
+        >
+          <MessageSquareIcon class="size-4" aria-hidden="true" />
+          <span>{m.drive_sheet_comments_toggle()}</span>
+          {#if annCount > 0}
+            <span class="rounded-full bg-muted px-1.5 text-xs tabular-nums" data-testid="xlsx-comments-count"
+              >{annCount}</span
+            >
+          {/if}
+        </button>
+      {/if}
     </div>
 
     {#if info && info.kind !== 'worksheet'}
@@ -2874,27 +3326,84 @@
         onfilter={openFilterMenu}
         onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
         onresize={onResize}
-        oncellpointerdown={() => (selectedChartId = null)}
+        oncellselect={() => (selectedDrawingId = null)}
+        onnoteopen={(pos) => openCommentsPanel(cellName(pos))}
+        oncellhover={onCellHover}
         onblocked={onGridBlocked}
       >
-        {#snippet overlay({ colLeft, rowTop, maxCol, maxRow })}
-          {#if sheetCharts.length > 0 && editor}
-            <ChartOverlay
-              wb={editor.wb}
-              calc={() => editor!.calc()}
-              charts={sheetCharts}
-              {colLeft}
-              {rowTop}
-              {maxCol}
-              {maxRow}
-              {locale}
-              {rev}
-              {editable}
-              bind:selected={selectedChartId}
-              onmove={moveChart}
-              onedit={(placement) => (chartDialog = { mode: 'edit', placement })}
-              ondelete={deleteChart}
-            />
+        {#snippet overlay({ dx, dy })}
+          {#if geometry && (sheetDrawings.length > 0 || visibleNotes.length > 0)}
+            {#if sheetDrawings.length > 0}
+              <DrawingOverlay
+                objects={sheetDrawings}
+                {geometry}
+                {dx}
+                {dy}
+                {mediaUrls}
+                selectedId={selectedDrawingId}
+                {editable}
+                onselect={(id) => (selectedDrawingId = id)}
+                onupdate={updateDrawing}
+                onframeopen={(id) => {
+                  const c = chartOfDrawing(id)
+                  if (c) chartDialog = { mode: 'edit', placement: c }
+                }}
+              >
+                {#snippet frame(o, box, selected)}
+                  {@const c = sheetCharts.find((x) => x.part === o.chartPart)}
+                  {#if c && editor}
+                    <ChartView
+                      wb={editor.wb}
+                      calc={() => editor!.calc()}
+                      placement={c}
+                      width={Math.max(1, box.w)}
+                      height={Math.max(1, box.h)}
+                      {locale}
+                      {rev}
+                    />
+                    {#if editable && selected}
+                      <div
+                        class="flex items-center gap-1 rounded border border-border bg-background/95 p-0.5 shadow-sm"
+                        style="position: absolute; top: 6px; right: 6px; z-index: 11;"
+                        role="toolbar"
+                        tabindex="-1"
+                        aria-label={m.drive_sheet_chart_edit()}
+                        onpointerdown={(e) => e.stopPropagation()}
+                        ondblclick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          class="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          aria-label={m.drive_sheet_chart_edit()}
+                          title={m.drive_sheet_chart_edit()}
+                          onclick={() => (chartDialog = { mode: 'edit', placement: c })}
+                          data-testid="xlsx-chart-edit"><PencilIcon class="size-3.5" aria-hidden="true" /></button
+                        >
+                        <button
+                          type="button"
+                          class="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-destructive"
+                          aria-label={m.drive_sheet_chart_delete()}
+                          title={m.drive_sheet_chart_delete()}
+                          onclick={() => deleteChart(c.id)}
+                          data-testid="xlsx-chart-delete"><Trash2Icon class="size-3.5" aria-hidden="true" /></button
+                        >
+                      </div>
+                    {/if}
+                  {/if}
+                {/snippet}
+              </DrawingOverlay>
+            {/if}
+            {#each visibleNotes as vn (vn.note.ref)}
+              <div
+                class="w-44 rounded border border-amber-400 bg-amber-100 p-2 text-xs text-amber-950 shadow-sm"
+                style="position: absolute; z-index: 20; pointer-events: auto; left: {vn.x - dx}px; top: {vn.y - dy}px;"
+                data-testid="xlsx-visible-note"
+                data-ref={vn.note.ref}
+              >
+                {#if vn.note.author}<div class="font-semibold">{vn.note.author}</div>{/if}
+                <div class="whitespace-pre-wrap">{vn.note.text}</div>
+              </div>
+            {/each}
           {/if}
         {/snippet}
           </SheetGrid>
@@ -2915,6 +3424,66 @@
           onclick={() => (pivotFieldsOpen = true)}
           data-testid="xlsx-pivot-fields-open">{m.drive_sheet_pivot_fields()}</button
         >
+      {/if}
+      {#if commentsOpen}
+        <CommentPanel
+          sheet={data.info.name}
+          {activeRef}
+          {editable}
+          author={author ?? null}
+          {members}
+          threads={sheetThreads}
+          notes={cellNotes}
+          focusRef={commentFocusRef}
+          onjump={(row, col, ref) => {
+            active = { row, col }
+            anchor = { row, col }
+            commentFocusRef = ref
+            grid?.focus()
+          }}
+          onaddthread={(ref, text, mentions) =>
+            change({
+              op: 'add_comment',
+              sheet: data.info.name,
+              ref,
+              text,
+              author: author!,
+              mentions,
+            })}
+          onreply={(thread, text, mentions) =>
+            change({
+              op: 'reply_comment',
+              sheet: data.info.name,
+              thread,
+              text,
+              author: author!,
+              mentions,
+            })}
+          oneditcomment={(id, text, mentions) =>
+            change({
+              op: 'edit_comment',
+              sheet: data.info.name,
+              id,
+              text,
+              author: author!,
+              mentions,
+            })}
+          onresolve={(thread, resolved) =>
+            change({ op: 'resolve_comment', sheet: data.info.name, thread, resolved })}
+          ondeletecomment={(id) =>
+            change({ op: 'delete_comment', sheet: data.info.name, id, author: author! })}
+          onsetnote={(ref, text, visible) =>
+            change({
+              op: 'set_note',
+              sheet: data.info.name,
+              ref,
+              text,
+              ...(text !== undefined && author ? { author: author.name } : {}),
+              visible,
+            })}
+          ondeletenote={(ref) => change({ op: 'delete_note', sheet: data.info.name, ref })}
+          onclose={() => (commentsOpen = false)}
+        />
       {/if}
         {#if cfOpen && editable && info}
           <CondFormatPanel
@@ -3445,6 +4014,41 @@
   </AlertDialog.Content>
 </AlertDialog.Root>
 
+{#if hoverNote}
+  <div
+    class="pointer-events-none fixed z-50 w-64 rounded-md border bg-popover p-2.5 text-xs text-popover-foreground shadow-md"
+    style="left: {Math.min(window.innerWidth - 270, Math.max(8, hoverNote.at.right + 4))}px; top: {Math.max(
+      8,
+      hoverNote.at.top,
+    )}px;"
+    role="tooltip"
+    data-testid="xlsx-annotation-popover"
+  >
+    {#if hoverNote.note}
+      <div class="font-semibold text-amber-700 dark:text-amber-300">
+        {hoverNote.note.author ? `${hoverNote.note.author} — ${m.drive_sheet_note_label()}` : m.drive_sheet_note_label()}
+      </div>
+      <div class="mt-1 whitespace-pre-wrap">{hoverNote.note.text}</div>
+    {:else if hoverNote.thread}
+      {@const root = hoverNote.thread.comments[0]}
+      <div class="flex items-center gap-1.5 font-semibold text-violet-700 dark:text-violet-300">
+        <span>{root?.author || 'Comment'}</span>
+        {#if hoverNote.thread.comments.length > 1}
+          <span class="text-muted-foreground">({hoverNote.thread.comments.length})</span>
+        {/if}
+      </div>
+      {#if root}<div class="mt-1 whitespace-pre-wrap">{root.text}</div>{/if}
+    {/if}
+  </div>
+{/if}
+
+{#if imagePickerOpen}
+  <ImagePicker
+    initialFolderId={folderId}
+    onpick={(item) => void onDriveImagePicked(item)}
+    onclose={() => (imagePickerOpen = false)}
+  />
+{/if}
 {#if findDialog && editor}
   <FindDialog
     mode={findDialog.mode}

@@ -2,6 +2,7 @@ import type { SheetEditor } from './editor'
 import { translateFormulaToA1, translateFormulaToR1C1 } from '@borgar/fx'
 import { parseA1Ref, stringifyA1Ref, tokenize } from '@borgar/fx/xlsx'
 import { relsPartOf } from '../ooxml/package'
+import { moveAnnotationsForCut } from './annotations-move'
 import { needsDynamicArray } from './calc-static'
 import { CT_CHART } from './chart-anchor'
 import { autoFilterOf } from './filter'
@@ -783,6 +784,17 @@ function cutPaste(
   finishSheet(wb, srcInfo, srcDoc)
   writePlacements(wb, info, placements, { area, merges, noTableGrowth: true })
   moveTables(wb, srcInfo, info, from, dr, dc)
+  // Notes and comment threads go with the cut cells; pictures, shapes and charts stay (as in Excel).
+  moveAnnotationsForCut(
+    wb,
+    srcInfo,
+    info,
+    () => sheetDoc(wb, srcInfo),
+    () => sheetDoc(wb, info),
+    from,
+    dr,
+    dc,
+  )
   rewriteAllFormulas(wb, (f, home) => moveRefs(f, home, srcInfo.name, from, info.name, dr, dc))
   // Chart series that read the moved cells follow them (as insert/delete rows does, ./chart-ops.ts).
   for (const p of wb.pkg.partNames()) {

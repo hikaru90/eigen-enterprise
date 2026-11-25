@@ -4,8 +4,10 @@ import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
 import { needsDynamicArray } from './calc-static'
-import { drawingsWithOtherObjects, runChartOp, shiftCharts, type ChartOp } from './chart-ops'
+import { runChartOp, shiftChartRefs, type ChartOp } from './chart-ops'
 import { runCfOp, type CfOp } from './cond-format'
+import { drawingPartOf, shiftDrawing, sortDrawing } from './drawing'
+import { runDrawingOp, type DrawingOp } from './drawing-ops'
 import { editLosses, runEditOp, type EditOp } from './edit-ops'
 import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
 import { runFormatOp, type FormatOp } from './format-cells'
@@ -13,6 +15,7 @@ import { toFileText, toShownText } from './formula-text'
 import { runHyperlinkOp, type HyperlinkOp } from './hyperlinks'
 import { ensureDynamicArrayCm } from './metadata'
 import { runNameOp, type NameOp } from './names'
+import { runNoteOp, shiftLegacyComments, sortLegacyComments, type NoteOp } from './notes'
 import { freezePanes, type FreezeOp } from './panes'
 import { createPivot, deletePivot, refreshPivot, updatePivot, type PivotOp } from './pivot'
 import { guard, runProtectionOp, type ProtectionOp } from './protection'
@@ -54,6 +57,7 @@ import {
 import { sortLosses, sortRange, type SortOp } from './sort'
 import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
 import { autoExpandTables, createTable, deleteTable, updateTable, type TableOp } from './tables'
+import { runThreadOp, shiftThreads, sortThreads, type ThreadOp } from './threads'
 import { runValidationOp, type ValidationOp } from './validation'
 import {
   isErrorValue,
@@ -126,6 +130,10 @@ export type SheetOp =
   | AutoFilterOp
   | FilterColumnOp
   | FreezeOp
+  /** Pictures, shapes, text boxes (./drawing-ops.ts); notes (./notes.ts); threaded comments (./threads.ts). */
+  | DrawingOp
+  | NoteOp
+  | ThreadOp
   /** Conditional formats, validation, links, names, protection (./cond-format.ts … ./protection.ts). */
   | CfOp
   | ValidationOp
@@ -455,10 +463,7 @@ function movingLosses(wb: Workbook, info: SheetInfo): Loss[] {
   }
   add('tables', count('table'))
   add('pivot_tables', count('pivotTable'))
-  // Charts move with the cells (chart-ops.ts); pictures and shapes don't yet.
-  add('drawings', drawingsWithOtherObjects(wb, info))
-  add('comments', count('comments'))
-  add('threaded_comments', rels.filter((r) => r.type.endsWith('/threadedComment')).length)
+  // Pictures, shapes, charts, notes and threaded comments move with the cells (moveCells).
   const root = wb.pkg.xml(info.part).documentElement!
   add('controls', (kid(root, 'controls') ? 1 : 0) + (kid(root, 'oleObjects') ? 1 : 0))
   add('extensions', kid(root, 'extLst') ? 1 : 0)
@@ -535,6 +540,8 @@ export type OpResult = {
   sheets: string[]
   /** The sheet to show afterwards (a new or renamed sheet; the neighbour of a deleted one). */
   focus?: string
+  /** The id of what the operation made (a picture, shape or comment). */
+  created?: string
 }
 
 /** Applies one operation in a transaction; throws (and changes nothing) when it can't, or when it has losses not accepted. */
@@ -585,6 +592,19 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'filter_column':
     case 'freeze_panes':
       return arrange(wb, op)
+    case 'insert_picture':
+    case 'insert_shape':
+    case 'update_drawing':
+    case 'delete_drawing':
+      return runDrawingOp(wb, op)
+    case 'set_note':
+    case 'delete_note':
+    case 'add_comment':
+    case 'reply_comment':
+    case 'edit_comment':
+    case 'resolve_comment':
+    case 'delete_comment':
+      return annotate(wb, op)
     case 'cf_add':
     case 'cf_update':
     case 'cf_delete':
@@ -665,12 +685,30 @@ function run(wb: Workbook, op: SheetOp): OpResult {
   }
 }
 
+/** Notes and threaded comments: the sheet's comment parts (and, for a new one, its VML drawing). */
+function annotate(wb: Workbook, op: NoteOp | ThreadOp): OpResult {
+  const info = wb.requireWorksheet(op.sheet)
+  let doc: XMLDocument | null = null
+  const getDoc = () => (doc ??= sheetDoc(wb, info))
+  const created =
+    op.op === 'set_note' || op.op === 'delete_note' ? runNoteOp(wb, op, getDoc) : runThreadOp(wb, op, getDoc)
+  if (doc) finishSheet(wb, info, doc)
+  return created ? { sheets: [info.name], created } : { sheets: [info.name] }
+}
+
 /** Sort, filter and freeze panes: one sheet's XML, its cached model rebuilt after. */
 function arrange(wb: Workbook, op: SortOp | AutoFilterOp | FilterColumnOp | FreezeOp): OpResult {
   const info = wb.requireWorksheet(op.sheet)
   const doc = sheetDoc(wb, info)
   if (op.op === 'sort_range') {
-    if (!sortRange(wb, doc, op)) return { sheets: [] }
+    const sorted = sortRange(wb, doc, op)
+    if (!sorted) return { sheets: [] }
+    // Notes, comment threads and one-row pictures on the sorted cells go with their rows, as in Excel.
+    const { body, dest } = sorted
+    sortLegacyComments(wb, info, dest, body.left, body.right)
+    sortThreads(wb, info, dest, body.left, body.right)
+    const drawing = drawingPartOf(wb, info)
+    if (drawing && sortDrawing(wb.pkg.xml(drawing), dest, body.left, body.right)) wb.edit(drawing)
   } else if (op.op === 'set_autofilter') setAutoFilter(wb, info, doc, op)
   else if (op.op === 'filter_column') filterColumn(wb, info, doc, op)
   else freezePanes(doc, op)
@@ -1217,7 +1255,12 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
   }
   const af = kid(root, 'autoFilter')
   if (af && !moveRefAttr(af, 'ref', false)) root.removeChild(af)
-  shiftCharts(wb, info, edit, axis, op.at, op.count, insert)
+  // Every anchor (pictures, shapes, charts) moves once, here; charts' series references follow the cells.
+  const drawing = drawingPartOf(wb, info)
+  if (drawing && shiftDrawing(wb.pkg.xml(drawing), axis, op.at, op.count, insert)) wb.edit(drawing)
+  shiftChartRefs(wb, edit)
+  shiftLegacyComments(wb, info, doc, edit)
+  shiftThreads(wb, info, edit)
   finishSheet(wb, info, doc)
   wb.invalidate()
   return { sheets: [info.name] }

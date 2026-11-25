@@ -208,7 +208,7 @@ Not covered yet: custom/number/date filter conditions and colour/icon filters as
 
 ### 7.4 Charts (2026-11-25)
 
-Full clean-room DrawingML chart read/write (`src/lib/office/xlsx/chart-read.ts`, `chart-write.ts`, `chart-anchor.ts`, `chart-color.ts`, `chart-data.ts`, `chart-ops.ts`), zero-dependency SVG mark renderer (`chart-layout.ts`), UI (`chart-view.svelte`, `chart-overlay.svelte`, `chart-dialog.svelte`), and registry tools (`modules/drive/sheet-chart-tools.ts`).
+Full clean-room DrawingML chart read/write (`src/lib/office/xlsx/chart-read.ts`, `chart-write.ts`, `chart-anchor.ts`, `chart-color.ts`, `chart-data.ts`, `chart-ops.ts`), zero-dependency SVG mark renderer (`chart-layout.ts`), UI (`chart-view.svelte`, drawn and moved through §7.5's drawing layer, `chart-dialog.svelte`), and registry tools (`modules/drive/sheet-chart-tools.ts`).
 
 Decisions (implementing agent, logged here):
 
@@ -220,6 +220,24 @@ Decisions (implementing agent, logged here):
 - **UI & registry parity:** anchored charts render over `sheet-grid.svelte` (below sticky headers and frozen panes), chart sheets render full-tab, cells live-update charts as you type, drag/8-handle resize commits `chart_move`, `chart-dialog.svelte` creates from selection (default column) or edits (type, grouping, title, legend, series ranges/types/secondary axis, axis titles/scale/gridlines, data labels, markers, colours), and `drive.sheet_chart_list`, `drive.sheet_chart_create`, `drive.sheet_chart_update`, `drive.sheet_chart_delete` (+ chart summaries in `drive.sheet_read`) expose full parity to agents (`drive.sheet_chart_*` writes wait on approval mode).
 
 Not covered yet: 3-D perspective projection (3-D groups render as their flat equivalent), surface/ofPie/treemap/sunburst (`cx:chart`) rendering, trendline/error-bar visual marks (kept in XML on edit/save), gradient fills (first stop colour used).
+
+### 7.5 Pictures, shapes, comments (2026-11-25)
+
+Floating drawings (SpreadsheetML `wsDr`: pictures with crop/rotation, preset shapes, text boxes, connectors, groups, preserved `graphicFrame`/chart placeholders), Excel 365 `IMAGE`-in-cell richData pictures (`vm` + `XLRICHVALUE`), legacy cell notes (`xl/commentsN.xml` + `vmlDrawing`), and threaded comments (`xl/threadedComments` + `xl/persons` with company member `@mentions`). Code: `src/lib/office/xlsx/drawing.ts`, `drawing-ops.ts`, `cell-images.ts`, `image-info.ts`, `notes.ts`, `threads.ts`, `drawing-overlay.svelte`, `image-picker.svelte`, `comment-panel.svelte`; tools: `modules/drive/sheet-drawing-tools.ts`, `modules/drive/sheet-comment-tools.ts`.
+
+Decisions (implementing agent, logged here):
+
+- **Anchor fidelity & chart coexistence:** `drawing.ts` preserves every untouched anchor XML element verbatim and keeps `graphicFrame` / chart anchors (`chartPart`) intact across sibling drawing edits and row/column shifts, so charts (`chart-*.ts`) plug into the same drawing layer on integration cleanly. `oneCell`, `twoCell`, and `absolute` anchors keep their anchor kind across UI drag moves and handle resizes.
+- **One drawing layer, one anchor mover (charts merge, 2026-11-25):** charts render through `drawing-overlay.svelte`'s `frame` snippet (`chart-view.svelte`), selected, dragged and resized by the same handles as pictures and shapes, committed as the charts' own `chart_move` (edit/delete stay `chart_update`/`chart_delete`); the separate `chart-overlay.svelte` and the grid's second overlay are gone (nothing they did is lost). Row/column insert/delete moves every anchor once, in `drawing.ts` `shiftDrawing` (charts included; `chart-ops.ts` `shiftChartRefs` now only rewrites series references); sorts move anchors once in `sortDrawing` (charts by their starting row, keeping their height, as §7.4 decided; other objects only when inside one row). `drive.sheet_read`'s `drawings` leaves charts out (they are under `charts`).
+- **Cut and paste (merge with §7.7):** notes and comment threads move with the cut cells (to another sheet too, `annotations-move.ts`), replacing what the target cells had; a thread keeps its ids, authors, dates, replies, mentions and resolved state. Pictures, shapes and charts stay where they are, as in Excel. A moved note is rewritten as plain text (Excel's bold author run in the note text is not kept as a run).
+- **Media & cleanup:** pictures support PNG, JPEG, GIF, and BMP (`imageInfo`), scaled to at most 640 px wide on default insertion. Deleting an object leaves shared `/xl/media/*` intact while any sibling still references its relationship; deleting the last object removes the empty drawing part, `.rels`, and `<drawing r:id>` (restorable via undo).
+- **In-cell images (`cell-images.ts`):** `metadata.xml` + `rdRichValue` + `richValueRel` `_localImage` entries are read directly to display images inside cells while preserving all `richData` and `metadata.xml` parts byte for byte on save.
+- **Legacy notes vs. threaded comments:** a cell carries either a legacy note or a threaded comment, never both (enforced explicitly in both `notes.ts` and `threads.ts`). Every threaded comment edit synchronizes its legacy `tc={thread}` stand-in comment and hidden VML note shape so older Excel shows it; `readNotes` excludes stand-ins by resolving `threadedRefs`. Empty comment, VML (`<legacyDrawing>`), or threaded-comment parts are pruned with their relationships on deletion.
+- **Persons & `@mentions`:** company members are recorded in `/xl/persons/person.xml` with `providerId="None"` and `userId` set to their member id; `@mentions` record character spans matching non-identifier boundaries (`@Al` never collides with `@Alice`).
+- **Structure ops & sorts:** row/column inserts and deletes move two-cell/one-cell drawing anchors, notes, VML `x:Row`/`x:Column`/`x:Anchor`, and threaded comments (deleting annotations on deleted cells), and row sorts move single-row drawings, notes, and threads with their rows without reporting them as losses (drawings spanning multiple rows or extending outside sorted columns still ask via losses).
+- **Registry parity:** 11 internal-approval write actions + 1 read action (`drive.sheet_picture_insert`/`update`/`delete`, `drive.sheet_shape_create`/`update`/`delete`, `drive.sheet_comment_list`/`add`/`reply`/`edit`/`resolve`/`delete`), plus `drive.sheet_read` returning sheet annotation counts and details (`drawings`, `notes`, `comments`, `cell_images`).
+
+Not covered yet: creating or editing `IMAGE`-in-cell formulas, grouping/ungrouping shapes interactively, rich text formatting spans inside shape paragraphs, WordArt, and drawing theme style presets beyond solid fill/outline/text colour.
 
 ### 7.6 Pivot tables, Excel tables and the remaining formulas (2026-11-25)
 

@@ -12,9 +12,7 @@ import {
   drawingOf,
   drawingXml,
   EMU_PX,
-  nonChartAnchors,
   NS_XDR,
-  readAnchor,
   REL_CHART,
   REL_DRAWING,
   URI_CHART,
@@ -937,37 +935,14 @@ function deleteChart(wb: Workbook, op: Extract<ChartOp, { op: 'chart_delete' }>)
 // ---------------------------------------------------------------------------
 // Rows and columns moving under charts
 
-function shiftMarker(
-  m: Marker,
-  axis: 'row' | 'col',
-  at: number,
-  count: number,
-  insert: boolean,
-): Marker {
-  const key = axis === 'row' ? 'row' : 'col'
-  const off = axis === 'row' ? 'rowOff' : 'colOff'
-  const i = m[key]
-  if (insert) return i >= at ? { ...m, [key]: i + count } : m
-  if (i >= at + count) return { ...m, [key]: i - count }
-  if (i >= at) return { ...m, [key]: at, [off]: 0 }
-  return m
-}
-
 /**
- * Inserting or deleting rows/columns on `info`: every chart's references
- * follow the cells (`#REF!` when they are deleted, as in Excel), and the
- * charts anchored on this sheet move (and size) with their cells as their
- * anchor says (`editAs`: twoCell moves and sizes, oneCell moves, absolute stays).
+ * Inserting or deleting rows/columns: every chart's series references follow
+ * the cells (`#REF!` when they are deleted, as in Excel). The charts' anchors
+ * move with every other drawing object in one place (drawing.ts shiftDrawing,
+ * called by ops.ts moveCells; sorts: drawing.ts sortDrawing), so each anchor
+ * moves once.
  */
-export function shiftCharts(
-  wb: Workbook,
-  info: SheetInfo,
-  edit: RefEdit,
-  axis: 'row' | 'col',
-  at: number,
-  count: number,
-  insert: boolean,
-) {
+export function shiftChartRefs(wb: Workbook, edit: RefEdit) {
   for (const p of wb.pkg.partNames()) {
     let type: string
     try {
@@ -985,75 +960,6 @@ export function shiftCharts(
     const doc = wb.edit(p)
     for (const c of changes) setText(doc, c.f, c.next)
   }
-  const drawing = drawingOf(wb, info)
-  if (!drawing) return
-  const movable = anchorsOf(wb.pkg.xml(drawing)).filter((a) => {
-    if (!chartFrameOf(a)) return false
-    const anchor = readAnchor(a)
-    return !(
-      anchor.kind === 'absolute' ||
-      (anchor.kind === 'twoCell' && anchor.editAs === 'absolute')
-    )
-  })
-  if (movable.length === 0) return
-  const doc = wb.edit(drawing)
-  for (const a of anchorsOf(doc)) {
-    if (!chartFrameOf(a)) continue
-    const anchor = readAnchor(a)
-    if (anchor.kind === 'absolute' || (anchor.kind === 'twoCell' && anchor.editAs === 'absolute'))
-      continue
-    const from = shiftMarker(anchor.from, axis, at, count, insert)
-    if (anchor.kind === 'oneCell') writeAnchor(a, { from, to: from })
-    else if (anchor.editAs === 'oneCell') {
-      const k = axis === 'row' ? 'row' : 'col'
-      writeAnchor(a, { from, to: { ...anchor.to, [k]: anchor.to[k] + (from[k] - anchor.from[k]) } })
-    } else writeAnchor(a, { from, to: shiftMarker(anchor.to, axis, at, count, insert) })
-  }
-}
-
-/**
- * Sorting rows of `body` (`dest`: old row → new row): chart anchors starting
- * inside `body` move with their starting row (preserving height so twoCell
- * anchors never invert). Series references are not rewritten — Excel's sort
- * leaves references into the range as they are — so charts plot the sorted
- * cells live.
- */
-export function sortCharts(wb: Workbook, info: SheetInfo, body: Range, dest: Map<number, number>) {
-  const drawing = drawingOf(wb, info)
-  if (!drawing) return
-  const shouldMove = (a: Element) => {
-    if (!chartFrameOf(a)) return false
-    const anchor = readAnchor(a)
-    if (anchor.kind === 'absolute' || (anchor.kind === 'twoCell' && anchor.editAs === 'absolute'))
-      return false
-    return (
-      anchor.from.col >= body.left && anchor.from.col <= body.right && dest.has(anchor.from.row)
-    )
-  }
-  if (!anchorsOf(wb.pkg.xml(drawing)).some(shouldMove)) return
-  const doc = wb.edit(drawing)
-  for (const a of anchorsOf(doc)) {
-    if (!shouldMove(a)) continue
-    const anchor = readAnchor(a)
-    if (anchor.kind === 'absolute') continue
-    const nextRow = dest.get(anchor.from.row)!
-    const delta = nextRow - anchor.from.row
-    const from = { ...anchor.from, row: nextRow }
-    if (anchor.kind === 'oneCell') writeAnchor(a, { from, to: from })
-    else writeAnchor(a, { from, to: { ...anchor.to, row: anchor.to.row + delta } })
-  }
-}
-
-/** Drawings on a sheet that hold objects other than charts (pictures, shapes): those don't move with cells here. */
-export function drawingsWithOtherObjects(wb: Workbook, info: SheetInfo): number {
-  return wb.pkg
-    .relationships(info.part)
-    .filter((r) => r.type === REL_DRAWING && !r.external && r.part && wb.pkg.has(r.part))
-    .filter((r) => {
-      const doc = wb.pkg.xml(r.part!)
-      // An empty drawing still counts: what Excel puts there is not known to be a chart.
-      return anchorsOf(doc).length === 0 || nonChartAnchors(doc) > 0
-    }).length
 }
 
 // ---------------------------------------------------------------------------

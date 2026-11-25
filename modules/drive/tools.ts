@@ -17,7 +17,9 @@ import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
 import { DOCUMENT_KINDS } from './service'
 import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
 import { createDriveSheetChartTools } from './sheet-chart-tools'
+import { createDriveSheetCommentTools } from './sheet-comment-tools'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
+import { createDriveSheetDrawingTools } from './sheet-drawing-tools'
 import { createDriveSheetEditingTools } from './sheet-editing-tools'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { createDriveSheetPivotTableTools } from './sheet-pivot-table-tools'
@@ -329,6 +331,8 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetArrangeTools({ service }),
     ...createDriveSheetPivotTableTools({ service }),
     ...createDriveSheetChartTools({ service }),
+    ...createDriveSheetDrawingTools({ service }),
+    ...createDriveSheetCommentTools({ service }),
     ...createDriveSheetEditingTools({
       service,
       ...(opts.pdfDeps ? { pdfDeps: opts.pdfDeps } : {}),

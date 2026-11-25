@@ -1,10 +1,10 @@
 <script lang="ts">
-  import DictationField from '$lib/voice/dictation-field.svelte'
   import type { ValidationOp, ValidationRule, ValidationView } from './validation'
   import { untrack } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
   import { m } from '$lib/paraglide/messages.js'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import {
     ERROR_STYLES,
     VALIDATION_OPERATORS,

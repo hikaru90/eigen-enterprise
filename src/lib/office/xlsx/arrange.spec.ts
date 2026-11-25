@@ -238,7 +238,7 @@ describe('sort_range', () => {
     ).toThrow(/outside/)
   })
 
-  it('names comments, pictures and tables in the range that would not move, and sorts only when accepted', () => {
+  it('names multi-row pictures and tables in the range that would not move, while comments move with their rows', () => {
     const ed = createSheetEditor(
       people({
         after:
@@ -250,7 +250,7 @@ describe('sort_range', () => {
         ],
         parts: {
           '/xl/drawings/drawing1.xml': {
-            xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from></xdr:oneCellAnchor><xdr:oneCellAnchor><xdr:from><xdr:col>9</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from></xdr:oneCellAnchor></xdr:wsDr>',
+            xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"><xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to></xdr:twoCellAnchor><xdr:oneCellAnchor><xdr:from><xdr:col>9</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from></xdr:oneCellAnchor></xdr:wsDr>',
             type: 'application/vnd.openxmlformats-officedocument.drawing+xml',
           },
           '/xl/tables/table1.xml': {
@@ -274,11 +274,12 @@ describe('sort_range', () => {
     expect(ed.losses(op)).toEqual([
       { feature: 'tables', count: 1 },
       { feature: 'drawings', count: 1 },
-      { feature: 'comments', count: 1 },
     ])
     expect(() => ed.apply(op)).toThrow(XlsxLossError)
     ed.apply(op, { acceptLosses: true })
-    expect(cellsOf(ed.toBytes(), 'Data', 1, 1, 4)).toEqual([10, 20, 30, 40])
+    const out = ed.toBytes()
+    expect(cellsOf(out, 'Data', 1, 1, 4)).toEqual([10, 20, 30, 40])
+    expect(xml(out, 'xl/comments1.xml')).toContain('ref="B2"')
   })
 
   it('is undone as a whole', () => {

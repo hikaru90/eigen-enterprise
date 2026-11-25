@@ -15,6 +15,13 @@
     kept: string | null
     /** The number format can't be shown: the plain value is. */
     unreadFormat: boolean
+    /** Excel 365 IMAGE-in-cell picture URL and alt text. */
+    imageUrl?: string | null
+    imageAlt?: string
+    /** Cell carries a legacy sticky note (red top-right triangle). */
+    hasNote?: boolean
+    /** Cell carries a threaded comment (purple top-right indicator). */
+    thread?: { count: number; resolved: boolean } | null
     bar?: CfLook['bar']
     icon?: CfLook['icon']
     invalid?: boolean
@@ -31,10 +38,9 @@
 <script lang="ts">
   import type { SheetOutline } from './rows-cols'
   import type { SheetData } from './workbook'
-  import type { Snippet } from 'svelte'
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
-  import { onMount, tick } from 'svelte'
+  import { onMount, tick, type Snippet } from 'svelte'
   import { m } from '$lib/paraglide/messages.js'
   import CfIcon from './cf-icon.svelte'
   import { cycleAbsoluteAt, type FormulaRefHighlight } from './formula-edit'
@@ -113,7 +119,9 @@
     onfilter,
     onresize,
     overlay,
-    oncellpointerdown,
+    oncellselect,
+    onnoteopen,
+    oncellhover,
   }: {
     rows: number
     cols: number
@@ -185,19 +193,14 @@
     onfilter?: (col: number, at: DOMRect, row: number) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
-    /** Floating sheet overlay (charts) positioned in sheet pixel space. */
-    overlay?: Snippet<
-      [
-        {
-          colLeft: (c: number) => number
-          rowTop: (r: number) => number
-          maxCol: number
-          maxRow: number
-        },
-      ]
-    >
-    /** Fired when pointer goes down on a cell (used to clear floating object selection). */
-    oncellpointerdown?: () => void
+    /** Floating layer over the main cell pane (`dx`/`dy` are the frozen offsets). */
+    overlay?: Snippet<[{ dx: number; dy: number }]>
+    /** A cell click moved selection back onto the grid. */
+    oncellselect?: () => void
+    /** Clicked a cell's note triangle or comment badge. */
+    onnoteopen?: (pos: Pos, at: DOMRect) => void
+    /** Pointer entered or left an annotated cell (for hover preview). */
+    oncellhover?: (pos: Pos | null, at: DOMRect | null) => void
   } = $props()
 
   const BASE_HEAD_H = 24
@@ -605,7 +608,6 @@
       onpointselect(normalizeRange(p, p), false)
       return
     }
-    oncellpointerdown?.()
     if (editing) finishEdit(true, 'none', false)
     const mr = mergeAt(p.row, p.col)
     const at = mr ? { row: mr.range.top, col: mr.range.left } : p
@@ -633,6 +635,7 @@
       }
     }
     dragging = true
+    oncellselect?.()
     focus()
     event.preventDefault()
   }
@@ -876,6 +879,13 @@
                 ? cell.link.target.url
                 : `#${cell.link.target.location}`
               : undefined}
+            onmouseenter={(e) => {
+              if (cell?.hasNote || cell?.thread)
+                oncellhover?.({ row: r, col: c }, e.currentTarget.getBoundingClientRect())
+            }}
+            onmouseleave={() => {
+              if (cell?.hasNote || cell?.thread) oncellhover?.(null, null)
+            }}
           >
             {#if cell?.bar}
               {@const bar = cell.bar}
@@ -903,6 +913,14 @@
                   '#000000'}; opacity: 0.7; pointer-events: none;"
               ></div>
             {/if}
+            {#if cell?.imageUrl}
+              <img
+                src={cell.imageUrl}
+                alt={cell.imageAlt ?? ''}
+                class="pointer-events-none block h-full w-full object-contain"
+                data-testid="xlsx-cell-image"
+              />
+            {:else}
             <span class="relative block" style="z-index: 1"
               >{#if cell?.icon}<span
                   style="display: inline-flex; vertical-align: middle; margin-right: 4px;"
@@ -911,12 +929,49 @@
                     style={runCss(run)}>{run.text}</span
                   >{/each}{:else}{cell?.text ?? ''}{/if}</span
             >
+            {/if}
             {#if cell?.invalid}
               <div
                 aria-hidden="true"
                 data-testid="xlsx-dv-invalid"
                 style="position: absolute; inset: 1px; border: 2px solid #DC2626; border-radius: 9999px; pointer-events: none; z-index: 2;"
               ></div>
+            {/if}
+            {#if cell?.hasNote}
+              {@const noteLabel = m.drive_sheet_cell_has_note({ ref: `${colName(c)}${r + 1}` })}
+              <button
+                type="button"
+                tabindex="-1"
+                class="g-note-corner"
+                style="right: {fb ? 18 : 0}px;"
+                aria-label={noteLabel}
+                title={noteLabel}
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onnoteopen?.({ row: r, col: c }, e.currentTarget.getBoundingClientRect())
+                }}
+                data-testid="xlsx-note-indicator"
+              ></button>
+            {:else if cell?.thread}
+              {@const threadLabel = m.drive_sheet_cell_has_comments({
+                count: cell.thread.count,
+                ref: `${colName(c)}${r + 1}`,
+              })}
+              <button
+                type="button"
+                tabindex="-1"
+                class="g-thread-corner {cell.thread.resolved ? 'g-thread-resolved' : ''}"
+                style="right: {fb ? 18 : 0}px;"
+                aria-label={threadLabel}
+                title={threadLabel}
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={(e) => {
+                  e.stopPropagation()
+                  onnoteopen?.({ row: r, col: c }, e.currentTarget.getBoundingClientRect())
+                }}
+                data-testid="xlsx-comment-indicator"
+              ></button>
             {/if}
             {#if fb}
               {@const on = filter!.filtered(r, c)}
@@ -1442,24 +1497,9 @@
         role="presentation"
       >
         {@render pane(visibleRows, visibleCols, FW, FH, 'br')}
+        {@render overlay?.({ dx: FW, dy: FH })}
       </div>
     </div>
-    {#if overlay}
-      <div
-        class="g-abs g-ghost g-z6"
-        style="top: {HEAD_H}px; left: {HEAD_W}px; width: {colLefts[cols]!}px; height: {rowTops[
-          rows
-        ]!}px;"
-        role="presentation"
-      >
-        {@render overlay({
-          colLeft: (c) => colLefts[Math.max(0, Math.min(c, cols))]!,
-          rowTop: (r) => rowTops[Math.max(0, Math.min(r, rows))]!,
-          maxCol: cols - 1,
-          maxRow: rows - 1,
-        })}
-      </div>
-    {/if}
   </div>
 </div>
 
@@ -1521,9 +1561,6 @@
     right: 0;
     width: 1px;
   }
-  .g-z6 {
-    z-index: 6;
-  }
   .g-z12 {
     z-index: 12;
   }
@@ -1540,6 +1577,26 @@
     width: 16px;
     height: 16px;
     z-index: 2;
+  }
+  .g-note-corner,
+  .g-thread-corner {
+    position: absolute;
+    top: 0;
+    width: 0;
+    height: 0;
+    padding: 0;
+    border-style: solid;
+    border-width: 0 9px 9px 0;
+    border-color: transparent #dc2626 transparent transparent;
+    background: transparent;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .g-thread-corner {
+    border-color: transparent #7c3aed transparent transparent;
+  }
+  .g-thread-resolved {
+    border-color: transparent #a78bfa transparent transparent;
   }
   .g-rowheads {
     position: sticky;

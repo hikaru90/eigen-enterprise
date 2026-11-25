@@ -11905,6 +11905,340 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "cell": {
+            "description": "A cell address like B3",
+            "maxLength": 10,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "default": "comment",
+            "description": "comment: threaded Excel comment; note: legacy sticky note",
+            "enum": [
+              "comment",
+              "note"
+            ],
+            "type": "string"
+          },
+          "mentions": {
+            "description": "Company member ids to @mention (mapped to the workbook’s persons list)",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 32767,
+            "minLength": 1,
+            "type": "string"
+          },
+          "visible": {
+            "description": "Notes only: keep the yellow note box shown all the time",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cell",
+          "file_id",
+          "sheet",
+          "text"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_comment_add",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "cell": {
+            "description": "Cell address of a legacy note to delete",
+            "maxLength": 10,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "Threaded comment or reply id to delete (deleting the first comment removes the thread)",
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_comment_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "cell": {
+            "description": "Cell address of a legacy note to edit",
+            "maxLength": 10,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "Threaded comment or reply id to edit",
+            "minLength": 1,
+            "type": "string"
+          },
+          "mentions": {
+            "description": "Company member ids to @mention (mapped to the workbook’s persons list)",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 32767,
+            "minLength": 1,
+            "type": "string"
+          },
+          "visible": {
+            "description": "Notes only: toggle always-visible state",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_comment_edit",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet to list; omitted: the first visible sheet",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_comment_list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mentions": {
+            "description": "Company member ids to @mention (mapped to the workbook’s persons list)",
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 32767,
+            "minLength": 1,
+            "type": "string"
+          },
+          "thread": {
+            "description": "The comment thread id (its first comment’s id)",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "text",
+          "thread"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_comment_reply",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resolved": {
+            "default": true,
+            "description": "true to resolve, false to reopen",
+            "type": "boolean"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "thread": {
+            "description": "The comment thread id (its first comment’s id)",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "thread"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_comment_resolve",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "file_id": {
             "minLength": 1,
             "type": "string"
@@ -13672,6 +14006,221 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The object id returned by drive.sheet_read or insert/create",
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_picture_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "alt": {
+            "description": "Alternative text",
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "cell": {
+            "description": "Top-left anchor cell (e.g. B2); cannot be combined with x/y",
+            "maxLength": 10,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "height": {
+            "description": "Height in pixels (defaults proportionally)",
+            "maximum": 20000,
+            "minimum": 1,
+            "type": "number"
+          },
+          "image_base64": {
+            "description": "Base64-encoded PNG, JPEG, GIF or BMP bytes (or data URL)",
+            "minLength": 1,
+            "type": "string"
+          },
+          "image_file_id": {
+            "description": "Drive id of a PNG, JPEG, GIF or BMP image file",
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "width": {
+            "description": "Width in pixels (defaults to image width, scaled to at most 640)",
+            "maximum": 20000,
+            "minimum": 1,
+            "type": "number"
+          },
+          "x": {
+            "description": "Pixels right of column A",
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "y": {
+            "description": "Pixels below row 1",
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_picture_insert",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "alt": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "cell": {
+            "description": "New top-left cell (cannot be combined with x/y)",
+            "maxLength": 10,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "height": {
+            "maximum": 20000,
+            "minimum": 1,
+            "type": "number"
+          },
+          "id": {
+            "description": "The object id returned by drive.sheet_read or insert/create",
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rotation": {
+            "description": "Clockwise rotation in degrees",
+            "type": "number"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "width": {
+            "maximum": 20000,
+            "minimum": 1,
+            "type": "number"
+          },
+          "x": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "y": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_id",
+          "id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_picture_update",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "col_grand_totals": {
             "type": "boolean"
           },
@@ -14670,6 +15219,290 @@
       },
       "module": "drive",
       "name": "drive.sheet_rows_cols",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "alt": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "cell": {
+            "description": "Top-left anchor cell (cannot be combined with x/y)",
+            "maxLength": 10,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "fill": {
+            "anyOf": [
+              {
+                "description": "A hex colour like #4472C4",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fill colour, or null for no fill"
+          },
+          "geometry": {
+            "default": "rect",
+            "description": "DrawingML preset geometry",
+            "enum": [
+              "rect",
+              "roundRect",
+              "ellipse",
+              "triangle",
+              "diamond",
+              "rightArrow",
+              "leftArrow",
+              "upArrow",
+              "downArrow",
+              "line",
+              "arrow"
+            ],
+            "type": "string"
+          },
+          "height": {
+            "default": 80,
+            "maximum": 20000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "description": "A hex colour like #4472C4",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Outline colour, or null for no outline"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 32000,
+            "type": "string"
+          },
+          "textbox": {
+            "description": "True to create a text box instead of a filled shape",
+            "type": "boolean"
+          },
+          "width": {
+            "default": 160,
+            "maximum": 20000,
+            "minimum": 1,
+            "type": "number"
+          },
+          "x": {
+            "description": "Pixels right of column A",
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "y": {
+            "description": "Pixels below row 1",
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_shape_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "id": {
+            "description": "The object id returned by drive.sheet_read or insert/create",
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_shape_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "alt": {
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "cell": {
+            "description": "New top-left cell (cannot be combined with x/y)",
+            "maxLength": 10,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "fill": {
+            "anyOf": [
+              {
+                "description": "A hex colour like #4472C4",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "height": {
+            "maximum": 20000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "id": {
+            "description": "The object id returned by drive.sheet_read or insert/create",
+            "minLength": 1,
+            "type": "string"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "description": "A hex colour like #4472C4",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rotation": {
+            "description": "Clockwise rotation in degrees",
+            "type": "number"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 32000,
+            "type": "string"
+          },
+          "width": {
+            "maximum": 20000,
+            "minimum": 1,
+            "type": "number"
+          },
+          "x": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "y": {
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_id",
+          "id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_shape_update",
       "output": null,
       "permission": {
         "roles": [

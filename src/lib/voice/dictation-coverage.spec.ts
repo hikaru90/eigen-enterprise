@@ -36,6 +36,8 @@ const NO_DICTATION: Record<string, string> = {
   'src/lib/office/xlsx/page-setup-dialog.svelte': 'print area and repeat-row ranges, scale numbers',
   'src/lib/office/xlsx/table-bar.svelte': 'a table name and its cell range',
   'src/lib/office/xlsx/table-dialog.svelte': 'a cell range',
+  'src/lib/office/xlsx/drawing-overlay.svelte':
+    'inline editing of a shape’s text in place that saves on blur: tapping a mic would end the edit (the comment panel takes dictation)',
   'src/lib/office/xlsx/sheet-grid.svelte': 'spreadsheet cells and formulas in a grid',
   'src/lib/office/xlsx/xlsx-editor.svelte': 'the formula bar (cell content and formulas) and sheet-tab names',
   'src/lib/office/pptx/pptx-viewer.svelte':

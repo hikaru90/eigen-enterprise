@@ -316,6 +316,19 @@ const SHEET_ACTION: Record<
   chart_update: { allow: 'objects', what: 'change charts' },
   chart_move: { allow: 'objects', what: 'move charts' },
   chart_delete: { allow: 'objects', what: 'delete charts' },
+  // Pictures, shapes and text boxes are objects too, and so are notes and comments
+  // (Excel's "Edit objects" covers inserting and editing them on a protected sheet).
+  insert_picture: { allow: 'objects', what: 'insert pictures' },
+  insert_shape: { allow: 'objects', what: 'insert shapes or text boxes' },
+  update_drawing: { allow: 'objects', what: 'change pictures or shapes' },
+  delete_drawing: { allow: 'objects', what: 'delete pictures or shapes' },
+  set_note: { allow: 'objects', what: 'add or edit notes' },
+  delete_note: { allow: 'objects', what: 'delete notes' },
+  add_comment: { allow: 'objects', what: 'add comments' },
+  reply_comment: { allow: 'objects', what: 'reply to comments' },
+  edit_comment: { allow: 'objects', what: 'edit comments' },
+  resolve_comment: { allow: 'objects', what: 'resolve or reopen comments' },
+  delete_comment: { allow: 'objects', what: 'delete comments' },
   // Everyday editing (§7.7): pasted, filled, cleared and rich-text cells must be unlocked.
   paste: { cells: (op) => pasteArea(op), what: 'paste into locked cells' },
   fill: { cells: (op) => fillArea(op), what: 'fill locked cells' },
