@@ -2720,6 +2720,12 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "memory.intake": {
+    input: {
+      "limit"?: number
+    }
+    output: unknown
+  }
   "memory.link_text_file": {
     input: {
       "text_file_id": string
@@ -4238,6 +4244,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "memory.get_project_timeline",
   "memory.get_text_file",
   "memory.get_thought",
+  "memory.intake",
   "memory.link_text_file",
   "memory.list_agent_projects",
   "memory.list_archived_thoughts",

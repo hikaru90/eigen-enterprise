@@ -15768,6 +15768,36 @@
         "gated": false,
         "risk": null
       },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "How many of the newest items to list (default 30, at most 100).",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "memory.intake",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
       "auditClass": "mutate",
       "input": {
         "additionalProperties": false,

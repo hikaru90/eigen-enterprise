@@ -2,6 +2,7 @@
   import type { PageData } from './$types'
   import { onMount } from 'svelte'
   import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity'
+  import { resolve } from '$app/paths'
   import { page } from '$app/state'
   import { capture as captureEvent } from '$lib/analytics/posthog-client'
   import {
@@ -321,6 +322,9 @@
     // The server load cannot read the client-side view selection (localStorage), so the
     // prefetched list is unfiltered; this reload makes the shown list follow the view.
     void reloadRecentThoughts()
+    // A link to one thought (What the brain took in, ?thought=<id>) opens it.
+    const linkedThought = page.url.searchParams.get('thought')?.trim()
+    if (linkedThought) void expandThought(linkedThought)
     void fetchEnrichPendingSnapshot().catch(() => {
       // Best-effort: kick the tier-2 worker for pending/stale rows after a reload.
     })
@@ -366,6 +370,13 @@
 >
   <div class="relative z-10 shrink-0 space-y-4 bg-background px-5">
     <TellTheBrain />
+    <a
+      href={resolve('/m/memory/capture/intake')}
+      class="inline-flex rounded-sm text-sm text-muted-foreground underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/60"
+      data-testid="brain-knows-intake-link"
+    >
+      {m.memory_intake_open()}
+    </a>
     {#if groundingQuestion && !groundingQuestionDismissed}
       {#if groundingQuestion.kind === 'relevance'}
         <GroundingQuestionCard
