@@ -169,7 +169,7 @@
           />
         {/if}
         {#if suggestions}
-          <p class="text-xs text-foreground/55">
+          <p class="text-xs text-muted-foreground">
             {suggestions.voice ? m.material_texts_hint() : m.material_texts_no_voice()}
           </p>
           <ol class="flex flex-col gap-2" data-testid="material-variants">
@@ -178,7 +178,7 @@
                 <div class="flex min-w-0 flex-col gap-0.5">
                   <span class="font-medium break-words">{v.headline}</span>
                   {#if v.body}<span class="break-words text-foreground/70">{v.body}</span>{/if}
-                  {#if v.cta}<span class="text-xs text-foreground/55">{v.cta}</span>{/if}
+                  {#if v.cta}<span class="text-xs text-muted-foreground">{v.cta}</span>{/if}
                 </div>
                 <Button
                   size="sm"
@@ -233,7 +233,7 @@
         {/if}
       </div>
       {#if !logoUrl}
-        <p class="text-xs text-foreground/55">{m.material_logo_missing()}</p>
+        <p class="text-xs text-muted-foreground">{m.material_logo_missing()}</p>
       {/if}
 
       <div class="flex flex-col gap-2 border-t border-border pt-4">
@@ -245,7 +245,7 @@
                 ? m.material_download_pdf()
                 : m.material_download_png()}
           </Button>
-          <span class="text-xs text-foreground/55" data-testid="material-export-hint">
+          <span class="text-xs text-muted-foreground" data-testid="material-export-hint">
             {out.kind === 'pdf'
               ? m.material_export_pdf_hint({ size: sizeLabel(format) })
               : m.material_export_png_hint({ width: out.pixelWidth, height: out.pixelHeight })}
