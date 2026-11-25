@@ -935,7 +935,7 @@
   "drive_sheet_loss_charts": "Charts that use these cells: {count} (they keep their old ranges)",
   "drive_sheet_loss_comments": "Comments: {count} (they stay on their old cells)",
   "drive_sheet_loss_controls": "Form controls or embedded objects: {count} (they stay where they are)",
-  "drive_sheet_loss_drawings": "Pictures, charts or shapes on this sheet: {count} (they stay where they are)",
+  "drive_sheet_loss_drawings": "Pictures or shapes on this sheet: {count} (they stay where they are; charts move with their cells)",
   "drive_sheet_loss_extensions": "Newer Excel features such as sparklines: {count} (not moved)",
   "drive_sheet_loss_formulas": "Formulas in other sheets that use it: {count} (they will show #REF!)",
   "drive_sheet_loss_names": "Named ranges that use it: {count} (they will show #REF!)",

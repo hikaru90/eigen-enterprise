@@ -933,7 +933,7 @@
   "drive_sheet_loss_charts": "Diagramme, die diese Zellen verwenden: {count} (sie behalten ihre alten Bereiche)",
   "drive_sheet_loss_comments": "Kommentare: {count} (sie bleiben an ihren alten Zellen)",
   "drive_sheet_loss_controls": "Formularelemente oder eingebettete Objekte: {count} (sie bleiben, wo sie sind)",
-  "drive_sheet_loss_drawings": "Bilder, Diagramme oder Formen auf dieser Tabelle: {count} (sie bleiben, wo sie sind)",
+  "drive_sheet_loss_drawings": "Bilder oder Formen auf dieser Tabelle: {count} (sie bleiben, wo sie sind; Diagramme wandern mit ihren Zellen)",
   "drive_sheet_loss_extensions": "Neuere Excel-Funktionen wie Sparklines: {count} (werden nicht verschoben)",
   "drive_sheet_loss_formulas": "Formeln in anderen Tabellen, die sie verwenden: {count} (sie zeigen dann #BEZUG!)",
   "drive_sheet_loss_names": "Benannte Bereiche, die sie verwenden: {count} (sie zeigen dann #BEZUG!)",
