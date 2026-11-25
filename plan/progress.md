@@ -38,7 +38,12 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - Test DB migrates through 0185; `npm run check` 0 errors; targeted suites green (864 memory/kernel, 837 calendar/kernel).
 - **Not run:** full e2e (release gate). The evals `coworkers.pg` CD06 failure was reported by a subagent as present on main before these changes, not investigated.
 - **Open owner question:** "Dark" leaves the signed-in pages light unless a brand set is active (`marketing-light-theme` in the nucleus layout). Should Dark darken the signed-in app too?
-- **Still running:** the xlsx editing in Drive (owner request).
+- **xlsx editing in Drive** (owner request): an .xlsx opens as an editable grid (sheet tabs, cells, formulas calculated live, number formats, rows/columns/sheets), saved as a new revision through the office edit session. A save over a newer version is refused (base SHA-256).
+  - Tools: `drive.sheet_read`/`sheet_write`/`sheet_structure`; `drive.read` returns workbooks as Markdown tables.
+  - **Decision:** no spreadsheet library owns the file. SpreadsheetML is edited on our lossless OPC layer, so untouched parts stay byte for byte. New MIT deps: `@borgar/fx`, `@formulajs/formulajs` (+ `jstat` MIT, `bessel` Apache-2.0), `numfmt`. HyperFormula (GPL) is excluded.
+  - Formulas it can't calculate (OFFSET, INDIRECT, XLOOKUP, dynamic arrays, LAMBDA/LET, circular references) keep Excel's last value, are marked and are never guessed.
+  - Structure changes that would misplace charts, tables or pictures are refused unless accepted.
+  - Not covered: fonts/fills/borders editing, sort/filter, freeze panes, New spreadsheet button, .xls/.ods, co-editing. Merged, 1126 unit + 185 component tests green on main.
 - **Board:** notes updated on ee-one and cerberusblue; all stay `in_progress` until released and installed.
 
 ## 2026-11-25 — Release v0.5.42 (owner: "Yes, release"; tag on `4d2ad0d2`, GitHub release run 45507898796)
