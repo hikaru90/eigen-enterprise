@@ -18,6 +18,6 @@
 </script>
 
 <span
-  class="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {tone}"
+  class="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium {tone}"
   data-testid="message-status">{STATUS_LABEL[s] ?? status}</span
 >

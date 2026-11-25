@@ -18,7 +18,7 @@
 <div class="mt-8 flex w-full flex-col gap-6">
   <header class="flex flex-col gap-1">
     <h2 class="text-base font-semibold tracking-tight">Brand material</h2>
-    <p class="text-sm text-foreground/55">Reusable pieces in your company's style.</p>
+    <p class="text-sm text-muted-foreground">Reusable pieces in your company's style.</p>
   </header>
 
   {#if !data.style}
@@ -27,7 +27,7 @@
       data-testid="material-empty"
     >
       <h2 class="text-lg font-semibold">Choose a style first</h2>
-      <p class="max-w-sm text-sm text-foreground/55">
+      <p class="max-w-sm text-sm text-muted-foreground">
         Brand material is drawn from your active style.
       </p>
       <Button href="/brand">Choose a style</Button>

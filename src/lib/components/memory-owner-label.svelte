@@ -10,7 +10,7 @@
 </script>
 
 <span
-  class="inline-flex max-w-full items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
+  class="inline-flex max-w-full items-center gap-1 rounded border border-border px-1.5 py-0.5 text-xs leading-none text-muted-foreground"
   title={m.memory_read_only_hint({ name })}
   data-testid="memory-owner-label"
 >

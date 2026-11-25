@@ -43,7 +43,7 @@
               <code class="font-mono text-xs break-all">{r.host}</code>
               <CopyButton value={r.host} label={`Copy host of the ${r.purpose} record`} />
             </div>
-            <p class="mt-1 text-[11px] text-muted-foreground">{r.name}</p>
+            <p class="mt-1 text-xs text-muted-foreground">{r.name}</p>
           </td>
           <td class="px-4 py-3">
             {#if r.value === null}
@@ -58,7 +58,7 @@
                 <CopyButton value={r.value} label={`Copy value of the ${r.purpose} record`} />
               </div>
             {/if}
-            <p class="mt-1 text-[11px] text-muted-foreground">{purpose(r.purpose)}</p>
+            <p class="mt-1 text-xs text-muted-foreground">{purpose(r.purpose)}</p>
           </td>
           <td class="px-4 py-3 text-xs tabular-nums">{r.priority ?? '—'}</td>
           <td class="px-4 py-3"><DnsStatus status={r.status} /></td>

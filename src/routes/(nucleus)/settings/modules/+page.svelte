@@ -70,12 +70,12 @@
         <div class="flex flex-wrap items-center gap-2">
           <h4 class="text-sm font-medium">{plugin.name}</h4>
           <span
-            class="rounded-md border border-border px-1.5 py-0.5 text-[11px] font-medium text-foreground/70"
+            class="rounded-md border border-border px-1.5 py-0.5 text-xs font-medium text-foreground/70"
             data-testid="plugin-origin"
             >{plugin.origin === 'official' ? 'Official' : 'Company'}</span
           >
           <span
-            class={['text-xs', plugin.active ? 'text-foreground/70' : 'text-foreground/50']}
+            class={['text-xs', plugin.active ? 'text-foreground/70' : 'text-muted-foreground']}
             data-testid="plugin-state">{plugin.active ? 'On' : 'Off'}</span
           >
         </div>

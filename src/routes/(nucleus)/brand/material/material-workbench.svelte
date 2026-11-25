@@ -71,7 +71,7 @@
           {/each}
         </div>
       {/if}
-      <p class="text-sm text-foreground/55" data-testid="material-size">
+      <p class="text-sm text-muted-foreground" data-testid="material-size">
         {format.label} · {sizeLabel(format)}
       </p>
       <div class="flex flex-col gap-1.5">

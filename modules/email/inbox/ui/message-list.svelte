@@ -72,7 +72,7 @@
               {#each m.labelIds as id (id)}
                 {@const l = labelById.get(id)}
                 {#if l}
-                  <span class="inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-px text-[11px] text-foreground/80" data-testid="inbox-item-label"
+                  <span class="inline-flex items-center gap-1 rounded-full border border-border px-1.5 py-px text-xs text-foreground/80" data-testid="inbox-item-label"
                     ><span class="size-1.5 rounded-full" style:background={labelDot(l.color)} aria-hidden="true"></span>{l.name}</span
                   >
                 {/if}

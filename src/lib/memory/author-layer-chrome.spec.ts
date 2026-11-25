@@ -28,6 +28,7 @@ describe('author-layer-chrome', () => {
     expect(authorChipClassFor('user')).toBe(authorUserChipClass)
     expect(authorChipClassFor('user', 'sm')).toBe(authorUserChipClassSm)
     expect(authorUserChipClass).toContain('rounded-full')
-    expect(authorUserChipClassSm).toContain('text-[10px]')
+    // The small chip sits at the 13px accessibility floor (page a11y guard).
+    expect(authorUserChipClassSm).toContain('text-xs')
   })
 })

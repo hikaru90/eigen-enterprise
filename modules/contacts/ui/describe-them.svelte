@@ -86,7 +86,7 @@
       aria-invalid={tooLong}
       {placeholder}
       disabled={working}
-      class="min-h-20 w-full resize-y rounded-md border border-input bg-card px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:opacity-60 aria-invalid:border-destructive"
+      class="min-h-20 w-full resize-y rounded-md border border-input bg-card px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60 aria-invalid:border-destructive"
       data-testid="{testid}-text"></textarea>
     {#if tooLong}
       <p class="text-xs text-destructive">

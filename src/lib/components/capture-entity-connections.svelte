@@ -26,7 +26,7 @@
           {#each entities as entity (entity.entityId + ':' + entity.mentionSurface)}
             <li class="rounded-sm border border-border bg-muted/30 px-2.5 py-2">
               <p class="text-foreground">{formatEntityConnection(entity)}</p>
-              <p class="mt-0.5 text-muted-foreground text-[11px]">
+              <p class="mt-0.5 text-muted-foreground text-xs">
                 {formatEntityDecision(entity.decision)}
               </p>
             </li>

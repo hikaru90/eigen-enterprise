@@ -357,7 +357,7 @@
       {:else}
         <div class="space-y-1">
           <p class="text-sm text-muted-foreground">{m.notes_empty()}</p>
-          <p class="text-xs text-muted-foreground/70">{m.notes_empty_hint()}</p>
+          <p class="text-xs text-muted-foreground">{m.notes_empty_hint()}</p>
         </div>
       {/if}
     {:else}
@@ -377,7 +377,7 @@
                     {#if !item.editable}
                       <MemoryOwnerLabel name={item.ownerName} />
                     {:else if item.visibility === 'private'}
-                      <span class="text-[11px] text-muted-foreground"
+                      <span class="text-xs text-muted-foreground"
                         >{m.memory_private_label()}</span
                       >
                     {/if}
@@ -387,7 +387,7 @@
                   </p>
                 </div>
                 <span
-                  class="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground group-hover:text-foreground"
+                  class="flex shrink-0 items-center gap-1 text-xs text-muted-foreground group-hover:text-foreground"
                 >
                   {#if item.editable}
                     <PencilLine class="size-3" aria-hidden="true" />

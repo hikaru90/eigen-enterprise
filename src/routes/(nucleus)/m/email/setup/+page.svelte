@@ -471,7 +471,7 @@
                 </p>
                 <div class="mt-2 flex items-start gap-1">
                   <pre
-                    class="max-h-64 min-w-0 flex-1 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-[11px]"
+                    class="max-h-64 min-w-0 flex-1 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-xs"
                     data-testid="email-receiving-iam">{r.iamPolicy}</pre>
                   <CopyButton value={r.iamPolicy} label="Copy the IAM policy" />
                 </div>
