@@ -40,7 +40,12 @@ const readInput = z
   .object({
     file_id: fileId,
     sheet: sheetName.optional().describe('The sheet to read; omitted: the first visible sheet'),
-    range: z.string().min(2).max(30).optional().describe('Like A1:D20; omitted: the sheet’s used range'),
+    range: z
+      .string()
+      .min(2)
+      .max(30)
+      .optional()
+      .describe('Like A1:D20; omitted: the sheet’s used range'),
   })
   .strict()
 
@@ -53,37 +58,94 @@ const writeInput = z
         z
           .object({
             ref: cellRef,
-            value: cellValue.optional().describe('A number, text or true/false; null or "" clears the content (the format stays)'),
-            formula: z.string().min(1).max(8000).optional().describe('A formula in Excel’s English syntax, e.g. =SUM(B2:B9) or =Sheet2!A1*2'),
-            format: z.string().min(1).max(255).optional().describe('A number format code, e.g. #,##0.00, 0%, yyyy-mm-dd, @ for text'),
+            value: cellValue
+              .optional()
+              .describe(
+                'A number, text or true/false; null or "" clears the content (the format stays)',
+              ),
+            formula: z
+              .string()
+              .min(1)
+              .max(8000)
+              .optional()
+              .describe('A formula in Excel’s English syntax, e.g. =SUM(B2:B9) or =Sheet2!A1*2'),
+            format: z
+              .string()
+              .min(1)
+              .max(255)
+              .optional()
+              .describe('A number format code, e.g. #,##0.00, 0%, yyyy-mm-dd, @ for text'),
           })
           .strict(),
       )
       .max(SHEET_MAX_CELLS)
       .optional(),
     formats: z
-      .array(z.object({ range: z.string().min(2).max(30), format: z.string().min(1).max(255) }).strict())
+      .array(
+        z.object({ range: z.string().min(2).max(30), format: z.string().min(1).max(255) }).strict(),
+      )
       .max(100)
       .optional()
-      .describe('Number formats for whole ranges (e.g. { range: "B2:B40", format: "#,##0.00 [$€-407]" })'),
+      .describe(
+        'Number formats for whole ranges (e.g. { range: "B2:B40", format: "#,##0.00 [$€-407]" })',
+      ),
   })
   .strict()
 
-const column = z.union([z.number().int().min(1), z.string().regex(/^[A-Za-z]{1,3}$/)]).describe('A column letter (C) or number from 1')
+const column = z
+  .union([z.number().int().min(1), z.string().regex(/^[A-Za-z]{1,3}$/)])
+  .describe('A column letter (C) or number from 1')
 const structureChange = z.discriminatedUnion('action', [
   z.object({ action: z.literal('add_sheet'), name: sheetName }).strict(),
   z.object({ action: z.literal('rename_sheet'), sheet: sheetName, name: sheetName }).strict(),
   z.object({ action: z.literal('delete_sheet'), sheet: sheetName }).strict(),
-  z.object({ action: z.literal('insert_rows'), sheet: sheetName, at: z.number().int().min(1).describe('The new rows start at this row number (1 = top)'), count: z.number().int().min(1).max(10_000).default(1) }).strict(),
-  z.object({ action: z.literal('delete_rows'), sheet: sheetName, at: z.number().int().min(1).describe('The first row to delete'), count: z.number().int().min(1).max(10_000).default(1) }).strict(),
-  z.object({ action: z.literal('insert_columns'), sheet: sheetName, at: column, count: z.number().int().min(1).max(1000).default(1) }).strict(),
-  z.object({ action: z.literal('delete_columns'), sheet: sheetName, at: column, count: z.number().int().min(1).max(1000).default(1) }).strict(),
+  z
+    .object({
+      action: z.literal('insert_rows'),
+      sheet: sheetName,
+      at: z.number().int().min(1).describe('The new rows start at this row number (1 = top)'),
+      count: z.number().int().min(1).max(10_000).default(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('delete_rows'),
+      sheet: sheetName,
+      at: z.number().int().min(1).describe('The first row to delete'),
+      count: z.number().int().min(1).max(10_000).default(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('insert_columns'),
+      sheet: sheetName,
+      at: column,
+      count: z.number().int().min(1).max(1000).default(1),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('delete_columns'),
+      sheet: sheetName,
+      at: column,
+      count: z.number().int().min(1).max(1000).default(1),
+    })
+    .strict(),
 ])
 const structureInput = z
   .object({
     file_id: fileId,
-    changes: z.array(structureChange).min(1).max(50).describe('Applied in order, saved as one revision'),
-    accept_losses: z.boolean().optional().describe('Do it even when tables, pivot tables, pictures, charts or comments would be left in the wrong place (the refusal names them)'),
+    changes: z
+      .array(structureChange)
+      .min(1)
+      .max(50)
+      .describe('Applied in order, saved as one revision'),
+    accept_losses: z
+      .boolean()
+      .optional()
+      .describe(
+        'Do it even when tables, pivot tables, pictures, charts or comments would be left in the wrong place (the refusal names them)',
+      ),
   })
   .strict()
 
@@ -113,23 +175,36 @@ async function guarded<T>(lib: Xlsx, work: () => T | Promise<T>): Promise<T> {
   try {
     return await work()
   } catch (err) {
-    if (err instanceof lib.workbook.XlsxError || err instanceof lib.ref.XlsxRefError) throw new DriveError('invalid', err.message, undefined, { cause: err })
-    if (err instanceof lib.opc.OpcError) throw new DriveError('invalid', `The workbook could not be read: ${err.message}`, undefined, { cause: err })
+    if (err instanceof lib.workbook.XlsxError || err instanceof lib.ref.XlsxRefError)
+      throw new DriveError('invalid', err.message, undefined, { cause: err })
+    if (err instanceof lib.opc.OpcError)
+      throw new DriveError('invalid', `The workbook could not be read: ${err.message}`, undefined, {
+        cause: err,
+      })
     throw err
   }
 }
 
 async function openBook(drive: DriveService, ctx: ToolContext, id: string, lib: Xlsx) {
   const { file, bytes } = await drive.readFile(actorOf(ctx), id)
-  if (officeKind(file.name, file.mime) !== 'xlsx') throw new DriveError('invalid', `“${file.name}” is not an Excel workbook (.xlsx).`)
+  if (officeKind(file.name, file.mime) !== 'xlsx')
+    throw new DriveError('invalid', `“${file.name}” is not an Excel workbook (.xlsx).`)
   const editor = await guarded(lib, () => lib.editor.createSheetEditor(bytes))
   return { file, editor, base: createHash('sha256').update(bytes).digest('hex') }
 }
 
 type Saved = { file: ItemView; revision: { id: string; createdAt: Date } }
 
-async function save(drive: DriveService, ctx: ToolContext, id: string, editor: SheetEditor, base: string): Promise<Saved> {
-  const out = await drive.writeBytes(actorOf(ctx), id, editor.toBytes(), undefined, { baseSha256: base })
+async function save(
+  drive: DriveService,
+  ctx: ToolContext,
+  id: string,
+  editor: SheetEditor,
+  base: string,
+): Promise<Saved> {
+  const out = await drive.writeBytes(actorOf(ctx), id, editor.toBytes(), undefined, {
+    baseSha256: base,
+  })
   return { file: out.file, revision: { id: out.revision.id, createdAt: out.revision.createdAt } }
 }
 
@@ -194,10 +269,31 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
         const { file, editor } = await openBook(await service(), ctx, i.file_id, lib)
         return guarded(lib, () => {
           const sheets = lib.read.sheetSummaries(editor)
-          const sheet = i.sheet ?? editor.wb.sheets().find((s) => s.kind === 'worksheet' && s.state === 'visible')?.name
-          if (!sheet) return { file: { id: file.id, name: file.name }, sheets, sheet: null, range: null, cells: [] }
-          const { range, cells } = lib.read.readCells(editor, sheet, i.range ?? null, 'en', SHEET_MAX_CELLS)
-          return { file: { id: file.id, name: file.name }, sheets, sheet: editor.wb.requireWorksheet(sheet).name, range, cells }
+          const sheet =
+            i.sheet ??
+            editor.wb.sheets().find((s) => s.kind === 'worksheet' && s.state === 'visible')?.name
+          if (!sheet)
+            return {
+              file: { id: file.id, name: file.name },
+              sheets,
+              sheet: null,
+              range: null,
+              cells: [],
+            }
+          const { range, cells } = lib.read.readCells(
+            editor,
+            sheet,
+            i.range ?? null,
+            'en',
+            SHEET_MAX_CELLS,
+          )
+          return {
+            file: { id: file.id, name: file.name },
+            sheets,
+            sheet: editor.wb.requireWorksheet(sheet).name,
+            range,
+            cells,
+          }
         })
       },
     },
@@ -210,23 +306,29 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
       activity: (input: z.infer<typeof writeInput>, output: unknown) => {
         const name = nameOf(output)
         const n = (input.cells?.length ?? 0) + (input.formats?.length ?? 0)
-        return name ? `Wrote ${plural(n, 'cell')} in ${input.sheet} of ${name} in Drive` : `Tried to write cells in file ${input.file_id} in Drive`
+        return name
+          ? `Wrote ${plural(n, 'cell')} in ${input.sheet} of ${name} in Drive`
+          : `Tried to write cells in file ${input.file_id} in Drive`
       },
       inputSchema: writeInput,
       permission: { roles: DRIVE_ROLES },
       handler: async (ctx, input) => {
         const i = writeInput.parse(input)
-        if (!i.cells?.length && !i.formats?.length) throw new DriveError('invalid', 'Nothing to write: give cells or formats.')
+        if (!i.cells?.length && !i.formats?.length)
+          throw new DriveError('invalid', 'Nothing to write: give cells or formats.')
         const drive = await service()
         const lib = await xlsx()
         const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
         await guarded(lib, () => {
           if (i.cells?.length) editor.apply({ op: 'set_cells', sheet: i.sheet, cells: i.cells })
-          for (const f of i.formats ?? []) editor.apply({ op: 'set_format', sheet: i.sheet, range: f.range, format: f.format })
+          for (const f of i.formats ?? [])
+            editor.apply({ op: 'set_format', sheet: i.sheet, range: f.range, format: f.format })
         })
         const saved = await save(drive, ctx, i.file_id, editor, base)
         const written = new Set((i.cells ?? []).map((c) => c.ref.toUpperCase().replace(/\$/g, '')))
-        const { cells } = await guarded(lib, () => lib.read.readCells(editor, i.sheet, null, 'en', Number.MAX_SAFE_INTEGER))
+        const { cells } = await guarded(lib, () =>
+          lib.read.readCells(editor, i.sheet, null, 'en', Number.MAX_SAFE_INTEGER),
+        )
         return { ...saved, cells: cells.filter((c) => written.has(c.ref)) }
       },
     },
@@ -240,7 +342,9 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
       activity: (input: z.infer<typeof structureInput>, output: unknown) => {
         const name = nameOf(output)
         const what = input.changes.map(describeChange).join(', ')
-        return name ? `Changed ${name} in Drive: ${what}` : `Tried to change the sheets of file ${input.file_id} in Drive`
+        return name
+          ? `Changed ${name} in Drive: ${what}`
+          : `Tried to change the sheets of file ${input.file_id} in Drive`
       },
       inputSchema: structureInput,
       permission: { roles: DRIVE_ROLES },

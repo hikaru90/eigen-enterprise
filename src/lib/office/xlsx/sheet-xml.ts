@@ -98,19 +98,28 @@ export function ensureCell(doc: XMLDocument, rowEl: Element, row: number, col: n
 
 /** Removes a cell's content (formula, value, inline text, type, value/cell metadata); its format stays. */
 function clearContent(cell: Element) {
-  for (const k of kids(cell, undefined)) if (k.localName === 'f' || k.localName === 'v' || k.localName === 'is') cell.removeChild(k)
+  for (const k of kids(cell, undefined))
+    if (k.localName === 'f' || k.localName === 'v' || k.localName === 'is') cell.removeChild(k)
   cell.removeAttribute('t')
   cell.removeAttribute('cm')
   cell.removeAttribute('vm')
 }
 
 /** Puts `content` into the cell; `style` (a cellXfs index) replaces its format when given. */
-export function writeCell(wb: Workbook, doc: XMLDocument, row: number, col: number, content: CellContent, style?: number) {
+export function writeCell(
+  wb: Workbook,
+  doc: XMLDocument,
+  row: number,
+  col: number,
+  content: CellContent,
+  style?: number,
+) {
   if (content.kind === 'clear') {
     const rowEl = findRow(doc, row)
     const cell = rowEl ? findCell(rowEl, col) : null
     if (!cell) {
-      if (style !== undefined && style !== 0) applyStyle(ensureCell(doc, ensureRow(doc, row), row, col), style)
+      if (style !== undefined && style !== 0)
+        applyStyle(ensureCell(doc, ensureRow(doc, row), row, col), style)
       return
     }
     clearContent(cell)
@@ -136,7 +145,8 @@ export function writeCell(wb: Workbook, doc: XMLDocument, row: number, col: numb
     cell.setAttribute('t', 's')
     v.appendChild(doc.createTextNode(String(wb.sharedStringIndex(value))))
   } else if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new XlsxError(`${cellName({ row, col })}: ${value} is not a number a cell can hold.`)
+    if (!Number.isFinite(value))
+      throw new XlsxError(`${cellName({ row, col })}: ${value} is not a number a cell can hold.`)
     v.appendChild(doc.createTextNode(String(value)))
   } else if (typeof value === 'boolean') {
     cell.setAttribute('t', 'b')
@@ -168,7 +178,10 @@ export function dropEmptyRow(rowEl: Element) {
  * (same meaning), so cells can move or change without the group: `formulaOf`
  * is the expanded text per cell address.
  */
-export function unshareFormulas(doc: XMLDocument, formulaOf: (ref: string) => string | null): boolean {
+export function unshareFormulas(
+  doc: XMLDocument,
+  formulaOf: (ref: string) => string | null,
+): boolean {
   let any = false
   for (const row of kids(sheetDataOf(doc), 'row')) {
     for (const cell of kids(row, 'c')) {

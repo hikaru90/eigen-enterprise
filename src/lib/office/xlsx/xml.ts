@@ -21,8 +21,10 @@ export const REL_STYLES = `${REL}styles`
 export const REL_THEME = `${REL}theme`
 export const REL_CALC_CHAIN = `${REL}calcChain`
 
-export const CT_WORKSHEET = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'
-export const CT_SST = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml'
+export const CT_WORKSHEET =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'
+export const CT_SST =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml'
 
 /** Element children of `el` (optionally only those named `local` in SpreadsheetML main). */
 export function kids(el: Element, local?: string, ns: string = NS_MAIN): Element[] {
@@ -86,7 +88,8 @@ export function setText(doc: XMLDocument, el: Element, text: string) {
   removeAll(el)
   el.appendChild(doc.createTextNode(text))
   // Leading/trailing spaces and line breaks survive only with xml:space="preserve".
-  if (/^\s|\s$|\n/.test(text)) el.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve')
+  if (/^\s|\s$|\n/.test(text))
+    el.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve')
   else el.removeAttributeNS('http://www.w3.org/XML/1998/namespace', 'space')
 }
 

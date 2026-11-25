@@ -9,7 +9,8 @@ import { openWorkbook } from './workbook'
 const parts = (bytes: Uint8Array) => unzipSync(bytes)
 const xml = (bytes: Uint8Array, name: string) => strFromU8(parts(bytes)[name]!)
 const reopen = (bytes: Uint8Array) => openWorkbook(bytes)
-const val = (bytes: Uint8Array, sheet: string, r: number, c: number) => reopen(bytes).sheet(sheet).cells.get(cellKey(r, c))
+const val = (bytes: Uint8Array, sheet: string, r: number, c: number) =>
+  reopen(bytes).sheet(sheet).cells.get(cellKey(r, c))
 
 describe('xlsx editor: round trip', () => {
   it('saves the original bytes when nothing changed', () => {
@@ -20,7 +21,15 @@ describe('xlsx editor: round trip', () => {
   it('edit, save, re-read: values and formulas land; formulas are recalculated and cached; untouched parts stay byte for byte', () => {
     const bytes = budgetBook()
     const ed = createSheetEditor(bytes)
-    ed.apply({ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'B3', value: 450 }, { ref: 'A5', value: 'Note' }, { ref: 'B5', formula: '=B4*2' }] })
+    ed.apply({
+      op: 'set_cells',
+      sheet: 'Budget',
+      cells: [
+        { ref: 'B3', value: 450 },
+        { ref: 'A5', value: 'Note' },
+        { ref: 'B5', formula: '=B4*2' },
+      ],
+    })
     const out = ed.toBytes()
     const s = reopen(out).sheet('Budget')
     expect(s.cells.get(cellKey(2, 1))?.value).toBe(450)
@@ -41,7 +50,14 @@ describe('xlsx editor: round trip', () => {
 
   it('keeps the format of the cells it writes and of every cell it does not', () => {
     const ed = createSheetEditor(budgetBook())
-    ed.apply({ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'B2', value: 999 }, { ref: 'A1', value: 'Thing' }] })
+    ed.apply({
+      op: 'set_cells',
+      sheet: 'Budget',
+      cells: [
+        { ref: 'B2', value: 999 },
+        { ref: 'A1', value: 'Thing' },
+      ],
+    })
     const s = reopen(ed.toBytes()).sheet('Budget')
     expect(s.cells.get(cellKey(1, 1))).toMatchObject({ value: 999, style: 2 })
     expect(s.cells.get(cellKey(0, 0))).toMatchObject({ value: 'Thing', style: 1 })
@@ -52,7 +68,14 @@ describe('xlsx editor: round trip', () => {
 
   it('clearing keeps the cell’s format (like Delete in Excel)', () => {
     const ed = createSheetEditor(budgetBook())
-    ed.apply({ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'B2', value: null }, { ref: 'B3', value: null }] })
+    ed.apply({
+      op: 'set_cells',
+      sheet: 'Budget',
+      cells: [
+        { ref: 'B2', value: null },
+        { ref: 'B3', value: null },
+      ],
+    })
     const s = reopen(ed.toBytes()).sheet('Budget')
     expect(s.cells.get(cellKey(1, 1))).toMatchObject({ value: null, style: 2 })
     expect(s.cells.get(cellKey(2, 1))).toBeUndefined()
@@ -69,17 +92,30 @@ describe('xlsx editor: round trip', () => {
     expect(b2).toMatchObject({ numFmt: '0.00%', fill: '#FFFF00' })
     expect(b3).toMatchObject({ numFmt: '0.00%', fill: null })
     ed.apply({ op: 'set_format', sheet: 'Budget', range: 'C1', format: '0.00%' })
-    expect(ed.wb.sheet('Budget').cells.get(cellKey(0, 2))?.style).toBe(ed.wb.sheet('Budget').cells.get(cellKey(2, 1))?.style)
+    expect(ed.wb.sheet('Budget').cells.get(cellKey(0, 2))?.style).toBe(
+      ed.wb.sheet('Budget').cells.get(cellKey(2, 1))?.style,
+    )
     ed.apply({ op: 'set_format', sheet: 'Budget', range: 'C2', format: 'yyyy-mm-dd' })
-    expect(ed.wb.styles().xf(ed.wb.sheet('Budget').cells.get(cellKey(1, 2))!.style).numFmt).toBe('yyyy-mm-dd')
+    expect(ed.wb.styles().xf(ed.wb.sheet('Budget').cells.get(cellKey(1, 2))!.style).numFmt).toBe(
+      'yyyy-mm-dd',
+    )
   })
 
   it('a typed date gets a date format only when the cell is General', () => {
     const ed = createSheetEditor(budgetBook())
     ed.apply({ op: 'set_format', sheet: 'Budget', range: 'B3', format: '0.0%' })
-    ed.apply({ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'C2', value: 45292, impliedFormat: 'mm-dd-yy' }, { ref: 'B2', value: 0.5, impliedFormat: '0%' }, { ref: 'B3', value: 0.5, impliedFormat: '0%' }] })
+    ed.apply({
+      op: 'set_cells',
+      sheet: 'Budget',
+      cells: [
+        { ref: 'C2', value: 45292, impliedFormat: 'mm-dd-yy' },
+        { ref: 'B2', value: 0.5, impliedFormat: '0%' },
+        { ref: 'B3', value: 0.5, impliedFormat: '0%' },
+      ],
+    })
     const wb = ed.wb
-    const xf = (r: number, c: number) => wb.styles().xf(wb.sheet('Budget').cells.get(cellKey(r, c))!.style)
+    const xf = (r: number, c: number) =>
+      wb.styles().xf(wb.sheet('Budget').cells.get(cellKey(r, c))!.style)
     expect(xf(1, 2).numFmtId).toBe(14)
     expect(xf(1, 1)).toMatchObject({ numFmt: '0%', fill: '#FFFF00' })
     expect(xf(2, 1).numFmt).toBe('0.0%')
@@ -87,7 +123,15 @@ describe('xlsx editor: round trip', () => {
 
   it('writes new text to the shared strings, new formulas with the prefix newer functions need', () => {
     const ed = createSheetEditor(buildXlsx({ sheets: [{ name: 'S' }] }))
-    ed.apply({ op: 'set_cells', sheet: 'S', cells: [{ ref: 'A1', value: 'hi' }, { ref: 'A2', formula: 'CONCAT(A1,"!")' }, { ref: 'A3', value: true }] })
+    ed.apply({
+      op: 'set_cells',
+      sheet: 'S',
+      cells: [
+        { ref: 'A1', value: 'hi' },
+        { ref: 'A2', formula: 'CONCAT(A1,"!")' },
+        { ref: 'A3', value: true },
+      ],
+    })
     const out = ed.toBytes()
     expect(xml(out, 'xl/sharedStrings.xml')).toContain('<t>hi</t>')
     expect(xml(out, 'xl/worksheets/sheet1.xml')).toContain('_xlfn.CONCAT(A1,"!")')
@@ -97,17 +141,35 @@ describe('xlsx editor: round trip', () => {
 
   it('refuses a formula it can’t read, a cell inside a merge, and changes nothing', () => {
     const ed = createSheetEditor(budgetBook())
-    expect(() => ed.apply({ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'A1', value: 'x' }, { ref: 'B1', formula: 'SUM(1,' }] })).toThrow(/can't be read/)
-    expect(() => ed.apply({ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'F1', value: 1 }] })).toThrow(/merged cells E1:F1/)
+    expect(() =>
+      ed.apply({
+        op: 'set_cells',
+        sheet: 'Budget',
+        cells: [
+          { ref: 'A1', value: 'x' },
+          { ref: 'B1', formula: 'SUM(1,' },
+        ],
+      }),
+    ).toThrow(/can't be read/)
+    expect(() =>
+      ed.apply({ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'F1', value: 1 }] }),
+    ).toThrow(/merged cells E1:F1/)
     expect(ed.changed()).toBe(false)
     expect(ed.wb.sheet('Budget').cells.get(cellKey(0, 0))?.value).toBe('Item')
   })
 
   it('a formula it can’t calculate keeps Excel’s last value on save', () => {
-    const ed = createSheetEditor(buildXlsx({ sheets: [{ name: 'S', rows: row(1, num('A1', 1) + fml('B1', 'OFFSET(A1,0,0)', 41)) }] }))
+    const ed = createSheetEditor(
+      buildXlsx({
+        sheets: [{ name: 'S', rows: row(1, num('A1', 1) + fml('B1', 'OFFSET(A1,0,0)', 41)) }],
+      }),
+    )
     ed.apply({ op: 'set_cells', sheet: 'S', cells: [{ ref: 'A1', value: 2 }] })
     expect(val(ed.toBytes(), 'S', 0, 1)).toMatchObject({ value: 41, formula: 'OFFSET(A1,0,0)' })
-    expect(workbookNotes(ed).find((n) => n.kind === 'formulas_kept')).toMatchObject({ count: 1, detail: 'OFFSET' })
+    expect(workbookNotes(ed).find((n) => n.kind === 'formulas_kept')).toMatchObject({
+      count: 1,
+      detail: 'OFFSET',
+    })
   })
 
   it('undoes and redoes whole operations', () => {
@@ -123,7 +185,11 @@ describe('xlsx editor: round trip', () => {
     ed.redo()
     ed.redo()
     expect(ed.wb.sheet('Budget').cells.get(cellKey(1, 1))?.value).toBe(1)
-    expect(reopen(ed.toBytes()).sheets().map((s) => s.name)).toEqual(['Budget', 'Summary', 'Extra'])
+    expect(
+      reopen(ed.toBytes())
+        .sheets()
+        .map((s) => s.name),
+    ).toEqual(['Budget', 'Summary', 'Extra'])
   })
 })
 
@@ -131,16 +197,20 @@ describe('xlsx editor: sheets', () => {
   it('adds a sheet that Excel can open (part, relationship, content type, unique id)', () => {
     const ed = createSheetEditor(budgetBook())
     ed.apply({ op: 'add_sheet', name: 'Q1 plan' })
-    ed.apply({ op: 'set_cells', sheet: 'Q1 plan', cells: [{ ref: 'A1', formula: "Budget!B4+1" }] })
+    ed.apply({ op: 'set_cells', sheet: 'Q1 plan', cells: [{ ref: 'A1', formula: 'Budget!B4+1' }] })
     const out = ed.toBytes()
     expect(xml(out, '[Content_Types].xml')).toContain('/xl/worksheets/sheet3.xml')
-    expect(xml(out, 'xl/workbook.xml')).toMatch(/<sheet name="Q1 plan" sheetId="3" r:id="rId\d+"\/>/)
+    expect(xml(out, 'xl/workbook.xml')).toMatch(
+      /<sheet name="Q1 plan" sheetId="3" r:id="rId\d+"\/>/,
+    )
     expect(val(out, 'Q1 plan', 0, 0)).toMatchObject({ value: 1501 })
   })
 
   it('refuses sheet names Excel refuses', () => {
     const ed = createSheetEditor(budgetBook())
-    expect(() => ed.apply({ op: 'add_sheet', name: 'budget' })).toThrow(/already a sheet called “Budget”/)
+    expect(() => ed.apply({ op: 'add_sheet', name: 'budget' })).toThrow(
+      /already a sheet called “Budget”/,
+    )
     expect(() => ed.apply({ op: 'add_sheet', name: 'a/b' })).toThrow(/can't contain/)
     expect(() => ed.apply({ op: 'add_sheet', name: 'x'.repeat(32) })).toThrow(/31 characters/)
   })
@@ -159,13 +229,19 @@ describe('xlsx editor: sheets', () => {
 
   it('deletes a sheet: formulas that used it read #REF!, its part goes, the last sheet stays', () => {
     const ed = createSheetEditor(budgetBook())
-    expect(ed.losses({ op: 'delete_sheet', sheet: 'Budget' })).toEqual([{ feature: 'formulas_ref_error', count: 2 }, { feature: 'names_ref_error', count: 1 }])
+    expect(ed.losses({ op: 'delete_sheet', sheet: 'Budget' })).toEqual([
+      { feature: 'formulas_ref_error', count: 2 },
+      { feature: 'names_ref_error', count: 1 },
+    ])
     expect(() => ed.apply({ op: 'delete_sheet', sheet: 'Budget' })).toThrow(XlsxLossError)
     ed.apply({ op: 'delete_sheet', sheet: 'Budget' }, { acceptLosses: true })
     const out = ed.toBytes()
     const wb = reopen(out)
     expect(wb.sheets().map((s) => s.name)).toEqual(['Summary'])
-    expect(wb.sheet('Summary').cells.get(cellKey(0, 0))).toMatchObject({ formula: '#REF!*2', value: { error: '#REF!' } })
+    expect(wb.sheet('Summary').cells.get(cellKey(0, 0))).toMatchObject({
+      formula: '#REF!*2',
+      value: { error: '#REF!' },
+    })
     expect(parts(out)['xl/worksheets/sheet1.xml']).toBeUndefined()
     expect(xml(out, '[Content_Types].xml')).not.toContain('sheet1.xml')
     expect(() => ed.apply({ op: 'delete_sheet', sheet: 'Summary' })).toThrow(/at least one sheet/)
@@ -203,7 +279,10 @@ describe('xlsx editor: rows and columns', () => {
     let s = ed.wb.sheet('Budget')
     expect(s.cells.get(cellKey(1, 2))?.value).toBe(1200)
     expect(s.cells.get(cellKey(3, 2))?.formula).toBe('SUM(C2:C3)')
-    expect(s.cols.map((c) => [c.min, c.max])).toEqual([[0, 0], [3, 4]])
+    expect(s.cols.map((c) => [c.min, c.max])).toEqual([
+      [0, 0],
+      [3, 4],
+    ])
     expect(s.merges).toEqual([{ top: 0, left: 5, bottom: 0, right: 6 }])
     ed.apply({ op: 'delete_columns', sheet: 'Budget', at: 0, count: 2 })
     s = ed.wb.sheet('Budget')
@@ -219,16 +298,26 @@ describe('xlsx editor: rows and columns', () => {
           {
             name: 'S',
             rows:
-              row(1, num('A1', 1) + '<c r="B1"><f t="shared" ref="B1:B2" si="0">A1*2</f><v>2</v></c>') +
-              row(2, num('A2', 2) + '<c r="B2"><f t="shared" si="0"/><v>4</v></c>'),
+              row(
+                1,
+                num('A1', 1) + '<c r="B1"><f t="shared" ref="B1:B2" si="0">A1*2</f><v>2</v></c>',
+              ) + row(2, num('A2', 2) + '<c r="B2"><f t="shared" si="0"/><v>4</v></c>'),
           },
         ],
       }),
     )
     ed.apply({ op: 'insert_rows', sheet: 'S', at: 1, count: 1 })
     const s = reopen(ed.toBytes()).sheet('S')
-    expect(s.cells.get(cellKey(0, 1))).toMatchObject({ formula: 'A1*2', formulaType: 'normal', value: 2 })
-    expect(s.cells.get(cellKey(2, 1))).toMatchObject({ formula: 'A3*2', formulaType: 'normal', value: 4 })
+    expect(s.cells.get(cellKey(0, 1))).toMatchObject({
+      formula: 'A1*2',
+      formulaType: 'normal',
+      value: 2,
+    })
+    expect(s.cells.get(cellKey(2, 1))).toMatchObject({
+      formula: 'A3*2',
+      formulaType: 'normal',
+      value: 4,
+    })
   })
 
   it('names what would end up wrong (tables, pictures, comments) and does it only when accepted', () => {
@@ -237,7 +326,8 @@ describe('xlsx editor: rows and columns', () => {
         {
           name: 'S',
           rows: row(1, num('A1', 1)),
-          after: '<drawing r:id="rId1"/><tableParts count="1"><tablePart r:id="rId2"/></tableParts>',
+          after:
+            '<drawing r:id="rId1"/><tableParts count="1"><tablePart r:id="rId2"/></tableParts>',
           rels: [
             { id: 'rId1', type: 'drawing', target: '../drawings/drawing1.xml' },
             { id: 'rId2', type: 'table', target: '../tables/table1.xml' },
@@ -245,13 +335,22 @@ describe('xlsx editor: rows and columns', () => {
         },
       ],
       parts: {
-        '/xl/drawings/drawing1.xml': { xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>', type: 'application/vnd.openxmlformats-officedocument.drawing+xml' },
-        '/xl/tables/table1.xml': { xml: '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="T" displayName="T" ref="A1:A2"/>', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml' },
+        '/xl/drawings/drawing1.xml': {
+          xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>',
+          type: 'application/vnd.openxmlformats-officedocument.drawing+xml',
+        },
+        '/xl/tables/table1.xml': {
+          xml: '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="T" displayName="T" ref="A1:A2"/>',
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml',
+        },
       },
     })
     const ed = createSheetEditor(bytes)
     const op = { op: 'insert_rows', sheet: 'S', at: 0, count: 1 } as const
-    expect(ed.losses(op)).toEqual([{ feature: 'tables', count: 1 }, { feature: 'drawings', count: 1 }])
+    expect(ed.losses(op)).toEqual([
+      { feature: 'tables', count: 1 },
+      { feature: 'drawings', count: 1 },
+    ])
     expect(() => ed.apply(op)).toThrow(XlsxLossError)
     expect(ed.changed()).toBe(false)
     ed.apply(op, { acceptLosses: true })

@@ -70,20 +70,105 @@ export const BUILTIN_NUMFMT: Record<number, string> = {
 
 /** The legacy colour palette (§18.8.27); `<colors><indexedColors>` replaces it. */
 const DEFAULT_INDEXED = [
-  '000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF',
-  '000000', 'FFFFFF', 'FF0000', '00FF00', '0000FF', 'FFFF00', 'FF00FF', '00FFFF',
-  '800000', '008000', '000080', '808000', '800080', '008080', 'C0C0C0', '808080',
-  '9999FF', '993366', 'FFFFCC', 'CCFFFF', '660066', 'FF8080', '0066CC', 'CCCCFF',
-  '000080', 'FF00FF', 'FFFF00', '00FFFF', '800080', '800000', '008080', '0000FF',
-  '00CCFF', 'CCFFFF', 'CCFFCC', 'FFFF99', '99CCFF', 'FF99CC', 'CC99FF', 'FFCC99',
-  '3366FF', '33CCCC', '99CC00', 'FFCC00', 'FF9900', 'FF6600', '666699', '969696',
-  '003366', '339966', '003300', '333300', '993300', '993366', '333399', '333333',
+  '000000',
+  'FFFFFF',
+  'FF0000',
+  '00FF00',
+  '0000FF',
+  'FFFF00',
+  'FF00FF',
+  '00FFFF',
+  '000000',
+  'FFFFFF',
+  'FF0000',
+  '00FF00',
+  '0000FF',
+  'FFFF00',
+  'FF00FF',
+  '00FFFF',
+  '800000',
+  '008000',
+  '000080',
+  '808000',
+  '800080',
+  '008080',
+  'C0C0C0',
+  '808080',
+  '9999FF',
+  '993366',
+  'FFFFCC',
+  'CCFFFF',
+  '660066',
+  'FF8080',
+  '0066CC',
+  'CCCCFF',
+  '000080',
+  'FF00FF',
+  'FFFF00',
+  '00FFFF',
+  '800080',
+  '800000',
+  '008080',
+  '0000FF',
+  '00CCFF',
+  'CCFFFF',
+  'CCFFCC',
+  'FFFF99',
+  '99CCFF',
+  'FF99CC',
+  'CC99FF',
+  'FFCC99',
+  '3366FF',
+  '33CCCC',
+  '99CC00',
+  'FFCC00',
+  'FF9900',
+  'FF6600',
+  '666699',
+  '969696',
+  '003366',
+  '339966',
+  '003300',
+  '333300',
+  '993300',
+  '993366',
+  '333399',
+  '333333',
 ]
 
-const STYLESHEET_ORDER = ['numFmts', 'fonts', 'fills', 'borders', 'cellStyleXfs', 'cellXfs', 'cellStyles', 'dxfs', 'tableStyles', 'colors', 'extLst'] as const
+const STYLESHEET_ORDER = [
+  'numFmts',
+  'fonts',
+  'fills',
+  'borders',
+  'cellStyleXfs',
+  'cellXfs',
+  'cellStyles',
+  'dxfs',
+  'tableStyles',
+  'colors',
+  'extLst',
+] as const
 
-const PLAIN_FONT: FontStyle = { bold: false, italic: false, underline: false, strike: false, color: null, sizePt: null, name: null }
-const GENERAL: CellStyle = { numFmtId: 0, numFmt: 'General', font: PLAIN_FONT, fill: null, horizontal: null, vertical: null, wrap: false, indent: 0 }
+const PLAIN_FONT: FontStyle = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strike: false,
+  color: null,
+  sizePt: null,
+  name: null,
+}
+const GENERAL: CellStyle = {
+  numFmtId: 0,
+  numFmt: 'General',
+  font: PLAIN_FONT,
+  fill: null,
+  horizontal: null,
+  vertical: null,
+  wrap: false,
+  indent: 0,
+}
 
 const flag = (el: Element | null) => {
   if (!el) return false
@@ -99,15 +184,35 @@ function themeColors(theme: XMLDocument | null): string[] {
   const byName = new Map<string, string>()
   for (const el of kids(scheme, undefined)) {
     const c = kids(el, undefined)[0]
-    const hex = c?.getAttribute('val') && c.localName === 'srgbClr' ? c.getAttribute('val') : c?.getAttribute('lastClr')
+    const hex =
+      c?.getAttribute('val') && c.localName === 'srgbClr'
+        ? c.getAttribute('val')
+        : c?.getAttribute('lastClr')
     if (hex) byName.set(el.localName!, hex.toUpperCase())
   }
-  return ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'].map((n) => byName.get(n) ?? '')
+  return [
+    'lt1',
+    'dk1',
+    'lt2',
+    'dk2',
+    'accent1',
+    'accent2',
+    'accent3',
+    'accent4',
+    'accent5',
+    'accent6',
+    'hlink',
+    'folHlink',
+  ].map((n) => byName.get(n) ?? '')
 }
 
 /** Lightens (tint > 0) or darkens (tint < 0) a colour in HSL lightness, as §18.8.19 describes. */
 function applyTint(hex: string, tint: number): string {
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number]
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [
+    number,
+    number,
+    number,
+  ]
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   let h = 0
@@ -135,7 +240,14 @@ function applyTint(hex: string, tint: number): string {
     const p = 2 * l - q
     out = [hue(p, q, h + 1 / 3), hue(p, q, h), hue(p, q, h - 1 / 3)]
   }
-  return out.map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('').toUpperCase()
+  return out
+    .map((v) =>
+      Math.round(Math.max(0, Math.min(1, v)) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')
+    .toUpperCase()
 }
 
 export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): Styles {
@@ -166,7 +278,8 @@ export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): 
   }
   const numFmts = new Map<number, string>()
   const nf = kid(root, 'numFmts')
-  for (const el of nf ? kids(nf, 'numFmt') : []) numFmts.set(Number(el.getAttribute('numFmtId')), el.getAttribute('formatCode') ?? 'General')
+  for (const el of nf ? kids(nf, 'numFmt') : [])
+    numFmts.set(Number(el.getAttribute('numFmtId')), el.getAttribute('formatCode') ?? 'General')
   const fontsEl = kid(root, 'fonts')
   const fonts: FontStyle[] = (fontsEl ? kids(fontsEl, 'font') : []).map((f) => {
     const u = kid(f, 'u')
@@ -230,7 +343,14 @@ export function xfWithNumFmt(doc: XMLDocument, xfIndex: number, code: string): n
   if (!xfsEl) {
     xfsEl = make(doc, 'cellXfs')
     const xf = make(doc, 'xf')
-    for (const [k, v] of [['numFmtId', '0'], ['fontId', '0'], ['fillId', '0'], ['borderId', '0'], ['xfId', '0']]) xf.setAttribute(k!, v!)
+    for (const [k, v] of [
+      ['numFmtId', '0'],
+      ['fontId', '0'],
+      ['fillId', '0'],
+      ['borderId', '0'],
+      ['xfId', '0'],
+    ])
+      xf.setAttribute(k!, v!)
     xfsEl.appendChild(xf)
     insertInOrder(root, xfsEl, STYLESHEET_ORDER)
   }
@@ -258,7 +378,8 @@ function signature(el: Element): string {
   return `${attrs.join(' ')}|${kids(el, undefined)
     .map((k) => {
       const ka: string[] = []
-      for (let i = 0; i < k.attributes.length; i++) ka.push(`${k.attributes[i]!.name}=${k.attributes[i]!.value}`)
+      for (let i = 0; i < k.attributes.length; i++)
+        ka.push(`${k.attributes[i]!.name}=${k.attributes[i]!.value}`)
       return `${k.localName}(${ka.sort().join(' ')})${textOf(k)}`
     })
     .join(',')}`

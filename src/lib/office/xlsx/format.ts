@@ -13,7 +13,10 @@ export type SheetLocale = 'en' | 'de'
 
 /** Built-in format 14 is "the locale's short date" (§18.8.30). */
 const SHORT_DATE: Record<SheetLocale, string> = { en: 'm/d/yyyy', de: 'dd.mm.yyyy' }
-const BOOL: Record<SheetLocale, [string, string]> = { en: ['TRUE', 'FALSE'], de: ['WAHR', 'FALSCH'] }
+const BOOL: Record<SheetLocale, [string, string]> = {
+  en: ['TRUE', 'FALSE'],
+  de: ['WAHR', 'FALSCH'],
+}
 
 export function formatCode(numFmtId: number, code: string, locale: SheetLocale): string {
   return numFmtId === 14 ? SHORT_DATE[locale] : code
@@ -29,7 +32,8 @@ export function displayValue(
   if (value === null) return { text: '', color: null }
   if (isErrorValue(value)) return { text: value.error, color: null }
   if (typeof value === 'boolean') return { text: BOOL[locale][value ? 0 : 1], color: null }
-  const serial = typeof value === 'number' && opts.date1904 && isDateFormat(code) ? value + 1462 : value
+  const serial =
+    typeof value === 'number' && opts.date1904 && isDateFormat(code) ? value + 1462 : value
   try {
     const text = formatNumber(code, serial, { locale, throws: true, nbsp: false, leap1900: true })
     const c = formatColor(code, serial, { throws: false })
@@ -57,7 +61,9 @@ export function parseInput(text: string, locale: SheetLocale): ParsedInput {
   const parsed = parseValue(text.trim(), { locale })
   if (parsed && typeof parsed.value === 'number') {
     const id = parsed.formatId
-    return id === undefined ? { kind: 'value', value: parsed.value } : { kind: 'value', value: parsed.value, format: id === 14 ? 'mm-dd-yy' : builtinCode(id) }
+    return id === undefined
+      ? { kind: 'value', value: parsed.value }
+      : { kind: 'value', value: parsed.value, format: id === 14 ? 'mm-dd-yy' : builtinCode(id) }
   }
   return { kind: 'value', value: text }
 }
@@ -91,7 +97,13 @@ function builtinCode(id: number): string {
 }
 
 /** The text of a cell's content for editing: the formula with "=", or the value in a form `parseInput` reads back. */
-export function editText(value: CellValue, formula: string | null, code: string, locale: SheetLocale, date1904 = false): string {
+export function editText(
+  value: CellValue,
+  formula: string | null,
+  code: string,
+  locale: SheetLocale,
+  date1904 = false,
+): string {
   if (formula !== null) return `=${formula}`
   if (value === null) return ''
   if (isErrorValue(value)) return value.error

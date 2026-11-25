@@ -1,6 +1,6 @@
-import * as F from '@formulajs/formulajs'
 import { parse } from '@borgar/fx'
 import { parseA1Ref } from '@borgar/fx/xlsx'
+import * as F from '@formulajs/formulajs'
 import { format as formatNumber } from 'numfmt'
 import { cellKey, cellName } from './ref'
 import { parseableTokens } from './shift'
@@ -19,7 +19,8 @@ import { isErrorValue, type CellValue, type ErrorValue, type Workbook } from './
  * cached value as it was.
  */
 
-export type Computed = { value: CellValue; kept: false } | { value: CellValue; kept: true; reason: string }
+export type Computed =
+  { value: CellValue; kept: false } | { value: CellValue; kept: true; reason: string }
 
 type Matrix = CellValue[][]
 type RefVal = { ref: { sheet: string; top: number; left: number; bottom: number; right: number } }
@@ -35,7 +36,33 @@ const isRef = (v: Val): v is RefVal => typeof v === 'object' && v !== null && 'r
 const err = (code: string): ErrorValue => ({ error: code })
 
 /** Functions that need the reference itself or that this engine refuses rather than approximate. */
-const REFUSED = new Set(['OFFSET', 'INDIRECT', 'CELL', 'INFO', 'LET', 'LAMBDA', 'GETPIVOTDATA', 'CUBEVALUE', 'CUBEMEMBER', 'RTD', 'WEBSERVICE', 'FILTERXML', 'IMAGE', 'XLOOKUP', 'XMATCH', 'FILTER', 'SEQUENCE', 'RANDARRAY', 'SORTBY', 'MAP', 'REDUCE', 'SCAN', 'BYROW', 'BYCOL', 'MAKEARRAY'])
+const REFUSED = new Set([
+  'OFFSET',
+  'INDIRECT',
+  'CELL',
+  'INFO',
+  'LET',
+  'LAMBDA',
+  'GETPIVOTDATA',
+  'CUBEVALUE',
+  'CUBEMEMBER',
+  'RTD',
+  'WEBSERVICE',
+  'FILTERXML',
+  'IMAGE',
+  'XLOOKUP',
+  'XMATCH',
+  'FILTER',
+  'SEQUENCE',
+  'RANDARRAY',
+  'SORTBY',
+  'MAP',
+  'REDUCE',
+  'SCAN',
+  'BYROW',
+  'BYCOL',
+  'MAKEARRAY',
+])
 
 const FJ_ERRORS = F.utils.errors as Record<string, Error>
 const FJ_BY_CODE = new Map<string, Error>(Object.values(FJ_ERRORS).map((e) => [e.message, e]))
@@ -60,7 +87,9 @@ export function createCalc(wb: Workbook): Calc {
     try {
       node = parse(parseableTokens(formula) as never) as unknown as Node
     } catch (e) {
-      throw new Unsupported(`the formula can't be read (${e instanceof Error ? e.message : String(e)})`)
+      throw new Unsupported(
+        `the formula can't be read (${e instanceof Error ? e.message : String(e)})`,
+      )
     }
     asts.set(formula, node)
     return node
@@ -75,9 +104,14 @@ export function createCalc(wb: Workbook): Calc {
     const data = wb.sheet(info.name).cells.get(cellKey(row, col))
     if (!data) return { value: null, kept: false }
     if (data.formulaType === 'array' || data.formulaType === 'dataTable' || data.inArrayOf)
-      return remember(key, { value: data.value, kept: true, reason: data.formulaType === 'dataTable' ? 'a data table' : 'an array formula' })
+      return remember(key, {
+        value: data.value,
+        kept: true,
+        reason: data.formulaType === 'dataTable' ? 'a data table' : 'an array formula',
+      })
     if (data.formula === null) return remember(key, { value: data.value, kept: false })
-    if (busy.has(key)) throw new Unsupported(`a circular reference (${info.name}!${cellName(data)})`)
+    if (busy.has(key))
+      throw new Unsupported(`a circular reference (${info.name}!${cellName(data)})`)
     busy.add(key)
     try {
       const v = scalar(evalNode(ast(data.formula), info.name, 0))
@@ -102,7 +136,11 @@ export function createCalc(wb: Workbook): Calc {
       const info = wb.findSheet(sheet)!
       const data = wb.sheet(info.name).cells.get(cellKey(row, col))
       // Array and data-table results are what Excel calculated: usable as they are.
-      if (data && (data.formulaType === 'array' || data.formulaType === 'dataTable' || data.inArrayOf)) return c.value
+      if (
+        data &&
+        (data.formulaType === 'array' || data.formulaType === 'dataTable' || data.inArrayOf)
+      )
+        return c.value
       throw new Unsupported(c.reason)
     }
     return c.value
@@ -129,7 +167,17 @@ export function createCalc(wb: Workbook): Calc {
 
   function resolveRef(text: string, home: string): RefVal | CellValue {
     const ref = parseA1Ref(text) as
-      | { workbookName?: string; sheetName?: string; range?: { top: number | null; left: number | null; bottom: number | null; right: number | null }; name?: string }
+      | {
+          workbookName?: string
+          sheetName?: string
+          range?: {
+            top: number | null
+            left: number | null
+            bottom: number | null
+            right: number | null
+          }
+          name?: string
+        }
       | undefined
     if (!ref) throw new Unsupported(`the reference ${text}`)
     if (ref.workbookName) throw new Unsupported('a reference to another workbook')
@@ -183,7 +231,8 @@ export function createCalc(wb: Workbook): Calc {
       case 'BinaryExpression': {
         const op = node.operator as string
         const [l, r] = node.arguments as Node[]
-        if (op === ':' || op === ' ' || op === ',') throw new Unsupported(op === ':' ? 'a computed range' : 'range unions and intersections')
+        if (op === ':' || op === ' ' || op === ',')
+          throw new Unsupported(op === ':' ? 'a computed range' : 'range unions and intersections')
         const a = materialize(evalNode(l!, home, depth))
         const b = materialize(evalNode(r!, home, depth))
         return lift(a, b, (x, y) => binary(op, x, y!))
@@ -191,9 +240,15 @@ export function createCalc(wb: Workbook): Calc {
       case 'CallExpression':
         return call(node, home, depth)
       case 'ArrayExpression':
-        return (node.elements as Node[][]).map((row) => row.map((el) => scalar(evalNode(el, home, depth))))
+        return (node.elements as Node[][]).map((row) =>
+          row.map((el) => scalar(evalNode(el, home, depth))),
+        )
       default:
-        throw new Unsupported(node.type === 'LambdaExpression' || node.type === 'LetExpression' ? 'LAMBDA and LET' : `a ${node.type}`)
+        throw new Unsupported(
+          node.type === 'LambdaExpression' || node.type === 'LetExpression'
+            ? 'LAMBDA and LET'
+            : `a ${node.type}`,
+        )
     }
   }
 
@@ -231,7 +286,8 @@ export function createCalc(wb: Workbook): Calc {
       case 'ROWS':
       case 'COLUMNS': {
         const r = arg(0)
-        if (isRef(r)) return name === 'ROWS' ? r.ref.bottom - r.ref.top + 1 : r.ref.right - r.ref.left + 1
+        if (isRef(r))
+          return name === 'ROWS' ? r.ref.bottom - r.ref.top + 1 : r.ref.right - r.ref.left + 1
         const m = materialize(r)
         if (isErrorValue(m)) return m
         return isMatrix(m) ? (name === 'ROWS' ? m.length : (m[0]?.length ?? 0)) : 1
@@ -284,7 +340,10 @@ function lookupFunction(name: string): ((...a: unknown[]) => unknown) | null {
   const lib = F as unknown as Record<string, unknown>
   let cur: unknown = lib
   for (const part of name.split('.')) {
-    cur = cur && typeof cur === 'object' || typeof cur === 'function' ? (cur as Record<string, unknown>)[part] : undefined
+    cur =
+      (cur && typeof cur === 'object') || typeof cur === 'function'
+        ? (cur as Record<string, unknown>)[part]
+        : undefined
   }
   if (typeof cur === 'function') return cur as (...a: unknown[]) => unknown
   const flat = lib[name.replace(/\./g, '')]
@@ -313,7 +372,15 @@ const scalarOf = (v: Val): CellValue => (Array.isArray(v) ? (v[0]?.[0] ?? null) 
 
 /** A JS date (formulajs builds them in local time) → an Excel serial number. */
 export function dateToSerial(d: Date): number {
-  const utc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds())
+  const utc = Date.UTC(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    d.getMilliseconds(),
+  )
   return utc / 86_400_000 + 25_569
 }
 
@@ -375,7 +442,17 @@ function binary(op: string, a: CellValue, b: CellValue): CellValue {
   }
   if (op === '=' || op === '<>' || op === '<' || op === '>' || op === '<=' || op === '>=') {
     const c = compare(a, b)
-    return op === '=' ? c === 0 : op === '<>' ? c !== 0 : op === '<' ? c < 0 : op === '>' ? c > 0 : op === '<=' ? c <= 0 : c >= 0
+    return op === '='
+      ? c === 0
+      : op === '<>'
+        ? c !== 0
+        : op === '<'
+          ? c < 0
+          : op === '>'
+            ? c > 0
+            : op === '<='
+              ? c <= 0
+              : c >= 0
   }
   const x = toNumber(a)
   const y = toNumber(b)
@@ -400,7 +477,11 @@ function binary(op: string, a: CellValue, b: CellValue): CellValue {
 }
 
 /** Applies an operation element by element when either side is an array (shorter sides repeat when they are 1 wide). */
-function lift(a: CellValue | Matrix, b: CellValue | Matrix | null, f: (x: CellValue, y: CellValue | null) => CellValue): CellValue | Matrix {
+function lift(
+  a: CellValue | Matrix,
+  b: CellValue | Matrix | null,
+  f: (x: CellValue, y: CellValue | null) => CellValue,
+): CellValue | Matrix {
   if (!isMatrix(a) && (b === null || !isMatrix(b))) return f(a, b as CellValue | null)
   const am = isMatrix(a) ? a : [[a]]
   const bm = b === null ? null : isMatrix(b) ? b : [[b]]

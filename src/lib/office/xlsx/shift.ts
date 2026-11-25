@@ -17,14 +17,25 @@ export function translateFormula(text: string, from: string, to: string): string
 }
 
 /** A rectangle with null sides for whole rows/columns (A:A has no top or bottom). */
-export type RefRange = { top: number | null; left: number | null; bottom: number | null; right: number | null }
+export type RefRange = {
+  top: number | null
+  left: number | null
+  bottom: number | null
+  right: number | null
+}
 
 /** What becomes of one reference: a new rectangle, "#REF!" (it was deleted), or null (unchanged). */
 export type RefEdit = (sheet: string, range: RefRange) => RefRange | '#REF!' | null
 
-type ParsedRef = { workbookName?: string; sheetName?: string; range?: RefRange & Record<string, unknown>; name?: string }
+type ParsedRef = {
+  workbookName?: string
+  sheetName?: string
+  range?: RefRange & Record<string, unknown>
+  name?: string
+}
 
-const tokens = (formula: string) => tokenize(formula, { mergeRefs: true }) as Array<{ type: string; value: string }>
+const tokens = (formula: string) =>
+  tokenize(formula, { mergeRefs: true }) as Array<{ type: string; value: string }>
 
 /**
  * Rewrites the cell references of `formula` (written on sheet `home`) with
@@ -32,7 +43,12 @@ const tokens = (formula: string) => tokenize(formula, { mergeRefs: true }) as Ar
  * A deleted reference reads `Sheet!#REF!` (as Excel writes it), or a bare
  * `#REF!` with `bare` (its sheet is gone).
  */
-export function rewriteRefs(formula: string, home: string, edit: RefEdit, opts: { bare?: boolean } = {}): string {
+export function rewriteRefs(
+  formula: string,
+  home: string,
+  edit: RefEdit,
+  opts: { bare?: boolean } = {},
+): string {
   let changed = false
   const out = tokens(formula).map((t) => {
     if (t.type !== 'range' && t.type !== 'range_beam') return t.value
@@ -41,7 +57,8 @@ export function rewriteRefs(formula: string, home: string, edit: RefEdit, opts: 
     const next = edit(ref.sheetName || home, ref.range)
     if (next === null) return t.value
     changed = true
-    if (next === '#REF!') return ref.sheetName && !opts.bare ? `${quoteSheet(ref.sheetName)}!#REF!` : '#REF!'
+    if (next === '#REF!')
+      return ref.sheetName && !opts.bare ? `${quoteSheet(ref.sheetName)}!#REF!` : '#REF!'
     return stringifyA1Ref({ ...ref, range: { ...ref.range, ...next } } as never)
   })
   return changed ? out.join('') : formula
@@ -90,11 +107,18 @@ export function refersTo(formula: string, home: string, name: string): boolean {
 }
 
 export function quoteSheet(name: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_.]*$/.test(name) && !/^[A-Za-z]{1,3}\d+$/.test(name) ? name : `'${name.replace(/'/g, "''")}'`
+  return /^[A-Za-z_][A-Za-z0-9_.]*$/.test(name) && !/^[A-Za-z]{1,3}\d+$/.test(name)
+    ? name
+    : `'${name.replace(/'/g, "''")}'`
 }
 
 /** Inserting `count` rows (axis 'row') or columns at index `at` of sheet `sheet`. */
-export function insertEdit(sheetName: string, axis: 'row' | 'col', at: number, count: number): RefEdit {
+export function insertEdit(
+  sheetName: string,
+  axis: 'row' | 'col',
+  at: number,
+  count: number,
+): RefEdit {
   const key = sheetName.toLowerCase()
   const [lo, hi] = axis === 'row' ? (['top', 'bottom'] as const) : (['left', 'right'] as const)
   const limit = axis === 'row' ? MAX_ROWS : MAX_COLS
@@ -112,7 +136,12 @@ export function insertEdit(sheetName: string, axis: 'row' | 'col', at: number, c
 }
 
 /** Deleting `count` rows/columns from index `at` of sheet `sheet`. */
-export function deleteEdit(sheetName: string, axis: 'row' | 'col', at: number, count: number): RefEdit {
+export function deleteEdit(
+  sheetName: string,
+  axis: 'row' | 'col',
+  at: number,
+  count: number,
+): RefEdit {
   const key = sheetName.toLowerCase()
   const [lo, hi] = axis === 'row' ? (['top', 'bottom'] as const) : (['left', 'right'] as const)
   const end = at + count - 1
@@ -129,7 +158,11 @@ export function deleteEdit(sheetName: string, axis: 'row' | 'col', at: number, c
 }
 
 /** The same edit applied to a plain rectangle (merged cells, hyperlinks, sqref lists): null when it was deleted. */
-export function editRange<T extends { top: number; left: number; bottom: number; right: number }>(r: T, sheet: string, edit: RefEdit): T | null {
+export function editRange<T extends { top: number; left: number; bottom: number; right: number }>(
+  r: T,
+  sheet: string,
+  edit: RefEdit,
+): T | null {
   const next = edit(sheet, r)
   if (next === null) return r
   if (next === '#REF!') return null

@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { delegatedPrincipal } from '$lib/kernel/principals'
-import { openWorkbook } from '$lib/office/xlsx/workbook'
 import { cellKey } from '$lib/office/xlsx/ref'
 import { budgetBook, buildXlsx, num, row } from '$lib/office/xlsx/test-utils/build-xlsx'
+import { openWorkbook } from '$lib/office/xlsx/workbook'
 import { memoryEditLockStore } from './locks'
 import { DRIVE_SHEET_TOOL_NAMES, DRIVE_SHEET_WRITE_TOOLS, DRIVE_TOOL_NAMES } from './manifest'
 import { memoryDriveAccess } from './memory-access'
@@ -26,12 +26,24 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'drive-sheet-tools-'))
   dirs.push(dir)
-  const access = memoryDriveAccess({ users: { alice: { role: 'member' }, bob: { role: 'member' } } })
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 1 << 22, locks: memoryEditLockStore() })
+  const access = memoryDriveAccess({
+    users: { alice: { role: 'member' }, bob: { role: 'member' } },
+  })
+  const drive = createDriveService({
+    store: memoryDriveStore(),
+    blobs: diskBlobStore(dir),
+    access,
+    maxUploadBytes: 1 << 22,
+    locks: memoryEditLockStore(),
+  })
   const tools = createDriveTools({ service: async () => drive })
   const tool = (n: string) => tools.find((t) => t.name === n)!
-  const as = (id: string) => ({ principal: delegatedPrincipal({ id, roles: ['member'] }, 'orchestrator'), requestId: 'r' })
-  const book = async (bytes = budgetBook(), name = 'budget.xlsx') => drive.upload(alice, null, { name, bytes, mime: XLSX }, 'fail')
+  const as = (id: string) => ({
+    principal: delegatedPrincipal({ id, roles: ['member'] }, 'orchestrator'),
+    requestId: 'r',
+  })
+  const book = async (bytes = budgetBook(), name = 'budget.xlsx') =>
+    drive.upload(alice, null, { name, bytes, mime: XLSX }, 'fail')
   const reread = async (id: string) => openWorkbook((await drive.readFile(alice, id)).bytes)
   return { drive, tool, as, book, reread }
 }
@@ -41,13 +53,34 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     const { tool } = await setup()
     for (const name of DRIVE_SHEET_TOOL_NAMES) expect(DRIVE_TOOL_NAMES).toContain(name)
     expect(tool('drive.sheet_read')).toMatchObject({ module: 'drive', auditClass: 'read' })
-    for (const name of DRIVE_SHEET_WRITE_TOOLS) expect(tool(name)).toMatchObject({ module: 'drive', auditClass: 'mutate', approvalRisk: 'internal' })
-    expect(tool('drive.sheet_write').activity!({ file_id: 'f', sheet: 'Budget', cells: [{ ref: 'A1', value: 1 }, { ref: 'A2', value: 2 }] }, { file: { name: 'budget.xlsx' } })).toBe(
-      'Wrote 2 cells in Budget of budget.xlsx in Drive',
-    )
+    for (const name of DRIVE_SHEET_WRITE_TOOLS)
+      expect(tool(name)).toMatchObject({
+        module: 'drive',
+        auditClass: 'mutate',
+        approvalRisk: 'internal',
+      })
+    expect(
+      tool('drive.sheet_write').activity!(
+        {
+          file_id: 'f',
+          sheet: 'Budget',
+          cells: [
+            { ref: 'A1', value: 1 },
+            { ref: 'A2', value: 2 },
+          ],
+        },
+        { file: { name: 'budget.xlsx' } },
+      ),
+    ).toBe('Wrote 2 cells in Budget of budget.xlsx in Drive')
     expect(
       tool('drive.sheet_structure').activity!(
-        { file_id: 'f', changes: [{ action: 'add_sheet', name: 'Q1' }, { action: 'insert_rows', sheet: 'Q1', at: 2, count: 3 }] },
+        {
+          file_id: 'f',
+          changes: [
+            { action: 'add_sheet', name: 'Q1' },
+            { action: 'insert_rows', sheet: 'Q1', at: 2, count: 3 },
+          ],
+        },
         { file: { name: 'budget.xlsx' } },
       ),
     ).toBe('Changed budget.xlsx in Drive: added the sheet Q1, inserted 3 rows in Q1')
@@ -67,9 +100,21 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
       { name: 'Summary', kind: 'sheet', hidden: false, used: 'A1:B1' },
     ])
     expect(out).toMatchObject({ sheet: 'Budget', range: 'A1:D4' })
-    expect(out.cells.find((c) => c.ref === 'B4')).toEqual({ ref: 'B4', value: 1500, formula: '=SUM(B2:B3)', text: '1500' })
-    const part = (await tool('drive.sheet_read').handler(as('alice'), { file_id: f.id, sheet: 'summary', range: 'A1' })) as { sheet: string; cells: unknown[] }
-    expect(part).toMatchObject({ sheet: 'Summary', cells: [{ ref: 'A1', value: 3000, formula: '=Budget!B4*2' }] })
+    expect(out.cells.find((c) => c.ref === 'B4')).toEqual({
+      ref: 'B4',
+      value: 1500,
+      formula: '=SUM(B2:B3)',
+      text: '1500',
+    })
+    const part = (await tool('drive.sheet_read').handler(as('alice'), {
+      file_id: f.id,
+      sheet: 'summary',
+      range: 'A1',
+    })) as { sheet: string; cells: unknown[] }
+    expect(part).toMatchObject({
+      sheet: 'Summary',
+      cells: [{ ref: 'A1', value: 3000, formula: '=Budget!B4*2' }],
+    })
   })
 
   it('drive.sheet_write sets values, formulas and formats, saves a revision, and answers with the calculated cells', async () => {
@@ -78,7 +123,11 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     const out = (await tool('drive.sheet_write').handler(as('alice'), {
       file_id: f.id,
       sheet: 'Budget',
-      cells: [{ ref: 'B3', value: 800 }, { ref: 'B5', formula: '=B4*2' }, { ref: 'C2', value: 0.25, format: '0%' }],
+      cells: [
+        { ref: 'B3', value: 800 },
+        { ref: 'B5', formula: '=B4*2' },
+        { ref: 'C2', value: 0.25, format: '0%' },
+      ],
     })) as { cells: Array<Record<string, unknown>>; revision: { id: string } }
     expect(out.cells).toEqual([
       { ref: 'C2', value: 0.25, text: '25%', format: '0%' },
@@ -106,32 +155,78 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     expect(await drive.listRevisions(alice, f.id)).toHaveLength(2)
     const wb = await reread(f.id)
     expect(wb.sheets().map((s) => s.name)).toEqual(['Money', 'Summary', 'Notes'])
-    expect(wb.sheet('Summary').cells.get(cellKey(0, 0))).toMatchObject({ formula: 'Money!C5*2', value: 3000 })
+    expect(wb.sheet('Summary').cells.get(cellKey(0, 0))).toMatchObject({
+      formula: 'Money!C5*2',
+      value: 3000,
+    })
   })
 
   it('refuses a structure change that would leave tables or pictures behind unless accepted, naming them', async () => {
     const { tool, as, book } = await setup()
     const bytes = buildXlsx({
-      sheets: [{ name: 'S', rows: row(1, num('A1', 1)), after: '<drawing r:id="rId1"/>', rels: [{ id: 'rId1', type: 'drawing', target: '../drawings/drawing1.xml' }] }],
-      parts: { '/xl/drawings/drawing1.xml': { xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>', type: 'application/vnd.openxmlformats-officedocument.drawing+xml' } },
+      sheets: [
+        {
+          name: 'S',
+          rows: row(1, num('A1', 1)),
+          after: '<drawing r:id="rId1"/>',
+          rels: [{ id: 'rId1', type: 'drawing', target: '../drawings/drawing1.xml' }],
+        },
+      ],
+      parts: {
+        '/xl/drawings/drawing1.xml': {
+          xml: '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"/>',
+          type: 'application/vnd.openxmlformats-officedocument.drawing+xml',
+        },
+      },
     })
     const f = await book(bytes, 'pics.xlsx')
-    const change = { file_id: f.id, changes: [{ action: 'insert_rows', sheet: 'S', at: 1, count: 1 }] }
-    await expect(tool('drive.sheet_structure').handler(as('alice'), change)).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/pictures, charts or shapes/) })
-    const ok = (await tool('drive.sheet_structure').handler(as('alice'), { ...change, accept_losses: true })) as { warnings: string[] }
+    const change = {
+      file_id: f.id,
+      changes: [{ action: 'insert_rows', sheet: 'S', at: 1, count: 1 }],
+    }
+    await expect(tool('drive.sheet_structure').handler(as('alice'), change)).rejects.toMatchObject({
+      code: 'invalid',
+      message: expect.stringMatching(/pictures, charts or shapes/),
+    })
+    const ok = (await tool('drive.sheet_structure').handler(as('alice'), {
+      ...change,
+      accept_losses: true,
+    })) as { warnings: string[] }
     expect(ok.warnings).toEqual([expect.stringMatching(/1 × pictures, charts or shapes/)])
   })
 
   it('refuses what is not a workbook, a missing sheet, a formula it can’t read, and a file open in an editor', async () => {
     const { drive, tool, as, book } = await setup()
     const csv = await drive.createDocument(alice, null, 'csv', 'table')
-    await expect(tool('drive.sheet_read').handler(as('alice'), { file_id: csv.id })).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/not an Excel workbook/) })
+    await expect(
+      tool('drive.sheet_read').handler(as('alice'), { file_id: csv.id }),
+    ).rejects.toMatchObject({
+      code: 'invalid',
+      message: expect.stringMatching(/not an Excel workbook/),
+    })
     const f = await book()
-    await expect(tool('drive.sheet_read').handler(as('alice'), { file_id: f.id, sheet: 'Nope' })).rejects.toMatchObject({ code: 'invalid', message: expect.stringMatching(/no sheet called “Nope”/) })
-    await expect(tool('drive.sheet_write').handler(as('alice'), { file_id: f.id, sheet: 'Budget', cells: [{ ref: 'A1', formula: '=SUM(' }] })).rejects.toMatchObject({ code: 'invalid' })
+    await expect(
+      tool('drive.sheet_read').handler(as('alice'), { file_id: f.id, sheet: 'Nope' }),
+    ).rejects.toMatchObject({
+      code: 'invalid',
+      message: expect.stringMatching(/no sheet called “Nope”/),
+    })
+    await expect(
+      tool('drive.sheet_write').handler(as('alice'), {
+        file_id: f.id,
+        sheet: 'Budget',
+        cells: [{ ref: 'A1', formula: '=SUM(' }],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid' })
     await drive.acquireLock(alice, f.id, 'tab-alice-1')
     // Open in an editor (a tab holds the edit lock): the tool waits its turn, it never cuts across.
-    await expect(tool('drive.sheet_write').handler(as('alice'), { file_id: f.id, sheet: 'Budget', cells: [{ ref: 'A1', value: 1 }] })).rejects.toMatchObject({ code: 'locked' })
+    await expect(
+      tool('drive.sheet_write').handler(as('alice'), {
+        file_id: f.id,
+        sheet: 'Budget',
+        cells: [{ ref: 'A1', value: 1 }],
+      }),
+    ).rejects.toMatchObject({ code: 'locked' })
   })
 
   it('never overwrites a save that landed between reading and writing (conflict)', async () => {
@@ -141,18 +236,32 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     // Another save lands right after the tool read the file.
     drive.readFile = async (actor, id) => {
       const got = await real(actor, id)
-      await drive.writeBytes(alice, id, budgetBook({ strings: ['Item', 'Cost', 'Rent', 'Food', 'Changed elsewhere'] }))
+      await drive.writeBytes(
+        alice,
+        id,
+        budgetBook({ strings: ['Item', 'Cost', 'Rent', 'Food', 'Changed elsewhere'] }),
+      )
       return got
     }
-    await expect(tool('drive.sheet_write').handler(as('alice'), { file_id: f.id, sheet: 'Budget', cells: [{ ref: 'B2', value: 1 }] })).rejects.toMatchObject({ code: 'conflict' })
+    await expect(
+      tool('drive.sheet_write').handler(as('alice'), {
+        file_id: f.id,
+        sheet: 'Budget',
+        cells: [{ ref: 'B2', value: 1 }],
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' })
     drive.readFile = real
-    expect((await reread(f.id)).sheet('Budget').cells.get(cellKey(3, 0))?.value).toBe('Changed elsewhere')
+    expect((await reread(f.id)).sheet('Budget').cells.get(cellKey(3, 0))?.value).toBe(
+      'Changed elsewhere',
+    )
   })
 
   it('drive.read gives the workbook as Markdown tables, one per sheet', async () => {
     const { tool, as, book } = await setup()
     const f = await book()
-    const out = (await tool('drive.read').handler(as('alice'), { file_id: f.id })) as { content: string }
+    const out = (await tool('drive.read').handler(as('alice'), { file_id: f.id })) as {
+      content: string
+    }
     expect(out.content).toContain('## Sheet: Budget')
     expect(out.content).toContain('| Rent | 1200 |  |  |')
     expect(out.content).toContain('| Total | 1500 | 125 | 1500 |')

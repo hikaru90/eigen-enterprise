@@ -65,7 +65,9 @@ export function parseRange(text: string): Range | null {
 
 export function rangeName(r: Range): string {
   const a = cellName({ row: r.top, col: r.left })
-  return r.top === r.bottom && r.left === r.right ? a : `${a}:${cellName({ row: r.bottom, col: r.right })}`
+  return r.top === r.bottom && r.left === r.right
+    ? a
+    : `${a}:${cellName({ row: r.bottom, col: r.right })}`
 }
 
 /** A cell address that must be valid (tool input, op input): throws XlsxRefError otherwise. */
@@ -83,4 +85,7 @@ export function requireRange(text: string): Range {
 
 /** One number per cell for map keys (row-major). */
 export const cellKey = (row: number, col: number): number => row * MAX_COLS + col
-export const keyAddr = (key: number): CellAddr => ({ row: Math.floor(key / MAX_COLS), col: key % MAX_COLS })
+export const keyAddr = (key: number): CellAddr => ({
+  row: Math.floor(key / MAX_COLS),
+  col: key % MAX_COLS,
+})

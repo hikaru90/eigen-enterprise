@@ -2,6 +2,8 @@ import { XMLSerializer, type Node as XmldomNode } from '@xmldom/xmldom'
 import { strToU8 } from 'fflate'
 import { readPackage, REL_OFFICE_DOCUMENT, relsPartOf, type OpcPackage } from '../ooxml/package'
 import { cellKey, cellName, parseCell, parseRange, type Range } from './ref'
+import { translateFormula } from './shift'
+import { readStyles, type Styles } from './styles'
 import {
   CT_SST,
   kid,
@@ -18,8 +20,6 @@ import {
   REL_WORKSHEET,
   textOf,
 } from './xml'
-import { readStyles, type Styles } from './styles'
-import { translateFormula } from './shift'
 
 /**
  * An Excel workbook (.xlsx, SpreadsheetML: ECMA-376 Part 1 §18) opened on
@@ -36,7 +36,23 @@ export type ErrorValue = { error: string }
 export type CellValue = number | string | boolean | ErrorValue | null
 
 /** The error values a cell can hold (ECMA-376 Part 1 §18.17.4.3, plus the dynamic-array ones Excel writes). */
-export const ERROR_CODES = ['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A', '#GETTING_DATA', '#SPILL!', '#CALC!', '#FIELD!', '#BLOCKED!', '#CONNECT!', '#BUSY!', '#UNKNOWN!'] as const
+export const ERROR_CODES = [
+  '#NULL!',
+  '#DIV/0!',
+  '#VALUE!',
+  '#REF!',
+  '#NAME?',
+  '#NUM!',
+  '#N/A',
+  '#GETTING_DATA',
+  '#SPILL!',
+  '#CALC!',
+  '#FIELD!',
+  '#BLOCKED!',
+  '#CONNECT!',
+  '#BUSY!',
+  '#UNKNOWN!',
+] as const
 
 export const isErrorValue = (v: unknown): v is ErrorValue =>
   typeof v === 'object' && v !== null && typeof (v as ErrorValue).error === 'string'
@@ -83,7 +99,13 @@ export type CellData = {
   rich: boolean
 }
 
-export type ColInfo = { min: number; max: number; widthPx: number | null; hidden: boolean; style: number | null }
+export type ColInfo = {
+  min: number
+  max: number
+  widthPx: number | null
+  hidden: boolean
+  style: number | null
+}
 export type RowInfo = { heightPx: number | null; hidden: boolean; style: number | null }
 
 export type SheetData = {
@@ -99,7 +121,12 @@ export type SheetData = {
   merges: Range[]
 }
 
-export type DefinedName = { name: string; localSheet: number | null; formula: string; hidden: boolean }
+export type DefinedName = {
+  name: string
+  localSheet: number | null
+  formula: string
+  hidden: boolean
+}
 
 type PartImage = { exists: false } | { exists: true; bytes: Uint8Array; contentType: string }
 export type Images = Map<string, PartImage>
@@ -142,9 +169,13 @@ export class Workbook {
     }
     const root = pkg.xml(part).documentElement!
     if (root.namespaceURI === NS_STRICT)
-      throw new XlsxError('This workbook is saved as “Strict Open XML”, which this editor does not open yet. Save it as a normal Excel workbook (.xlsx).')
+      throw new XlsxError(
+        'This workbook is saved as “Strict Open XML”, which this editor does not open yet. Save it as a normal Excel workbook (.xlsx).',
+      )
     if (root.namespaceURI !== NS_MAIN || root.localName !== 'workbook')
-      throw new XlsxError('This is not an Excel workbook: its main part is not a SpreadsheetML workbook.')
+      throw new XlsxError(
+        'This is not an Excel workbook: its main part is not a SpreadsheetML workbook.',
+      )
     this.part = part
   }
 
@@ -166,9 +197,15 @@ export class Workbook {
     for (const el of sheetsEl ? kids(sheetsEl, 'sheet') : []) {
       const relId = el.getAttributeNS(NS_R, 'id') ?? ''
       const rel = rels.get(relId)
-      if (!rel?.part) throw new XlsxError(`The sheet “${el.getAttribute('name')}” points at a part the workbook does not have.`)
+      if (!rel?.part)
+        throw new XlsxError(
+          `The sheet “${el.getAttribute('name')}” points at a part the workbook does not have.`,
+        )
       const kind = SHEET_REL_KIND[rel.type]
-      if (!kind) throw new XlsxError(`The sheet “${el.getAttribute('name')}” is of an unknown kind (${rel.type}).`)
+      if (!kind)
+        throw new XlsxError(
+          `The sheet “${el.getAttribute('name')}” is of an unknown kind (${rel.type}).`,
+        )
       const state = el.getAttribute('state')
       out.push({
         name: el.getAttribute('name') ?? '',
@@ -193,13 +230,21 @@ export class Workbook {
 
   requireSheet(name: string): SheetInfo {
     const s = this.findSheet(name)
-    if (!s) throw new XlsxError(`This workbook has no sheet called “${name}” (it has ${this.sheets().map((x) => `“${x.name}”`).join(', ')}).`)
+    if (!s)
+      throw new XlsxError(
+        `This workbook has no sheet called “${name}” (it has ${this.sheets()
+          .map((x) => `“${x.name}”`)
+          .join(', ')}).`,
+      )
     return s
   }
 
   requireWorksheet(name: string): SheetInfo {
     const s = this.requireSheet(name)
-    if (s.kind !== 'worksheet') throw new XlsxError(`“${s.name}” is a ${s.kind === 'chartsheet' ? 'chart sheet' : s.kind}, not a sheet of cells.`)
+    if (s.kind !== 'worksheet')
+      throw new XlsxError(
+        `“${s.name}” is a ${s.kind === 'chartsheet' ? 'chart sheet' : s.kind}, not a sheet of cells.`,
+      )
     return s
   }
 
@@ -274,7 +319,8 @@ export class Workbook {
       r = rAttr ? Number(rAttr) - 1 : r + 1
       const ht = rowEl.getAttribute('ht')
       const hidden = rowEl.getAttribute('hidden') === '1' || rowEl.getAttribute('hidden') === 'true'
-      const rowStyle = rowEl.getAttribute('customFormat') === '1' ? Number(rowEl.getAttribute('s') ?? 0) : null
+      const rowStyle =
+        rowEl.getAttribute('customFormat') === '1' ? Number(rowEl.getAttribute('s') ?? 0) : null
       if (ht || hidden || rowStyle !== null)
         rows.set(r, { heightPx: ht ? ptToPx(Number(ht)) : null, hidden, style: rowStyle })
       let c = -1
@@ -290,7 +336,8 @@ export class Workbook {
           if (t === 'shared') {
             const si = f.getAttribute('si') ?? ''
             const text = textOf(f)
-            if (f.getAttribute('ref') !== null && text !== '') shared.set(si, { anchor: cellName({ row, col: c }), text })
+            if (f.getAttribute('ref') !== null && text !== '')
+              shared.set(si, { anchor: cellName({ row, col: c }), text })
             else {
               sharedKids.push(cell)
               sharedSi.set(cell, si)
@@ -308,13 +355,22 @@ export class Workbook {
     }
     for (const cell of sharedKids) {
       const g = shared.get(sharedSi.get(cell)!)
-      if (!g) throw new XlsxError(`${info.name}!${cellName(cell)} uses a shared formula the sheet does not define.`)
+      if (!g)
+        throw new XlsxError(
+          `${info.name}!${cellName(cell)} uses a shared formula the sheet does not define.`,
+        )
       cell.formula = translateFormula(g.text, g.anchor, cellName(cell))
     }
     for (const range of arrays) {
       for (const cell of cells.values()) {
         if (cell.formulaRef) continue
-        if (cell.row >= range.top && cell.row <= range.bottom && cell.col >= range.left && cell.col <= range.right) cell.inArrayOf = range
+        if (
+          cell.row >= range.top &&
+          cell.row <= range.bottom &&
+          cell.col >= range.left &&
+          cell.col <= range.right
+        )
+          cell.inArrayOf = range
       }
     }
     const fmt = kid(root, 'sheetFormatPr')
@@ -345,7 +401,11 @@ export class Workbook {
       maxCol,
       cols,
       rows,
-      defaultColPx: defW ? widthToPx(Number(defW)) : baseW ? widthToPx(Number(baseW) + 0.71) : DEFAULT_COL_PX,
+      defaultColPx: defW
+        ? widthToPx(Number(defW))
+        : baseW
+          ? widthToPx(Number(baseW) + 0.71)
+          : DEFAULT_COL_PX,
       defaultRowPx: defH ? ptToPx(Number(defH)) : DEFAULT_ROW_PX,
       merges,
     }
@@ -393,7 +453,8 @@ export class Workbook {
   end(): { before: Images; after: Images } {
     const before = this.before
     if (!before) throw new Error('xlsx: no transaction is open')
-    for (const part of this.dirtyDocs) if (this.pkg.has(part)) this.pkg.setXml(part, this.pkg.xml(part))
+    for (const part of this.dirtyDocs)
+      if (this.pkg.has(part)) this.pkg.setXml(part, this.pkg.xml(part))
     this.dirtyDocs.clear()
     this.before = null
     const after: Images = new Map()
@@ -422,7 +483,9 @@ export class Workbook {
 
   private imageOf(part: string): PartImage {
     if (!this.pkg.has(part)) return { exists: false }
-    const bytes = this.dirtyDocs.has(part) ? strToU8(serializeDoc(this.pkg.xml(part))) : this.pkg.bytes(part)
+    const bytes = this.dirtyDocs.has(part)
+      ? strToU8(serializeDoc(this.pkg.xml(part)))
+      : this.pkg.bytes(part)
     return { exists: true, bytes, contentType: this.pkg.contentType(part) }
   }
 
@@ -441,7 +504,13 @@ export class Workbook {
     if (!part) {
       part = '/xl/sharedStrings.xml'
       for (let n = 2; this.pkg.has(part); n++) part = `/xl/sharedStrings${n}.xml`
-      this.write(part, strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="${NS_MAIN}" count="0" uniqueCount="0"/>`), CT_SST)
+      this.write(
+        part,
+        strToU8(
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="${NS_MAIN}" count="0" uniqueCount="0"/>`,
+        ),
+        CT_SST,
+      )
       this.touch(relsPartOf(this.part))
       this.pkg.addRelationship(this.part, REL_SST, relativeTarget(this.part, part))
     }
@@ -455,7 +524,8 @@ export class Workbook {
     const si = doc.createElementNS(NS_MAIN, root.prefix ? `${root.prefix}:si` : 'si')
     const t = doc.createElementNS(NS_MAIN, root.prefix ? `${root.prefix}:t` : 't')
     t.appendChild(doc.createTextNode(text))
-    if (/^\s|\s$|\n/.test(text)) t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve')
+    if (/^\s|\s$|\n/.test(text))
+      t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve')
     si.appendChild(t)
     root.appendChild(si)
     root.setAttribute('uniqueCount', String(items.length + 1))
@@ -477,7 +547,8 @@ export function openWorkbook(bytes: Uint8Array): Workbook {
 }
 
 /** Same serializer as the package (xmldom): the image of a part changed in place. */
-const serializeDoc = (doc: XMLDocument) => new XMLSerializer().serializeToString(doc as unknown as XmldomNode)
+const serializeDoc = (doc: XMLDocument) =>
+  new XMLSerializer().serializeToString(doc as unknown as XmldomNode)
 
 /** A relationship target from `source`'s folder to `part` (both absolute part names). */
 export function relativeTarget(source: string, part: string): string {
@@ -506,7 +577,10 @@ function readCell(cEl: Element, row: number, col: number, sst: string[]): CellDa
   if (t === 's') {
     if (v !== null) {
       const i = Number(v)
-      if (!Number.isInteger(i) || i < 0 || i >= sst.length) throw new XlsxError(`Cell ${cellName({ row, col })} points at shared string ${v}, which the workbook does not have.`)
+      if (!Number.isInteger(i) || i < 0 || i >= sst.length)
+        throw new XlsxError(
+          `Cell ${cellName({ row, col })} points at shared string ${v}, which the workbook does not have.`,
+        )
       value = sst[i]!
     }
   } else if (t === 'inlineStr') {
@@ -519,11 +593,16 @@ function readCell(cEl: Element, row: number, col: number, sst: string[]): CellDa
   else if (t === 'd') value = v === null ? null : isoToSerial(v)
   else if (v !== null && v !== '') {
     const n = Number(v)
-    if (!Number.isFinite(n)) throw new XlsxError(`Cell ${cellName({ row, col })} holds “${v}”, which is not a number.`)
+    if (!Number.isFinite(n))
+      throw new XlsxError(`Cell ${cellName({ row, col })} holds “${v}”, which is not a number.`)
     value = n
   }
   const ft = f?.getAttribute('t') as FormulaType | null
-  const formulaType: FormulaType | null = f ? (ft === 'shared' || ft === 'array' || ft === 'dataTable' ? ft : 'normal') : null
+  const formulaType: FormulaType | null = f
+    ? ft === 'shared' || ft === 'array' || ft === 'dataTable'
+      ? ft
+      : 'normal'
+    : null
   const fRef = f?.getAttribute('ref')
   return {
     row,
@@ -531,7 +610,8 @@ function readCell(cEl: Element, row: number, col: number, sst: string[]): CellDa
     value,
     formula: f && textOf(f) !== '' ? textOf(f) : null,
     formulaType,
-    formulaRef: (formulaType === 'array' || formulaType === 'dataTable') && fRef ? parseRange(fRef) : null,
+    formulaRef:
+      (formulaType === 'array' || formulaType === 'dataTable') && fRef ? parseRange(fRef) : null,
     inArrayOf: null,
     style: Number(cEl.getAttribute('s') ?? 0),
     rich,
@@ -544,4 +624,3 @@ function isoToSerial(iso: string): number {
   if (Number.isNaN(ms)) throw new XlsxError(`“${iso}” is not a date.`)
   return ms / 86_400_000 + 25_569
 }
-

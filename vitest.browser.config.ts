@@ -66,8 +66,9 @@ export default defineConfig({
     holdUntilCrawlEnd: false,
     exclude: ['vitest-browser-svelte', '@testing-library/svelte-core', 'svelte'],
     // CommonJS packages components import (noDiscovery: they must be listed):
-    // the office viewers (@xmldom/xmldom), the CSV grid (papaparse).
-    include: ['@xmldom/xmldom', 'papaparse'],
+    // the office viewers (@xmldom/xmldom), the CSV grid (papaparse), the
+    // spreadsheet's formula functions (@formulajs/formulajs pulls in jstat and bessel).
+    include: ['@xmldom/xmldom', 'papaparse', '@formulajs/formulajs'],
   },
   test: {
     name: 'components',

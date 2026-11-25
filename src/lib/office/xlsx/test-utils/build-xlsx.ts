@@ -35,14 +35,20 @@ export type BookSpec = {
 }
 
 /** A cell: `c('A1', 5)`, `c('B1', 'text')` (shared string index given), `f('C1', 'A1+B1', 7)`. */
-export const num = (ref: string, v: number, s?: number) => `<c r="${ref}"${s ? ` s="${s}"` : ''}><v>${v}</v></c>`
-export const str = (ref: string, index: number, s?: number) => `<c r="${ref}" t="s"${s ? ` s="${s}"` : ''}><v>${index}</v></c>`
+export const num = (ref: string, v: number, s?: number) =>
+  `<c r="${ref}"${s ? ` s="${s}"` : ''}><v>${v}</v></c>`
+export const str = (ref: string, index: number, s?: number) =>
+  `<c r="${ref}" t="s"${s ? ` s="${s}"` : ''}><v>${index}</v></c>`
 export const fml = (ref: string, formula: string, cached?: number | string, s?: number) =>
   `<c r="${ref}"${typeof cached === 'string' ? ' t="str"' : ''}${s ? ` s="${s}"` : ''}><f>${esc(formula)}</f>${cached !== undefined ? `<v>${esc(String(cached))}</v>` : ''}</c>`
 export const row = (r: number, cells: string, attrs = '') => `<row r="${r}"${attrs}>${cells}</row>`
 
 export function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 /** Styles: xf 0 plain; 1 bold font; 2 yellow fill; 3 custom format "0.0%"; 4 date (built-in 14). */
@@ -65,9 +71,15 @@ export function buildXlsx(spec: BookSpec): Uint8Array {
     files[`xl/worksheets/sheet${n}.xml`] = strToU8(
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="${NS}" xmlns:r="${R}"><dimension ref="A1"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/>${s.before ?? ''}<sheetData>${s.rows ?? ''}</sheetData>${s.after ?? ''}<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>`,
     )
-    overrides.push(`<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
-    wbRels.push(`<Relationship Id="rId${n}" Type="${REL}worksheet" Target="worksheets/sheet${n}.xml"/>`)
-    sheetEls.push(`<sheet name="${esc(s.name)}" sheetId="${n}"${s.state ? ` state="${s.state}"` : ''} r:id="rId${n}"/>`)
+    overrides.push(
+      `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+    )
+    wbRels.push(
+      `<Relationship Id="rId${n}" Type="${REL}worksheet" Target="worksheets/sheet${n}.xml"/>`,
+    )
+    sheetEls.push(
+      `<sheet name="${esc(s.name)}" sheetId="${n}"${s.state ? ` state="${s.state}"` : ''} r:id="rId${n}"/>`,
+    )
     if (s.rels?.length)
       files[`xl/worksheets/_rels/sheet${n}.xml.rels`] = strToU8(
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${s.rels.map((r) => `<Relationship Id="${r.id}" Type="${r.type.startsWith('http') ? r.type : REL + r.type}" Target="${r.target}"/>`).join('')}</Relationships>`,
@@ -78,20 +90,30 @@ export function buildXlsx(spec: BookSpec): Uint8Array {
   files['xl/theme/theme1.xml'] = strToU8(THEME)
   if (!spec.noStyles) {
     wbRels.push(`<Relationship Id="rId${k + 2}" Type="${REL}styles" Target="styles.xml"/>`)
-    overrides.push(`<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`)
+    overrides.push(
+      `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`,
+    )
     files['xl/styles.xml'] = strToU8(STYLES)
   }
   if (spec.strings) {
-    wbRels.push(`<Relationship Id="rId${k + 3}" Type="${REL}sharedStrings" Target="sharedStrings.xml"/>`)
-    overrides.push(`<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>`)
+    wbRels.push(
+      `<Relationship Id="rId${k + 3}" Type="${REL}sharedStrings" Target="sharedStrings.xml"/>`,
+    )
+    overrides.push(
+      `<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>`,
+    )
     files['xl/sharedStrings.xml'] = strToU8(
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="${NS}" count="${spec.strings.length}" uniqueCount="${spec.strings.length}">${spec.strings.map((t) => (t.startsWith('<') ? `<si>${t}</si>` : `<si><t>${esc(t)}</t></si>`)).join('')}</sst>`,
     )
   }
   if (spec.calcChain) {
     wbRels.push(`<Relationship Id="rId${k + 4}" Type="${REL}calcChain" Target="calcChain.xml"/>`)
-    overrides.push(`<Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/>`)
-    files['xl/calcChain.xml'] = strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<calcChain xmlns="${NS}"><c r="C1" i="1"/></calcChain>`)
+    overrides.push(
+      `<Override PartName="/xl/calcChain.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.calcChain+xml"/>`,
+    )
+    files['xl/calcChain.xml'] = strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<calcChain xmlns="${NS}"><c r="C1" i="1"/></calcChain>`,
+    )
   }
   for (const [name, p] of Object.entries(spec.parts ?? {})) {
     files[name.replace(/^\//, '')] = strToU8(p.xml)
@@ -121,12 +143,19 @@ export function budgetBook(extra: Partial<BookSpec> = {}): Uint8Array {
     sheets: [
       {
         name: 'Budget',
-        before: '<cols><col min="1" max="1" width="20" customWidth="1"/><col min="3" max="4" width="12" customWidth="1"/></cols>',
+        before:
+          '<cols><col min="1" max="1" width="20" customWidth="1"/><col min="3" max="4" width="12" customWidth="1"/></cols>',
         rows:
           row(1, str('A1', 0, 1) + str('B1', 1, 1)) +
           row(2, str('A2', 2) + num('B2', 1200, 2)) +
           row(3, str('A3', 3) + num('B3', 300)) +
-          row(4, str('A4', 4, 1) + fml('B4', 'SUM(B2:B3)', 1500) + fml('C4', 'B4/12', 125) + fml('D4', 'SUM(Costs)', 1500)),
+          row(
+            4,
+            str('A4', 4, 1) +
+              fml('B4', 'SUM(B2:B3)', 1500) +
+              fml('C4', 'B4/12', 125) +
+              fml('D4', 'SUM(Costs)', 1500),
+          ),
         after: '<mergeCells count="1"><mergeCell ref="E1:F1"/></mergeCells>',
       },
       {

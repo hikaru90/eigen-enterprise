@@ -28,7 +28,8 @@ export type SheetEditor = {
 type Step = { before: Images; after: Images; result: OpResult }
 
 export function createSheetEditor(bytes: Uint8Array): SheetEditor {
-  if (!hasOfficeSignature('xlsx', bytes)) throw new XlsxError('This is not an Excel workbook (.xlsx): it is not a ZIP package.')
+  if (!hasOfficeSignature('xlsx', bytes))
+    throw new XlsxError('This is not an Excel workbook (.xlsx): it is not a ZIP package.')
   const wb = openWorkbook(bytes)
   const done: Step[] = []
   const undone: Step[] = []
@@ -84,7 +85,21 @@ export function createSheetEditor(bytes: Uint8Array): SheetEditor {
 }
 
 /** What the workbook has that the grid does not show (kept as it is on save), by kind. */
-export type WorkbookNote = { kind: 'charts' | 'drawings' | 'pivot_tables' | 'comments' | 'tables' | 'conditional_formats' | 'data_validations' | 'hidden_sheets' | 'chart_sheets' | 'formulas_kept'; count: number; detail?: string }
+export type WorkbookNote = {
+  kind:
+    | 'charts'
+    | 'drawings'
+    | 'pivot_tables'
+    | 'comments'
+    | 'tables'
+    | 'conditional_formats'
+    | 'data_validations'
+    | 'hidden_sheets'
+    | 'chart_sheets'
+    | 'formulas_kept'
+  count: number
+  detail?: string
+}
 
 export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
   const { wb } = ed
@@ -93,7 +108,11 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
     if (count > 0) out.push(detail ? { kind, count, detail } : { kind, count })
   }
   const types = wb.pkg.partNames().map((p) => wb.pkg.contentType(p))
-  add('charts', types.filter((t) => t === 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml').length)
+  add(
+    'charts',
+    types.filter((t) => t === 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml')
+      .length,
+  )
   let drawings = 0
   let pivots = 0
   let comments = 0
@@ -120,17 +139,31 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
     }
   }
   // A drawing only of charts already counts as charts.
-  const chartOnly = wb.pkg.partNames().filter((p) => wb.pkg.contentType(p) === 'application/vnd.openxmlformats-officedocument.drawing+xml' && all(wb.pkg.xml(p), 'chart', NS_CHART).length > 0 && wb.pkg.relationships(p).every((r) => r.type === `${REL}chart`)).length
+  const chartOnly = wb.pkg
+    .partNames()
+    .filter(
+      (p) =>
+        wb.pkg.contentType(p) === 'application/vnd.openxmlformats-officedocument.drawing+xml' &&
+        all(wb.pkg.xml(p), 'chart', NS_CHART).length > 0 &&
+        wb.pkg.relationships(p).every((r) => r.type === `${REL}chart`),
+    ).length
   add('drawings', drawings - chartOnly)
   add('pivot_tables', pivots)
   add('comments', comments)
   add('tables', tables)
   add('conditional_formats', cf)
   add('data_validations', dv)
-  add('hidden_sheets', wb.sheets().filter((s) => s.state !== 'visible').length, wb.sheets().filter((s) => s.state !== 'visible').map((s) => s.name).join(', '))
+  add(
+    'hidden_sheets',
+    wb.sheets().filter((s) => s.state !== 'visible').length,
+    wb
+      .sheets()
+      .filter((s) => s.state !== 'visible')
+      .map((s) => s.name)
+      .join(', '),
+  )
   add('chart_sheets', wb.sheets().filter((s) => s.kind !== 'worksheet').length)
   const keptTotal = [...kept.values()].reduce((a, b) => a + b, 0)
   add('formulas_kept', keptTotal, [...kept.keys()].slice(0, 6).join(', '))
   return out
 }
-

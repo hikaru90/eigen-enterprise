@@ -29,7 +29,12 @@ export type ReadCell = {
 export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
   return ed.wb.sheets().map((s) => {
     const used = s.kind === 'worksheet' ? usedRange(ed, s.name) : null
-    return { name: s.name, kind: s.kind === 'worksheet' ? 'sheet' : s.kind, hidden: s.state !== 'visible', used: used ? rangeName(used) : null }
+    return {
+      name: s.name,
+      kind: s.kind === 'worksheet' ? 'sheet' : s.kind,
+      hidden: s.state !== 'visible',
+      used: used ? rangeName(used) : null,
+    }
   })
 }
 
@@ -39,7 +44,13 @@ export function usedRange(ed: SheetEditor, sheet: string): Range | null {
 }
 
 /** The non-empty cells of `range` (null: the used range), row by row. At most `max` cells; a larger range is refused, never cut. */
-export function readCells(ed: SheetEditor, sheet: string, rangeText: string | null, locale: SheetLocale, max: number): { range: string | null; cells: ReadCell[] } {
+export function readCells(
+  ed: SheetEditor,
+  sheet: string,
+  rangeText: string | null,
+  locale: SheetLocale,
+  max: number,
+): { range: string | null; cells: ReadCell[] } {
   const info = ed.wb.requireWorksheet(sheet)
   const range = rangeText ? requireRange(rangeText) : usedRange(ed, info.name)
   if (!range) return { range: null, cells: [] }
@@ -47,16 +58,30 @@ export function readCells(ed: SheetEditor, sheet: string, rangeText: string | nu
   const styles = ed.wb.styles()
   const calc = ed.calc()
   const picked = [...data.cells.values()]
-    .filter((c) => c.row >= range.top && c.row <= range.bottom && c.col >= range.left && c.col <= range.right && (c.value !== null || c.formula !== null))
+    .filter(
+      (c) =>
+        c.row >= range.top &&
+        c.row <= range.bottom &&
+        c.col >= range.left &&
+        c.col <= range.right &&
+        (c.value !== null || c.formula !== null),
+    )
     .sort((a, b) => a.row - b.row || a.col - b.col)
-  if (picked.length > max) throw new XlsxError(`${info.name}!${rangeName(range)} has ${picked.length} filled cells; read at most ${max} at a time (ask for a smaller range).`)
+  if (picked.length > max)
+    throw new XlsxError(
+      `${info.name}!${rangeName(range)} has ${picked.length} filled cells; read at most ${max} at a time (ask for a smaller range).`,
+    )
   return {
     range: rangeName(range),
     cells: picked.map((c) => {
       const out = calc.cell(info.name, c.row, c.col)
       const st = styles.xf(c.style)
       const code = formatCode(st.numFmtId, st.numFmt, locale)
-      const cell: ReadCell = { ref: cellName(c), value: out.value, text: displayValue(out.value, code, locale, { date1904: ed.wb.date1904 }).text }
+      const cell: ReadCell = {
+        ref: cellName(c),
+        value: out.value,
+        text: displayValue(out.value, code, locale, { date1904: ed.wb.date1904 }).text,
+      }
       if (c.formula !== null) cell.formula = `=${toShownFormula(c.formula)}`
       if (st.numFmt !== 'General') cell.format = st.numFmt
       if (out.kept) cell.kept = out.reason
@@ -66,7 +91,12 @@ export function readCells(ed: SheetEditor, sheet: string, rangeText: string | nu
 }
 
 /** The shown text of every cell of `range` (null: the used range) as rows, for tables. */
-export function sheetValues(ed: SheetEditor, sheet: string, rangeText: string | null, locale: SheetLocale): { range: string | null; rows: string[][] } {
+export function sheetValues(
+  ed: SheetEditor,
+  sheet: string,
+  rangeText: string | null,
+  locale: SheetLocale,
+): { range: string | null; rows: string[][] } {
   const info = ed.wb.requireWorksheet(sheet)
   const range = rangeText ? requireRange(rangeText) : usedRange(ed, info.name)
   if (!range) return { range: null, rows: [] }
@@ -84,7 +114,13 @@ export function sheetValues(ed: SheetEditor, sheet: string, rangeText: string | 
       }
       const v = calc.cell(info.name, r, c).value
       const st = styles.xf(cell.style)
-      row.push(isErrorValue(v) ? v.error : displayValue(v, formatCode(st.numFmtId, st.numFmt, locale), locale, { date1904: ed.wb.date1904 }).text)
+      row.push(
+        isErrorValue(v)
+          ? v.error
+          : displayValue(v, formatCode(st.numFmtId, st.numFmt, locale), locale, {
+              date1904: ed.wb.date1904,
+            }).text,
+      )
     }
     rows.push(row)
   }

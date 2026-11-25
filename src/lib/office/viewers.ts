@@ -42,4 +42,5 @@ export const OFFICE_VIEWERS: Partial<Record<OfficeKind, () => Promise<OfficeView
   pdf: () => import('./pdf/pdf-viewer.svelte'),
   docx: () => import('./docx/docx-viewer.svelte'),
   pptx: () => import('./pptx/pptx-viewer.svelte'),
+  xlsx: () => import('./xlsx/xlsx-editor.svelte'),
 }

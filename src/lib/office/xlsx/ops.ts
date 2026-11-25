@@ -2,12 +2,62 @@ import { parse } from '@borgar/fx'
 import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
-import { cellKey, cellName, colName, MAX_COLS, MAX_ROWS, parseRange, rangeName, requireCell, requireRange, type Range } from './ref'
-import { deleteEdit, editRange, insertEdit, parseableTokens, refersTo, renameSheetRefs, rewriteRefs, type RefEdit } from './shift'
-import { dropEmptyRow, normalizeRefs, setDimension, sheetDataOf, unshareFormulas, writeCell, type CellContent } from './sheet-xml'
+import {
+  cellKey,
+  cellName,
+  colName,
+  MAX_COLS,
+  MAX_ROWS,
+  parseRange,
+  rangeName,
+  requireCell,
+  requireRange,
+  type Range,
+} from './ref'
+import {
+  dropEmptyRow,
+  normalizeRefs,
+  setDimension,
+  sheetDataOf,
+  unshareFormulas,
+  writeCell,
+  type CellContent,
+} from './sheet-xml'
+import {
+  deleteEdit,
+  editRange,
+  insertEdit,
+  parseableTokens,
+  refersTo,
+  renameSheetRefs,
+  rewriteRefs,
+  type RefEdit,
+} from './shift'
 import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
-import { relativeTarget, XlsxError, type CellValue, type SheetInfo, type Workbook } from './workbook'
-import { all, CT_WORKSHEET, insertInOrder, kid, kids, make, NS_CHART, NS_MAIN, NS_R, REL, REL_STYLES, REL_WORKSHEET, setText, textOf, WORKBOOK_ORDER } from './xml'
+import {
+  relativeTarget,
+  XlsxError,
+  type CellValue,
+  type SheetInfo,
+  type Workbook,
+} from './workbook'
+import {
+  all,
+  CT_WORKSHEET,
+  insertInOrder,
+  kid,
+  kids,
+  make,
+  NS_CHART,
+  NS_MAIN,
+  NS_R,
+  REL,
+  REL_STYLES,
+  REL_WORKSHEET,
+  setText,
+  textOf,
+  WORKBOOK_ORDER,
+} from './xml'
 
 /**
  * Changes to a workbook as serializable operations — the grid in the Drive
@@ -41,7 +91,12 @@ export type SheetOp =
   | { op: 'rename_sheet'; sheet: string; name: string }
   | { op: 'delete_sheet'; sheet: string }
   /** `at`: the first row/column index (from 0) that moves (insert) or goes (delete). */
-  | { op: 'insert_rows' | 'delete_rows' | 'insert_columns' | 'delete_columns'; sheet: string; at: number; count: number }
+  | {
+      op: 'insert_rows' | 'delete_rows' | 'insert_columns' | 'delete_columns'
+      sheet: string
+      at: number
+      count: number
+    }
 
 /** A feature that would end up wrong after an operation (what, and how many). */
 export type Loss = { feature: LossFeature; count: number; detail?: string }
@@ -60,7 +115,9 @@ export type LossFeature =
 
 export class XlsxLossError extends XlsxError {
   constructor(readonly losses: Loss[]) {
-    super(`This change would leave parts of the workbook wrong: ${losses.map(describeLoss).join('; ')}. Accept the losses to do it anyway.`)
+    super(
+      `This change would leave parts of the workbook wrong: ${losses.map(describeLoss).join('; ')}. Accept the losses to do it anyway.`,
+    )
     this.name = 'XlsxLossError'
   }
 }
@@ -79,19 +136,141 @@ const LOSS_TEXT: Record<LossFeature, string> = {
   names_ref_error: 'defined names that use it (they will show #REF!)',
 }
 
-export const describeLoss = (l: Loss) => `${l.count} × ${LOSS_TEXT[l.feature]}${l.detail ? ` (${l.detail})` : ''}`
+export const describeLoss = (l: Loss) =>
+  `${l.count} × ${LOSS_TEXT[l.feature]}${l.detail ? ` (${l.detail})` : ''}`
 
 /** Functions newer than Excel 2007 are written with the `_xlfn.` prefix (ECMA-376 Part 1 §18.17.7 future functions). */
 const FUTURE_FUNCTIONS = new Set([
-  'ACOT', 'ACOTH', 'AGGREGATE', 'ARABIC', 'BASE', 'BETA.DIST', 'BETA.INV', 'BINOM.DIST', 'BINOM.DIST.RANGE', 'BINOM.INV', 'BITAND', 'BITLSHIFT', 'BITOR', 'BITRSHIFT', 'BITXOR',
-  'CEILING.MATH', 'CEILING.PRECISE', 'CHISQ.DIST', 'CHISQ.DIST.RT', 'CHISQ.INV', 'CHISQ.INV.RT', 'CHISQ.TEST', 'CHOOSECOLS', 'CHOOSEROWS', 'COMBINA', 'CONCAT', 'CONFIDENCE.NORM',
-  'CONFIDENCE.T', 'COT', 'COTH', 'COVARIANCE.P', 'COVARIANCE.S', 'CSC', 'CSCH', 'DAYS', 'DECIMAL', 'DROP', 'ERF.PRECISE', 'ERFC.PRECISE', 'EXPAND', 'EXPON.DIST', 'F.DIST', 'F.DIST.RT',
-  'F.INV', 'F.INV.RT', 'F.TEST', 'FILTER', 'FLOOR.MATH', 'FLOOR.PRECISE', 'FORECAST.LINEAR', 'GAMMA', 'GAMMA.DIST', 'GAMMA.INV', 'GAMMALN.PRECISE', 'GAUSS', 'HSTACK', 'HYPGEOM.DIST',
-  'IFNA', 'IFS', 'IMCOSH', 'IMCOT', 'IMCSC', 'IMCSCH', 'IMSEC', 'IMSECH', 'IMSINH', 'IMTAN', 'ISOWEEKNUM', 'LET', 'LOGNORM.DIST', 'LOGNORM.INV', 'MAXIFS', 'MINIFS', 'MODE.MULT',
-  'MODE.SNGL', 'MUNIT', 'NEGBINOM.DIST', 'NORM.DIST', 'NORM.INV', 'NORM.S.DIST', 'NORM.S.INV', 'NUMBERVALUE', 'PDURATION', 'PERCENTILE.EXC', 'PERCENTILE.INC', 'PERCENTRANK.EXC',
-  'PERCENTRANK.INC', 'PERMUTATIONA', 'PHI', 'POISSON.DIST', 'QUARTILE.EXC', 'QUARTILE.INC', 'RANDARRAY', 'RANK.AVG', 'RANK.EQ', 'RRI', 'SEC', 'SECH', 'SEQUENCE', 'SHEET', 'SHEETS',
-  'SKEW.P', 'SORT', 'SORTBY', 'STDEV.P', 'STDEV.S', 'SWITCH', 'T.DIST', 'T.DIST.2T', 'T.DIST.RT', 'T.INV', 'T.INV.2T', 'T.TEST', 'TAKE', 'TEXTJOIN', 'TOCOL', 'TOROW', 'UNICHAR',
-  'UNICODE', 'UNIQUE', 'VAR.P', 'VAR.S', 'VSTACK', 'WEIBULL.DIST', 'WRAPCOLS', 'WRAPROWS', 'XLOOKUP', 'XMATCH', 'XOR', 'Z.TEST',
+  'ACOT',
+  'ACOTH',
+  'AGGREGATE',
+  'ARABIC',
+  'BASE',
+  'BETA.DIST',
+  'BETA.INV',
+  'BINOM.DIST',
+  'BINOM.DIST.RANGE',
+  'BINOM.INV',
+  'BITAND',
+  'BITLSHIFT',
+  'BITOR',
+  'BITRSHIFT',
+  'BITXOR',
+  'CEILING.MATH',
+  'CEILING.PRECISE',
+  'CHISQ.DIST',
+  'CHISQ.DIST.RT',
+  'CHISQ.INV',
+  'CHISQ.INV.RT',
+  'CHISQ.TEST',
+  'CHOOSECOLS',
+  'CHOOSEROWS',
+  'COMBINA',
+  'CONCAT',
+  'CONFIDENCE.NORM',
+  'CONFIDENCE.T',
+  'COT',
+  'COTH',
+  'COVARIANCE.P',
+  'COVARIANCE.S',
+  'CSC',
+  'CSCH',
+  'DAYS',
+  'DECIMAL',
+  'DROP',
+  'ERF.PRECISE',
+  'ERFC.PRECISE',
+  'EXPAND',
+  'EXPON.DIST',
+  'F.DIST',
+  'F.DIST.RT',
+  'F.INV',
+  'F.INV.RT',
+  'F.TEST',
+  'FILTER',
+  'FLOOR.MATH',
+  'FLOOR.PRECISE',
+  'FORECAST.LINEAR',
+  'GAMMA',
+  'GAMMA.DIST',
+  'GAMMA.INV',
+  'GAMMALN.PRECISE',
+  'GAUSS',
+  'HSTACK',
+  'HYPGEOM.DIST',
+  'IFNA',
+  'IFS',
+  'IMCOSH',
+  'IMCOT',
+  'IMCSC',
+  'IMCSCH',
+  'IMSEC',
+  'IMSECH',
+  'IMSINH',
+  'IMTAN',
+  'ISOWEEKNUM',
+  'LET',
+  'LOGNORM.DIST',
+  'LOGNORM.INV',
+  'MAXIFS',
+  'MINIFS',
+  'MODE.MULT',
+  'MODE.SNGL',
+  'MUNIT',
+  'NEGBINOM.DIST',
+  'NORM.DIST',
+  'NORM.INV',
+  'NORM.S.DIST',
+  'NORM.S.INV',
+  'NUMBERVALUE',
+  'PDURATION',
+  'PERCENTILE.EXC',
+  'PERCENTILE.INC',
+  'PERCENTRANK.EXC',
+  'PERCENTRANK.INC',
+  'PERMUTATIONA',
+  'PHI',
+  'POISSON.DIST',
+  'QUARTILE.EXC',
+  'QUARTILE.INC',
+  'RANDARRAY',
+  'RANK.AVG',
+  'RANK.EQ',
+  'RRI',
+  'SEC',
+  'SECH',
+  'SEQUENCE',
+  'SHEET',
+  'SHEETS',
+  'SKEW.P',
+  'SORT',
+  'SORTBY',
+  'STDEV.P',
+  'STDEV.S',
+  'SWITCH',
+  'T.DIST',
+  'T.DIST.2T',
+  'T.DIST.RT',
+  'T.INV',
+  'T.INV.2T',
+  'T.TEST',
+  'TAKE',
+  'TEXTJOIN',
+  'TOCOL',
+  'TOROW',
+  'UNICHAR',
+  'UNICODE',
+  'UNIQUE',
+  'VAR.P',
+  'VAR.S',
+  'VSTACK',
+  'WEIBULL.DIST',
+  'WRAPCOLS',
+  'WRAPROWS',
+  'XLOOKUP',
+  'XMATCH',
+  'XOR',
+  'Z.TEST',
 ])
 
 type FxToken = { type: string; value: string }
@@ -106,9 +285,17 @@ export function toFileFormula(input: string, where: string): string {
     toks = fxTokens(text)
     parse(parseableTokens(text) as never)
   } catch (e) {
-    throw new XlsxError(`${where}: the formula “=${text}” can't be read (${e instanceof Error ? e.message : String(e)}).`)
+    throw new XlsxError(
+      `${where}: the formula “=${text}” can't be read (${e instanceof Error ? e.message : String(e)}).`,
+    )
   }
-  return toks.map((t) => (t.type === 'func' && FUTURE_FUNCTIONS.has(t.value.toUpperCase()) ? `_xlfn.${t.value}` : t.value)).join('')
+  return toks
+    .map((t) =>
+      t.type === 'func' && FUTURE_FUNCTIONS.has(t.value.toUpperCase())
+        ? `_xlfn.${t.value}`
+        : t.value,
+    )
+    .join('')
 }
 
 /** A formula as the file writes it → as people read it (no `_xlfn.` prefixes). */
@@ -116,7 +303,9 @@ export function toShownFormula(formula: string): string {
   if (!/_xl(fn|ws)\./i.test(formula)) return formula
   try {
     return fxTokens(formula)
-      .map((t) => (t.type === 'func' ? t.value.replace(/^_xlfn\.(_xlws\.)?|^_xlws\./i, '') : t.value))
+      .map((t) =>
+        t.type === 'func' ? t.value.replace(/^_xlfn\.(_xlws\.)?|^_xlws\./i, '') : t.value,
+      )
       .join('')
   } catch {
     return formula
@@ -129,12 +318,17 @@ const SHEET_NAME_BAD = /[\\/?*[\]:]/
 export function checkSheetName(wb: Workbook, name: string, except?: SheetInfo): string {
   const n = name.trim()
   if (n === '') throw new XlsxError('A sheet needs a name.')
-  if (n.length > 31) throw new XlsxError(`“${n}” is longer than the 31 characters a sheet name can have.`)
-  if (SHEET_NAME_BAD.test(n)) throw new XlsxError(`“${n}”: a sheet name can't contain \\ / ? * [ ] or :.`)
-  if (n.startsWith("'") || n.endsWith("'")) throw new XlsxError(`“${n}”: a sheet name can't start or end with an apostrophe.`)
-  if (n.toLowerCase() === 'history') throw new XlsxError('“History” is a name Excel keeps for itself.')
+  if (n.length > 31)
+    throw new XlsxError(`“${n}” is longer than the 31 characters a sheet name can have.`)
+  if (SHEET_NAME_BAD.test(n))
+    throw new XlsxError(`“${n}”: a sheet name can't contain \\ / ? * [ ] or :.`)
+  if (n.startsWith("'") || n.endsWith("'"))
+    throw new XlsxError(`“${n}”: a sheet name can't start or end with an apostrophe.`)
+  if (n.toLowerCase() === 'history')
+    throw new XlsxError('“History” is a name Excel keeps for itself.')
   const clash = wb.findSheet(n)
-  if (clash && clash !== except && clash.part !== except?.part) throw new XlsxError(`There is already a sheet called “${clash.name}”.`)
+  if (clash && clash !== except && clash.part !== except?.part)
+    throw new XlsxError(`There is already a sheet called “${clash.name}”.`)
   return n
 }
 
@@ -150,7 +344,10 @@ const relIs = (type: string, name: string) => type === `${REL}${name}` || type.e
 function chartParts(wb: Workbook): string[] {
   return wb.pkg.partNames().filter((p) => {
     try {
-      return wb.pkg.contentType(p) === 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml'
+      return (
+        wb.pkg.contentType(p) ===
+        'application/vnd.openxmlformats-officedocument.drawingml.chart+xml'
+      )
     } catch {
       return false
     }
@@ -160,7 +357,10 @@ function chartParts(wb: Workbook): string[] {
 function pivotCacheParts(wb: Workbook): string[] {
   return wb.pkg.partNames().filter((p) => {
     try {
-      return wb.pkg.contentType(p) === 'application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml'
+      return (
+        wb.pkg.contentType(p) ===
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml'
+      )
     } catch {
       return false
     }
@@ -169,12 +369,18 @@ function pivotCacheParts(wb: Workbook): string[] {
 
 /** Charts anywhere whose series formulas (`c:f`) read sheet `name`. */
 function chartsUsing(wb: Workbook, name: string): number {
-  return chartParts(wb).filter((p) => all(wb.pkg.xml(p), 'f', NS_CHART).some((f) => refersTo(textOf(f), name, name))).length
+  return chartParts(wb).filter((p) =>
+    all(wb.pkg.xml(p), 'f', NS_CHART).some((f) => refersTo(textOf(f), name, name)),
+  ).length
 }
 
 function pivotSourcesUsing(wb: Workbook, name: string): number {
   const key = name.toLowerCase()
-  return pivotCacheParts(wb).filter((p) => all(wb.pkg.xml(p), 'worksheetSource').some((s) => (s.getAttribute('sheet') ?? '').toLowerCase() === key)).length
+  return pivotCacheParts(wb).filter((p) =>
+    all(wb.pkg.xml(p), 'worksheetSource').some(
+      (s) => (s.getAttribute('sheet') ?? '').toLowerCase() === key,
+    ),
+  ).length
 }
 
 /** What moving cells on `info` would leave behind. */
@@ -212,10 +418,18 @@ export function lossesOf(wb: Workbook, op: SheetOp): Loss[] {
       let formulas = 0
       for (const s of wb.sheets()) {
         if (s.kind !== 'worksheet' || s.part === info.part) continue
-        for (const c of wb.sheet(s.name).cells.values()) if (c.formula && refersTo(c.formula, s.name, info.name)) formulas++
+        for (const c of wb.sheet(s.name).cells.values())
+          if (c.formula && refersTo(c.formula, s.name, info.name)) formulas++
       }
       if (formulas) out.push({ feature: 'formulas_ref_error', count: formulas })
-      const names = wb.definedNames().filter((n) => n.localSheet !== info.index && refersTo(n.formula, info.name, info.name) && formulaHasSheet(n.formula, info.name)).length
+      const names = wb
+        .definedNames()
+        .filter(
+          (n) =>
+            n.localSheet !== info.index &&
+            refersTo(n.formula, info.name, info.name) &&
+            formulaHasSheet(n.formula, info.name),
+        ).length
       if (names) out.push({ feature: 'names_ref_error', count: names })
       const charts = chartsUsing(wb, info.name) - chartsOwnedBy(wb, info)
       if (charts > 0) out.push({ feature: 'charts', count: charts })
@@ -235,7 +449,11 @@ function formulaHasSheet(formula: string, name: string): boolean {
 
 function chartsOwnedBy(wb: Workbook, info: SheetInfo): number {
   const charts = new Set(chartParts(wb))
-  return [...reachableFrom(wb, info.part)].filter((p) => charts.has(p) && all(wb.pkg.xml(p), 'f', NS_CHART).some((f) => refersTo(textOf(f), info.name, info.name))).length
+  return [...reachableFrom(wb, info.part)].filter(
+    (p) =>
+      charts.has(p) &&
+      all(wb.pkg.xml(p), 'f', NS_CHART).some((f) => refersTo(textOf(f), info.name, info.name)),
+  ).length
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +467,11 @@ export type OpResult = {
 }
 
 /** Applies one operation in a transaction; throws (and changes nothing) when it can't, or when it has losses not accepted. */
-export function applyOp(wb: Workbook, op: SheetOp, opts: { acceptLosses?: boolean } = {}): { result: OpResult; images: ReturnType<Workbook['end']> } {
+export function applyOp(
+  wb: Workbook,
+  op: SheetOp,
+  opts: { acceptLosses?: boolean } = {},
+): { result: OpResult; images: ReturnType<Workbook['end']> } {
   if (!opts.acceptLosses) {
     const losses = lossesOf(wb, op)
     if (losses.length > 0) throw new XlsxLossError(losses)
@@ -295,7 +517,11 @@ function stylesDoc(wb: Workbook): XMLDocument {
   let part = wb.stylesPart()
   if (!part) {
     part = '/xl/styles.xml'
-    wb.write(part, strToU8(MINIMAL_STYLES), 'application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml')
+    wb.write(
+      part,
+      strToU8(MINIMAL_STYLES),
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml',
+    )
     wb.touch(relsPartOf(wb.part))
     wb.pkg.addRelationship(wb.part, REL_STYLES, relativeTarget(wb.part, part))
   }
@@ -317,29 +543,46 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
     const where = `${info.name}!${cellName(addr)}`
     const given = [w.value !== undefined, w.formula !== undefined].filter(Boolean).length
     if (given > 1) throw new XlsxError(`${where}: give a value or a formula, not both.`)
-    if (given === 0 && w.format === undefined) throw new XlsxError(`${where}: nothing to write (value, formula or format).`)
+    if (given === 0 && w.format === undefined)
+      throw new XlsxError(`${where}: nothing to write (value, formula or format).`)
     const cur = data.cells.get(cellKey(addr.row, addr.col))
     const arr = cur?.formulaRef && cur.formulaType !== 'normal' ? cur.formulaRef : cur?.inArrayOf
     if (arr && (w.value !== undefined || w.formula !== undefined))
-      throw new XlsxError(`${where} is part of the array formula in ${rangeName(arr)}, which this editor can't change; edit it in Excel.`)
-    const merge = data.merges.find((m) => inRange(m, addr.row, addr.col) && (m.top !== addr.row || m.left !== addr.col))
+      throw new XlsxError(
+        `${where} is part of the array formula in ${rangeName(arr)}, which this editor can't change; edit it in Excel.`,
+      )
+    const merge = data.merges.find(
+      (m) => inRange(m, addr.row, addr.col) && (m.top !== addr.row || m.left !== addr.col),
+    )
     if (merge && (w.value !== undefined || w.formula !== undefined))
-      throw new XlsxError(`${where} is inside the merged cells ${rangeName(merge)}; write to ${cellName({ row: merge.top, col: merge.left })}.`)
+      throw new XlsxError(
+        `${where} is inside the merged cells ${rangeName(merge)}; write to ${cellName({ row: merge.top, col: merge.left })}.`,
+      )
     let content: CellContent | null = null
-    if (w.formula !== undefined) content = { kind: 'formula', formula: toFileFormula(w.formula, where) }
-    else if (w.value !== undefined) content = w.value === null || w.value === '' ? { kind: 'clear' } : { kind: 'value', value: w.value }
+    if (w.formula !== undefined)
+      content = { kind: 'formula', formula: toFileFormula(w.formula, where) }
+    else if (w.value !== undefined)
+      content =
+        w.value === null || w.value === '' ? { kind: 'clear' } : { kind: 'value', value: w.value }
     return { addr, w, cur, content }
   })
   const doc = sheetDoc(wb, info)
   // A shared formula's anchor is about to change: its group is written out per cell first.
   const anchors = new Set<string>()
-  for (const p of planned) if (p.cur?.formulaType === 'shared' && p.content) anchors.add(cellName(p.addr))
-  if (anchors.size > 0) unshareFormulas(doc, (ref) => data.cells.get(cellKey(requireCell(ref).row, requireCell(ref).col))?.formula ?? null)
+  for (const p of planned)
+    if (p.cur?.formulaType === 'shared' && p.content) anchors.add(cellName(p.addr))
+  if (anchors.size > 0)
+    unshareFormulas(
+      doc,
+      (ref) => data.cells.get(cellKey(requireCell(ref).row, requireCell(ref).col))?.formula ?? null,
+    )
   let sdoc: XMLDocument | null = null
   for (const p of planned) {
     const curStyle = p.cur?.style ?? 0
     let style: number | undefined
-    const code = p.w.format ?? (p.w.impliedFormat && styles.xf(curStyle).numFmtId === 0 ? p.w.impliedFormat : undefined)
+    const code =
+      p.w.format ??
+      (p.w.impliedFormat && styles.xf(curStyle).numFmtId === 0 ? p.w.impliedFormat : undefined)
     if (code !== undefined) {
       sdoc ??= stylesDoc(wb)
       style = xfWithNumFmt(sdoc, curStyle, code)
@@ -354,7 +597,9 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
 /** Gives a cell a new format, keeping its content. */
 function restyle(wb: Workbook, doc: XMLDocument, row: number, col: number, style: number) {
   const rowEl = kids(sheetDataOf(doc), 'row').find((r) => Number(r.getAttribute('r')) - 1 === row)
-  const cell = rowEl ? kids(rowEl, 'c').find((c) => c.getAttribute('r') === cellName({ row, col })) : null
+  const cell = rowEl
+    ? kids(rowEl, 'c').find((c) => c.getAttribute('r') === cellName({ row, col }))
+    : null
   if (cell) {
     if (style === 0) cell.removeAttribute('s')
     else cell.setAttribute('s', String(style))
@@ -369,8 +614,12 @@ function setFormat(wb: Workbook, sheet: string, rangeText: string, code: string)
   const info = wb.requireWorksheet(sheet)
   const range = requireRange(rangeText)
   const n = (range.bottom - range.top + 1) * (range.right - range.left + 1)
-  if (n > MAX_FORMAT_CELLS) throw new XlsxError(`${rangeName(range)} is ${n} cells; format at most ${MAX_FORMAT_CELLS} at a time.`)
-  if (code.trim() === '') throw new XlsxError('A number format needs a format code (like 0.00 or yyyy-mm-dd).')
+  if (n > MAX_FORMAT_CELLS)
+    throw new XlsxError(
+      `${rangeName(range)} is ${n} cells; format at most ${MAX_FORMAT_CELLS} at a time.`,
+    )
+  if (code.trim() === '')
+    throw new XlsxError('A number format needs a format code (like 0.00 or yyyy-mm-dd).')
   const data = wb.sheet(info.name)
   const doc = sheetDoc(wb, info)
   const sdoc = stylesDoc(wb)
@@ -394,7 +643,10 @@ function setFormat(wb: Workbook, sheet: string, rangeText: string, code: string)
 function finishSheet(wb: Workbook, info: SheetInfo, doc: XMLDocument) {
   wb.forgetSheet(info.part)
   const d = wb.sheet(info.name)
-  setDimension(doc, d.maxRow < 0 ? 'A1' : rangeName({ top: 0, left: 0, bottom: d.maxRow, right: d.maxCol }))
+  setDimension(
+    doc,
+    d.maxRow < 0 ? 'A1' : rangeName({ top: 0, left: 0, bottom: d.maxRow, right: d.maxCol }),
+  )
   wb.forgetSheet(info.part)
 }
 
@@ -443,19 +695,28 @@ function renameSheet(wb: Workbook, sheet: string, nameIn: string): OpResult {
   for (const s of wb.sheets()) {
     if (s.kind !== 'worksheet') continue
     const doc = wb.pkg.xml(s.part)
-    const links = all(doc, 'hyperlink').filter((h) => h.getAttribute('location') && renameSheetRefs(h.getAttribute('location')!, from, name) !== h.getAttribute('location'))
+    const links = all(doc, 'hyperlink').filter(
+      (h) =>
+        h.getAttribute('location') &&
+        renameSheetRefs(h.getAttribute('location')!, from, name) !== h.getAttribute('location'),
+    )
     if (links.length === 0) continue
     wb.edit(s.part)
-    for (const h of links) h.setAttribute('location', renameSheetRefs(h.getAttribute('location')!, from, name))
+    for (const h of links)
+      h.setAttribute('location', renameSheetRefs(h.getAttribute('location')!, from, name))
   }
   for (const p of chartParts(wb)) {
-    const fs = all(wb.pkg.xml(p), 'f', NS_CHART).filter((f) => renameSheetRefs(textOf(f), from, name) !== textOf(f))
+    const fs = all(wb.pkg.xml(p), 'f', NS_CHART).filter(
+      (f) => renameSheetRefs(textOf(f), from, name) !== textOf(f),
+    )
     if (fs.length === 0) continue
     const doc = wb.edit(p)
     for (const f of fs) setText(doc, f, renameSheetRefs(textOf(f), from, name))
   }
   for (const p of pivotCacheParts(wb)) {
-    const srcs = all(wb.pkg.xml(p), 'worksheetSource').filter((s) => (s.getAttribute('sheet') ?? '').toLowerCase() === from.toLowerCase())
+    const srcs = all(wb.pkg.xml(p), 'worksheetSource').filter(
+      (s) => (s.getAttribute('sheet') ?? '').toLowerCase() === from.toLowerCase(),
+    )
     if (srcs.length === 0) continue
     wb.edit(p)
     for (const s of srcs) s.setAttribute('sheet', name)
@@ -472,7 +733,12 @@ function rewriteAllFormulas(wb: Workbook, rewrite: (formula: string, home: strin
   for (const s of wb.sheets()) {
     if (s.kind !== 'worksheet') continue
     const doc = wb.pkg.xml(s.part)
-    const targets = [...all(doc, 'f'), ...all(doc, 'formula'), ...all(doc, 'formula1'), ...all(doc, 'formula2')]
+    const targets = [
+      ...all(doc, 'f'),
+      ...all(doc, 'formula'),
+      ...all(doc, 'formula1'),
+      ...all(doc, 'formula2'),
+    ]
     const changes = targets.flatMap((el) => {
       const t = textOf(el)
       if (t === '') return []
@@ -515,12 +781,17 @@ function reachableFrom(wb: Workbook, start: string): Set<string> {
 function deleteSheet(wb: Workbook, sheet: string): OpResult {
   const info = wb.requireSheet(sheet)
   const sheets = wb.sheets()
-  if (sheets.length === 1) throw new XlsxError('A workbook needs at least one sheet, so the last one can’t be deleted.')
+  if (sheets.length === 1)
+    throw new XlsxError('A workbook needs at least one sheet, so the last one can’t be deleted.')
   if (info.state === 'visible' && sheets.filter((s) => s.state === 'visible').length === 1)
-    throw new XlsxError('A workbook needs at least one visible sheet, so this one can’t be deleted.')
+    throw new XlsxError(
+      'A workbook needs at least one visible sheet, so this one can’t be deleted.',
+    )
   // Formulas that read the sheet now read #REF! (as in Excel).
   const gone = (s: string) => s.toLowerCase() === info.name.toLowerCase()
-  rewriteAllFormulas(wb, (f, home) => (gone(home) ? f : rewriteRefs(f, home, (s) => (gone(s) ? '#REF!' : null), { bare: true })))
+  rewriteAllFormulas(wb, (f, home) =>
+    gone(home) ? f : rewriteRefs(f, home, (s) => (gone(s) ? '#REF!' : null), { bare: true }),
+  )
   const owned = reachableFrom(wb, info.part)
   const root = workbookRoot(wb)
   const sheetsEl = kid(root, 'sheets')!
@@ -548,7 +819,11 @@ function deleteSheet(wb: Workbook, sheet: string): OpResult {
     }
   }
   const relsDoc = wb.edit(relsPartOf(wb.part))
-  for (const r of kids(relsDoc.documentElement!, 'Relationship', 'http://schemas.openxmlformats.org/package/2006/relationships'))
+  for (const r of kids(
+    relsDoc.documentElement!,
+    'Relationship',
+    'http://schemas.openxmlformats.org/package/2006/relationships',
+  ))
     if (r.getAttribute('Id') === info.relId) relsDoc.documentElement!.removeChild(r)
   // The sheet's own parts (drawings, comments, tables …) go when nothing else uses them.
   wb.remove(info.part)
@@ -564,22 +839,33 @@ function deleteSheet(wb: Workbook, sheet: string): OpResult {
   return { sheets: [], focus: next.name }
 }
 
-type MoveOp = Extract<SheetOp, { op: 'insert_rows' | 'delete_rows' | 'insert_columns' | 'delete_columns' }>
+type MoveOp = Extract<
+  SheetOp,
+  { op: 'insert_rows' | 'delete_rows' | 'insert_columns' | 'delete_columns' }
+>
 
 function moveCells(wb: Workbook, op: MoveOp): OpResult {
   const info = wb.requireWorksheet(op.sheet)
   const axis = op.op.endsWith('rows') ? 'row' : 'col'
   const insert = op.op.startsWith('insert')
   const limit = axis === 'row' ? MAX_ROWS : MAX_COLS
-  if (!Number.isInteger(op.at) || op.at < 0 || op.at >= limit) throw new XlsxError(`${axis === 'row' ? 'Row' : 'Column'} ${axis === 'row' ? op.at + 1 : colName(op.at)} is outside the sheet.`)
+  if (!Number.isInteger(op.at) || op.at < 0 || op.at >= limit)
+    throw new XlsxError(
+      `${axis === 'row' ? 'Row' : 'Column'} ${axis === 'row' ? op.at + 1 : colName(op.at)} is outside the sheet.`,
+    )
   if (!Number.isInteger(op.count) || op.count < 1 || op.at + op.count > limit)
-    throw new XlsxError(`${op.count} ${axis === 'row' ? 'rows' : 'columns'} from there would go past the end of the sheet.`)
+    throw new XlsxError(
+      `${op.count} ${axis === 'row' ? 'rows' : 'columns'} from there would go past the end of the sheet.`,
+    )
   const data = wb.sheet(info.name)
   if (insert) {
     const last = axis === 'row' ? data.maxRow : data.maxCol
-    if (last + op.count >= limit) throw new XlsxError(`Inserting would push cells past the end of the sheet.`)
+    if (last + op.count >= limit)
+      throw new XlsxError(`Inserting would push cells past the end of the sheet.`)
   }
-  const edit: RefEdit = insert ? insertEdit(info.name, axis, op.at, op.count) : deleteEdit(info.name, axis, op.at, op.count)
+  const edit: RefEdit = insert
+    ? insertEdit(info.name, axis, op.at, op.count)
+    : deleteEdit(info.name, axis, op.at, op.count)
 
   // Shared formulas everywhere are written out per cell first: their relative references would otherwise move unevenly.
   for (const s of wb.sheets()) {
@@ -595,7 +881,8 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
 
   const doc = sheetDoc(wb, info)
   const root = doc.documentElement!
-  const shift = (i: number) => (insert ? (i >= op.at ? i + op.count : i) : i > op.at + op.count - 1 ? i - op.count : i)
+  const shift = (i: number) =>
+    insert ? (i >= op.at ? i + op.count : i) : i > op.at + op.count - 1 ? i - op.count : i
   const doomed = (i: number) => !insert && i >= op.at && i < op.at + op.count
   for (const rowEl of kids(sheetDataOf(doc), 'row')) {
     const r = Number(rowEl.getAttribute('r')) - 1
@@ -632,7 +919,12 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
   if (axis === 'col') {
     const colsEl = kid(root, 'cols')
     for (const col of colsEl ? kids(colsEl, 'col') : []) {
-      const r = { top: 0, bottom: 0, left: Number(col.getAttribute('min')) - 1, right: Number(col.getAttribute('max')) - 1 }
+      const r = {
+        top: 0,
+        bottom: 0,
+        left: Number(col.getAttribute('min')) - 1,
+        right: Number(col.getAttribute('max')) - 1,
+      }
       const moved = editRange(r, info.name, edit)
       if (!moved) colsEl!.removeChild(col)
       else {
@@ -667,11 +959,14 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
     else mergeEl.setAttribute('count', String(n))
   }
   const links = kid(root, 'hyperlinks')
-  for (const h of links ? kids(links, 'hyperlink') : []) if (!moveRefAttr(h, 'ref', false)) links!.removeChild(h)
+  for (const h of links ? kids(links, 'hyperlink') : [])
+    if (!moveRefAttr(h, 'ref', false)) links!.removeChild(h)
   if (links && kids(links, 'hyperlink').length === 0) root.removeChild(links)
-  for (const cf of kids(root, 'conditionalFormatting')) if (!moveRefAttr(cf, 'sqref', true)) root.removeChild(cf)
+  for (const cf of kids(root, 'conditionalFormatting'))
+    if (!moveRefAttr(cf, 'sqref', true)) root.removeChild(cf)
   const dvs = kid(root, 'dataValidations')
-  for (const dv of dvs ? kids(dvs, 'dataValidation') : []) if (!moveRefAttr(dv, 'sqref', true)) dvs!.removeChild(dv)
+  for (const dv of dvs ? kids(dvs, 'dataValidation') : [])
+    if (!moveRefAttr(dv, 'sqref', true)) dvs!.removeChild(dv)
   if (dvs) {
     const n = kids(dvs, 'dataValidation').length
     if (n === 0) root.removeChild(dvs)
@@ -693,7 +988,10 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
  * chain is dropped and Excel is told to recalculate on open, so nothing
  * stale is trusted. Formulas it can't calculate keep the value they had.
  */
-export function prepareSave(wb: Workbook, value: (sheet: string, row: number, col: number) => { value: CellValue; kept: boolean }) {
+export function prepareSave(
+  wb: Workbook,
+  value: (sheet: string, row: number, col: number) => { value: CellValue; kept: boolean },
+) {
   wb.begin()
   try {
     for (const s of wb.sheets()) {
@@ -701,7 +999,8 @@ export function prepareSave(wb: Workbook, value: (sheet: string, row: number, co
       const data = wb.sheet(s.name)
       const changes: Array<{ ref: string; v: CellValue }> = []
       for (const c of data.cells.values()) {
-        if (c.formula === null || (c.formulaType !== 'normal' && c.formulaType !== 'shared')) continue
+        if (c.formula === null || (c.formulaType !== 'normal' && c.formulaType !== 'shared'))
+          continue
         const out = value(s.name, c.row, c.col)
         if (out.kept || sameValue(out.value, c.value)) continue
         changes.push({ ref: cellName(c), v: out.value })
@@ -709,7 +1008,8 @@ export function prepareSave(wb: Workbook, value: (sheet: string, row: number, co
       if (changes.length === 0) continue
       const doc = wb.edit(s.part)
       const byRef = new Map<string, Element>()
-      for (const row of kids(sheetDataOf(doc), 'row')) for (const c of kids(row, 'c')) byRef.set(c.getAttribute('r') ?? '', c)
+      for (const row of kids(sheetDataOf(doc), 'row'))
+        for (const c of kids(row, 'c')) byRef.set(c.getAttribute('r') ?? '', c)
       for (const ch of changes) {
         const cell = byRef.get(ch.ref)
         if (cell) setCachedValue(doc, cell, ch.v)
@@ -719,8 +1019,13 @@ export function prepareSave(wb: Workbook, value: (sheet: string, row: number, co
     const chain = wb.pkg.relationships(wb.part).filter((r) => r.type === `${REL}calcChain`)
     if (chain.length > 0) {
       const relsDoc = wb.edit(relsPartOf(wb.part))
-      for (const r of kids(relsDoc.documentElement!, 'Relationship', 'http://schemas.openxmlformats.org/package/2006/relationships'))
-        if (chain.some((c) => c.id === r.getAttribute('Id'))) relsDoc.documentElement!.removeChild(r)
+      for (const r of kids(
+        relsDoc.documentElement!,
+        'Relationship',
+        'http://schemas.openxmlformats.org/package/2006/relationships',
+      ))
+        if (chain.some((c) => c.id === r.getAttribute('Id')))
+          relsDoc.documentElement!.removeChild(r)
       for (const c of chain) if (c.part) wb.remove(c.part)
     }
     const calcPr = kid(root, 'calcPr')
@@ -747,7 +1052,8 @@ function sameValue(a: CellValue, b: CellValue): boolean {
 }
 
 function setCachedValue(doc: XMLDocument, cell: Element, v: CellValue) {
-  for (const k of kids(cell, undefined)) if (k.localName === 'v' || k.localName === 'is') cell.removeChild(k)
+  for (const k of kids(cell, undefined))
+    if (k.localName === 'v' || k.localName === 'is') cell.removeChild(k)
   cell.removeAttribute('t')
   if (v === null) return
   const el = make(doc, 'v')
