@@ -1,16 +1,16 @@
 import type { RequestHandler } from './$types'
 import { z } from 'zod'
-import { driveJson, driveService, parseBody, requestActor } from '$lib/server/drive'
+import { DOCUMENT_KINDS, driveJson, driveService, parseBody, requestActor } from '$lib/server/drive'
 
 const body = z
   .object({
     folderId: z.string().min(1).nullable(),
-    kind: z.enum(['md', 'csv']),
+    kind: z.enum(DOCUMENT_KINDS),
     name: z.string().optional(),
   })
   .strict()
 
-/** New → Document (.md) / Table (.csv): an empty file. */
+/** New → Document (.md) / Table (.csv) / Spreadsheet (.xlsx): an empty file. */
 export const POST: RequestHandler = (event) =>
   driveJson(event, async () => {
     const actor = requestActor(event)

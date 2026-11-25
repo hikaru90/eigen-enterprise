@@ -11,6 +11,7 @@ const { gotoMock, invalidateAllMock, api } = vi.hoisted(() => ({
     archive: vi.fn(),
     unarchive: vi.fn(),
     createFolder: vi.fn(),
+    createDocument: vi.fn(),
     upload: vi.fn(),
     move: vi.fn(),
     readText: vi.fn(),
@@ -328,6 +329,20 @@ describe('drive-browser: the full-width listing', () => {
     expect(api.upload.mock.calls[0]![0]).toBe('f-new')
     expect(api.upload.mock.calls[0]![1].map((f: File) => f.name)).toEqual(['a.txt'])
     await expect.element(page.getByTestId('drive-notice')).toHaveTextContent('Uploaded 1 file to Fresh.')
+  })
+
+  it('New → Spreadsheet (.xlsx) creates an empty workbook here (drive.create_document kind xlsx) and opens it', async () => {
+    api.createDocument.mockResolvedValue({ ...image, id: 'x1', name: 'Forecast.xlsx' })
+    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [image], canEdit: true } })
+    await page.getByTestId('drive-new').click()
+    await expect.element(page.getByTestId('drive-new-spreadsheet')).toHaveTextContent('Spreadsheet (.xlsx)')
+    await page.getByTestId('drive-new-spreadsheet').click()
+    await expect.element(page.getByTestId('drive-name-dialog')).toHaveTextContent('New spreadsheet')
+    await expect.element(page.getByTestId('drive-name-input')).toHaveValue('Untitled spreadsheet')
+    await page.getByTestId('drive-name-input').fill('Forecast')
+    await page.getByTestId('drive-name-save').click()
+    expect(api.createDocument).toHaveBeenCalledWith('f0', 'xlsx', 'Forecast')
+    await expect.poll(() => gotoMock.mock.calls.at(-1)?.[0]).toBe('/drive/file/x1')
   })
 
   it('files dropped on the pane but not on a folder still upload here', async () => {

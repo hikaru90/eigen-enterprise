@@ -29,6 +29,9 @@ export const DRIVE_SHEET_TOOL_NAMES = ['drive.sheet_read', 'drive.sheet_write', 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
 export const DRIVE_SHEET_WRITE_TOOLS = ['drive.sheet_write', 'drive.sheet_structure'] as const
 
+/** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */
+export const DRIVE_SHEET_COPY_TOOL_NAMES = ['drive.make_xlsx_copy'] as const
+
 /** File management with UI parity (./file-tools.ts): New folder, Upload, Rename, Move, Share, Trash, Versions. */
 export const DRIVE_FILE_TOOL_NAMES = [
   'drive.create_folder',
@@ -88,6 +91,7 @@ export const DRIVE_TOOL_NAMES = [
   ...DRIVE_PDF_TOOL_NAMES,
   ...DRIVE_PDF_ANNOTATE_TOOL_NAMES,
   ...DRIVE_SHEET_TOOL_NAMES,
+  ...DRIVE_SHEET_COPY_TOOL_NAMES,
 ] as const
 
 /**

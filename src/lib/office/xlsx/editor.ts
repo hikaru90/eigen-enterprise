@@ -97,6 +97,7 @@ export type WorkbookNote = {
     | 'hidden_sheets'
     | 'chart_sheets'
     | 'formulas_kept'
+    | 'macros'
   count: number
   detail?: string
 }
@@ -165,5 +166,7 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
   add('chart_sheets', wb.sheets().filter((s) => s.kind !== 'worksheet').length)
   const keptTotal = [...kept.values()].reduce((a, b) => a + b, 0)
   add('formulas_kept', keptTotal, [...kept.keys()].slice(0, 6).join(', '))
+  // .xlsm: the VBA project is kept byte for byte on save and never run.
+  add('macros', types.filter((t) => t === 'application/vnd.ms-office.vbaProject').length)
   return out
 }

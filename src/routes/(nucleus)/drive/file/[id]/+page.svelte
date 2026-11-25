@@ -28,6 +28,7 @@
   import { driveShownError } from '$lib/drive/shown-error'
   import type { ShownError } from '$lib/errors/agent-report'
   import OfficeViewerLoader from '$lib/office/office-viewer-loader.svelte'
+  import { isOfficeKind } from '$lib/office/kinds'
   import { OFFICE_VIEWERS } from '$lib/office/viewers'
   import { docTitle } from '$lib/shell/title'
 
@@ -47,9 +48,7 @@
   const revisioned = $derived(data.kind === 'markdown' || data.kind === 'csv')
   /** The format's own viewer for PDF/Word/PowerPoint once it has one (plan/phase-office-files.md), else the old preview. */
   const officeViewer = $derived(
-    data.kind === 'pdf' || data.kind === 'docx' || data.kind === 'pptx' || data.kind === 'xlsx'
-      ? (OFFICE_VIEWERS[data.kind] ?? null)
-      : null,
+    isOfficeKind(data.kind) ? (OFFICE_VIEWERS[data.kind] ?? null) : null,
   )
   /** Size and changed time as of the latest save (the load's copy goes stale while editing). */
   let saved = $state<{ id: string; size?: number; updatedAt: string | Date } | null>(null)
@@ -514,6 +513,7 @@
                 viewerProps={{
                   fileId: data.file.id,
                   name: data.file.name,
+                  kind: isOfficeKind(data.kind) ? data.kind : undefined,
                   canEdit: data.canEdit && !data.file.archivedAt,
                   heartbeatMs: data.heartbeatMs,
                   folderId: data.file.parentId,

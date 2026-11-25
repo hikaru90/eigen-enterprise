@@ -309,6 +309,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'drive.list_archived',
   'drive.list_revisions',
   'drive.list_trash',
+  'drive.make_xlsx_copy',
   'drive.move',
   'drive.move_many',
   'drive.pdf_add_note',

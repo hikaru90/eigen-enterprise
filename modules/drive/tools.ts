@@ -13,6 +13,8 @@ import { createDriveFileTools } from './file-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
+import { DOCUMENT_KINDS } from './service'
+import { createDriveSheetCopyTools } from './sheet-copy-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -54,7 +56,7 @@ const writeInput = z.object({ file_id: z.string().min(1), content: z.string() })
 const createInput = z
   .object({
     name: z.string().trim().min(1),
-    kind: z.enum(['md', 'csv']).optional(),
+    kind: z.enum(DOCUMENT_KINDS).optional(),
     content: z.string().optional(),
     folder_id: z.string().min(1).nullable().optional(),
   })
@@ -174,7 +176,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       name: 'drive.create_document',
       module: DRIVE_MODULE_ID,
       summary:
-        'Create a new Markdown (.md) document — or, with kind "csv", a table — in Drive (name; content, omit for an empty file; folder_id, omit for the top level). This is where the company’s internal documents go — pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes — never the public website. Working for a person, it lands in their Drive as theirs. Revise it later with drive.write_text.',
+        'Create a new Markdown (.md) document — or, with kind "csv", a table; with kind "xlsx", an empty Excel spreadsheet with one sheet "Sheet1" (no content: write its cells with drive.sheet_write) — in Drive (name; content, omit for an empty file; folder_id, omit for the top level). This is where the company’s internal documents go — pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes — never the public website. Working for a person, it lands in their Drive as theirs. Revise it later with drive.write_text.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: z.infer<typeof createInput>, output: unknown) => {
@@ -313,5 +315,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDrivePdfTools({ service }),
     ...createDrivePdfAnnotateTools({ service }),
     ...createDriveSheetTools({ service }),
+    ...createDriveSheetCopyTools({ service }),
   ]
 }

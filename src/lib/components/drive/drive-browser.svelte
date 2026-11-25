@@ -594,12 +594,19 @@
         run(() => driveApi.createFolder(folderId, name), `Created folder “${name}”.`),
     }
   }
-  function newDocument(kind: 'md' | 'csv') {
+  const NEW_DOCUMENT = {
+    md: { title: 'New document', label: 'Document name (.md)', initial: 'Untitled document' },
+    csv: { title: 'New table', label: 'Table name (.csv)', initial: 'Untitled table' },
+    xlsx: {
+      title: m.drive_new_spreadsheet_title(),
+      label: m.drive_new_spreadsheet_label(),
+      initial: m.drive_new_spreadsheet_default(),
+    },
+  }
+  function newDocument(kind: 'md' | 'csv' | 'xlsx') {
     newMenuOpen = false
     nameDialog = {
-      title: kind === 'md' ? 'New document' : 'New table',
-      label: kind === 'md' ? 'Document name (.md)' : 'Table name (.csv)',
-      initial: kind === 'md' ? 'Untitled document' : 'Untitled table',
+      ...NEW_DOCUMENT[kind],
       submit: async (name) => {
         error = null
         try {
@@ -902,6 +909,15 @@
                 data-testid="drive-new-table"
               >
                 <SheetIcon class="size-4 text-muted-foreground" aria-hidden="true" /> Table (.csv)
+              </button>
+              <button
+                class="flex items-center gap-2 rounded px-3 py-2 text-left hover:bg-muted"
+                role="menuitem"
+                onclick={() => newDocument('xlsx')}
+                data-testid="drive-new-spreadsheet"
+              >
+                <SheetIcon class="size-4 text-muted-foreground" aria-hidden="true" />
+                {m.drive_new_spreadsheet()}
               </button>
             </div>
           {/if}

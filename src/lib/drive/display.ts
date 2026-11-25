@@ -1,8 +1,9 @@
 import type { DriveItem } from './api'
-import { OFFICE_MIME } from '$lib/office/kinds'
+import { OFFICE_MIME, XLSM_MIME } from '$lib/office/kinds'
 
 /** How a Drive row looks: folder, document (.md/.txt), table (.csv), image, PDF, Word (.docx), slides (.pptx), or any other file. */
-export type DriveItemKind = 'folder' | 'document' | 'table' | 'image' | 'pdf' | 'word' | 'slides' | 'sheet' | 'file'
+export type DriveItemKind =
+  'folder' | 'document' | 'table' | 'image' | 'pdf' | 'word' | 'slides' | 'sheet' | 'file'
 
 /** The item's kind from its type, file extension and MIME type (same rules as the old row icons). */
 export function driveItemKind(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): DriveItemKind {
@@ -14,7 +15,11 @@ export function driveItemKind(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): 
   if (item.mime === OFFICE_MIME.pdf || n.endsWith('.pdf')) return 'pdf'
   if (item.mime === OFFICE_MIME.docx || n.endsWith('.docx')) return 'word'
   if (item.mime === OFFICE_MIME.pptx || n.endsWith('.pptx')) return 'slides'
-  if (item.mime === OFFICE_MIME.xlsx || n.endsWith('.xlsx')) return 'sheet'
+  if (
+    [OFFICE_MIME.xlsx, XLSM_MIME, OFFICE_MIME.xls, OFFICE_MIME.ods].includes(item.mime ?? '') ||
+    /\.(xlsx|xlsm|xls|ods)$/.test(n)
+  )
+    return 'sheet'
   return 'file'
 }
 
@@ -28,7 +33,17 @@ export function hasThumbnail(item: Pick<DriveItem, 'type' | 'name' | 'mime'>): b
 }
 
 /** Plain-text formats a card shows the opening of (beyond .md/.txt and .csv). */
-const TEXT_PREVIEW_EXT = new Set(['markdown', 'log', 'json', 'yaml', 'yml', 'xml', 'tsv', 'ini', 'toml'])
+const TEXT_PREVIEW_EXT = new Set([
+  'markdown',
+  'log',
+  'json',
+  'yaml',
+  'yml',
+  'xml',
+  'tsv',
+  'ini',
+  'toml',
+])
 /** Above this a card keeps its icon: the preview would load the whole file. */
 export const TEXT_PREVIEW_MAX_BYTES = 256 * 1024
 
@@ -37,7 +52,9 @@ export const TEXT_PREVIEW_MAX_BYTES = 256 * 1024
  * 'text' (the opening lines), or null (no text preview: not a text format,
  * or too large to load for a glance). A format fact by extension.
  */
-export function textPreviewOf(item: Pick<DriveItem, 'type' | 'name' | 'mime' | 'size'>): 'text' | 'table' | null {
+export function textPreviewOf(
+  item: Pick<DriveItem, 'type' | 'name' | 'mime' | 'size'>,
+): 'text' | 'table' | null {
   if (item.type !== 'file') return null
   if ((item.size ?? 0) > TEXT_PREVIEW_MAX_BYTES) return null
   const kind = driveItemKind(item)
@@ -71,7 +88,12 @@ export function shortWhen(at: string | Date, now: Date = new Date()): string {
   })
 }
 
-const DATED_KIND = { taken: 'Taken', created: 'Created', uploaded: 'Uploaded', added: 'Added' } as const
+const DATED_KIND = {
+  taken: 'Taken',
+  created: 'Created',
+  uploaded: 'Uploaded',
+  added: 'Added',
+} as const
 
 /**
  * When a file is from, to the month (Contribute `0c945439`): "Mar 2019" plus

@@ -10,6 +10,8 @@ import type { DriveItem } from '$lib/drive/api'
 export type OfficeViewerProps = {
   fileId: string
   name: string
+  /** The file's format as the page decided it (name and stored type); the .xls/.ods viewer needs it. */
+  kind?: OfficeKind
   /** Edit access and not archived: the viewer may offer editing. */
   canEdit: boolean
   /** The edit-lock heartbeat interval (W-6). */
@@ -43,4 +45,6 @@ export const OFFICE_VIEWERS: Partial<Record<OfficeKind, () => Promise<OfficeView
   docx: () => import('./docx/docx-viewer.svelte'),
   pptx: () => import('./pptx/pptx-viewer.svelte'),
   xlsx: () => import('./xlsx/xlsx-editor.svelte'),
+  xls: () => import('./xlsx/legacy-sheet-viewer.svelte'),
+  ods: () => import('./xlsx/legacy-sheet-viewer.svelte'),
 }

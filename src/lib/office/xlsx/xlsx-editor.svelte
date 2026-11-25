@@ -69,7 +69,13 @@
     onsaved,
     saveDelayMs = 1200,
     idleMs = 60_000,
-  }: OfficeViewerProps & { saveDelayMs?: number; idleMs?: number } = $props()
+    source,
+  }: OfficeViewerProps & {
+    saveDelayMs?: number
+    idleMs?: number
+    /** The workbook's bytes from elsewhere than the file (an .xls/.ods converted for viewing; then canEdit is false). */
+    source?: () => Promise<Uint8Array>
+  } = $props()
 
   const locale: SheetLocale = getLocale() === 'de' ? 'de' : 'en'
 
@@ -316,6 +322,8 @@
         return m.drive_sheet_note_chart_sheets({ count: n.count })
       case 'formulas_kept':
         return m.drive_sheet_note_kept({ count: n.count, what: n.detail ?? '' })
+      case 'macros':
+        return m.drive_sheet_note_macros()
     }
   }
 
@@ -388,7 +396,7 @@
 
   async function load() {
     try {
-      await open(await driveApi.readBytes(fileId))
+      await open(await (source ? source() : driveApi.readBytes(fileId)))
     } catch (err) {
       view = { status: 'error', ...shown(err) }
     }

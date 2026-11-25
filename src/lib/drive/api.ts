@@ -167,10 +167,16 @@ export const driveApi = {
     }>(`/api/drive/folders?parent=${encodeURIComponent(parentId ?? '')}`),
   createFolder: (parentId: string | null, name: string) =>
     call<DriveItem>('/api/drive/folders', send('POST', { parentId, name })),
-  createDocument: (folderId: string | null, kind: 'md' | 'csv', name?: string) =>
+  createDocument: (folderId: string | null, kind: 'md' | 'csv' | 'xlsx', name?: string) =>
     call<DriveItem>(
       '/api/drive/documents',
       send('POST', { folderId, kind, ...(name ? { name } : {}) }),
+    ),
+  /** An .xls/.ods shown read-only → an editable .xlsx next to it (drive.make_xlsx_copy); `notKept`: what the copy lacks. */
+  makeXlsxCopy: (fileId: string) =>
+    call<{ file: DriveItem; source: DriveItem; notKept: string[] }>(
+      `/api/drive/files/${fileId}/xlsx-copy`,
+      send('POST', {}),
     ),
   /** `onConflict`: what happens when a file of that name is already in the folder (see UploadResult). */
   upload: (folderId: string | null, files: File[], onConflict: OnConflict) => {

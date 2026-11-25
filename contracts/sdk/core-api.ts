@@ -1499,7 +1499,7 @@ export type CoreApiTools = {
     input: {
       "content"?: string
       "folder_id"?: string | null
-      "kind"?: "md" | "csv"
+      "kind"?: "md" | "csv" | "xlsx"
       "name": string
     }
     output: unknown
@@ -1552,6 +1552,13 @@ export type CoreApiTools = {
   }
   "drive.list_trash": {
     input: Record<string, never>
+    output: unknown
+  }
+  "drive.make_xlsx_copy": {
+    input: {
+      "file_id": string
+      "folder_id"?: string | null
+    }
     output: unknown
   }
   "drive.move": {
@@ -4379,6 +4386,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.list_archived",
   "drive.list_revisions",
   "drive.list_trash",
+  "drive.make_xlsx_copy",
   "drive.move",
   "drive.move_many",
   "drive.pdf_add_note",

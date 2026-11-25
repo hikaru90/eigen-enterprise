@@ -18,7 +18,11 @@ describe('previewKind', () => {
     ['letter.doc', 'application/msword', 'other'],
     ['budget.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
     ['Budget.XLSX', '', 'xlsx'],
-    ['old.xls', 'application/vnd.ms-excel', 'other'],
+    ['old.xls', 'application/vnd.ms-excel', 'xls'],
+    ['budget.ods', '', 'ods'],
+    ['sheet', 'application/vnd.oasis.opendocument.spreadsheet', 'ods'],
+    ['macros.xlsm', '', 'xlsx'],
+    ['macros', 'application/vnd.ms-excel.sheet.macroEnabled.12', 'xlsx'],
     ['archive.zip', 'application/zip', 'other'],
   ])('%s → %s', (name, mime, kind) => {
     expect(previewKind(name, mime)).toBe(kind)
