@@ -4,7 +4,9 @@ import { displayValue, formatCode, type SheetLocale } from './format'
 import { styleSummary, type StyleSummary } from './format-cells'
 import { toShownFormula } from './ops'
 import { frozenOf } from './panes'
+import { pivotSummary, readSheetPivots } from './pivot'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
+import { readSheetTables, tableSummary } from './tables'
 import { isErrorValue, XlsxError, type CellValue } from './workbook'
 
 /**
@@ -22,6 +24,10 @@ export type SheetSummary = {
   filter?: ReturnType<typeof describeAutoFilter>
   /** Frozen panes (rows from the top, columns from the left), when it has them. */
   frozen?: { rows: number; columns: number }
+  /** Excel tables on this sheet, when it has any. */
+  tables?: Array<ReturnType<typeof tableSummary>>
+  /** Pivot tables on this sheet, when it has any. */
+  pivots?: Array<ReturnType<typeof pivotSummary>>
 }
 
 export type ReadCell = {
@@ -54,6 +60,10 @@ export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
     if (af) out.filter = describeAutoFilter(af)
     const frozen = frozenOf(ed.wb, s.name)
     if (frozen) out.frozen = { rows: frozen.rows, columns: frozen.cols }
+    const tables = readSheetTables(ed.wb, s.name)
+    if (tables.length > 0) out.tables = tables.map(tableSummary)
+    const pivots = readSheetPivots(ed.wb, s.name)
+    if (pivots.length > 0) out.pivots = pivots.map(pivotSummary)
     return out
   })
 }

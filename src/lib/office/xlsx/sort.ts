@@ -15,6 +15,7 @@ import {
   type Range,
 } from './ref'
 import { dropEmptyRow, ensureRow, sheetDataOf, unshareFormulas } from './sheet-xml'
+import { clearTableSortStates, readSheetTables, setTableSortState, type ExcelTable } from './tables'
 import { isErrorValue, XlsxError, type CellValue, type SheetInfo, type Workbook } from './workbook'
 import { all, kid, kids, REL, setText, textOf } from './xml'
 
@@ -78,8 +79,30 @@ export function compareSortValues(a: CellValue, b: CellValue, descending: boolea
   return descending ? -out : out
 }
 
+function matchedTableForSort(
+  wb: Workbook,
+  info: SheetInfo,
+  range: Range,
+  header: boolean | undefined,
+): ExcelTable | null {
+  for (const t of readSheetTables(wb, info.name)) {
+    if (range.left !== t.ref.left || range.right !== t.ref.right) continue
+    const dataTop = t.ref.top + t.headerRowCount
+    const dataBottom = t.ref.bottom - t.totalsRowCount
+    if (
+      (range.top === t.ref.top && (range.bottom === t.ref.bottom || range.bottom === dataBottom)) ||
+      (header === false && range.top === dataTop && range.bottom === dataBottom)
+    )
+      return t
+  }
+  return null
+}
+
 /** The range's body (rows that move) and checks of the request. */
-function plan(wb: Workbook, op: SortOp): { info: SheetInfo; range: Range; body: Range } {
+function plan(
+  wb: Workbook,
+  op: SortOp,
+): { info: SheetInfo; range: Range; body: Range; table: ExcelTable | null } {
   const info = wb.requireWorksheet(op.sheet)
   const range = requireRange(op.range)
   if (op.keys.length === 0) throw new XlsxError('Name at least one column to sort by.')
@@ -90,13 +113,21 @@ function plan(wb: Workbook, op: SortOp): { info: SheetInfo; range: Range; body: 
       throw new XlsxError(
         `Column ${colName(Math.max(0, k.col))} is outside the range ${rangeName(range)} being sorted.`,
       )
-  const body = { ...range, top: op.header ? range.top + 1 : range.top }
-  return { info, range, body }
+  const table = matchedTableForSort(wb, info, range, op.header)
+  let top = op.header ? range.top + 1 : range.top
+  let bottom = range.bottom
+  if (table) {
+    if (table.headerRowCount > 0 && range.top === table.ref.top)
+      top = Math.max(top, table.ref.top + table.headerRowCount)
+    bottom = Math.min(bottom, table.ref.bottom - table.totalsRowCount)
+  }
+  const body = { ...range, top, bottom }
+  return { info, range, body, table }
 }
 
-/** Comments, pictures and tables in the rows being sorted would stay where they are. */
+/** Comments, pictures and partial-overlap tables in the rows being sorted would stay where they are. */
 export function sortLosses(wb: Workbook, op: SortOp): Loss[] {
-  const { info, body } = plan(wb, op)
+  const { info, body, table } = plan(wb, op)
   if (body.top > body.bottom) return []
   const out: Loss[] = []
   const add = (feature: Loss['feature'], count: number) => {
@@ -104,7 +135,12 @@ export function sortLosses(wb: Workbook, op: SortOp): Loss[] {
   }
   const inBody = (row: number, col: number) =>
     row >= body.top && row <= body.bottom && col >= body.left && col <= body.right
-  add('tables', tableRanges(wb, info).filter((t) => overlaps(t.range, body)).length)
+  add(
+    'tables',
+    tableRanges(wb, info).filter(
+      (t) => overlaps(t.range, body) && (!table || t.name.toLowerCase() !== table.displayName.toLowerCase()),
+    ).length,
+  )
   let drawings = 0
   let comments = 0
   let threaded = 0
@@ -142,7 +178,7 @@ function moveFormula(text: string, from: string, to: string): string {
 
 /** Sorts the range in the sheet's XML (`doc` from the open transaction). Returns whether anything moved. */
 export function sortRange(wb: Workbook, doc: XMLDocument, op: SortOp): boolean {
-  const { info, body } = plan(wb, op)
+  const { info, body, table } = plan(wb, op)
   if (body.top > body.bottom) return false
   const d = wb.sheet(info.name)
   const where = `${info.name}!${rangeName(body)}`
@@ -227,6 +263,8 @@ export function sortRange(wb: Workbook, doc: XMLDocument, op: SortOp): boolean {
   for (const rowEl of touched) if (rowEl.parentNode) dropEmptyRow(rowEl)
   moveHyperlinks(doc, body, dest)
   dropSortStates(doc, body)
+  clearTableSortStates(wb, info, body)
+  if (table) setTableSortState(wb, table, body, op.keys)
   return true
 }
 
