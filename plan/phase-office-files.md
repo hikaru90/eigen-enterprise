@@ -159,3 +159,19 @@ Decisions (taken by the implementing agent, logged here):
 - **Strings** are paraglide messages (`drive_sheet_*`, en + de); values show in the reader's locale (German decimal comma, WAHR/FALSCH), typed input is read in it.
 
 Not covered yet: drawing charts/images/comments in the grid (kept, listed), editing fonts/fills/borders/alignment, sorting/filtering, freeze panes, cell comments, column resizing by drag, .xls/.xlsm/.ods, co-editing, the e2e journey step.
+
+### 7.1 Cell formatting and sizing (2026-11-25)
+
+Fonts (bold, italic, underline, strike, size, colour, family), fills, borders and alignment (horizontal, vertical, wrap) on the selection; column widths and row heights by dragging the header edges or typing them in the format bar. Code: `src/lib/office/xlsx/format-cells.ts` (ops), `style-records.ts` (styles.xml), `style-choices.ts` (the closed sets), `grid-style.ts` (what the grid draws), `format-toolbar.svelte`; tool `modules/drive/sheet-format-tools.ts`.
+
+Decisions (implementing agent, logged here):
+
+- **No library.** None edits SpreadsheetML styles losslessly (same finding as §7); styles.xml editing is ours, on the OPC layer. Untouched parts stay byte for byte.
+- **Copy, change, dedupe.** A cell's new look is a copy of its `xf` with only what was edited changed; its font/fill/border record is copied the same way. An identical existing record (deep comparison; an `xf`'s `apply*` flags ignored, they don't change the look) is reused, so bolding and un-bolding returns to the original record. Records nothing points at any more stay (named styles and conditional formats may use them; Excel keeps them too).
+- **Fonts:** setting a family drops the record's `scheme` (a theme font wins over the name in Excel). Underline is single (`<u/>`, as Ctrl+U). Colours are `#RRGGBB` (written ARGB); `null` is automatic.
+- **Borders** are presets on the range (all, outer, inner, top, bottom, left, right, none) with a line style (default thin) and colour (default automatic, `indexed="64"`), written per cell on its own edges. The grid draws each shared edge once: a cell's own right/bottom edge, else its neighbour's facing one; empty cells next to a bordered one draw too. Automatic and black lines follow the theme's text colour unless the cell has a fill (readable in dark mode).
+- **Sizes:** column width in Excel characters (0–255) as `<cols>` entries — an overlapping entry is split so its other columns keep theirs, a new entry lands before `sheetData`; a reset drops `width`/`customWidth`, or writes the sheet's default width when the entry still carries a style/hidden/outline. Row height in points (0–409) as `<row ht customHeight="1">`; a reset removes both (an empty row then goes). Setting a size shows a hidden column/row again. A drag sizes that column/row, or all selected whole columns/rows when it is one of them; the format bar sizes the selection.
+- **Registry:** `drive.sheet_format` (styles / columns / rows, one revision) — the same ops as the grid. `drive.sheet_read` now returns each cell's `style` (only what differs from the plain format) and the range's custom `sizes`.
+- **Keyboard:** Ctrl/Cmd+B, I, U toggle on the selection (`aria-keyshortcuts` on the buttons); toggles carry `aria-pressed`; resize handles are labelled separators, the width/height fields are the keyboard way.
+
+Not covered by this step: diagonal borders, gradient/pattern fills, rich text runs inside a cell, autofit (double-click an edge), format painter, column/row default styles for empty cells.

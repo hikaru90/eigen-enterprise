@@ -1859,6 +1859,42 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "drive.sheet_format": {
+    input: {
+      "columns"?: Array<{
+        "from": number | string
+        "to"?: number | string
+        "width": number | null
+      }>
+      "file_id": string
+      "rows"?: Array<{
+        "from": number
+        "height": number | null
+        "to"?: number
+      }>
+      "sheet": string
+      "styles"?: Array<{
+        "bold"?: boolean
+        "border"?: {
+          "color"?: string | null
+          "preset": "all" | "outer" | "inner" | "top" | "bottom" | "left" | "right" | "none"
+          "style"?: "thin" | "medium" | "thick" | "dashed" | "dotted" | "double" | "hair" | "mediumDashed" | "dashDot" | "mediumDashDot" | "dashDotDot" | "mediumDashDotDot" | "slantDashDot"
+        }
+        "fill"?: string | null
+        "font_color"?: string | null
+        "font_name"?: string
+        "font_size"?: number
+        "horizontal"?: "general" | "left" | "center" | "right" | "justify"
+        "italic"?: boolean
+        "range": string
+        "strike"?: boolean
+        "underline"?: boolean
+        "vertical"?: "top" | "center" | "bottom"
+        "wrap"?: boolean
+      }>
+    }
+    output: unknown
+  }
   "drive.sheet_read": {
     input: {
       "file_id": string
@@ -4403,6 +4439,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.set_sharing",
   "drive.share_many",
   "drive.shared_with_me",
+  "drive.sheet_format",
   "drive.sheet_read",
   "drive.sheet_structure",
   "drive.sheet_write",

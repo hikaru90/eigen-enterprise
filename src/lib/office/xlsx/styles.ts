@@ -2,10 +2,10 @@ import { NS_A, NS_MAIN, insertInOrder, kid, kids, make, textOf } from './xml'
 
 /**
  * The workbook's cell formats (styles part, ECMA-376 Part 1 §18.8): what the
- * grid draws (number format, font, fill, alignment) and the one style edit
- * this editor makes — a cell's number format, written as a copy of its
- * format record with only the number format changed, so everything else
- * about the cell's look stays.
+ * grid draws (number format, font, fill, borders, alignment) and the number
+ * format edit — a cell's number format, written as a copy of its format
+ * record with only the number format changed, so everything else about the
+ * cell's look stays. Font, fill, border and alignment edits: ./style-records.ts.
  */
 
 export type FontStyle = {
@@ -19,12 +19,22 @@ export type FontStyle = {
   name: string | null
 }
 
+/** One edge of a cell's border: Excel's line style (thin, medium, dashed …) and colour ("#RRGGBB", null: automatic). */
+export type BorderEdge = { style: string; color: string | null }
+export type CellBorders = {
+  left: BorderEdge | null
+  right: BorderEdge | null
+  top: BorderEdge | null
+  bottom: BorderEdge | null
+}
+
 export type CellStyle = {
   numFmtId: number
   /** The format code; built-in id 14 (the short date) is resolved per locale when shown. */
   numFmt: string
   font: FontStyle
   fill: string | null
+  border: CellBorders
   horizontal: string | null
   vertical: string | null
   wrap: boolean
@@ -136,7 +146,7 @@ const DEFAULT_INDEXED = [
   '333333',
 ]
 
-const STYLESHEET_ORDER = [
+export const STYLESHEET_ORDER = [
   'numFmts',
   'fonts',
   'fills',
@@ -159,11 +169,13 @@ const PLAIN_FONT: FontStyle = {
   sizePt: null,
   name: null,
 }
+const NO_BORDER: CellBorders = { left: null, right: null, top: null, bottom: null }
 const GENERAL: CellStyle = {
   numFmtId: 0,
   numFmt: 'General',
   font: PLAIN_FONT,
   fill: null,
+  border: NO_BORDER,
   horizontal: null,
   vertical: null,
   wrap: false,
@@ -299,6 +311,20 @@ export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): 
     const p = kid(f, 'patternFill')
     return p?.getAttribute('patternType') === 'solid' ? color(kid(p, 'fgColor')) : null
   })
+  const bordersEl = kid(root, 'borders')
+  const borders: CellBorders[] = (bordersEl ? kids(bordersEl, 'border') : []).map((b) => {
+    const edge = (...names: string[]): BorderEdge | null => {
+      const el = names.map((n) => kid(b, n)).find((e) => e !== null) ?? null
+      const style = el?.getAttribute('style')
+      return el && style && style !== 'none' ? { style, color: color(kid(el, 'color')) } : null
+    }
+    return {
+      left: edge('left', 'start'),
+      right: edge('right', 'end'),
+      top: edge('top'),
+      bottom: edge('bottom'),
+    }
+  })
   const xfsEl = kid(root, 'cellXfs')
   const xfs = xfsEl ? kids(xfsEl, 'xf') : []
   const cache = new Map<number, CellStyle>()
@@ -316,6 +342,7 @@ export function readStyles(doc: XMLDocument | null, theme: XMLDocument | null): 
         numFmt: numFmts.get(id) ?? BUILTIN_NUMFMT[id] ?? 'General',
         font: fonts[Number(el.getAttribute('fontId') ?? 0)] ?? PLAIN_FONT,
         fill: fills[Number(el.getAttribute('fillId') ?? 0)] ?? null,
+        border: borders[Number(el.getAttribute('borderId') ?? 0)] ?? NO_BORDER,
         horizontal: align?.getAttribute('horizontal') ?? null,
         vertical: align?.getAttribute('vertical') ?? null,
         wrap: align?.getAttribute('wrapText') === '1' || align?.getAttribute('wrapText') === 'true',
@@ -337,8 +364,25 @@ export const MINIMAL_STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="
  * record is reused). Edits `doc`, the styles part.
  */
 export function xfWithNumFmt(doc: XMLDocument, xfIndex: number, code: string): number {
-  const root = doc.documentElement!
   const id = numFmtIdFor(doc, code)
+  const xfsEl = ensureCellXfs(doc)
+  const xfs = kids(xfsEl, 'xf')
+  const base = xfs[xfIndex] ?? xfs[0]!
+  if (Number(base.getAttribute('numFmtId') ?? 0) === id) return xfs[xfIndex] ? xfIndex : 0
+  const copy = base.cloneNode(true) as Element
+  copy.setAttribute('numFmtId', String(id))
+  copy.setAttribute('applyNumberFormat', '1')
+  const key = signature(copy)
+  const same = xfs.findIndex((x) => signature(x) === key)
+  if (same >= 0) return same
+  xfsEl.appendChild(copy)
+  xfsEl.setAttribute('count', String(xfs.length + 1))
+  return xfs.length
+}
+
+/** The styles part's cell formats (cellXfs), made with the one plain record when it has none. */
+export function ensureCellXfs(doc: XMLDocument): Element {
+  const root = doc.documentElement!
   let xfsEl = kid(root, 'cellXfs')
   if (!xfsEl) {
     xfsEl = make(doc, 'cellXfs')
@@ -354,18 +398,7 @@ export function xfWithNumFmt(doc: XMLDocument, xfIndex: number, code: string): n
     xfsEl.appendChild(xf)
     insertInOrder(root, xfsEl, STYLESHEET_ORDER)
   }
-  const xfs = kids(xfsEl, 'xf')
-  const base = xfs[xfIndex] ?? xfs[0]!
-  if (Number(base.getAttribute('numFmtId') ?? 0) === id) return xfs[xfIndex] ? xfIndex : 0
-  const copy = base.cloneNode(true) as Element
-  copy.setAttribute('numFmtId', String(id))
-  copy.setAttribute('applyNumberFormat', '1')
-  const key = signature(copy)
-  const same = xfs.findIndex((x) => signature(x) === key)
-  if (same >= 0) return same
-  xfsEl.appendChild(copy)
-  xfsEl.setAttribute('count', String(xfs.length + 1))
-  return xfs.length
+  return xfsEl
 }
 
 function signature(el: Element): string {

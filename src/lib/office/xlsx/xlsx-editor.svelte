@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { OfficeViewerProps } from '../viewers'
+  import type { StylePatch } from './format-cells'
   import ChartColumnIcon from '@lucide/svelte/icons/chart-column'
   import DownloadIcon from '@lucide/svelte/icons/download'
   import EyeOffIcon from '@lucide/svelte/icons/eye-off'
@@ -39,10 +40,12 @@
     type FormatChoiceId,
     type SheetLocale,
   } from './format'
+  import FormatToolbar from './format-toolbar.svelte'
+  import { borderCss, fontFamilyCss, verticalOf } from './grid-style'
   import { toShownFormula, XlsxLossError, type CellWrite, type Loss, type SheetOp } from './ops'
   import { cellKey, cellName, MAX_COLS, MAX_ROWS, rangeName, type Range } from './ref'
   import SheetGrid, { type GridCell, type Pos } from './sheet-grid.svelte'
-  import { XlsxError } from './workbook'
+  import { pxToWidth, XlsxError } from './workbook'
 
   /**
    * Excel workbooks in the Drive: the sheet as a grid with its tabs, edited in
@@ -199,11 +202,36 @@
     const ed = editor
     if (!d || !ed) return () => null
     const styles = ed.wb.styles()
+    const plain = styles.xf(0)
     const calc = ed.calc()
     const date1904 = ed.wb.date1904
+    const bordersAt = (r: number, c: number) => {
+      const x = d.cells.get(cellKey(r, c))
+      return x ? styles.xf(x.style).border : null
+    }
     return (r: number, c: number): GridCell | null => {
       const cell = d.cells.get(cellKey(r, c))
-      if (!cell) return null
+      const near = {
+        right: bordersAt(r, c + 1),
+        below: bordersAt(r + 1, c),
+        firstCol: c === 0,
+        firstRow: r === 0,
+        filled: false,
+      }
+      if (!cell) {
+        // An empty cell still draws the lines its neighbours put on the edges it shares with them.
+        const lines = borderCss(null, near)
+        return lines.length > 0
+          ? {
+              text: '',
+              align: 'left',
+              css: lines.join('; '),
+              wrap: false,
+              kept: null,
+              unreadFormat: false,
+            }
+          : null
+      }
       const st = styles.xf(cell.style)
       const out = calc.cell(d.info.name, r, c)
       const shown = displayValue(out.value, formatCode(st.numFmtId, st.numFmt, locale), locale, {
@@ -240,11 +268,15 @@
       if (st.font.sizePt && st.font.sizePt !== 11)
         css.push(`font-size: ${Math.round(st.font.sizePt * 1.27)}px`)
       if (st.indent) css.push(`padding-left: ${4 + st.indent * 9}px`)
+      const family = fontFamilyCss(st, plain)
+      if (family) css.push(family)
+      css.push(...borderCss(st.border, { ...near, filled: !!st.fill }))
       return {
         text: shown.text,
         align,
         css: css.join('; '),
         wrap: st.wrap,
+        vertical: verticalOf(st),
         kept: out.kept ? out.reason : null,
         unreadFormat: !!shown.unreadFormat,
       }
@@ -265,6 +297,20 @@
     const st = editor.wb.styles().xf(cell?.style ?? 0)
     return FORMAT_CHOICES.find((f) => f.code === st.numFmt)?.id ?? 'custom'
   })
+
+  /** The active cell's look (the format bar shows it), the workbook's plain font, the active column's and row's size. */
+  const activeStyle = $derived.by(() => {
+    void rev
+    const styles = editor?.wb.styles()
+    const cell = data?.cells.get(cellKey(active.row, active.col))
+    return styles ? styles.xf(cell?.style ?? 0) : null
+  })
+  const plainFont = $derived.by(() => {
+    void rev
+    return editor?.wb.styles().xf(0).font.name ?? null
+  })
+  const activeWidth = $derived(pxToWidth(colWidth(active.col)))
+  const activeHeight = $derived((rowHeight(active.row) * 3) / 4)
 
   function contentText(r: number, c: number): string {
     const cell = data?.cells.get(cellKey(r, c))
@@ -661,6 +707,38 @@
     grid?.focus()
   }
 
+  // ---------------------------------------------------------------------------
+  // Cell format and sizes (./format-cells.ts; the same operations as drive.sheet_format)
+
+  async function applyStyle(patch: StylePatch) {
+    if (editing) grid?.finishEdit(true)
+    await change({ op: 'set_style', sheet, range: rangeName(sel), style: patch })
+    grid?.focus()
+  }
+
+  /** Whole columns (or rows) selected through their headers: a size goes to all of them. */
+  const wholeCols = $derived(sel.top === 0 && sel.bottom === rows - 1)
+  const wholeRows = $derived(sel.left === 0 && sel.right === cols - 1)
+
+  /** The format bar sizes the selected columns; a dragged edge its own column, or all selected whole columns. */
+  async function setColumnWidth(chars: number | null, dragged?: number) {
+    const all = dragged === undefined || (wholeCols && dragged >= sel.left && dragged <= sel.right)
+    const [from, to] = all ? [sel.left, sel.right] : [dragged, dragged]
+    await change({ op: 'set_column_width', sheet, from, to, width: chars })
+  }
+
+  async function setRowHeight(points: number | null, dragged?: number) {
+    const all = dragged === undefined || (wholeRows && dragged >= sel.top && dragged <= sel.bottom)
+    const [from, to] = all ? [sel.top, sel.bottom] : [dragged, dragged]
+    await change({ op: 'set_row_height', sheet, from, to, height: points })
+  }
+
+  /** A dragged edge: pixels → Excel characters (columns) or points (rows, in quarter points). */
+  function onResize(axis: 'col' | 'row', index: number, px: number) {
+    if (axis === 'col') void setColumnWidth(pxToWidth(px), index)
+    else void setRowHeight(Math.round(px * 3) / 4, index)
+  }
+
   async function insertRows(where: 'above' | 'below') {
     const count = sel.bottom - sel.top + 1
     await change({
@@ -717,7 +795,12 @@
     const mod = event.metaKey || event.ctrlKey
     if (!mod || !editable) return
     const key = event.key.toLowerCase()
-    if (key === 'z') {
+    const toggle = { b: 'bold', i: 'italic', u: 'underline' } as const
+    if ((key === 'b' || key === 'i' || key === 'u') && !event.shiftKey && !event.altKey) {
+      event.preventDefault()
+      const prop = toggle[key]
+      if (activeStyle) void applyStyle({ [prop]: !activeStyle.font[prop] })
+    } else if (key === 'z') {
       event.preventDefault()
       void (event.shiftKey ? redo() : undo())
     } else if (key === 'y') {
@@ -937,6 +1020,17 @@
           {/if}
         </span>
       </div>
+      {#if activeStyle && data}
+        <FormatToolbar
+          style={activeStyle}
+          {plainFont}
+          width={activeWidth}
+          height={activeHeight}
+          onstyle={(patch) => void applyStyle(patch)}
+          onwidth={(chars) => void setColumnWidth(chars)}
+          onheight={(points) => void setRowHeight(points)}
+        />
+      {/if}
     {/if}
 
     {#if mode.kind === 'watching'}
@@ -1080,6 +1174,7 @@
         onpaste={(pos, text) => void pasteAt(pos, text)}
         {copyText}
         onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
+        onresize={onResize}
         onblocked={() =>
           (notice = canEdit
             ? mode.kind === 'watching'

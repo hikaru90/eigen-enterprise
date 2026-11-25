@@ -1,5 +1,6 @@
 import type { SheetEditor } from './editor'
 import { displayValue, formatCode, type SheetLocale } from './format'
+import { styleSummary, type StyleSummary } from './format-cells'
 import { toShownFormula } from './ops'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
 import { isErrorValue, XlsxError, type CellValue } from './workbook'
@@ -22,6 +23,8 @@ export type ReadCell = {
   text: string
   /** The number format code, when not General. */
   format?: string
+  /** Font, fill, borders, alignment: only what differs from the workbook's plain format. */
+  style?: StyleSummary
   /** The value is Excel's last calculated one: this editor can't calculate the formula (why). */
   kept?: string
 }
@@ -84,6 +87,8 @@ export function readCells(
       }
       if (c.formula !== null) cell.formula = `=${toShownFormula(c.formula)}`
       if (st.numFmt !== 'General') cell.format = st.numFmt
+      const look = styleSummary(st, styles.xf(0))
+      if (look) cell.style = look
       if (out.kept) cell.kept = out.reason
       return cell
     }),

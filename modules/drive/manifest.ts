@@ -23,11 +23,11 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, the Drive's spreadsheet editor): one read, two writes. */
-export const DRIVE_SHEET_TOOL_NAMES = ['drive.sheet_read', 'drive.sheet_write', 'drive.sheet_structure'] as const
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, the Drive's spreadsheet editor): one read, three writes. */
+export const DRIVE_SHEET_TOOL_NAMES = ['drive.sheet_read', 'drive.sheet_write', 'drive.sheet_structure', 'drive.sheet_format'] as const
 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
-export const DRIVE_SHEET_WRITE_TOOLS = ['drive.sheet_write', 'drive.sheet_structure'] as const
+export const DRIVE_SHEET_WRITE_TOOLS = ['drive.sheet_write', 'drive.sheet_structure', 'drive.sheet_format'] as const
 
 /** File management with UI parity (./file-tools.ts): New folder, Upload, Rename, Move, Share, Trash, Versions. */
 export const DRIVE_FILE_TOOL_NAMES = [
