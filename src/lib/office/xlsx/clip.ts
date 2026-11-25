@@ -2,6 +2,7 @@ import type { SheetEditor } from './editor'
 import { translateFormulaToA1, translateFormulaToR1C1 } from '@borgar/fx'
 import { parseA1Ref, stringifyA1Ref, tokenize } from '@borgar/fx/xlsx'
 import { needsDynamicArray } from './calc-static'
+import { CT_CHART } from './chart-anchor'
 import { autoFilterOf } from './filter'
 import { displayValue, formatCode, type SheetLocale } from './format'
 import { ensureDynamicArrayCm } from './metadata'
@@ -44,7 +45,7 @@ import {
   type SheetInfo,
   type Workbook,
 } from './workbook'
-import { all, kid, kids, make } from './xml'
+import { all, kid, kids, make, NS_CHART, setText, textOf } from './xml'
 
 /**
  * Copy and paste (Excel's Home ▸ Clipboard): a block of cells read into a
@@ -699,5 +700,17 @@ function cutPaste(
   finishSheet(wb, srcInfo, srcDoc)
   writePlacements(wb, info, placements, { area, merges })
   rewriteAllFormulas(wb, (f, home) => moveRefs(f, home, srcInfo.name, from, info.name, dr, dc))
+  // Chart series that read the moved cells follow them (as insert/delete rows does, ./chart-ops.ts).
+  for (const p of wb.pkg.partNames()) {
+    if (wb.pkg.contentType(p) !== CT_CHART) continue
+    const changes = all(wb.pkg.xml(p), 'f', NS_CHART).flatMap((f) => {
+      const t = textOf(f)
+      const next = t ? moveRefs(t, '\u0000', srcInfo.name, from, info.name, dr, dc) : t
+      return next !== t ? [{ f, next }] : []
+    })
+    if (changes.length === 0) continue
+    const doc = wb.edit(p)
+    for (const c of changes) setText(doc, c.f, c.next)
+  }
   return { sheets: sameSheet ? [info.name] : [srcInfo.name, info.name] }
 }

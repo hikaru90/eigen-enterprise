@@ -4,6 +4,7 @@ import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
 import { needsDynamicArray } from './calc-static'
+import { drawingsWithOtherObjects, runChartOp, shiftCharts, type ChartOp } from './chart-ops'
 import { editLosses, runEditOp, type EditOp } from './edit-ops'
 import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
 import { runFormatOp, type FormatOp } from './format-cells'
@@ -118,6 +119,8 @@ export type SheetOp =
   | AutoFilterOp
   | FilterColumnOp
   | FreezeOp
+  /** Insert, change, move, delete charts (./chart-ops.ts). */
+  | ChartOp
   /** Everyday editing: paste, fill, replace, merge, rich text, clear, rows/columns, sheet tabs, view, page setup (./edit-ops.ts). */
   | EditOp
   /** Several operations as one change (one undo step): e.g. a format on each range of a multi-range selection. */
@@ -152,7 +155,7 @@ export class XlsxLossError extends XlsxError {
 const LOSS_TEXT: Record<LossFeature, string> = {
   tables: 'tables (they keep their old cell ranges)',
   pivot_tables: 'pivot tables (they stay where they are)',
-  drawings: 'pictures, charts or shapes on the sheet (they stay where they are)',
+  drawings: 'pictures or shapes on the sheet (they stay where they are; charts move with their cells)',
   comments: 'comments (they stay on their old cells)',
   threaded_comments: 'threaded comments (they stay on their old cells)',
   controls: 'form controls or embedded objects (they stay where they are)',
@@ -425,13 +428,13 @@ function movingLosses(wb: Workbook, info: SheetInfo): Loss[] {
   }
   add('tables', count('table'))
   add('pivot_tables', count('pivotTable'))
-  add('drawings', count('drawing'))
+  // Charts move with the cells (chart-ops.ts); pictures and shapes don't yet.
+  add('drawings', drawingsWithOtherObjects(wb, info))
   add('comments', count('comments'))
   add('threaded_comments', rels.filter((r) => r.type.endsWith('/threadedComment')).length)
   const root = wb.pkg.xml(info.part).documentElement!
   add('controls', (kid(root, 'controls') ? 1 : 0) + (kid(root, 'oleObjects') ? 1 : 0))
   add('extensions', kid(root, 'extLst') ? 1 : 0)
-  add('charts', chartsUsing(wb, info.name))
   add('pivot_sources', pivotSourcesUsing(wb, info.name))
   return out
 }
@@ -551,6 +554,11 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'filter_column':
     case 'freeze_panes':
       return arrange(wb, op)
+    case 'chart_create':
+    case 'chart_update':
+    case 'chart_move':
+    case 'chart_delete':
+      return runChartOp(wb, op)
     case 'batch': {
       const sheets = new Set<string>()
       let focus: string | undefined
@@ -1103,6 +1111,7 @@ function moveCells(wb: Workbook, op: MoveOp): OpResult {
   }
   const af = kid(root, 'autoFilter')
   if (af && !moveRefAttr(af, 'ref', false)) root.removeChild(af)
+  shiftCharts(wb, info, edit, axis, op.at, op.count, insert)
   finishSheet(wb, info, doc)
   wb.invalidate()
   return { sheets: [info.name] }
