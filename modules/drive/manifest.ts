@@ -23,11 +23,12 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-arrange-tools.ts, the Drive's spreadsheet editor): one read, five writes. */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, the Drive's spreadsheet editor): one read, six writes. */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
   'drive.sheet_structure',
+  'drive.sheet_format',
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
@@ -37,6 +38,7 @@ export const DRIVE_SHEET_TOOL_NAMES = [
 export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_write',
   'drive.sheet_structure',
+  'drive.sheet_format',
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',

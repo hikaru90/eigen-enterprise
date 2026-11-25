@@ -2,6 +2,7 @@ import { parse } from '@borgar/fx'
 import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
+import { runFormatOp, type FormatOp } from './format-cells'
 import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
 import { freezePanes, type FreezeOp } from './panes'
 import {
@@ -100,6 +101,8 @@ export type SheetOp =
       at: number
       count: number
     }
+  /** Fonts, fills, borders, alignment, column widths, row heights (./format-cells.ts). */
+  | FormatOp
   /** Sort, filter, freeze panes (./sort.ts, ./filter.ts, ./panes.ts). */
   | SortOp
   | AutoFilterOp
@@ -513,6 +516,10 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'insert_columns':
     case 'delete_columns':
       return moveCells(wb, op)
+    case 'set_style':
+    case 'set_column_width':
+    case 'set_row_height':
+      return runFormatOp(wb, op)
     case 'sort_range':
     case 'set_autofilter':
     case 'filter_column':
@@ -535,13 +542,13 @@ function arrange(wb: Workbook, op: SortOp | AutoFilterOp | FilterColumnOp | Free
 }
 
 /** The editable worksheet document (refs made explicit on first touch). */
-function sheetDoc(wb: Workbook, info: SheetInfo): XMLDocument {
+export function sheetDoc(wb: Workbook, info: SheetInfo): XMLDocument {
   const doc = wb.edit(info.part)
   normalizeRefs(doc)
   return doc
 }
 
-function stylesDoc(wb: Workbook): XMLDocument {
+export function stylesDoc(wb: Workbook): XMLDocument {
   let part = wb.stylesPart()
   if (!part) {
     part = '/xl/styles.xml'
@@ -623,7 +630,7 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
 }
 
 /** Gives a cell a new format, keeping its content. */
-function restyle(wb: Workbook, doc: XMLDocument, row: number, col: number, style: number) {
+export function restyle(wb: Workbook, doc: XMLDocument, row: number, col: number, style: number) {
   const rowEl = kids(sheetDataOf(doc), 'row').find((r) => Number(r.getAttribute('r')) - 1 === row)
   const cell = rowEl
     ? kids(rowEl, 'c').find((c) => c.getAttribute('r') === cellName({ row, col }))
@@ -668,7 +675,7 @@ function setFormat(wb: Workbook, sheet: string, rangeText: string, code: string)
 }
 
 /** After editing a sheet's XML: its dimension and cached model follow. */
-function finishSheet(wb: Workbook, info: SheetInfo, doc: XMLDocument) {
+export function finishSheet(wb: Workbook, info: SheetInfo, doc: XMLDocument) {
   wb.forgetSheet(info.part)
   const d = wb.sheet(info.name)
   setDimension(

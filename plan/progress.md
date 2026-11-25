@@ -2,6 +2,20 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-25 — Release v0.5.43 (owner: "Push and release"; tag on `16db49c3`, GitHub release run 45616642038)
+
+- **Contents:** the make-a-wish round below (all boards), plus xlsx editing and multi-select in Drive.
+- **Gate:**
+  - CI gate: 10628 unit and 1007 component tests.
+  - Upgrade rehearsal from v0.5.42: GREEN.
+  - e2e: 75 passed (12.7 min).
+- **The gate caught, fixed on the way:**
+  1. `b6b18e9e`: the new brand-material hints used faded text (`text-foreground/55`). The page a11y guard covers every area since this round, so it failed.
+  2. `16db49c3`: **a real bug.** Memory › Questions 500ed for the e2e harness user ("Only members of this company …"). The service decided who may ask through the members *listing* (`dbMemberStore.getMember`, production accounts only).
+     - **Decision:** who is acting is any company account (`src/lib/server/members/account-of.ts`; a removed co-worker is no one). Member lists and seat counts stay production-only. pg spec covers both.
+- **Seen, not failing:** one "Preloading data for /drive failed: Internal Error" warning in the passing e2e run. Not investigated.
+- **Not installed on any box yet.**
+
 ## 2026-11-25 — Make-a-wish round across all boards: 8 wishes + 2 owner requests by subagents (owner: "get the latest contributions and integrate them … spawn subagents" · "i want all contributions. all eigenenterprise contributions"; plan `plan/contribute-round-2026-11-25.md`; merged to main, not pushed, not released)
 
 - **Merged to main:**

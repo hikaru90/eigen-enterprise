@@ -334,6 +334,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'drive.share_many',
   'drive.shared_with_me',
   'drive.sheet_filter',
+  'drive.sheet_format',
   'drive.sheet_freeze',
   'drive.sheet_read',
   'drive.sheet_sort',
