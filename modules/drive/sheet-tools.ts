@@ -234,7 +234,8 @@ function toOp(lib: Xlsx, c: z.infer<typeof structureChange>): SheetOp {
   }
 }
 
-export const nameOf = (output: unknown) => (output as { file?: { name?: string } } | undefined)?.file?.name
+export const nameOf = (output: unknown) =>
+  (output as { file?: { name?: string } } | undefined)?.file?.name
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 function describeChange(c: z.infer<typeof structureChange>): string {
@@ -261,7 +262,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
     {
       name: 'drive.sheet_read',
       module: DRIVE_MODULE_ID,
-      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes). At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
+      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden, the AutoFilter and its filtered columns, frozen panes), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes). At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
       auditClass: 'read',
       permission: { roles: DRIVE_ROLES },
       inputSchema: readInput,

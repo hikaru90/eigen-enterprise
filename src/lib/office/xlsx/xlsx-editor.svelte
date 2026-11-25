@@ -1,9 +1,12 @@
 <script lang="ts">
   import type { OfficeViewerProps } from '../viewers'
   import type { StylePatch } from './format-cells'
+  import ArrowDownAZIcon from '@lucide/svelte/icons/arrow-down-a-z'
+  import ArrowDownZAIcon from '@lucide/svelte/icons/arrow-down-z-a'
   import ChartColumnIcon from '@lucide/svelte/icons/chart-column'
   import DownloadIcon from '@lucide/svelte/icons/download'
   import EyeOffIcon from '@lucide/svelte/icons/eye-off'
+  import FunnelIcon from '@lucide/svelte/icons/funnel'
   import InfoIcon from '@lucide/svelte/icons/info'
   import LoaderIcon from '@lucide/svelte/icons/loader-circle'
   import PlusIcon from '@lucide/svelte/icons/plus'
@@ -31,6 +34,8 @@
   import { OFFICE_MIME } from '../kinds'
   import { OpcError } from '../ooxml/package'
   import { createSheetEditor, workbookNotes, type SheetEditor, type WorkbookNote } from './editor'
+  import { autoFilterOf, columnChoices, currentRegion, type FilterChoice } from './filter'
+  import FilterMenu from './filter-menu.svelte'
   import {
     displayValue,
     editText,
@@ -43,14 +48,18 @@
   import FormatToolbar from './format-toolbar.svelte'
   import { borderCss, fontFamilyCss, verticalOf } from './grid-style'
   import { toShownFormula, XlsxLossError, type CellWrite, type Loss, type SheetOp } from './ops'
-  import { cellKey, cellName, MAX_COLS, MAX_ROWS, rangeName, type Range } from './ref'
+  import { frozenOf } from './panes'
+  import { cellKey, cellName, colName, MAX_COLS, MAX_ROWS, rangeName, type Range } from './ref'
   import SheetGrid, { type GridCell, type Pos } from './sheet-grid.svelte'
+  import { guessHeader, type SortKey } from './sort'
+  import SortDialog from './sort-dialog.svelte'
   import { pxToWidth, XlsxError } from './workbook'
 
   /**
    * Excel workbooks in the Drive: the sheet as a grid with its tabs, edited in
    * place — values, formulas (calculated as you type), number formats; add,
-   * rename and delete sheets; insert and delete rows and columns; undo/redo.
+   * rename and delete sheets; insert and delete rows and columns; sort,
+   * AutoFilter and frozen panes (./sort.ts, ./filter.ts, ./panes.ts); undo/redo.
    * Every change is an operation (./ops.ts) on the file itself, so what the
    * grid does not show (charts, pivot tables, comments, other formatting) is
    * written back untouched; what it does not show is listed above the grid,
@@ -109,6 +118,8 @@
   let renameText = $state('')
   let confirm = $state<{ op: SheetOp; title: string; losses: Loss[] } | null>(null)
   let grid = $state<ReturnType<typeof SheetGrid> | null>(null)
+  let filterMenu = $state<{ col: number; at: DOMRect; choices: FilterChoice[] } | null>(null)
+  let sorting = $state<{ range: Range; header: boolean; first: number } | null>(null)
 
   let editor: SheetEditor | null = null
   /** The bytes as the server has them (last loaded or saved) and their SHA-256 (the save's base). */
@@ -180,6 +191,41 @@
     void rev
     return { undo: editor?.canUndo() ?? false, redo: editor?.canRedo() ?? false }
   })
+
+  /** Sort, filter and frozen panes of the sheet on screen (read from its XML). */
+  const frozen = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? frozenOf(editor.wb, info.name) : null
+  })
+  const autoFilter = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? autoFilterOf(editor.wb, info.name) : null
+  })
+  const gridFilter = $derived(
+    autoFilter
+      ? {
+          range: autoFilter.range,
+          filtered: (c: number) => autoFilter.columns.some((x) => x.col === c),
+        }
+      : null,
+  )
+  const filterStatus = $derived.by(() => {
+    if (!autoFilter || autoFilter.columns.length === 0 || !data) return null
+    const total = autoFilter.range.bottom - autoFilter.range.top
+    let hidden = 0
+    for (let r = autoFilter.range.top + 1; r <= autoFilter.range.bottom; r++)
+      if (data.rows.get(r)?.hidden) hidden++
+    return m.drive_sheet_filter_status({ shown: total - hidden, total })
+  })
+  const freezeValue = $derived(
+    !frozen
+      ? 'none'
+      : frozen.rows === 1 && frozen.cols === 0
+        ? 'row'
+        : frozen.rows === 0 && frozen.cols === 1
+          ? 'col'
+          : 'custom',
+  )
 
   const colWidth = $derived.by(() => {
     void rev
@@ -648,6 +694,8 @@
         return m.drive_sheet_confirm_insert_columns({ count: op.count })
       case 'delete_columns':
         return m.drive_sheet_confirm_delete_columns({ count: op.count })
+      case 'sort_range':
+        return m.drive_sheet_confirm_sort({ range: op.range })
       default:
         return m.drive_sheet_confirm_change()
     }
@@ -771,6 +819,94 @@
   }
   async function deleteColumns() {
     await change({ op: 'delete_columns', sheet, at: sel.left, count: sel.right - sel.left + 1 })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sort, filter, freeze panes
+
+  const within = (r: Range, p: Pos) =>
+    p.row >= r.top && p.row <= r.bottom && p.col >= r.left && p.col <= r.right
+
+  /** What a sort works on, as Excel picks it: the filter range (it has a header), a selected range, or the block of cells around the active cell (header guessed). */
+  function sortTarget(): { range: Range; header: boolean } | null {
+    if (!data || !editor) return null
+    if (autoFilter && within(autoFilter.range, active))
+      return { range: autoFilter.range, header: true }
+    if (sel.top === sel.bottom && sel.left === sel.right) {
+      const range = currentRegion(data, active)
+      return { range, header: guessHeader(editor, sheet, range) }
+    }
+    const range = {
+      ...sel,
+      bottom: Math.min(sel.bottom, Math.max(sel.top, data.maxRow)),
+      right: Math.min(sel.right, Math.max(sel.left, data.maxCol)),
+    }
+    return { range, header: false }
+  }
+
+  async function sortBy(keys: SortKey[], target: { range: Range; header: boolean }) {
+    await change({
+      op: 'sort_range',
+      sheet,
+      range: rangeName(target.range),
+      header: target.header,
+      keys,
+    })
+    grid?.focus()
+  }
+
+  async function quickSort(descending: boolean) {
+    const t = sortTarget()
+    if (t) await sortBy([{ col: active.col, descending }], t)
+  }
+
+  function openSort() {
+    const t = sortTarget()
+    if (t) sorting = { ...t, first: active.col }
+  }
+
+  function headerText(col: number): string {
+    return sorting ? (cellAt(sorting.range.top, col)?.text ?? '') : ''
+  }
+
+  async function toggleFilter() {
+    filterMenu = null
+    if (autoFilter) await change({ op: 'set_autofilter', sheet, range: null })
+    else await change({ op: 'set_autofilter', sheet, range: rangeName(sel) })
+    grid?.focus()
+  }
+
+  function openFilterMenu(col: number, at: DOMRect) {
+    if (!editor) return
+    try {
+      filterMenu = { col, at, choices: columnChoices(editor, sheet, col, locale) }
+    } catch (err) {
+      failure = shown(err)
+    }
+  }
+
+  async function applyFilter(col: number, values: string[] | null, blanks: boolean) {
+    filterMenu = null
+    await change({ op: 'filter_column', sheet, col, values, blanks })
+    grid?.focus()
+  }
+
+  async function sortFromFilter(col: number, descending: boolean) {
+    filterMenu = null
+    if (autoFilter) await sortBy([{ col, descending }], { range: autoFilter.range, header: true })
+  }
+
+  async function freeze(choice: string) {
+    const [rows, cols] =
+      choice === 'row'
+        ? [1, 0]
+        : choice === 'col'
+          ? [0, 1]
+          : choice === 'at'
+            ? [active.row, active.col]
+            : [0, 0]
+    await change({ op: 'freeze_panes', sheet, rows, cols })
+    grid?.focus()
   }
 
   async function undo() {
@@ -1012,6 +1148,52 @@
           onclick={() => void deleteColumns()}
           data-testid="xlsx-delete-cols">{m.drive_sheet_delete_cols()}</button
         >
+        <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
+        <button
+          type="button"
+          class={btn}
+          onclick={() => void quickSort(false)}
+          title={m.drive_sheet_sort_asc()}
+          aria-label={m.drive_sheet_sort_asc()}
+          data-testid="xlsx-sort-asc"><ArrowDownAZIcon class="size-4" aria-hidden="true" /></button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => void quickSort(true)}
+          title={m.drive_sheet_sort_desc()}
+          aria-label={m.drive_sheet_sort_desc()}
+          data-testid="xlsx-sort-desc"><ArrowDownZAIcon class="size-4" aria-hidden="true" /></button
+        >
+        <button type="button" class={btn} onclick={openSort} data-testid="xlsx-sort-open"
+          >{m.drive_sheet_sort_custom()}</button
+        >
+        <button
+          type="button"
+          class="{btn} {autoFilter ? 'bg-muted text-foreground' : ''}"
+          aria-pressed={!!autoFilter}
+          onclick={() => void toggleFilter()}
+          title={autoFilter ? m.drive_sheet_filter_off_hint() : m.drive_sheet_filter_hint()}
+          data-testid="xlsx-filter-toggle"
+          ><FunnelIcon class="size-4" aria-hidden="true" />{m.drive_sheet_filter()}</button
+        >
+        <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span class="sr-only sm:not-sr-only">{m.drive_sheet_freeze()}</span>
+          <select
+            class="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+            value={freezeValue}
+            onchange={(e) => void freeze(e.currentTarget.value)}
+            data-testid="xlsx-freeze"
+          >
+            <option value="none">{m.drive_sheet_freeze_none()}</option>
+            <option value="row">{m.drive_sheet_freeze_top_row()}</option>
+            <option value="col">{m.drive_sheet_freeze_first_col()}</option>
+            {#if freezeValue === 'custom' && frozen}<option value="custom" disabled
+                >{m.drive_sheet_freeze_current({ rows: frozen.rows, cols: frozen.cols })}</option
+              >{/if}
+            <option value="at">{m.drive_sheet_freeze_at({ ref: activeRef })}</option>
+          </select>
+        </label>
         <span
           class="ml-auto flex items-center gap-1.5 px-2 text-xs text-muted-foreground"
           role="status"
@@ -1182,6 +1364,10 @@
         onclear={(r) => void clearRange(r)}
         onpaste={(pos, text) => void pasteAt(pos, text)}
         {copyText}
+        frozenRows={frozen?.rows ?? 0}
+        frozenCols={frozen?.cols ?? 0}
+        filter={gridFilter}
+        onfilter={openFilterMenu}
         onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
         onresize={onResize}
         onblocked={() =>
@@ -1266,8 +1452,48 @@
           >{m.drive_sheet_view_only()}</span
         >
       {/if}
+      {#if filterStatus}
+        <span
+          class="{editable || canEdit ? 'ml-auto' : ''} shrink-0 px-2 text-xs text-muted-foreground"
+          role="status"
+          data-testid="xlsx-filter-status">{filterStatus}</span
+        >
+      {/if}
     </div>
   </div>
+{/if}
+
+{#if filterMenu && autoFilter}
+  {@const fm = filterMenu}
+  <FilterMenu
+    col={colName(fm.col)}
+    choices={fm.choices}
+    current={autoFilter.columns.find((c) => c.col === fm.col)}
+    at={fm.at}
+    {editable}
+    onapply={(values, blanks) => void applyFilter(fm.col, values, blanks)}
+    onsort={(descending) => void sortFromFilter(fm.col, descending)}
+    onclose={() => {
+      filterMenu = null
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if sorting}
+  {@const st = sorting}
+  <SortDialog
+    range={st.range}
+    header={st.header}
+    first={st.first}
+    {headerText}
+    onsort={(keys, header) => {
+      const range = st.range
+      sorting = null
+      void sortBy(keys, { range, header })
+    }}
+    onclose={() => (sorting = null)}
+  />
 {/if}
 
 <AlertDialog.Root

@@ -16,6 +16,7 @@ import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { DOCUMENT_KINDS } from './service'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
+import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -318,5 +319,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetTools({ service }),
     ...createDriveSheetFormatTools({ service }),
     ...createDriveSheetCopyTools({ service }),
+    ...createDriveSheetArrangeTools({ service }),
   ]
 }

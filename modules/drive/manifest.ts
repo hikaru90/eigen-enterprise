@@ -23,11 +23,26 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, the Drive's spreadsheet editor): one read, three writes. */
-export const DRIVE_SHEET_TOOL_NAMES = ['drive.sheet_read', 'drive.sheet_write', 'drive.sheet_structure', 'drive.sheet_format'] as const
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, the Drive's spreadsheet editor): one read, six writes. */
+export const DRIVE_SHEET_TOOL_NAMES = [
+  'drive.sheet_read',
+  'drive.sheet_write',
+  'drive.sheet_structure',
+  'drive.sheet_format',
+  'drive.sheet_sort',
+  'drive.sheet_filter',
+  'drive.sheet_freeze',
+] as const
 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
-export const DRIVE_SHEET_WRITE_TOOLS = ['drive.sheet_write', 'drive.sheet_structure', 'drive.sheet_format'] as const
+export const DRIVE_SHEET_WRITE_TOOLS = [
+  'drive.sheet_write',
+  'drive.sheet_structure',
+  'drive.sheet_format',
+  'drive.sheet_sort',
+  'drive.sheet_filter',
+  'drive.sheet_freeze',
+] as const
 
 /** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */
 export const DRIVE_SHEET_COPY_TOOL_NAMES = ['drive.make_xlsx_copy'] as const

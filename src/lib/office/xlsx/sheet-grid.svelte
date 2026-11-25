@@ -17,6 +17,8 @@
 </script>
 
 <script lang="ts">
+  import ChevronDownIcon from '@lucide/svelte/icons/chevron-down'
+  import FunnelIcon from '@lucide/svelte/icons/funnel'
   import { onMount, tick } from 'svelte'
   import { m } from '$lib/paraglide/messages.js'
   import { colName, type Range } from './ref'
@@ -29,6 +31,9 @@
    * Enter/F2/double-click with the cell's content), Enter/Tab commit and move,
    * Esc cancels, Delete clears the selection, paste fills from the active
    * cell. The page owns what an edit means (`oncommit`, `onclear`, `onpaste`).
+   * Frozen rows/columns stay in place while the rest scrolls (sticky panes);
+   * an AutoFilter puts a drop-down button in each cell of its header row
+   * (Alt+↓ on a header cell opens it too), the page shows the menu.
    */
   let {
     rows,
@@ -51,6 +56,10 @@
     copyText,
     onreach,
     onblocked,
+    frozenRows = 0,
+    frozenCols = 0,
+    filter = null,
+    onfilter,
     onresize,
   }: {
     rows: number
@@ -76,6 +85,13 @@
     onreach?: (axis: 'row' | 'col') => void
     /** A key that would edit while editing is not allowed (view only). */
     onblocked?: () => void
+    /** Rows from the top / columns from the left that stay in place. */
+    frozenRows?: number
+    frozenCols?: number
+    /** The sheet's AutoFilter: its range, and which columns filter. */
+    filter?: { range: Range; filtered: (col: number) => boolean } | null
+    /** A filter button (or Alt+↓) asked for column `col`'s menu, shown at `at`. */
+    onfilter?: (col: number, at: DOMRect) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
   } = $props()
@@ -118,16 +134,24 @@
     return Math.max(0, lo)
   }
 
-  const firstRow = $derived(Math.max(0, indexAt(rowTops, scrollTop) - OVERSCAN))
+  /** Frozen panes: how many rows/columns, and their height/width. */
+  const fr = $derived(Math.max(0, Math.min(frozenRows, rows - 1)))
+  const fc = $derived(Math.max(0, Math.min(frozenCols, cols - 1)))
+  const FH = $derived(rowTops[fr]!)
+  const FW = $derived(colLefts[fc]!)
+
+  const firstRow = $derived(Math.max(fr, indexAt(rowTops, scrollTop + FH) - OVERSCAN))
   const lastRow = $derived(Math.min(rows - 1, indexAt(rowTops, scrollTop + viewH) + OVERSCAN))
-  const firstCol = $derived(Math.max(0, indexAt(colLefts, scrollLeft) - OVERSCAN))
+  const firstCol = $derived(Math.max(fc, indexAt(colLefts, scrollLeft + FW) - OVERSCAN))
   const lastCol = $derived(Math.min(cols - 1, indexAt(colLefts, scrollLeft + viewW) + OVERSCAN))
-  const visibleRows = $derived(
-    Array.from({ length: Math.max(0, lastRow - firstRow + 1) }, (_, i) => firstRow + i),
-  )
-  const visibleCols = $derived(
-    Array.from({ length: Math.max(0, lastCol - firstCol + 1) }, (_, i) => firstCol + i),
-  )
+  const span = (from: number, to: number) =>
+    Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i)
+  const visibleRows = $derived(span(firstRow, lastRow))
+  const visibleCols = $derived(span(firstCol, lastCol))
+  const frozenRowList = $derived(span(0, fr - 1))
+  const frozenColList = $derived(span(0, fc - 1))
+  /** The pane the active cell is drawn in (the cell editor goes there). */
+  const activeQuad = $derived(`${active.row < fr ? 't' : 'b'}${active.col < fc ? 'l' : 'r'}`)
 
   const sel = $derived<Range>({
     top: Math.min(active.row, anchor.row),
@@ -195,12 +219,17 @@
     const b = activeBox
     const bodyH = scroller.clientHeight - HEAD_H
     const bodyW = scroller.clientWidth - HEAD_W
-    if (b.top < scroller.scrollTop) scroller.scrollTop = b.top
-    else if (b.top + b.height > scroller.scrollTop + bodyH)
-      scroller.scrollTop = b.top + b.height - bodyH
-    if (b.left < scroller.scrollLeft) scroller.scrollLeft = b.left
-    else if (b.left + b.width > scroller.scrollLeft + bodyW)
-      scroller.scrollLeft = b.left + b.width - bodyW
+    // Cells in frozen rows/columns are always in view on that axis.
+    if (active.row >= fr) {
+      if (b.top < scroller.scrollTop + FH) scroller.scrollTop = b.top - FH
+      else if (b.top + b.height > scroller.scrollTop + bodyH)
+        scroller.scrollTop = b.top + b.height - bodyH
+    }
+    if (active.col >= fc) {
+      if (b.left < scroller.scrollLeft + FW) scroller.scrollLeft = b.left - FW
+      else if (b.left + b.width > scroller.scrollLeft + bodyW)
+        scroller.scrollLeft = b.left + b.width - bodyW
+    }
     onScroll()
   }
 
@@ -261,6 +290,11 @@
     if (editing || event.defaultPrevented) return
     const mod = event.metaKey || event.ctrlKey
     const ext = event.shiftKey
+    if (event.altKey && event.key === 'ArrowDown' && filterButtonAt(active.row, active.col)) {
+      event.preventDefault()
+      openFilter(active.col, document.getElementById(activeId))
+      return
+    }
     switch (event.key) {
       case 'ArrowDown':
         step('down', ext)
@@ -333,9 +367,12 @@
   function posFromEvent(event: PointerEvent | MouseEvent): Pos | null {
     if (!scroller) return null
     const rect = scroller.getBoundingClientRect()
-    const x = event.clientX - rect.left - HEAD_W + scroller.scrollLeft
-    const y = event.clientY - rect.top - HEAD_H + scroller.scrollTop
-    if (x < 0 || y < 0) return null
+    const vx = event.clientX - rect.left - HEAD_W
+    const vy = event.clientY - rect.top - HEAD_H
+    if (vx < 0 || vy < 0) return null
+    // Frozen panes don't scroll.
+    const x = vx < FW ? vx : vx + scroller.scrollLeft
+    const y = vy < FH ? vy : vy + scroller.scrollTop
     return {
       row: Math.min(rows - 1, indexAt(rowTops, y)),
       col: Math.min(cols - 1, indexAt(colLefts, x)),
@@ -435,12 +472,169 @@
 
   const guideStyle = (r: Resizing) =>
     r.axis === 'col'
-      ? `left: ${HEAD_W + colLefts[r.index]! + r.px - 1}px; top: 0; width: 2px; height: ${HEAD_H + rowTops[rows]!}px;`
-      : `top: ${HEAD_H + rowTops[r.index]! + r.px - 1}px; left: 0; height: 2px; width: ${HEAD_W + colLefts[cols]!}px;`
+      ? `left: ${HEAD_W + colLefts[r.index]! + r.px - 1 + (r.index < fc ? scrollLeft : 0)}px; top: 0; width: 2px; height: ${HEAD_H + rowTops[rows]!}px;`
+      : `top: ${HEAD_H + rowTops[r.index]! + r.px - 1 + (r.index < fr ? scrollTop : 0)}px; left: 0; height: 2px; width: ${HEAD_W + colLefts[cols]!}px;`
 
   const inSel = (r: number, c: number) =>
     r >= sel.top && r <= sel.bottom && c >= sel.left && c <= sel.right
+
+  const filterButtonAt = (r: number, c: number) =>
+    !!filter && r === filter.range.top && c >= filter.range.left && c <= filter.range.right
+
+  function openFilter(c: number, el: Element | null) {
+    if (!el || !onfilter) return
+    if (editing) finishEdit(true)
+    onfilter(c, el.getBoundingClientRect())
+  }
 </script>
+
+<!-- One pane of cells (dx/dy: where it starts in sheet pixels) with its part of the selection, and the cell editor when the active cell is in it. -->
+{#snippet pane(rowList: number[], colList: number[], dx: number, dy: number, quad: string)}
+  {#each rowList as r (r)}
+    <div
+      role="row"
+      aria-rowindex={r + 1}
+      class="g-abs g-left"
+      style="top: {rowTops[r]! - dy}px; height: {rowHeight(r)}px; width: {colLefts[cols]! - dx}px;"
+    >
+      {#each colList as c (c)}
+        {@const mr = mergeAt(r, c)}
+        {#if !mr || mr.start}
+          {@const cell = cellAt(r, c)}
+          {@const b = mr ? box(mr.range) : null}
+          {@const fb = filterButtonAt(r, c)}
+          <div
+            id="xlsx-cell-{r}-{c}"
+            role="gridcell"
+            aria-colindex={c + 1}
+            aria-selected={inSel(r, c)}
+            class="xlsx-cell g-abs g-top g-clip g-cell-{cell?.vertical ??
+              'bottom'} border-r border-b border-border/60 px-1 leading-[18px] {cell?.wrap
+              ? 'whitespace-pre-wrap'
+              : 'whitespace-pre'} {cell?.kept ? 'xlsx-kept' : ''} {fb ? 'pr-5' : ''}"
+            style="left: {colLefts[c]! - dx}px; width: {b ? b.width : colWidth(c)}px; height: {b
+              ? b.height
+              : rowHeight(r)}px; text-align: {cell?.align ?? 'left'}; {cell?.css ?? ''}"
+            title={cell?.kept
+              ? m.drive_sheet_kept_cell({ reason: cell.kept })
+              : cell?.unreadFormat
+                ? m.drive_sheet_unread_format()
+                : undefined}
+            data-ref="{colName(c)}{r + 1}"
+          >
+            <span class="block">{cell?.text ?? ''}</span>
+            {#if fb}
+              {@const on = filter!.filtered(c)}
+              {@const what = on
+                ? m.drive_sheet_filter_button_on({ col: colName(c) })
+                : m.drive_sheet_filter_button({ col: colName(c) })}
+              <button
+                type="button"
+                tabindex="-1"
+                class="g-filter-btn inline-flex items-center justify-center rounded-sm border border-border bg-background hover:text-foreground {on
+                  ? 'text-primary'
+                  : 'text-muted-foreground'}"
+                aria-haspopup="dialog"
+                aria-label={what}
+                title={what}
+                onpointerdown={(e) => e.stopPropagation()}
+                ondblclick={(e) => e.stopPropagation()}
+                onclick={(e) => openFilter(c, e.currentTarget)}
+                data-testid="xlsx-filter-button"
+                data-col={colName(c)}
+                >{#if on}<FunnelIcon class="size-3" aria-hidden="true" />{:else}<ChevronDownIcon
+                    class="size-3"
+                    aria-hidden="true"
+                  />{/if}</button
+              >
+            {/if}
+          </div>
+        {/if}
+      {/each}
+    </div>
+  {/each}
+  <div
+    class="g-abs g-ghost border border-primary bg-primary/5"
+    style="top: {selBox.top - dy}px; left: {selBox.left -
+      dx}px; width: {selBox.width}px; height: {selBox.height}px;"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="g-abs g-ghost border-2 border-primary"
+    style="top: {activeBox.top - dy - 1}px; left: {activeBox.left -
+      dx -
+      1}px; width: {activeBox.width + 1}px; height: {activeBox.height + 1}px;"
+    aria-hidden="true"
+    data-testid={quad === activeQuad ? 'xlsx-active' : undefined}
+  ></div>
+  {#if editing && quad === activeQuad}
+    <textarea
+      bind:this={cellEditor}
+      bind:value={draft}
+      class="g-abs g-editor resize-none border-2 border-primary bg-background px-1 leading-[18px] shadow-md outline-none focus:border-primary"
+      style="top: {activeBox.top - dy - 1}px; left: {activeBox.left -
+        dx -
+        1}px; min-width: {activeBox.width + 1}px; height: {Math.max(activeBox.height + 1, 24)}px;"
+      aria-label={m.drive_sheet_cell_editor({
+        ref: `${colName(active.col)}${active.row + 1}`,
+      })}
+      spellcheck="false"
+      onkeydown={onEditorKeydown}
+      onblur={() => finishEdit(true)}
+      data-testid="xlsx-cell-editor"></textarea>
+  {/if}
+{/snippet}
+
+{#snippet colHead(c: number, dx: number)}
+  <button
+    type="button"
+    tabindex="-1"
+    role="columnheader"
+    aria-colindex={c + 1}
+    class="g-abs g-top border-r border-b border-border bg-muted text-center text-xs text-muted-foreground {c >=
+      sel.left && c <= sel.right
+      ? 'bg-primary/10 font-medium text-foreground'
+      : ''}"
+    style="left: {colLefts[c]! - dx}px; width: {colWidth(c)}px; height: {HEAD_H}px;"
+    onclick={(e) => pickColumn(c, e.shiftKey)}>{colName(c)}</button
+  >
+  {#if onresize && editable}
+    <div
+      class="g-abs g-top g-col-handle"
+      style="left: {colLefts[c + 1]! - dx - 3}px; height: {HEAD_H}px;"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={m.drive_sheet_fmt_col_resize({ col: colName(c) })}
+      onpointerdown={(e) => onHandleDown(e, 'col', c)}
+      data-testid="xlsx-col-resize-{colName(c)}"
+    ></div>
+  {/if}
+{/snippet}
+
+{#snippet rowHead(r: number, dy: number)}
+  <button
+    type="button"
+    tabindex="-1"
+    class="g-abs g-full-w border-r border-b border-border bg-muted pr-1.5 text-right text-xs text-muted-foreground tabular-nums {r >=
+      sel.top && r <= sel.bottom
+      ? 'bg-primary/10 font-medium text-foreground'
+      : ''}"
+    style="top: {rowTops[r]! - dy}px; height: {rowHeight(r)}px;"
+    aria-label={m.drive_sheet_row_label({ n: r + 1 })}
+    onclick={(e) => pickRow(r, e.shiftKey)}>{r + 1}</button
+  >
+  {#if onresize && editable}
+    <div
+      class="g-abs g-full-w g-row-handle"
+      style="top: {rowTops[r + 1]! - dy - 3}px;"
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label={m.drive_sheet_fmt_row_resize({ row: r + 1 })}
+      onpointerdown={(e) => onHandleDown(e, 'row', r)}
+      data-testid="xlsx-row-resize-{r + 1}"
+    ></div>
+  {/if}
+{/snippet}
 
 <div
   bind:this={scroller}
@@ -462,6 +656,13 @@
   <div
     class="g-canvas"
     style="width: {HEAD_W + colLefts[cols]!}px; height: {HEAD_H + rowTops[rows]!}px;"
+    role="presentation"
+    onpointerdown={onPointerDown}
+    onpointermove={onPointerMove}
+    onpointerup={onPointerUp}
+    ondblclick={(e) => {
+      if (posFromEvent(e)) void beginEdit(null)
+    }}
   >
     {#if resizing}
       <div
@@ -479,143 +680,73 @@
         role="columnheader"
         aria-label={m.drive_sheet_corner()}
       ></div>
-      <div class="g-rel" style="width: {colLefts[cols]!}px;">
-        {#each visibleCols as c (c)}
-          <button
-            type="button"
-            tabindex="-1"
-            role="columnheader"
-            aria-colindex={c + 1}
-            class="g-abs g-top border-r border-b border-border bg-muted text-center text-xs text-muted-foreground {c >=
-              sel.left && c <= sel.right
-              ? 'bg-primary/10 font-medium text-foreground'
-              : ''}"
-            style="left: {colLefts[c]}px; width: {colWidth(c)}px; height: {HEAD_H}px;"
-            onclick={(e) => pickColumn(c, e.shiftKey)}>{colName(c)}</button
-          >
-          {#if onresize && editable}
-            <div
-              class="g-abs g-top g-col-handle"
-              style="left: {colLefts[c + 1]! - 3}px; height: {HEAD_H}px;"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={m.drive_sheet_fmt_col_resize({ col: colName(c) })}
-              onpointerdown={(e) => onHandleDown(e, 'col', c)}
-              data-testid="xlsx-col-resize-{colName(c)}"
-            ></div>
-          {/if}
-        {/each}
+      {#if fc > 0}
+        <div
+          class="g-rel g-stick-l g-z25 bg-muted"
+          style="width: {FW}px; min-width: {FW}px; left: {HEAD_W}px;"
+        >
+          {#each frozenColList as c (c)}{@render colHead(c, 0)}{/each}
+        </div>
+      {/if}
+      <div class="g-rel" style="width: {colLefts[cols]! - FW}px;">
+        {#each visibleCols as c (c)}{@render colHead(c, FW)}{/each}
       </div>
     </div>
-    <div class="g-body" style="height: {rowTops[rows]!}px;">
+    {#if fr > 0}
+      <!-- Frozen rows -->
+      <div
+        class="g-frozen-rows"
+        style="top: {HEAD_H}px; height: {FH}px; width: {HEAD_W + colLefts[cols]!}px;"
+        data-testid="xlsx-frozen-rows"
+      >
+        <div
+          class="g-rowheads bg-muted"
+          style="width: {HEAD_W}px; min-width: {HEAD_W}px; height: {FH}px;"
+        >
+          {#each frozenRowList as r (r)}{@render rowHead(r, 0)}{/each}
+        </div>
+        {#if fc > 0}
+          <div
+            class="g-rel g-stick-l g-z16 g-clip g-freeze-line-r bg-background"
+            style="width: {FW}px; min-width: {FW}px; height: {FH}px; left: {HEAD_W}px;"
+          >
+            {@render pane(frozenRowList, frozenColList, 0, 0, 'tl')}
+          </div>
+        {/if}
+        <div
+          class="g-rel g-clip bg-background"
+          style="width: {colLefts[cols]! - FW}px; height: {FH}px;"
+        >
+          {@render pane(frozenRowList, visibleCols, FW, 0, 'tr')}
+        </div>
+      </div>
+    {/if}
+    <div class="g-body" style="height: {rowTops[rows]! - FH}px;">
       <!-- Row numbers -->
       <div
         class="g-rowheads bg-muted"
-        style="width: {HEAD_W}px; min-width: {HEAD_W}px; height: {rowTops[rows]!}px;"
+        style="width: {HEAD_W}px; min-width: {HEAD_W}px; height: {rowTops[rows]! - FH}px;"
       >
-        {#each visibleRows as r (r)}
-          <button
-            type="button"
-            tabindex="-1"
-            class="g-abs g-full-w border-r border-b border-border bg-muted pr-1.5 text-right text-xs text-muted-foreground tabular-nums {r >=
-              sel.top && r <= sel.bottom
-              ? 'bg-primary/10 font-medium text-foreground'
-              : ''}"
-            style="top: {rowTops[r]}px; height: {rowHeight(r)}px;"
-            aria-label={m.drive_sheet_row_label({ n: r + 1 })}
-            onclick={(e) => pickRow(r, e.shiftKey)}>{r + 1}</button
-          >
-          {#if onresize && editable}
-            <div
-              class="g-abs g-full-w g-row-handle"
-              style="top: {rowTops[r + 1]! - 3}px;"
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label={m.drive_sheet_fmt_row_resize({ row: r + 1 })}
-              onpointerdown={(e) => onHandleDown(e, 'row', r)}
-              data-testid="xlsx-row-resize-{r + 1}"
-            ></div>
-          {/if}
-        {/each}
+        {#each visibleRows as r (r)}{@render rowHead(r, FH)}{/each}
       </div>
+      {#if fc > 0}
+        <!-- Frozen columns -->
+        <div
+          class="g-rel g-stick-l g-z12 g-clip g-freeze-line-r bg-background"
+          style="width: {FW}px; min-width: {FW}px; height: {rowTops[rows]! -
+            FH}px; left: {HEAD_W}px;"
+          data-testid="xlsx-frozen-cols"
+        >
+          {@render pane(visibleRows, frozenColList, 0, FH, 'bl')}
+        </div>
+      {/if}
       <!-- Cells -->
       <div
         class="g-rel"
-        style="width: {colLefts[cols]!}px; height: {rowTops[rows]!}px;"
+        style="width: {colLefts[cols]! - FW}px; height: {rowTops[rows]! - FH}px;"
         role="presentation"
-        onpointerdown={onPointerDown}
-        onpointermove={onPointerMove}
-        onpointerup={onPointerUp}
-        ondblclick={() => void beginEdit(null)}
       >
-        {#each visibleRows as r (r)}
-          <div
-            role="row"
-            aria-rowindex={r + 1}
-            class="g-abs g-left"
-            style="top: {rowTops[r]}px; height: {rowHeight(r)}px; width: {colLefts[cols]!}px;"
-          >
-            {#each visibleCols as c (c)}
-              {@const mr = mergeAt(r, c)}
-              {#if !mr || mr.start}
-                {@const cell = cellAt(r, c)}
-                {@const b = mr ? box(mr.range) : null}
-                <div
-                  id="xlsx-cell-{r}-{c}"
-                  role="gridcell"
-                  aria-colindex={c + 1}
-                  aria-selected={inSel(r, c)}
-                  class="xlsx-cell g-abs g-top g-clip g-cell-{cell?.vertical ??
-                    'bottom'} border-r border-b border-border/60 px-1 leading-[18px] {cell?.wrap
-                    ? 'whitespace-pre-wrap'
-                    : 'whitespace-pre'} {cell?.kept ? 'xlsx-kept' : ''}"
-                  style="left: {colLefts[c]}px; width: {b ? b.width : colWidth(c)}px; height: {b
-                    ? b.height
-                    : rowHeight(r)}px; text-align: {cell?.align ?? 'left'}; {cell?.css ?? ''}"
-                  title={cell?.kept
-                    ? m.drive_sheet_kept_cell({ reason: cell.kept })
-                    : cell?.unreadFormat
-                      ? m.drive_sheet_unread_format()
-                      : undefined}
-                  data-ref="{colName(c)}{r + 1}"
-                >
-                  <span class="block">{cell?.text ?? ''}</span>
-                </div>
-              {/if}
-            {/each}
-          </div>
-        {/each}
-        <!-- Selection -->
-        <div
-          class="g-abs g-ghost border border-primary bg-primary/5"
-          style="top: {selBox.top}px; left: {selBox.left}px; width: {selBox.width}px; height: {selBox.height}px;"
-          aria-hidden="true"
-        ></div>
-        <div
-          class="g-abs g-ghost border-2 border-primary"
-          style="top: {activeBox.top - 1}px; left: {activeBox.left - 1}px; width: {activeBox.width +
-            1}px; height: {activeBox.height + 1}px;"
-          aria-hidden="true"
-          data-testid="xlsx-active"
-        ></div>
-        {#if editing}
-          <textarea
-            bind:this={cellEditor}
-            bind:value={draft}
-            class="g-abs g-editor resize-none border-2 border-primary bg-background px-1 leading-[18px] shadow-md outline-none focus:border-primary"
-            style="top: {activeBox.top - 1}px; left: {activeBox.left -
-              1}px; min-width: {activeBox.width + 1}px; height: {Math.max(
-              activeBox.height + 1,
-              24,
-            )}px;"
-            aria-label={m.drive_sheet_cell_editor({
-              ref: `${colName(active.col)}${active.row + 1}`,
-            })}
-            spellcheck="false"
-            onkeydown={onEditorKeydown}
-            onblur={() => finishEdit(true)}
-            data-testid="xlsx-cell-editor"></textarea>
-        {/if}
+        {@render pane(visibleRows, visibleCols, FW, FH, 'br')}
       </div>
     </div>
   </div>
@@ -647,6 +778,53 @@
   }
   .g-body {
     display: flex;
+  }
+  .g-frozen-rows {
+    position: sticky;
+    z-index: 15;
+    display: flex;
+  }
+  .g-stick-l {
+    position: sticky;
+  }
+  /* The freeze line, as Excel draws it: below the frozen rows, right of the frozen columns. */
+  .g-frozen-rows::after,
+  .g-freeze-line-r::after {
+    content: '';
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+    background: var(--muted-foreground);
+    opacity: 0.6;
+  }
+  .g-frozen-rows::after {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+  }
+  .g-freeze-line-r::after {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+  }
+  .g-z12 {
+    z-index: 12;
+  }
+  .g-z16 {
+    z-index: 16;
+  }
+  .g-z25 {
+    z-index: 25;
+  }
+  .g-filter-btn {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 16px;
+    height: 16px;
+    z-index: 2;
   }
   .g-rowheads {
     position: sticky;

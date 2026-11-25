@@ -1,7 +1,9 @@
 import type { SheetEditor } from './editor'
+import { autoFilterOf, describeAutoFilter } from './filter'
 import { displayValue, formatCode, type SheetLocale } from './format'
 import { styleSummary, type StyleSummary } from './format-cells'
 import { toShownFormula } from './ops'
+import { frozenOf } from './panes'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
 import { isErrorValue, XlsxError, type CellValue } from './workbook'
 
@@ -11,7 +13,16 @@ import { isErrorValue, XlsxError, type CellValue } from './workbook'
  * (calculated), formulas, shown text and number format.
  */
 
-export type SheetSummary = { name: string; kind: string; hidden: boolean; used: string | null }
+export type SheetSummary = {
+  name: string
+  kind: string
+  hidden: boolean
+  used: string | null
+  /** The sheet's AutoFilter (range, filtered columns), when it has one. */
+  filter?: ReturnType<typeof describeAutoFilter>
+  /** Frozen panes (rows from the top, columns from the left), when it has them. */
+  frozen?: { rows: number; columns: number }
+}
 
 export type ReadCell = {
   ref: string
@@ -32,12 +43,18 @@ export type ReadCell = {
 export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
   return ed.wb.sheets().map((s) => {
     const used = s.kind === 'worksheet' ? usedRange(ed, s.name) : null
-    return {
+    const out: SheetSummary = {
       name: s.name,
       kind: s.kind === 'worksheet' ? 'sheet' : s.kind,
       hidden: s.state !== 'visible',
       used: used ? rangeName(used) : null,
     }
+    if (s.kind !== 'worksheet') return out
+    const af = autoFilterOf(ed.wb, s.name)
+    if (af) out.filter = describeAutoFilter(af)
+    const frozen = frozenOf(ed.wb, s.name)
+    if (frozen) out.frozen = { rows: frozen.rows, columns: frozen.cols }
+    return out
   })
 }
 

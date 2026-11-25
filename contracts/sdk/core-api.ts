@@ -1866,6 +1866,20 @@ export type CoreApiTools = {
     input: Record<string, never>
     output: unknown
   }
+  "drive.sheet_filter": {
+    input: {
+      "columns"?: Array<{
+        "blanks"?: boolean
+        "column": number | string
+        "values": Array<string> | null
+      }>
+      "file_id": string
+      "off"?: true
+      "range"?: string
+      "sheet": string
+    }
+    output: unknown
+  }
   "drive.sheet_format": {
     input: {
       "columns"?: Array<{
@@ -1902,11 +1916,34 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_freeze": {
+    input: {
+      "columns": number
+      "file_id": string
+      "rows": number
+      "sheet": string
+    }
+    output: unknown
+  }
   "drive.sheet_read": {
     input: {
       "file_id": string
       "range"?: string
       "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_sort": {
+    input: {
+      "accept_losses"?: boolean
+      "by": Array<{
+        "column": number | string
+        "descending"?: boolean
+      }>
+      "file_id": string
+      "header"?: boolean
+      "range": string
+      "sheet": string
     }
     output: unknown
   }
@@ -4447,8 +4484,11 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.set_sharing",
   "drive.share_many",
   "drive.shared_with_me",
+  "drive.sheet_filter",
   "drive.sheet_format",
+  "drive.sheet_freeze",
   "drive.sheet_read",
+  "drive.sheet_sort",
   "drive.sheet_structure",
   "drive.sheet_write",
   "drive.suggest_archive",
