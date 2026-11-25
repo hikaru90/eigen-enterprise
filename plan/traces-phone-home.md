@@ -1,4 +1,12 @@
-# Traces phone-home (concept, not started — waiting for the owner's 3 answers in §6)
+# Traces phone-home (concept approved 2026-11-25, not started)
+
+## Owner decisions (2026-11-25, answers to §6)
+
+1. **On by default, with an owner switch** in Settings. Every box sends unless its owner turns it off.
+2. **Only meta usage data leaves, stripped of personal data, sent without per-run approval.** There is no content tier: no prompts, responses, tool inputs or outputs, or error texts, opt-in or not. What §2 calls Tier B is dropped. Tier A is the only payload, and it is sent automatically.
+3. **The hub keeps only meta usage statistics, never content.** Whether a value is usage metadata or personal/company content is a **Jev (decision-model) classification**, not a field list alone: every value that does not come from a closed set we own (module and tool names from company/vibe-coded modules, module error codes, custom BYOK model ids, log contexts of modules) is classified on the box as `usage_meta | personal_or_content` before it is sent. `personal_or_content` → replaced by the enum value `other`, never sent as text. A failed classification means the value is not sent (shown in "What was sent"), never sent raw. Closed-set values we own (core tool names, core error codes, catalog model ids, versions, numbers) skip the model.
+   The hub stays on os.cerberusblue.com (decision taken by the builder): it holds only Tier A spans and rollups. Raw spans are kept 90 days, daily rollups indefinitely.
+
 
 Owner wish `3b18c845`: "We need to capture all traces from every box to make our product better."
 
@@ -73,7 +81,11 @@ Every value is an enum from the code, a number or a version. No free text field 
 Never in Tier A: principal ids, counts of members, hostnames, base URLs, any `error`/`context`/
 `activity`/`input`/`payload` column.
 
-### Tier B — content-bearing traces, only with explicit company opt-in
+### Tier B — DROPPED (owner, 2026-11-25): content never leaves a box
+
+Kept below only as the record of what was proposed.
+
+#### (dropped) content-bearing traces, only with explicit company opt-in
 
 Prompt and response text, tool inputs and outputs, error messages and cause chains, activity
 sentences, decision inputs, job errors. Sent only when the company opted in (§4), and every text
@@ -160,7 +172,8 @@ ee journal (via os) toHubSpansV1, strict)          = "what was sent")           
 | **T4** | **UI** | Settings card + "What was sent" page on the box; hub "Traces" page (error rate and p95 by tool/model/version). | component specs; `traces-phone-home.e2e.ts`: a co-worker run whose prompt contains a name and an email → mock hub receives spans with only allowlisted keys, none of that text; owner withdraws → hub gets DELETE |
 | **T5** | **Upgrade + module outcomes** | ee's upgrade `outcome` (step, ok, rolledBack, release/from — `reason` dropped) and module breakage become Tier A spans; the switch is the phase-upgrades one (§9 Q4); waves can halt on them. | `upgrade-job.spec.ts` (outcome reported, `reason` absent), `worker.spec.ts` |
 | **T6** | **Retire box PostHog capture** (announced) | `captureServerEvent`/`captureServerException` no longer run on installs; the removal is in the session summary and `plan/progress.md` first. | `llm-client.spec.ts` (no PostHog call) |
-| **T7** | **Tier B** (after Q2) | Opt-in as answered; `trace_scrub` gateway call per text field; scrub failure = not sent + shown; Tier B in "What was sent". | `trace-scrub.spec.ts` (schema, 3 attempts, no raw fallback), `worker.spec.ts`, e2e: an opted-in failed run arrives scrubbed |
+| **T1b** | **Jev gate for open values** (ships before T2 is switched on) | A decision kind `trace_value` (`usage_meta \| personal_or_content`) in `modules/decision-kinds.ts`; every value outside our closed sets goes through it on the box; `personal_or_content` → `other`; failure = value not sent + shown; decisions cached per distinct value so each new module tool name is classified once. | `trace-value-kind.spec.ts` (closed set, failure = not sent, no raw fallback), `payload.spec.ts` (classified `other` replaces the text), `worker.spec.ts` |
+| ~~T7~~ | ~~Tier B~~ | Dropped by the owner (2026-11-25): no content tier. | — |
 
 Release after each milestone; T3 is activated on os.cerberusblue.com with the owner's go, like the
 contribute hub.
