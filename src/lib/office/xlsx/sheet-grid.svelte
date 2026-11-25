@@ -14,6 +14,12 @@
   }
   export type Pos = { row: number; col: number }
   export type Move = 'down' | 'up' | 'right' | 'left' | 'none'
+  export type GridPeer = {
+    clientId: string
+    name: string
+    color: string
+    range: Range
+  }
 </script>
 
 <script lang="ts">
@@ -61,6 +67,8 @@
     filter = null,
     onfilter,
     onresize,
+    peers = [],
+    onselect,
   }: {
     rows: number
     cols: number
@@ -94,6 +102,10 @@
     onfilter?: (col: number, at: DOMRect) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
+    /** Remote co-editors' current selections on this sheet. */
+    peers?: GridPeer[]
+    /** Called whenever this grid's selection changes. */
+    onselect?: (range: Range) => void
   } = $props()
 
   const HEAD_H = 24
@@ -237,6 +249,15 @@
     scroller?.focus({ preventScroll: true })
   }
 
+  function notifySelection() {
+    onselect?.({
+      top: Math.min(active.row, anchor.row),
+      bottom: Math.max(active.row, anchor.row),
+      left: Math.min(active.col, anchor.col),
+      right: Math.max(active.col, anchor.col),
+    })
+  }
+
   function moveTo(row: number, col: number, extend = false) {
     const next = {
       row: Math.max(0, Math.min(rows - 1, row)),
@@ -244,6 +265,7 @@
     }
     active = next
     if (!extend) anchor = next
+    notifySelection()
     void tick().then(reveal)
   }
 
@@ -334,11 +356,13 @@
         break
       case 'Escape':
         anchor = { ...active }
+        notifySelection()
         break
       default:
         if (mod && event.key.toLowerCase() === 'a') {
           anchor = { row: 0, col: 0 }
           active = { row: rows - 1, col: cols - 1 }
+          notifySelection()
           break
         }
         // A printable character starts editing with it (replacing the content).
@@ -392,6 +416,7 @@
       anchor = at
     }
     dragging = true
+    notifySelection()
     focus()
     event.preventDefault()
   }
@@ -399,7 +424,10 @@
   function onPointerMove(event: PointerEvent) {
     if (!dragging || !(event.buttons & 1)) return
     const p = posFromEvent(event)
-    if (p && (p.row !== active.row || p.col !== active.col)) active = p
+    if (p && (p.row !== active.row || p.col !== active.col)) {
+      active = p
+      notifySelection()
+    }
   }
 
   function onPointerUp() {
@@ -411,6 +439,7 @@
     if (!extend) anchor = { row: 0, col: c }
     else anchor = { row: 0, col: anchor.col }
     active = { row: rows - 1, col: c }
+    notifySelection()
     focus()
   }
 
@@ -419,6 +448,7 @@
     if (!extend) anchor = { row: r, col: 0 }
     else anchor = { row: anchor.row, col: 0 }
     active = { row: r, col: cols - 1 }
+    notifySelection()
     focus()
   }
 
@@ -567,6 +597,31 @@
     aria-hidden="true"
     data-testid={quad === activeQuad ? 'xlsx-active' : undefined}
   ></div>
+  {#each peers as peer (peer.clientId)}
+    {@const clamped = {
+      top: Math.max(0, Math.min(rows - 1, peer.range.top)),
+      bottom: Math.max(0, Math.min(rows - 1, peer.range.bottom)),
+      left: Math.max(0, Math.min(cols - 1, peer.range.left)),
+      right: Math.max(0, Math.min(cols - 1, peer.range.right)),
+    }}
+    {@const pb = box(clamped)}
+    {@const labelQuad = `${clamped.top < fr ? 't' : 'b'}${clamped.left < fc ? 'l' : 'r'}`}
+    {@const labelTop = pb.top - dy >= 18 ? pb.top - dy - 18 : pb.top - dy + 2}
+    <div
+      class="g-abs g-ghost g-peer"
+      style="top: {pb.top - dy - 1}px; left: {pb.left - dx - 1}px; width: {pb.width +
+        1}px; height: {pb.height + 1}px; border: 2px solid {peer.color}; background-color: {peer.color}18;"
+      aria-hidden="true"
+    ></div>
+    {#if quad === labelQuad}
+      <span
+        class="g-abs g-ghost g-peer-tag rounded-xs px-1 py-0.5 text-xs leading-none font-medium text-white shadow-xs"
+        style="top: {labelTop}px; left: {pb.left - dx - 1}px; background-color: {peer.color};"
+        data-testid="xlsx-peer-cursor"
+        data-peer-id={peer.clientId}>{peer.name}</span
+      >
+    {/if}
+  {/each}
   {#if editing && quad === activeQuad}
     <textarea
       bind:this={cellEditor}
@@ -850,6 +905,13 @@
   }
   .g-ghost {
     pointer-events: none;
+  }
+  .g-peer {
+    z-index: 3;
+  }
+  .g-peer-tag {
+    z-index: 4;
+    white-space: nowrap;
   }
   .g-editor {
     z-index: 5;

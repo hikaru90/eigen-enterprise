@@ -1925,6 +1925,49 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_live_entries": {
+    input: {
+      "after": number
+      "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_live_join": {
+    input: {
+      "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_live_submit": {
+    input: {
+      "batch": {
+        "baseSeq": number
+        "changes": Array<{
+          "body": ({
+            "acceptLosses": boolean
+            "kind": "change"
+            "ops": Array<{
+              "op": "set_cells" | "set_format" | "add_sheet" | "rename_sheet" | "delete_sheet" | "insert_rows" | "delete_rows" | "insert_columns" | "delete_columns" | "set_style" | "set_column_width" | "set_row_height" | "sort_range" | "set_autofilter" | "filter_column" | "freeze_panes"
+            }>
+          }) | ({
+            "images": Record<string, ({
+                "exists": false
+              }) | ({
+                "contentType": string
+                "data": string
+                "exists": true
+              })>
+            "kind": "revert"
+            "of": string
+          })
+          "opId": string
+        }>
+        "clientId": string
+      }
+      "file_id": string
+    }
+    output: unknown
+  }
   "drive.sheet_read": {
     input: {
       "file_id": string
@@ -4487,6 +4530,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.sheet_filter",
   "drive.sheet_format",
   "drive.sheet_freeze",
+  "drive.sheet_live_entries",
+  "drive.sheet_live_join",
+  "drive.sheet_live_submit",
   "drive.sheet_read",
   "drive.sheet_sort",
   "drive.sheet_structure",

@@ -1,22 +1,24 @@
-import { actsAsMember } from '$lib/kernel/principals'
 import type { Actor, DriveService } from './service'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
+import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { roleCan } from '$lib/server/auth/capabilities'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { EeClient } from '$lib/server/ee/client'
 import { requireHuman } from '$lib/server/ee/human'
+import type { SheetLive } from '$lib/server/sheet-live/service'
 import { appStatus, PREVIEW_ID, runApp, stopApp, type AppPreviewDeps } from './app-preview'
 import { liveSuggestChat, SUGGEST_DEFAULT_DAYS, SUGGEST_MAX_DAYS, SUGGEST_MIN_DAYS, suggestArchive, type SuggestChat } from './archive-suggest'
 import { createDriveFileTools } from './file-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
-import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { DOCUMENT_KINDS } from './service'
-import { createDriveSheetCopyTools } from './sheet-copy-tools'
 import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
+import { createDriveSheetCopyTools } from './sheet-copy-tools'
+import { createDriveSheetFormatTools } from './sheet-format-tools'
+import { createDriveSheetLiveTools } from './sheet-live-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -45,6 +47,8 @@ export type DriveToolDeps = {
   roleOf?: (userId: string) => Promise<MemberRole | null>
   /** Where EE_STATE_DIR comes from (the snapshot hand-off dir). */
   env?: Record<string, string | undefined>
+  /** Live .xlsx co-editing service (when active, sheet_* tools route reads/writes through it). */
+  sheetLive?: () => Promise<SheetLive>
 }
 
 /** Batch size for one archive/unarchive call (one approval). */
@@ -106,8 +110,14 @@ async function liveService(): Promise<DriveService> {
   return driveService()
 }
 
+async function liveSheetLive(): Promise<SheetLive> {
+  const { sheetLive } = await import('$lib/server/sheet-live/live')
+  return sheetLive()
+}
+
 export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
   const service = opts.service ?? liveService
+  const sheetLive = opts.sheetLive ?? (opts.service ? undefined : liveSheetLive)
   const chat = opts.chat ?? liveSuggestChat
   const roleOf = opts.roleOf ?? liveRole
   let ee = opts.ee
@@ -316,9 +326,10 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveFileTools({ service }),
     ...createDrivePdfTools({ service }),
     ...createDrivePdfAnnotateTools({ service }),
-    ...createDriveSheetTools({ service }),
-    ...createDriveSheetFormatTools({ service }),
+    ...createDriveSheetTools({ service, sheetLive }),
+    ...createDriveSheetFormatTools({ service, sheetLive }),
     ...createDriveSheetCopyTools({ service }),
-    ...createDriveSheetArrangeTools({ service }),
+    ...createDriveSheetArrangeTools({ service, sheetLive }),
+    ...createDriveSheetLiveTools({ sheetLive: opts.sheetLive ?? liveSheetLive }),
   ]
 }

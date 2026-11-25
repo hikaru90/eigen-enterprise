@@ -142,7 +142,7 @@ function toOps(lib: Xlsx, i: FormatInput): SheetOp[] {
   return ops
 }
 
-export function createDriveSheetFormatTools({ service }: DriveSheetToolDeps): ToolDescriptor[] {
+export function createDriveSheetFormatTools({ service, sheetLive }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'drive.sheet_format',
@@ -172,7 +172,7 @@ export function createDriveSheetFormatTools({ service }: DriveSheetToolDeps): To
           throw new DriveError('invalid', 'Nothing to format: give styles, columns or rows.')
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           for (const op of toOps(lib, i)) editor.apply(op)
         })

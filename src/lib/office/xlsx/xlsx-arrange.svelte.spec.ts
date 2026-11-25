@@ -2,36 +2,33 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page, userEvent } from 'vitest/browser'
-import type { DriveItem, LockView } from '$lib/drive/api'
 import { autoFilterOf } from './filter'
 import { frozenOf } from './panes'
 import { cellKey } from './ref'
 import { buildXlsx, fml, num, row, str } from './test-utils/build-xlsx'
-import { openWorkbook } from './workbook'
+import { createLiveApiHarness } from './test-utils/live-api'
 import XlsxEditor from './xlsx-editor.svelte'
 
-const api = vi.hoisted(() => ({
-  readBytes: vi.fn<(id: string) => Promise<Uint8Array>>(),
-  acquireLock: vi.fn<(id: string, session: string, takeover?: boolean) => Promise<LockView>>(),
-  heartbeatLock: vi.fn<(id: string, session: string) => Promise<LockView>>(),
-  releaseLock: vi.fn<(id: string, session: string) => Promise<void>>(),
-  writeBytes:
-    vi.fn<
-      (
-        id: string,
-        bytes: Uint8Array,
-        session: string,
-        base?: string,
-      ) => Promise<{ file: DriveItem }>
-    >(),
-}))
+const state = vi.hoisted(() => ({ harness: null as ReturnType<typeof createLiveApiHarness> | null }))
+
 vi.mock('$lib/drive/api', async (importOriginal) => {
   const real = await importOriginal<typeof import('$lib/drive/api')>()
-  return { ...real, driveApi: { ...real.driveApi, ...api } }
+  return {
+    ...real,
+    driveApi: {
+      ...real.driveApi,
+      readBytes: (...a: [string]) => state.harness!.api.readBytes(...a),
+      sheetLiveJoin: (...a: [string]) => state.harness!.api.sheetLiveJoin(...a),
+      sheetLiveSubmit: (...a: [string, never]) => state.harness!.api.sheetLiveSubmit(...a),
+      sheetLiveEntries: (...a: [string, number]) => state.harness!.api.sheetLiveEntries(...a),
+      sheetLivePresence: (...a: [string, never]) => state.harness!.api.sheetLivePresence(...a),
+      sheetLiveStream: (...a: [string, string, number]) => state.harness!.api.sheetLiveStream(...a),
+    },
+  }
 })
 
 const props = {
-  fileId: 'book-1',
+  fileId: 'book-1:alice',
   name: 'People.xlsx',
   canEdit: true,
   heartbeatMs: 600_000,
@@ -71,11 +68,7 @@ function withFrozenRow(bytes: Uint8Array): Uint8Array {
 }
 let BOOK = people()
 
-const savedBook = () => {
-  const calls = api.writeBytes.mock.calls
-  if (!calls.length) throw new Error('nothing saved')
-  return openWorkbook(calls.at(-1)![1])
-}
+const savedBook = () => state.harness!.savedBook()
 const cell = (ref: string) =>
   document.querySelector(`[data-testid="xlsx-grid"] [data-ref="${ref}"]`) as HTMLElement | null
 const shown = (ref: string) => cell(ref)?.textContent?.trim() ?? null
@@ -89,14 +82,8 @@ async function click(ref: string) {
 describe('xlsx editor: sort, filter, freeze panes', () => {
   beforeEach(() => {
     BOOK = people()
-    for (const fn of Object.values(api)) fn.mockReset()
-    api.readBytes.mockImplementation(async () => api.writeBytes.mock.calls.at(-1)?.[1] ?? BOOK)
-    api.acquireLock.mockResolvedValue({ state: 'held', since: '2026-11-25T10:00:00Z' })
-    api.heartbeatLock.mockResolvedValue({ state: 'held', since: '2026-11-25T10:00:00Z' })
-    api.releaseLock.mockResolvedValue(undefined)
-    api.writeBytes.mockImplementation(async () => ({
-      file: { id: 'book-1', type: 'file', name: 'People.xlsx' } as DriveItem,
-    }))
+    state.harness?.reset(BOOK)
+    state.harness ??= createLiveApiHarness(BOOK)
   })
 
   it('quick sort from one cell sorts the block around it under its header; formulas follow; undo puts it back', async () => {
@@ -107,8 +94,8 @@ describe('xlsx editor: sort, filter, freeze panes', () => {
     await expect.poll(() => column('A')).toEqual(['Alice', 'Dave', 'bob', 'carol'])
     expect(shown('A1')).toBe('Name')
     expect(column('C')).toEqual(['20', '40', '60', '80'])
-    await expect.poll(() => api.writeBytes.mock.calls.length).toBe(1)
-    expect(savedBook().sheet('Data').cells.get(cellKey(1, 2))?.formula).toBe('B2*2')
+    await expect.poll(() => state.harness!.savedCount()).toBe(1)
+    expect((await savedBook()).sheet('Data').cells.get(cellKey(1, 2))?.formula).toBe('B2*2')
     await page.getByTestId('xlsx-undo').click()
     await expect.poll(() => column('A')).toEqual(['bob', 'Alice', 'carol', 'Dave'])
   })
@@ -159,9 +146,9 @@ describe('xlsx editor: sort, filter, freeze panes', () => {
     await expect
       .element(page.getByRole('button', { name: 'Column A is filtered: change the filter' }))
       .toBeInTheDocument()
-    await expect.poll(() => api.writeBytes.mock.calls.length).toBeGreaterThan(0)
-    await expect.poll(() => savedBook().sheet('Data').rows.get(1)?.hidden).toBe(true)
-    expect(autoFilterOf(savedBook(), 'Data')?.columns).toEqual([
+    await expect.poll(() => state.harness!.savedCount()).toBeGreaterThan(0)
+    await expect.poll(async () => (await savedBook()).sheet('Data').rows.get(1)?.hidden).toBe(true)
+    expect(autoFilterOf(await savedBook(), 'Data')?.columns).toEqual([
       { col: 0, kind: 'values', values: ['Alice', 'carol', 'Dave'], blanks: false },
     ])
     await page.getByRole('button', { name: 'Column A is filtered: change the filter' }).click()
@@ -207,8 +194,8 @@ describe('xlsx editor: sort, filter, freeze panes', () => {
     expect(top('A1')).toBeCloseTo(frozenTop, 0)
     grid.scrollTop = 0
     grid.dispatchEvent(new Event('scroll'))
-    await expect.poll(() => api.writeBytes.mock.calls.length).toBeGreaterThan(0)
-    await expect.poll(() => frozenOf(savedBook(), 'Data')).toEqual({ rows: 1, cols: 0 })
+    await expect.poll(() => state.harness!.savedCount()).toBeGreaterThan(0)
+    await expect.poll(async () => frozenOf(await savedBook(), 'Data')).toEqual({ rows: 1, cols: 0 })
     await click('B3')
     await userEvent.selectOptions(page.getByTestId('xlsx-freeze'), 'at')
     await expect.element(page.getByTestId('xlsx-frozen-cols')).toBeInTheDocument()
@@ -232,8 +219,8 @@ describe('xlsx editor: sort, filter, freeze panes', () => {
         '<autoFilter ref="A1:C5"><filterColumn colId="0"><filters><filter val="bob"/></filters></filterColumn></autoFilter>',
       ),
     )
-    api.readBytes.mockResolvedValue(BOOK)
-    render(XlsxEditor, { ...props, canEdit: false })
+    state.harness!.reset(BOOK)
+    render(XlsxEditor, { ...props, fileId: 'book-1:viewer', canEdit: false })
     await expect.poll(() => shown('C2')).toBe('60')
     await expect.element(page.getByTestId('xlsx-frozen-rows')).toBeInTheDocument()
     await expect

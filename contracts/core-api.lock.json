@@ -11630,6 +11630,271 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "after": {
+            "description": "The last entry already applied (0: from the start of the log)",
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "after",
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_live_entries",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_live_join",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "additionalProperties": false,
+            "description": "{ clientId, baseSeq (the last entry the changes were made on), changes: [{ opId, body: { kind: \"change\", ops: [SheetOp…], acceptLosses } | { kind: \"revert\", of, images } }] }",
+            "properties": {
+              "baseSeq": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "changes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "body": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "acceptLosses": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "const": "change",
+                              "type": "string"
+                            },
+                            "ops": {
+                              "items": {
+                                "additionalProperties": {},
+                                "properties": {
+                                  "op": {
+                                    "enum": [
+                                      "set_cells",
+                                      "set_format",
+                                      "add_sheet",
+                                      "rename_sheet",
+                                      "delete_sheet",
+                                      "insert_rows",
+                                      "delete_rows",
+                                      "insert_columns",
+                                      "delete_columns",
+                                      "set_style",
+                                      "set_column_width",
+                                      "set_row_height",
+                                      "sort_range",
+                                      "set_autofilter",
+                                      "filter_column",
+                                      "freeze_panes"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "op"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 200,
+                              "minItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "acceptLosses",
+                            "kind",
+                            "ops"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "images": {
+                              "additionalProperties": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "exists": {
+                                        "const": false,
+                                        "type": "boolean"
+                                      }
+                                    },
+                                    "required": [
+                                      "exists"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "contentType": {
+                                        "maxLength": 200,
+                                        "minLength": 1,
+                                        "type": "string"
+                                      },
+                                      "data": {
+                                        "type": "string"
+                                      },
+                                      "exists": {
+                                        "const": true,
+                                        "type": "boolean"
+                                      }
+                                    },
+                                    "required": [
+                                      "contentType",
+                                      "data",
+                                      "exists"
+                                    ],
+                                    "type": "object"
+                                  }
+                                ]
+                              },
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "type": "object"
+                            },
+                            "kind": {
+                              "const": "revert",
+                              "type": "string"
+                            },
+                            "of": {
+                              "maxLength": 120,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "images",
+                            "kind",
+                            "of"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "opId": {
+                      "maxLength": 120,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "body",
+                    "opId"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 200,
+                "type": "array"
+              },
+              "clientId": {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "baseSeq",
+              "changes",
+              "clientId"
+            ],
+            "type": "object"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch",
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_live_submit",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "file_id": {
             "minLength": 1,
             "type": "string"

@@ -1,12 +1,12 @@
-import type { DriveService, ItemView } from './service'
-import { createHash } from 'node:crypto'
+import type { DriveService } from './service'
 import { z } from 'zod'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import type { SheetEditor } from '$lib/office/xlsx/editor'
 import type { SheetOp } from '$lib/office/xlsx/ops'
+import type { SheetLive } from '$lib/server/sheet-live/service'
 import { DRIVE_MODULE_ID } from './manifest'
-import { officeKind } from './preview'
 import { DriveError } from './service'
+import { openLiveAwareBook, saveLiveAwareBook, type LiveAwareSaved } from './sheet-live-helper'
 import { actorOf } from './tools'
 
 /**
@@ -25,7 +25,7 @@ import { actorOf } from './tools'
  * only with accept_losses: true.
  */
 
-export type DriveSheetToolDeps = { service: () => Promise<DriveService> }
+export type DriveSheetToolDeps = { service: () => Promise<DriveService>; sheetLive?: () => Promise<SheetLive> }
 
 export const DRIVE_ROLES = ['admin', 'member', 'agent']
 /** One call reads or writes at most this many cells: more is refused (ask for a smaller range), never cut. */
@@ -187,15 +187,15 @@ export async function guarded<T>(lib: Xlsx, work: () => T | Promise<T>): Promise
   }
 }
 
-export async function openBook(drive: DriveService, ctx: ToolContext, id: string, lib: Xlsx) {
-  const { file, bytes } = await drive.readFile(actorOf(ctx), id)
-  if (officeKind(file.name, file.mime) !== 'xlsx')
-    throw new DriveError('invalid', `“${file.name}” is not an Excel workbook (.xlsx).`)
-  const editor = await guarded(lib, () => lib.editor.createSheetEditor(bytes))
-  return { file, editor, base: createHash('sha256').update(bytes).digest('hex') }
+export async function openBook(
+  drive: DriveService,
+  ctx: ToolContext,
+  id: string,
+  lib: Xlsx,
+  sheetLive?: () => Promise<SheetLive>,
+) {
+  return openLiveAwareBook(drive, actorOf(ctx), id, lib, guarded, sheetLive)
 }
-
-type Saved = { file: ItemView; revision: { id: string; createdAt: Date } }
 
 export async function save(
   drive: DriveService,
@@ -203,11 +203,8 @@ export async function save(
   id: string,
   editor: SheetEditor,
   base: string,
-): Promise<Saved> {
-  const out = await drive.writeBytes(actorOf(ctx), id, editor.toBytes(), undefined, {
-    baseSha256: base,
-  })
-  return { file: out.file, revision: { id: out.revision.id, createdAt: out.revision.createdAt } }
+): Promise<LiveAwareSaved> {
+  return saveLiveAwareBook(drive, actorOf(ctx), id, editor, base)
 }
 
 export const colIndex = (lib: Xlsx, at: number | string) => {
@@ -257,7 +254,7 @@ function describeChange(c: z.infer<typeof structureChange>): string {
   }
 }
 
-export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDescriptor[] {
+export function createDriveSheetTools({ service, sheetLive }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'drive.sheet_read',
@@ -269,7 +266,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
       handler: async (ctx, input) => {
         const i = readInput.parse(input)
         const lib = await xlsx()
-        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib)
+        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib, sheetLive)
         return guarded(lib, () => {
           const sheets = lib.read.sheetSummaries(editor)
           const sheet =
@@ -327,7 +324,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
           throw new DriveError('invalid', 'Nothing to write: give cells or formats.')
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           if (i.cells?.length) editor.apply({ op: 'set_cells', sheet: i.sheet, cells: i.cells })
           for (const f of i.formats ?? [])
@@ -361,7 +358,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
         const i = structureInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const accepted: string[] = []
         await guarded(lib, () => {
           for (const c of i.changes) {
