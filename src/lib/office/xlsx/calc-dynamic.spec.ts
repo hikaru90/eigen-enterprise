@@ -285,6 +285,47 @@ describe('xlsx calc: dynamic-array functions', () => {
     expect(ev('SORT(F1:F3)')).toEqual({ kept: expect.stringMatching(/empty/) })
   })
 
+  it('handles documented SORT, SORTBY and UNIQUE edge cases', () => {
+    // Omitted sort_index with explicit sort_order, decimal sort_index, errors rank after logicals.
+    expect(ev('SORT({3;1;2},,-1)')).toEqual([[3], [2], [1]])
+    expect(ev('SORT({10,20;5,30},1.9,1)')).toEqual([
+      [5, 30],
+      [10, 20],
+    ])
+    expect(ev('SORT({2;"a";TRUE;1})')).toEqual([[1], [2], ['a'], [true]])
+    expect(ev('SORT({1;#N/A;2},1,-1)')).toEqual([[e('#N/A')], [2], [1]])
+    expect(ev('SORT({1;2},0)')).toEqual(e('#VALUE!'))
+    expect(ev('SORT({1;2},1,0)')).toEqual(e('#VALUE!'))
+    expect(ev('SORT({1;2},1,{1,-1})')).toEqual({ kept: expect.stringMatching(/sort orders/) })
+    // SORTBY with omitted intermediate sort_order and horizontal sort.
+    expect(ev('SORTBY({"a","b","c"},{3,1,2})')).toEqual([['b', 'c', 'a']])
+    expect(ev('SORTBY(A1:A5,B1:B5,,C1:C5,-1)')).toEqual([
+      ['Elder'],
+      ['Date'],
+      ['banana'],
+      ['Apple'],
+      ['Cherry'],
+    ])
+    // UNIQUE over multi-column rows, errors, case-insensitivity, and refusal of blanks next to 0/"".
+    expect(
+      ev('UNIQUE({1,"a";1,"A";2,"b";1,"a"})'),
+    ).toEqual([
+      [1, 'a'],
+      [2, 'b'],
+    ])
+    expect(ev('UNIQUE({1;#N/A;1;#N/A})')).toEqual([[1], [e('#N/A')]])
+    expect(ev('UNIQUE({"co-op";"coop"})')).toEqual([['co-op'], ['coop']])
+    expect(ev('UNIQUE({1,0;1,1},FALSE,TRUE)')).toEqual([
+      [1, 0],
+      [1, 1],
+    ])
+    expect(ev('UNIQUE(F1:F3)')).toEqual([[1], [0], [3]])
+    // F1=1, F2=blank, F3=3; blank next to 0 or "" is refused.
+    expect(ev('LET(x,VSTACK(F1:F2,0),UNIQUE(x))')).toEqual({
+      kept: expect.stringMatching(/blanks next to 0/),
+    })
+  })
+
   it('the _xlfn./_xlws. prefixes files carry are read', () => {
     expect(ev('_xlfn._xlws.SORT({2;1})')).toEqual([[1], [2]])
     expect(ev('_xlfn.UNIQUE({1;1})')).toEqual(1)

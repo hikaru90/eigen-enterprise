@@ -4,6 +4,9 @@ import { parseA1Ref, stringifyA1Ref, tokenize } from '@borgar/fx/xlsx'
 import { needsDynamicArray } from './calc-static'
 import { CT_CHART } from './chart-anchor'
 import { autoFilterOf } from './filter'
+import { relsPartOf } from '../ooxml/package'
+import { autoExpandTables, readSheetTables, REL_TABLE } from './tables'
+import { WORKSHEET_ORDER } from './sheet-order'
 import { displayValue, formatCode, type SheetLocale } from './format'
 import { ensureDynamicArrayCm } from './metadata'
 import {
@@ -20,6 +23,7 @@ import {
   cellName,
   MAX_COLS,
   MAX_ROWS,
+  parseRange,
   rangeName,
   requireCell,
   requireRange,
@@ -39,13 +43,25 @@ import { BORDER_STYLES, HORIZONTAL, VERTICAL, type BorderStyle } from './style-c
 import { xfWithPatch, type EdgeWrite, type XfPatch } from './style-records'
 import { xfWithNumFmt, type CellStyle } from './styles'
 import {
+  relativeTarget,
   XlsxError,
   type CellValue,
   type SheetData,
   type SheetInfo,
   type Workbook,
 } from './workbook'
-import { all, kid, kids, make, NS_CHART, setText, textOf } from './xml'
+import {
+  all,
+  insertInOrder,
+  kid,
+  kids,
+  make,
+  NS_CHART,
+  NS_R,
+  NS_REL,
+  setText,
+  textOf,
+} from './xml'
 
 /**
  * Copy and paste (Excel's Home ▸ Clipboard): a block of cells read into a
@@ -276,7 +292,7 @@ export function writePlacements(
   wb: Workbook,
   info: SheetInfo,
   placements: Placement[],
-  opts: { area?: Range; merges?: Range[] } = {},
+  opts: { area?: Range; merges?: Range[]; noTableGrowth?: boolean } = {},
 ): void {
   const data = wb.sheet(info.name)
   const area = opts.area
@@ -376,6 +392,24 @@ export function writePlacements(
     }
   }
   if (area) setMerges(doc, finalMerges)
+  // A table grows when cells right next to it get content (Excel's "include new rows and columns").
+  if (!opts.noTableGrowth)
+    autoExpandTables(
+      wb,
+      info,
+      doc,
+      placements.flatMap((p) =>
+        p.content && p.content.kind !== 'clear'
+          ? [
+              {
+                row: p.row,
+                col: p.col,
+                text: p.content.kind === 'value' ? String(p.content.value) : null,
+              },
+            ]
+          : [],
+      ),
+    )
   finishSheet(wb, info, doc)
 }
 
@@ -698,7 +732,8 @@ function cutPaste(
   )
   setMerges(srcDoc, srcMerges)
   finishSheet(wb, srcInfo, srcDoc)
-  writePlacements(wb, info, placements, { area, merges })
+  writePlacements(wb, info, placements, { area, merges, noTableGrowth: true })
+  moveTables(wb, srcInfo, info, from, dr, dc)
   rewriteAllFormulas(wb, (f, home) => moveRefs(f, home, srcInfo.name, from, info.name, dr, dc))
   // Chart series that read the moved cells follow them (as insert/delete rows does, ./chart-ops.ts).
   for (const p of wb.pkg.partNames()) {
@@ -713,4 +748,78 @@ function cutPaste(
     for (const c of changes) setText(doc, c.f, c.next)
   }
   return { sheets: sameSheet ? [info.name] : [srcInfo.name, info.name] }
+}
+
+/**
+ * Cut and paste: Excel tables wholly inside the cut block move with it (their
+ * range, AutoFilter and sort state; to another sheet the table part goes with
+ * them). Tables only partly inside stay where they are.
+ */
+function moveTables(
+  wb: Workbook,
+  srcInfo: SheetInfo,
+  info: SheetInfo,
+  from: Range,
+  dr: number,
+  dc: number,
+) {
+  const inside = readSheetTables(wb, srcInfo.name).filter(
+    (t) =>
+      t.ref.top >= from.top &&
+      t.ref.bottom <= from.bottom &&
+      t.ref.left >= from.left &&
+      t.ref.right <= from.right,
+  )
+  const sameSheet = srcInfo.part === info.part
+  if (inside.length === 0 || (dr === 0 && dc === 0 && sameSheet)) return
+  const shift = (ref: string | null) => {
+    const r = ref ? parseRange(ref) : null
+    return r
+      ? rangeName({ top: r.top + dr, bottom: r.bottom + dr, left: r.left + dc, right: r.right + dc })
+      : null
+  }
+  for (const t of inside) {
+    const doc = wb.edit(t.part)
+    const els = [
+      doc.documentElement!,
+      ...all(doc, 'autoFilter'),
+      ...all(doc, 'sortState'),
+      ...all(doc, 'sortCondition'),
+    ]
+    for (const el of els) {
+      const next = shift(el.getAttribute('ref'))
+      if (next) el.setAttribute('ref', next)
+    }
+    if (sameSheet) continue
+    // To another sheet: the relationship and the sheet's tablePart go along.
+    const srcDoc = sheetDoc(wb, srcInfo)
+    const tp = kid(srcDoc.documentElement!, 'tableParts')
+    if (tp) {
+      for (const p of kids(tp, 'tablePart'))
+        if (p.getAttributeNS(NS_R, 'id') === t.relId) tp.removeChild(p)
+      const left = kids(tp, 'tablePart').length
+      if (left === 0) srcDoc.documentElement!.removeChild(tp)
+      else tp.setAttribute('count', String(left))
+    }
+    const relsDoc = wb.edit(relsPartOf(srcInfo.part))
+    for (const r of kids(relsDoc.documentElement!, 'Relationship', NS_REL))
+      if (r.getAttribute('Id') === t.relId) relsDoc.documentElement!.removeChild(r)
+    finishSheet(wb, srcInfo, srcDoc)
+    wb.touch(relsPartOf(info.part))
+    const relId = wb.pkg.addRelationship(info.part, REL_TABLE, relativeTarget(info.part, t.part))
+    const dstDoc = sheetDoc(wb, info)
+    const root = dstDoc.documentElement!
+    let dtp = kid(root, 'tableParts')
+    if (!dtp) {
+      dtp = make(dstDoc, 'tableParts')
+      insertInOrder(root, dtp, WORKSHEET_ORDER)
+    }
+    if (!root.lookupPrefix(NS_R)) root.setAttribute('xmlns:r', NS_R)
+    const el = make(dstDoc, 'tablePart')
+    el.setAttributeNS(NS_R, `${root.lookupPrefix(NS_R) ?? 'r'}:id`, relId)
+    dtp.appendChild(el)
+    dtp.setAttribute('count', String(kids(dtp, 'tablePart').length))
+    finishSheet(wb, info, dstDoc)
+  }
+  wb.invalidate()
 }

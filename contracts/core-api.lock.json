@@ -12234,6 +12234,12 @@
             "maxLength": 31,
             "minLength": 1,
             "type": "string"
+          },
+          "table": {
+            "description": "Filter this Excel table’s columns instead of the sheet’s AutoFilter (its drop-downs are on with drive.sheet_table_update auto_filter)",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
           }
         },
         "required": [
@@ -12815,6 +12821,411 @@
       },
       "module": "drive",
       "name": "drive.sheet_merge",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "col_grand_totals": {
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "filters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "selected_item": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "row_grand_totals": {
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "source": {
+            "description": "Source range (A1:D20, Sheet!A1:D20) or table name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subtotals": {
+            "type": "boolean"
+          },
+          "target_cell": {
+            "description": "Top-left anchor cell (default A3 on new sheet)",
+            "maxLength": 16,
+            "minLength": 2,
+            "type": "string"
+          },
+          "target_sheet": {
+            "description": "Omitted creates a new worksheet (PivotTable1, …)",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agg": {
+                  "enum": [
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "product",
+                    "countNums",
+                    "stdDev",
+                    "var"
+                  ],
+                  "type": "string"
+                },
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "num_fmt": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "source"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "keep_values": {
+            "type": "boolean"
+          },
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "pivot",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "pivot",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_refresh",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "col_grand_totals": {
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "filters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "selected_item": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "hidden_items": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "row_grand_totals": {
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subtotals": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agg": {
+                  "enum": [
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "product",
+                    "countNums",
+                    "stdDev",
+                    "var"
+                  ],
+                  "type": "string"
+                },
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "num_fmt": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "pivot",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_update",
       "output": null,
       "permission": {
         "roles": [
@@ -13889,6 +14300,257 @@
       },
       "module": "drive",
       "name": "drive.sheet_tab",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_filter": {
+            "description": "Include AutoFilter drop-downs (default true)",
+            "type": "boolean"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "has_headers": {
+            "description": "Whether the first row holds column headers (default true; false shifts data down for headers)",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Table name (e.g. Orders; omitted: Table1, Table2, …)",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "Range like A1:D10 (or a single cell to expand its current region)",
+            "maxLength": 60,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "description": "Built-in style like TableStyleMedium2",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "range",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_table_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "description": "convert_to_range (default: keeps values & rewrites structured refs to A1) or delete_cells",
+            "enum": [
+              "convert_to_range",
+              "delete_cells"
+            ],
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "table": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "table"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_table_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_filter": {
+            "type": "boolean"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "header_row": {
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Rename the table (structured refs follow)",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ref": {
+            "description": "Resize table range, e.g. A1:E12",
+            "maxLength": 60,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "show_column_stripes": {
+            "type": "boolean"
+          },
+          "show_first_column": {
+            "type": "boolean"
+          },
+          "show_last_column": {
+            "type": "boolean"
+          },
+          "show_row_stripes": {
+            "type": "boolean"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "table": {
+            "description": "Current name of the table",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "totals_columns": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "column": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "formula": {
+                  "maxLength": 4000,
+                  "type": "string"
+                },
+                "function": {
+                  "enum": [
+                    "none",
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "countNums",
+                    "stdDev",
+                    "var",
+                    "custom"
+                  ],
+                  "type": "string"
+                },
+                "label": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "column",
+                "function"
+              ],
+              "type": "object"
+            },
+            "maxItems": 256,
+            "type": "array"
+          },
+          "totals_row": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "table"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_table_update",
       "output": null,
       "permission": {
         "roles": [

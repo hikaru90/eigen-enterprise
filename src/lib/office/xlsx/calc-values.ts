@@ -12,11 +12,14 @@ export type Matrix = CellValue[][]
 export type Rect = { top: number; left: number; bottom: number; right: number }
 export type RefVal = { ref: { sheet: string } & Rect }
 export type LambdaVal = {
-  lambda: { params: string[]; body: unknown; env: Env | null; home: string }
+  /** `eta`: an eta-reduced lambda — a worksheet function passed by name (`GROUPBY(…,SUM)`, files: `_xleta.SUM`). */
+  lambda: { params: string[]; body: unknown; env: Env | null; home: string; eta?: string }
 }
+/** A reference of several areas: a range union `(A1:B2,D4)` (ECMA-376 Part 1 §18.17.2.2, the union operator). */
+export type AreasVal = { areas: Array<RefVal['ref']> }
 /** A parameter the caller left out (LAMBDA's ISOMITTED). */
 export type OmittedVal = { omitted: true }
-export type Val = CellValue | Matrix | RefVal | LambdaVal | OmittedVal
+export type Val = CellValue | Matrix | RefVal | AreasVal | LambdaVal | OmittedVal
 
 /** Names bound by LET and LAMBDA, innermost first. */
 export type Env = { names: Map<string, Val>; parent: Env | null }
@@ -27,6 +30,8 @@ export class Unsupported extends Error {}
 export const err = (code: string): ErrorValue => ({ error: code })
 export const isMatrix = (v: unknown): v is Matrix => Array.isArray(v)
 export const isRef = (v: unknown): v is RefVal => typeof v === 'object' && v !== null && 'ref' in v
+export const isAreas = (v: unknown): v is AreasVal =>
+  typeof v === 'object' && v !== null && 'areas' in v
 export const isLambda = (v: unknown): v is LambdaVal =>
   typeof v === 'object' && v !== null && 'lambda' in v
 export const isOmitted = (v: unknown): v is OmittedVal =>
