@@ -13280,6 +13280,357 @@
       },
       "auditClass": "mutate",
       "input": {
+        "additionalProperties": false,
+        "properties": {
+          "entry_on": {
+            "description": "The day the entry speaks for; default today.",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "type": "string"
+          },
+          "handover_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "link": {
+            "description": "An app path (/m/…) or an http(s) address of the detail document or item.",
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "sentence": {
+            "description": "One sentence: the current state, observed, no evaluation of people.",
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "description": "decision_needed, in_progress or for_info.",
+            "enum": [
+              "decision_needed",
+              "in_progress",
+              "for_info"
+            ],
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "handover_id",
+          "sentence",
+          "status",
+          "topic"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.add_entry",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee_id": {
+            "description": "The member id (tasks.assignees), never a contact.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "entry_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignee_id",
+          "entry_id"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.assign_entry",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "subject_id": {
+            "description": "The member the handover is for (members.list); omit for a topic handover.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "description": "e.g. \"Handover to Alex\" or a topic.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "handover_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "link": {
+            "description": "An app path (/m/…) or an http(s) address of the detail document or item.",
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "source": {
+            "description": "What to draft from: the memory item, note, mail or recap text.",
+            "maxLength": 16000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "description": "Only when the person said it; otherwise the decision model decides.",
+            "enum": [
+              "decision_needed",
+              "in_progress",
+              "for_info"
+            ],
+            "type": "string"
+          },
+          "topic": {
+            "description": "The entry on this topic is refreshed; a new topic adds an entry.",
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "handover_id",
+          "source",
+          "topic"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.draft_entry",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "handover_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "handover_id"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "entry_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_id"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.remove_entry",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "entry_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "entry_on": {
+            "description": "Default: today (a changed entry speaks for the day it changed).",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "description": "An app path (/m/…) or an http(s) address of the detail document or item.",
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null or \"\" removes the link."
+          },
+          "sentence": {
+            "maxLength": 400,
+            "minLength": 1,
+            "type": "string"
+          },
+          "status": {
+            "description": "decision_needed, in_progress or for_info.",
+            "enum": [
+              "decision_needed",
+              "in_progress",
+              "for_info"
+            ],
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_id"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.update_entry",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
         "properties": {
           "approval_id": {
             "minLength": 1,
