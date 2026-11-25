@@ -6,7 +6,7 @@ import { addTraceTokens } from '$lib/server/activity/trace-context'
 import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { getDb } from '$lib/server/db'
 import { env } from '$lib/server/env/private-env'
-import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
+import { LlmCutShortError, LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { gatewayReportedCostUsdForLog, reportedTokenCount, type TokenUsage } from '$lib/server/llm/gateway-cost'
 import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
@@ -264,6 +264,23 @@ async function runLlmRequestGated<T>(userId: string, fn: () => Promise<T>): Prom
 function extractUsage(body: unknown): TokenUsage | undefined {
   if (!body || typeof body !== 'object') return undefined
   return (body as { usage?: TokenUsage }).usage
+}
+
+/**
+ * finish_reason "length" with fewer completion tokens than the max_tokens we sent:
+ * the provider stopped on its own limit, so the reply is incomplete. A reply that
+ * used our whole budget is the caller's budget and is returned as is.
+ */
+function cutShortBelowBudget(
+  body: unknown,
+  usage: TokenUsage | undefined,
+  maxTokens: number,
+): LlmCutShortError | null {
+  const finish = (body as { choices?: Array<{ finish_reason?: unknown }> } | null)?.choices?.[0]
+    ?.finish_reason
+  const completion = usage?.completion_tokens
+  if (finish !== 'length' || typeof completion !== 'number' || completion >= maxTokens) return null
+  return new LlmCutShortError(completion, maxTokens)
 }
 
 function minRequestIntervalMs(): number {
@@ -747,6 +764,7 @@ async function llmChatCompletionInner(input: {
   const aiSessionId = normalizeAiIdentifier(input.aiSessionId, `user-${input.userId}`)
   const aiTraceId = normalizeAiIdentifier(input.aiTraceId, randomUUID())
 
+  const maxTokens = input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS
   const maxAttempts = 3
   let lastError: unknown
 
@@ -790,7 +808,7 @@ async function llmChatCompletionInner(input: {
             ...(input.temperature !== undefined && modelSupportsTemperature(routing.model)
               ? { temperature: input.temperature }
               : {}),
-            max_tokens: input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS,
+            max_tokens: maxTokens,
             ...(input.responseFormat === 'json_object'
               ? { response_format: { type: 'json_object' } }
               : {}),
@@ -846,10 +864,12 @@ async function llmChatCompletionInner(input: {
       logLlmChatResponse(logCtx, attempt, json, origin)
       // The trace (e.g. one assistant reply) counts the tokens its calls reported.
       addTraceTokens(reportedTokenCount(usage))
+      const cutShort = cutShortBelowBudget(json, usage, maxTokens)
+      // A cut-short call was still billed: its row keeps the cost, under its own name.
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
-        operation: `llm.chat.${logCtx}.success(attempt=${attempt})`,
+        operation: `llm.chat.${logCtx}.${cutShort ? 'cut_short' : 'success'}(attempt=${attempt})`,
         baseCostUsd: baseCost,
         context: chatActivityPreview(input.messages, origin),
         durationMs: attemptMs,
@@ -879,6 +899,7 @@ async function llmChatCompletionInner(input: {
         },
       })
 
+      if (cutShort) throw cutShort
       return json
     } catch (err) {
       lastError = err
@@ -887,15 +908,18 @@ async function llmChatCompletionInner(input: {
         afterMs: Date.now() - attemptStart,
         message: msg.slice(0, 500),
       })
-      await logActivityCall(db, input.userId, {
-        provider: activityProvider,
-        gatewayHost,
-        operation: `llm.chat.${logCtx}.error(attempt=${attempt})`,
-        baseCostUsd: 0,
-        context: chatActivityPreview(input.messages, origin),
-        errorMessage: msg,
-        durationMs: Date.now() - attemptStart,
-      })
+      // A cut-short reply already has its (billed) activity row.
+      if (!(err instanceof LlmCutShortError)) {
+        await logActivityCall(db, input.userId, {
+          provider: activityProvider,
+          gatewayHost,
+          operation: `llm.chat.${logCtx}.error(attempt=${attempt})`,
+          baseCostUsd: 0,
+          context: chatActivityPreview(input.messages, origin),
+          errorMessage: msg,
+          durationMs: Date.now() - attemptStart,
+        })
+      }
       if (attempt === maxAttempts) {
         captureServerEvent({
           distinctId: input.userId,
