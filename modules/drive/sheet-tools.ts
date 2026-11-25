@@ -157,19 +157,24 @@ export type Xlsx = {
   ref: typeof import('$lib/office/xlsx/ref')
   workbook: typeof import('$lib/office/xlsx/workbook')
   formatCells: typeof import('$lib/office/xlsx/format-cells')
+  chartOps: typeof import('$lib/office/xlsx/chart-ops')
+  chartAnchor: typeof import('$lib/office/xlsx/chart-anchor')
 }
 /** The spreadsheet code loads when a workbook is used, not with the registry. */
 export async function xlsx(): Promise<Xlsx> {
-  const [opc, editor, ops, read, ref, workbook, formatCells] = await Promise.all([
-    import('$lib/office/ooxml/package'),
-    import('$lib/office/xlsx/editor'),
-    import('$lib/office/xlsx/ops'),
-    import('$lib/office/xlsx/read'),
-    import('$lib/office/xlsx/ref'),
-    import('$lib/office/xlsx/workbook'),
-    import('$lib/office/xlsx/format-cells'),
-  ])
-  return { opc, editor, ops, read, ref, workbook, formatCells }
+  const [opc, editor, ops, read, ref, workbook, formatCells, chartOps, chartAnchor] =
+    await Promise.all([
+      import('$lib/office/ooxml/package'),
+      import('$lib/office/xlsx/editor'),
+      import('$lib/office/xlsx/ops'),
+      import('$lib/office/xlsx/read'),
+      import('$lib/office/xlsx/ref'),
+      import('$lib/office/xlsx/workbook'),
+      import('$lib/office/xlsx/format-cells'),
+      import('$lib/office/xlsx/chart-ops'),
+      import('$lib/office/xlsx/chart-anchor'),
+    ])
+  return { opc, editor, ops, read, ref, workbook, formatCells, chartOps, chartAnchor }
 }
 
 /** A workbook refusal (no such sheet, a formula that can't be read, losses not accepted) is the caller's to fix. */
@@ -262,7 +267,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
     {
       name: 'drive.sheet_read',
       module: DRIVE_MODULE_ID,
-      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden, the AutoFilter and its filtered columns, frozen panes, and counts of drawings/notes/comments/cell_images when present), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes), and any drawings (pictures, shapes, text boxes, charts), legacy notes, threaded comments, or in-cell images on that sheet. At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
+      summary: `Read an Excel workbook (.xlsx) in Drive: its sheets (name, used range, hidden, the AutoFilter and its filtered columns, frozen panes, charts, and counts of drawings/notes/comments/cell_images when present), and the filled cells of one sheet's range (default: the first visible sheet, its used range) with each cell's value (formulas calculated), formula, shown text, number format and look (style: bold, colours, fill, borders, alignment — only what differs from plain), plus the columns' own widths and rows' own heights there (sizes), and any charts (full details in drive.sheet_chart_list), drawings (pictures, shapes, text boxes), legacy notes, threaded comments, or in-cell images on that sheet. At most ${SHEET_MAX_CELLS} cells per call; ask for a smaller range for more. A value marked "kept" is Excel's last result for a formula this editor can't calculate.`,
       auditClass: 'read',
       permission: { roles: DRIVE_ROLES },
       inputSchema: readInput,
@@ -275,13 +280,28 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
           const sheet =
             i.sheet ??
             editor.wb.sheets().find((s) => s.kind === 'worksheet' && s.state === 'visible')?.name
-          if (!sheet)
+          if (!sheet) {
+            const chartSheet = editor.wb.sheets().find((s) => s.kind === 'chartsheet' && s.state === 'visible')
             return {
               file: { id: file.id, name: file.name },
               sheets,
-              sheet: null,
+              sheet: chartSheet?.name ?? null,
               range: null,
               cells: [],
+              ...(chartSheet
+                ? { charts: lib.chartOps.describeCharts(editor.wb, chartSheet.name) }
+                : {}),
+            }
+          }
+          const info = editor.wb.requireSheet(sheet)
+          if (info.kind === 'chartsheet' && !i.range)
+            return {
+              file: { id: file.id, name: file.name },
+              sheets,
+              sheet: info.name,
+              range: null,
+              cells: [],
+              charts: lib.chartOps.describeCharts(editor.wb, info.name),
             }
           const { range, cells } = lib.read.readCells(
             editor,
@@ -292,6 +312,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
           )
           const data = editor.wb.sheet(sheet)
           const ann = lib.read.readSheetAnnotations(editor, data.info.name)
+          const charts = lib.chartOps.describeCharts(editor.wb, data.info.name)
           const out: Record<string, unknown> = {
             file: { id: file.id, name: file.name },
             sheets,
@@ -303,6 +324,7 @@ export function createDriveSheetTools({ service }: DriveSheetToolDeps): ToolDesc
               data,
               range ? lib.ref.requireRange(range) : null,
             ),
+            ...(charts.length > 0 ? { charts } : {}),
           }
           if (ann.drawings.length > 0) out.drawings = ann.drawings
           if (ann.notes.length > 0) out.notes = ann.notes

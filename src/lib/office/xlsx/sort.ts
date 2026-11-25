@@ -2,7 +2,7 @@ import type { SheetEditor } from './editor'
 import type { Loss } from './ops'
 import { translateFormulaToA1, translateFormulaToR1C1 } from '@borgar/fx'
 import { createCalc } from './calc'
-import { anchorElements, NS_XDR, oneRowOf } from './drawing'
+import { anchorElements, NS_XDR, sortRowOf } from './drawing'
 import { overlaps, tableRanges } from './filter'
 import {
   cellKey,
@@ -107,7 +107,7 @@ export function sortLosses(wb: Workbook, op: SortOp): Loss[] {
   let drawings = 0
   for (const r of wb.pkg.relationships(info.part)) {
     if (r.external || !r.part || !wb.pkg.has(r.part)) continue
-    // Notes, threads and pictures inside one row move with their rows (ops.ts arrange); larger objects stay.
+    // Notes, threads, charts and pictures inside one row move with their rows (ops.ts arrange, drawing.ts sortDrawing); larger objects stay.
     if (r.type === `${REL}drawing`) {
       const doc = wb.pkg.xml(r.part)
       for (const el of anchorElements(doc)) {
@@ -115,7 +115,7 @@ export function sortLosses(wb: Workbook, op: SortOp): Loss[] {
         if (!from) continue
         const row = Number(textOf(kid(from, 'row', NS_XDR)))
         const col = Number(textOf(kid(from, 'col', NS_XDR)))
-        if (inBody(row, col) && (el.namespaceURI !== NS_XDR || oneRowOf(el) === null)) drawings++
+        if (inBody(row, col) && (el.namespaceURI !== NS_XDR || sortRowOf(el) === null)) drawings++
       }
     }
   }

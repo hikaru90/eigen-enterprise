@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { Note } from './notes'
+  import type { Member, Thread } from './threads'
   import AtSignIcon from '@lucide/svelte/icons/at-sign'
   import CheckIcon from '@lucide/svelte/icons/check'
   import EyeIcon from '@lucide/svelte/icons/eye'
@@ -13,8 +15,6 @@
   import { Button } from '$lib/components/ui/button'
   import { Textarea } from '$lib/components/ui/textarea'
   import { m } from '$lib/paraglide/messages.js'
-  import type { Note } from './notes'
-  import type { Member, Thread } from './threads'
 
   /**
    * Side panel for worksheet threaded comments (with company member
@@ -118,16 +118,17 @@
 
   function collectMentions(text: string): Member[] {
     const out = [...chosenMentions]
-    const seen = new Set(out.map((m) => m.id))
+    // A plain lookup inside one call (not state).
+    const seen: Record<string, true> = Object.fromEntries(out.map((m) => [m.id, true]))
     for (const mem of members) {
-      if (seen.has(mem.id)) continue
+      if (seen[mem.id]) continue
       const tag = `@${mem.name}`
       let idx = text.indexOf(tag)
       while (idx >= 0) {
         const next = text[idx + tag.length]
         if (next === undefined || !/[\p{L}\p{N}_]/u.test(next)) {
           out.push(mem)
-          seen.add(mem.id)
+          seen[mem.id] = true
           break
         }
         idx = text.indexOf(tag, idx + 1)

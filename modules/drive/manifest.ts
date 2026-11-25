@@ -23,7 +23,7 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-drawing-tools.ts, ./sheet-comment-tools.ts, the Drive's spreadsheet editor). */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-chart-tools.ts, ./sheet-drawing-tools.ts, ./sheet-comment-tools.ts, the Drive's spreadsheet editor). */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
@@ -32,6 +32,10 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_chart_list',
+  'drive.sheet_chart_create',
+  'drive.sheet_chart_update',
+  'drive.sheet_chart_delete',
   'drive.sheet_picture_insert',
   'drive.sheet_picture_update',
   'drive.sheet_picture_delete',
@@ -54,6 +58,9 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_chart_create',
+  'drive.sheet_chart_update',
+  'drive.sheet_chart_delete',
   'drive.sheet_picture_insert',
   'drive.sheet_picture_update',
   'drive.sheet_picture_delete',

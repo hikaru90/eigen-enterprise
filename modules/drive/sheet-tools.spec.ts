@@ -286,8 +286,10 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
       sheets: Array<Record<string, unknown>>
       drawings: Array<Record<string, unknown>>
     }
-    expect(picOut.sheets[0]).toMatchObject({ name: 'Pics', drawings: 5 })
-    expect(picOut.drawings).toHaveLength(5)
+    // The chart frame is listed under charts (drive.sheet_chart_list), the other four under drawings.
+    expect(picOut.sheets[0]).toMatchObject({ name: 'Pics', drawings: 4 })
+    expect(picOut.drawings).toHaveLength(4)
+    expect(picOut.drawings.some((d) => d.kind === 'chart')).toBe(false)
     expect(picOut.drawings.find((d) => d.id === '2')).toMatchObject({
       kind: 'picture',
       name: 'Picture 1',

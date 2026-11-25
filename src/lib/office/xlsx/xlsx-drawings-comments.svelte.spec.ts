@@ -154,7 +154,9 @@ describe('xlsx editor: drawings, cell images, notes and threaded comments', () =
     expect(drawingEl('2')!.querySelector('img')).not.toBeNull()
     expect(drawingEl('3')!.textContent).toContain('Q3 target')
     expect(drawingEl('4')!.textContent).toContain('Note to self')
-    expect(drawingEl('5')!.textContent).toContain('Chart 4')
+    // The chart frame is drawn by the charts code in the same layer (frame snippet), as chart1.
+    const chartFrame = document.querySelector('[data-testid="xlsx-chart-frame"][data-drawing-id="5"]')
+    expect(chartFrame?.getAttribute('data-chart-id')).toBe('chart1')
     expect(drawingEl('6')!.getAttribute('data-drawing-kind')).toBe('group')
   })
 

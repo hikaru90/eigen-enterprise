@@ -11199,6 +11199,712 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "at": {
+            "description": "Anchor cell range on the sheet, e.g. E2:L18; omitted: placed next to data",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "grouping": {
+            "description": "clustered, stacked, percentStacked, or standard",
+            "enum": [
+              "clustered",
+              "stacked",
+              "percentStacked",
+              "standard"
+            ],
+            "type": "string"
+          },
+          "legend": {
+            "anyOf": [
+              {
+                "enum": [
+                  "r",
+                  "l",
+                  "t",
+                  "b",
+                  "tr"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Legend position (r, l, t, b, tr); null hides it"
+          },
+          "new_sheet": {
+            "description": "Create the chart as a full chart sheet with this name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "Selection range to chart, e.g. A1:C5 (series guessed from header/orientation)",
+            "maxLength": 40,
+            "minLength": 2,
+            "type": "string"
+          },
+          "series": {
+            "description": "Explicit series instead of range",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "categories": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Category labels (x values for scatter/bubble), e.g. A2:A9"
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Literal series name"
+                },
+                "name_ref": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Cell reference for the series name, e.g. B1"
+                },
+                "secondary": {
+                  "description": "Plot against the secondary (right) value axis",
+                  "type": "boolean"
+                },
+                "sizes": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Bubble sizes range (bubble charts)"
+                },
+                "type": {
+                  "description": "Combo chart: this series own chart type",
+                  "enum": [
+                    "column",
+                    "bar",
+                    "line",
+                    "area",
+                    "pie",
+                    "doughnut",
+                    "scatter",
+                    "bubble",
+                    "radar",
+                    "stock"
+                  ],
+                  "type": "string"
+                },
+                "values": {
+                  "description": "Values range (y values for scatter/bubble), e.g. B2:B9 or Data!$B$2:$B$9",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "Sheet where the data lives (and where the chart is placed unless new_sheet is set)",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chart title; null omits it"
+          },
+          "type": {
+            "default": "column",
+            "description": "Chart type (default: column)",
+            "enum": [
+              "column",
+              "bar",
+              "line",
+              "area",
+              "pie",
+              "doughnut",
+              "scatter",
+              "bubble",
+              "radar",
+              "stock"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_chart_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "chart": {
+            "description": "Chart id (e.g. chart1) or name (e.g. Chart 1)",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "chart",
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_chart_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Limit to charts on this sheet; omit for all sheets",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_chart_list",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "axes": {
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "anyOf": [
+                      {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Number format code, e.g. #,##0 €; null links to cell format"
+                  },
+                  "gridlines": {
+                    "description": "Show major gridlines",
+                    "type": "boolean"
+                  },
+                  "max": {
+                    "description": "Fixed maximum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "Fixed minimum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Axis title; null removes it"
+                  }
+                },
+                "type": "object"
+              },
+              "secondary": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "anyOf": [
+                      {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Number format code, e.g. #,##0 €; null links to cell format"
+                  },
+                  "gridlines": {
+                    "description": "Show major gridlines",
+                    "type": "boolean"
+                  },
+                  "max": {
+                    "description": "Fixed maximum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "Fixed minimum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Axis title; null removes it"
+                  }
+                },
+                "type": "object"
+              },
+              "value": {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "anyOf": [
+                      {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Number format code, e.g. #,##0 €; null links to cell format"
+                  },
+                  "gridlines": {
+                    "description": "Show major gridlines",
+                    "type": "boolean"
+                  },
+                  "max": {
+                    "description": "Fixed maximum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "min": {
+                    "description": "Fixed minimum; null for auto",
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Axis title; null removes it"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "chart": {
+            "description": "Chart id (e.g. chart1) or name (e.g. Chart 1)",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "colors": {
+            "description": "Per-series colours (#RRGGBB; null resets to theme automatic)",
+            "items": {
+              "anyOf": [
+                {
+                  "description": "A hex colour like #4472C4",
+                  "pattern": "^#[0-9A-Fa-f]{6}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "grouping": {
+            "enum": [
+              "clustered",
+              "stacked",
+              "percentStacked",
+              "standard"
+            ],
+            "type": "string"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "category": {
+                    "type": "boolean"
+                  },
+                  "percent": {
+                    "description": "Pie/doughnut share percentage",
+                    "type": "boolean"
+                  },
+                  "position": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "ctr",
+                          "inEnd",
+                          "outEnd",
+                          "inBase",
+                          "t",
+                          "b",
+                          "l",
+                          "r",
+                          "bestFit"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "series": {
+                    "type": "boolean"
+                  },
+                  "value": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Data labels; null removes them"
+          },
+          "legend": {
+            "anyOf": [
+              {
+                "enum": [
+                  "r",
+                  "l",
+                  "t",
+                  "b",
+                  "tr"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Legend position; null hides it"
+          },
+          "markers": {
+            "description": "Show markers on line/scatter/radar series",
+            "type": "boolean"
+          },
+          "position": {
+            "description": "Move or resize the chart to cover this cell range, e.g. H3:N20",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "series": {
+            "description": "Replace series definitions",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "categories": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Category labels (x values for scatter/bubble), e.g. A2:A9"
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Literal series name"
+                },
+                "name_ref": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Cell reference for the series name, e.g. B1"
+                },
+                "secondary": {
+                  "description": "Plot against the secondary (right) value axis",
+                  "type": "boolean"
+                },
+                "sizes": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Bubble sizes range (bubble charts)"
+                },
+                "type": {
+                  "description": "Combo chart: this series own chart type",
+                  "enum": [
+                    "column",
+                    "bar",
+                    "line",
+                    "area",
+                    "pie",
+                    "doughnut",
+                    "scatter",
+                    "bubble",
+                    "radar",
+                    "stock"
+                  ],
+                  "type": "string"
+                },
+                "values": {
+                  "description": "Values range (y values for scatter/bubble), e.g. B2:B9 or Data!$B$2:$B$9",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "values"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "Sheet (or chart sheet) holding the chart",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chart title; null removes it"
+          },
+          "type": {
+            "enum": [
+              "column",
+              "bar",
+              "line",
+              "area",
+              "pie",
+              "doughnut",
+              "scatter",
+              "bubble",
+              "radar",
+              "stock"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "chart",
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_chart_update",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "cell": {
             "description": "A cell address like B3",
             "maxLength": 10,

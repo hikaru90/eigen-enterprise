@@ -23,6 +23,7 @@
     onselect,
     onupdate,
     frame,
+    onframeopen,
   }: {
     objects: AnchoredObject[]
     geometry: Geometry
@@ -39,21 +40,30 @@
      * Without it a frame shows as a labelled placeholder; its anchor and
      * parts are never changed by this layer either way.
      */
-    frame?: Snippet<[DrawingObject, Box]>
+    frame?: Snippet<[DrawingObject, Box, boolean]>
+    /** Double-click on a chart drawn by `frame` (the page opens its editor). */
+    onframeopen?: (id: string) => void
   } = $props()
+
+  /** A chart the page draws (`frame`): moved and sized by the same handles as pictures and shapes. */
+  const isChart = (o: DrawingObject) => o.kind === 'chart' && !!frame
+  /** The chart's id as the charts code names it: its part's file name ("chart1"). */
+  const chartIdOf = (o: DrawingObject) =>
+    o.chartPart ? o.chartPart.slice(o.chartPart.lastIndexOf('/') + 1).replace(/\.xml$/i, '') : undefined
 
   const HANDLES = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'] as const
   type Handle = (typeof HANDLES)[number]
 
+  /** Where each resize handle sits (layout in real CSS: the layer must work without utility classes). */
   const HANDLE_POS: Record<Handle, string> = {
-    nw: '-left-1 -top-1 cursor-nwse-resize',
-    n: 'left-1/2 -top-1 -translate-x-1/2 cursor-ns-resize',
-    ne: '-right-1 -top-1 cursor-nesw-resize',
-    w: '-left-1 top-1/2 -translate-y-1/2 cursor-ew-resize',
-    e: '-right-1 top-1/2 -translate-y-1/2 cursor-ew-resize',
-    sw: '-left-1 -bottom-1 cursor-nesw-resize',
-    s: 'left-1/2 -bottom-1 -translate-x-1/2 cursor-ns-resize',
-    se: '-right-1 -bottom-1 cursor-nwse-resize',
+    nw: 'left: -5px; top: -5px; cursor: nwse-resize;',
+    n: 'left: calc(50% - 5px); top: -5px; cursor: ns-resize;',
+    ne: 'right: -5px; top: -5px; cursor: nesw-resize;',
+    w: 'left: -5px; top: calc(50% - 5px); cursor: ew-resize;',
+    e: 'right: -5px; top: calc(50% - 5px); cursor: ew-resize;',
+    sw: 'left: -5px; bottom: -5px; cursor: nesw-resize;',
+    s: 'left: calc(50% - 5px); bottom: -5px; cursor: ns-resize;',
+    se: 'right: -5px; bottom: -5px; cursor: nwse-resize;',
   }
 
   let draftBox = $state<{ id: string; box: Box } | null>(null)
@@ -65,7 +75,11 @@
   }
 
   function movable(o: AnchoredObject): boolean {
-    return editable && o.anchor !== null && (o.kind === 'picture' || o.kind === 'shape' || o.kind === 'textbox' || o.kind === 'connector')
+    return (
+      editable &&
+      o.anchor !== null &&
+      (o.kind === 'picture' || o.kind === 'shape' || o.kind === 'textbox' || o.kind === 'connector' || isChart(o))
+    )
   }
 
   function resizeBox(from: Box, h: Handle, mx: number, my: number, minH: number): Box {
@@ -97,7 +111,7 @@
   function startDrag(e: PointerEvent, o: AnchoredObject, mode: 'move' | Handle) {
     if (e.button !== 0) return
     e.stopPropagation()
-    if (o.kind === 'chart' || o.kind === 'frame') {
+    if (o.kind === 'frame' || (o.kind === 'chart' && !isChart(o))) {
       onselect(o.id)
       return
     }
@@ -141,6 +155,11 @@
   }
 
   function beginTextEdit(e: MouseEvent, o: DrawingObject) {
+    if (isChart(o)) {
+      e.stopPropagation()
+      if (editable) onframeopen?.(o.id)
+      return
+    }
     if (!editable || (o.kind !== 'shape' && o.kind !== 'textbox')) return
     e.stopPropagation()
     onselect(o.id)
@@ -253,7 +272,7 @@
     {#if o.kind !== 'connector' && o.geometry !== 'line'}
       {#if textEdit && textEdit.id === o.id}
         <textarea
-          class="absolute inset-0 h-full w-full resize-none bg-transparent p-1 text-xs outline-none"
+          class="dl-fill resize-none bg-transparent p-1 text-xs outline-none"
           style="color: {o.textColor ?? '#000000'}; text-align: {o.kind === 'textbox' ? 'left' : 'center'};"
           bind:value={textEdit.value}
           onpointerdown={(e) => e.stopPropagation()}
@@ -267,7 +286,7 @@
         ></textarea>
       {:else if o.text}
         <div
-          class="pointer-events-none absolute flex overflow-hidden p-1 text-xs leading-tight whitespace-pre-wrap {o.kind === 'textbox'
+          class="dl-abs dl-ghost flex overflow-hidden p-1 text-xs leading-tight whitespace-pre-wrap {o.kind === 'textbox'
             ? 'items-start justify-start text-left'
             : 'items-center justify-center text-center'}"
           style="left: {built.textRect.l}px; top: {built.textRect.t}px; width: {Math.max(
@@ -281,7 +300,7 @@
       {/if}
     {/if}
   {:else if (o.kind === 'chart' || o.kind === 'frame') && frame}
-    {@render frame(o, box)}
+    {@render frame(o, box, selectedId === o.id)}
   {:else if o.kind === 'chart' || o.kind === 'frame'}
     <div
       class="flex h-full w-full flex-col items-center justify-center gap-1 rounded border border-dashed border-muted-foreground/50 bg-background/85 px-2 text-center text-xs text-muted-foreground"
@@ -292,7 +311,7 @@
   {:else if o.kind === 'group' && o.children}
     {#each o.children as child (child.id)}
       <div
-        class="pointer-events-none absolute"
+        class="dl-abs dl-ghost"
         style="left: {child.box.x - box.x}px; top: {child.box.y - box.y}px; width: {child.box.w}px; height: {Math.max(
           2,
           child.box.h,
@@ -304,7 +323,7 @@
   {/if}
 {/snippet}
 
-<div class="pointer-events-none absolute inset-0 z-10" data-testid="xlsx-drawing-layer">
+<div class="dl-layer" data-testid="xlsx-drawing-layer">
   {#each objects as o (o.id)}
     {#if !o.hidden}
       {@const box = boxOf(o)}
@@ -314,14 +333,15 @@
           role="button"
           tabindex="-1"
           aria-label={o.alt ? `${o.name}: ${o.alt}` : o.name}
-          class="pointer-events-auto absolute select-none {sel
+          class="dl-item select-none {sel
             ? 'ring-2 ring-primary'
             : 'hover:ring-1 hover:ring-primary/50'}"
           style="left: {box.x - dx}px; top: {box.y - dy}px; width: {box.w}px; height: {Math.max(
             8,
             box.h,
           )}px; transform: {transformCss(o)};"
-          data-testid="xlsx-drawing-item"
+          data-testid={isChart(o) ? 'xlsx-chart-frame' : 'xlsx-drawing-item'}
+          data-chart-id={isChart(o) ? chartIdOf(o) : undefined}
           data-drawing-id={o.id}
           data-drawing-kind={o.kind}
           onpointerdown={(e) => startDrag(e, o, 'move')}
@@ -334,8 +354,9 @@
                 type="button"
                 tabindex="-1"
                 aria-label={m.drive_sheet_drawing_resize({ handle: h })}
-                class="absolute z-10 size-2.5 rounded-full border border-primary bg-background {HANDLE_POS[h]}"
-                data-testid="xlsx-drawing-handle-{h}"
+                class="dl-handle rounded-full border border-primary bg-background"
+                style={HANDLE_POS[h]}
+                data-testid={isChart(o) ? `xlsx-chart-handle-${h}` : `xlsx-drawing-handle-${h}`}
                 onpointerdown={(e) => startDrag(e, o, h)}
               ></button>
             {/each}
@@ -345,3 +366,37 @@
     {/if}
   {/each}
 </div>
+
+<style>
+  /* Layout the layer needs to work at all (positions, hit-testing), kept here rather than in utility classes. */
+  .dl-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .dl-item {
+    position: absolute;
+    box-sizing: border-box;
+    pointer-events: auto;
+  }
+  .dl-abs {
+    position: absolute;
+  }
+  .dl-ghost {
+    pointer-events: none;
+  }
+  .dl-fill {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .dl-handle {
+    position: absolute;
+    z-index: 10;
+    width: 10px;
+    height: 10px;
+    padding: 0;
+  }
+</style>

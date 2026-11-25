@@ -1,5 +1,6 @@
 import type { SheetEditor } from './editor'
 import { readCellImages } from './cell-images'
+import { describeCharts } from './chart-ops'
 import {
   anchorBox,
   readDrawing,
@@ -24,6 +25,14 @@ import { isErrorValue, XlsxError, type CellValue } from './workbook'
  * (calculated), formulas, shown text and number format.
  */
 
+export type SheetChartRef = {
+  id: string
+  name: string
+  types: string[]
+  title: string | null
+  position: string | null
+}
+
 export type SheetSummary = {
   name: string
   kind: string
@@ -33,6 +42,8 @@ export type SheetSummary = {
   filter?: ReturnType<typeof describeAutoFilter>
   /** Frozen panes (rows from the top, columns from the left), when it has them. */
   frozen?: { rows: number; columns: number }
+  /** Charts on this sheet, when it has any. */
+  charts?: SheetChartRef[]
   drawings?: number
   notes?: number
   comments?: number
@@ -104,12 +115,22 @@ export function sheetSummaries(ed: SheetEditor): SheetSummary[] {
       hidden: s.state !== 'visible',
       used: used ? rangeName(used) : null,
     }
+    const charts = describeCharts(ed.wb, s.name)
+    if (charts.length > 0)
+      out.charts = charts.map((c) => ({
+        id: c.id,
+        name: c.name,
+        types: c.types,
+        title: c.title,
+        position: c.position,
+      }))
     if (s.kind !== 'worksheet') return out
     const af = autoFilterOf(ed.wb, s.name)
     if (af) out.filter = describeAutoFilter(af)
     const frozen = frozenOf(ed.wb, s.name)
     if (frozen) out.frozen = { rows: frozen.rows, columns: frozen.cols }
-    const drawings = readDrawing(ed.wb, s).length
+    // Charts are listed under `charts`; `drawings` counts the other objects.
+    const drawings = readDrawing(ed.wb, s).filter((o) => o.kind !== 'chart').length
     if (drawings > 0) out.drawings = drawings
     const notes = readNotes(ed.wb, s).length
     if (notes > 0) out.notes = notes
@@ -141,7 +162,8 @@ export function readSheetAnnotations(
 } {
   const info = ed.wb.requireWorksheet(sheet)
   const g = sheetGeometry(ed.wb.sheet(info.name))
-  const drawings: ReadDrawing[] = readDrawing(ed.wb, info, g).map((o) => {
+  // Charts have their own description (drive.sheet_chart_list, `charts` in drive.sheet_read).
+  const drawings: ReadDrawing[] = readDrawing(ed.wb, info, g).filter((o) => o.kind !== 'chart').map((o) => {
     const out: ReadDrawing = {
       id: o.id,
       kind: o.kind,

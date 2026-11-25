@@ -1,4 +1,5 @@
 import type { OpResult } from './ops'
+import { relsPartOf } from '../ooxml/package'
 import {
   anchorBox,
   anchorElements,
@@ -25,7 +26,6 @@ import {
 } from './drawing'
 import { imageInfo } from './image-info'
 import { normalizeRefs } from './sheet-xml'
-import { relsPartOf } from '../ooxml/package'
 import { relativeTarget, XlsxError, type SheetInfo, type Workbook } from './workbook'
 import { kid, kids, NS_A, NS_R } from './xml'
 

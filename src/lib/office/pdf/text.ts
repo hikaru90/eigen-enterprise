@@ -1,6 +1,6 @@
+import type { PdfAnnotation } from './annotate-model'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import type { PdfAnnotation } from './annotate-model'
 import { readingParagraphs, type PdfTextItem } from './reading'
 
 /** A PDF that needs a password before anything in it can be read. */

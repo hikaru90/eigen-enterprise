@@ -749,6 +749,25 @@ export function oneRowOf(anchorEl: Element): number | null {
   return to.row === from.row || (to.row === from.row + 1 && to.rowOff === 0) ? from.row : null
 }
 
+/** Whether the anchor holds a chart (a graphic frame with `c:chart`). */
+export function isChartAnchor(anchorEl: Element): boolean {
+  const obj = objectOf(anchorEl)
+  if (!obj || obj.localName !== 'graphicFrame') return false
+  return obj.getElementsByTagNameNS(NS_C, 'chart').length > 0
+}
+
+/**
+ * The row an anchor moves with in a sort, or null when it stays: a chart
+ * moves with the row it starts in (keeping its height, as the charts stream
+ * decided), any other object only when it sits inside one row.
+ */
+export function sortRowOf(anchorEl: Element): number | null {
+  if (!isChartAnchor(anchorEl)) return oneRowOf(anchorEl)
+  if (anchorEl.localName === 'absoluteAnchor') return null
+  if (anchorEl.localName === 'twoCellAnchor' && anchorEl.getAttribute('editAs') === 'absolute') return null
+  return readMarker(xk(anchorEl, 'from')).row
+}
+
 /** The anchor's first column (null: absolute). */
 export function fromColOf(anchorEl: Element): number | null {
   const f = xk(anchorEl, 'from')
@@ -764,7 +783,7 @@ export function sortDrawing(doc: XMLDocument, dest: Map<number, number>, left: n
   let changed = false
   for (const el of anchorElements(doc)) {
     if (el.namespaceURI !== NS_XDR) continue
-    const row = oneRowOf(el)
+    const row = sortRowOf(el)
     const col = fromColOf(el)
     if (row === null || col === null || col < left || col > right) continue
     const to = dest.get(row)
