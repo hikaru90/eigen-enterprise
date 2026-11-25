@@ -200,7 +200,7 @@ export function readThreads(wb: Workbook, info: SheetInfo): Thread[] {
 // ---------------------------------------------------------------------------
 // Writing
 
-function ensureThreadedPart(wb: Workbook, info: SheetInfo): string {
+export function ensureThreadedPart(wb: Workbook, info: SheetInfo): string {
   const have = threadedPartOf(wb, info)
   if (have) return have
   let n = 1
@@ -277,13 +277,13 @@ function standInText(t: Thread): string {
 }
 
 /** Rewrites the thread's legacy stand-in after a change. */
-function syncStandIn(wb: Workbook, info: SheetInfo, sheetDoc: SheetDocSource, ref: string) {
+export function syncStandIn(wb: Workbook, info: SheetInfo, sheetDoc: SheetDocSource, ref: string) {
   const t = readThreads(wb, info).find((x) => x.ref === ref)
   if (!t) removeLegacyComment(wb, info, sheetDoc, ref)
   else writeLegacyComment(wb, info, sheetDoc, ref, standInText(t), `tc=${t.id}`)
 }
 
-function dropEmptyThreadedPart(wb: Workbook, info: SheetInfo) {
+export function dropEmptyThreadedPart(wb: Workbook, info: SheetInfo) {
   const part = threadedPartOf(wb, info)
   if (part && all(wb.pkg.xml(part), 'threadedComment', NS_THREADED).length === 0) {
     const rel = wb.pkg.relationships(info.part).find((r) => r.part === part)

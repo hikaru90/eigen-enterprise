@@ -12239,6 +12239,266 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "cut": {
+            "description": "Move the cells instead of copying (same workbook only)",
+            "type": "boolean"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "locale": {
+            "enum": [
+              "en",
+              "de"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "Paste mode: all (default), values, formulas, formats",
+            "enum": [
+              "all",
+              "values",
+              "formulas",
+              "formats"
+            ],
+            "type": "string"
+          },
+          "skip_blanks": {
+            "description": "Do not overwrite target cells with blank source cells",
+            "type": "boolean"
+          },
+          "source_file_id": {
+            "description": "Optional source workbook id when copying from another .xlsx file (cannot cut)",
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_range": {
+            "description": "Cells to copy or cut, like A1:C5",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "source_sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target_sheet": {
+            "description": "Destination sheet (defaults to source_sheet)",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "to": {
+            "description": "Destination top-left cell or target range, like D1 or D1:F5",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "transpose": {
+            "description": "Swap rows and columns when pasting",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_id",
+          "source_range",
+          "source_sheet",
+          "to"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_copy_range",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "fit_to_width": {
+            "anyOf": [
+              {
+                "maximum": 99,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "locale": {
+            "enum": [
+              "en",
+              "de"
+            ],
+            "type": "string"
+          },
+          "orientation": {
+            "enum": [
+              "portrait",
+              "landscape"
+            ],
+            "type": "string"
+          },
+          "paper_size": {
+            "enum": [
+              "a4",
+              "letter",
+              "legal",
+              "a3",
+              "a5"
+            ],
+            "type": "string"
+          },
+          "print_gridlines": {
+            "type": "boolean"
+          },
+          "print_headings": {
+            "type": "boolean"
+          },
+          "sheet": {
+            "description": "One sheet to export; omit for all visible worksheets",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_export_pdf",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "custom_lists": {
+            "description": "Optional custom text lists matched before falling back to repeat",
+            "items": {
+              "items": {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 100,
+              "minItems": 1,
+              "type": "array"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "series": {
+            "description": "Fill mode (default auto)",
+            "enum": [
+              "auto",
+              "copy",
+              "linear",
+              "growth",
+              "days",
+              "weekdays",
+              "months",
+              "years"
+            ],
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source": {
+            "description": "Seed cells inside target, like A1:A2",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "step": {
+            "description": "Step value for linear/growth/date series",
+            "type": "number"
+          },
+          "stop": {
+            "description": "Optional numeric/date stop limit",
+            "type": "number"
+          },
+          "target": {
+            "description": "Full destination range containing source, like A1:A10",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "source",
+          "target"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_fill",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "columns": {
             "description": "Filter columns by values; rows that don’t match are hidden as in Excel",
             "items": {
@@ -12308,6 +12568,12 @@
             "maxLength": 31,
             "minLength": 1,
             "type": "string"
+          },
+          "table": {
+            "description": "Filter this Excel table’s columns instead of the sheet’s AutoFilter (its drop-downs are on with drive.sheet_table_update auto_filter)",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
           }
         },
         "required": [
@@ -12318,6 +12584,102 @@
       },
       "module": "drive",
       "name": "drive.sheet_filter",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "description": "Restrict replacement to specific matched cells",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "ref": {
+                  "maxLength": 12,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                "sheet": {
+                  "description": "The sheet (tab) name",
+                  "maxLength": 31,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "sheet"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "find": {
+            "description": "Text or Excel wildcard (*, ?, ~) to find",
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "locale": {
+            "enum": [
+              "en",
+              "de"
+            ],
+            "type": "string"
+          },
+          "look_in": {
+            "description": "Search formulas/input (default) or formatted display values",
+            "enum": [
+              "formulas",
+              "values"
+            ],
+            "type": "string"
+          },
+          "match_case": {
+            "type": "boolean"
+          },
+          "replace": {
+            "description": "Replacement text; omit to only list matching cells without modifying the file",
+            "maxLength": 1000,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Limit to one sheet (omit for all worksheets)",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "whole_cell": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_id",
+          "find"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_find_replace",
       "output": null,
       "permission": {
         "roles": [
@@ -12670,6 +13032,148 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "accept_losses": {
+            "description": "Merge even when lower/right non-empty cell values inside the merge would be cleared",
+            "type": "boolean"
+          },
+          "clear": {
+            "description": "Clear all, contents, or formats in range",
+            "enum": [
+              "all",
+              "contents",
+              "formats"
+            ],
+            "type": "string"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "description": "center (Merge & Center), merge, across (row by row), or unmerge",
+            "enum": [
+              "center",
+              "merge",
+              "across",
+              "unmerge"
+            ],
+            "type": "string"
+          },
+          "range": {
+            "description": "Target cell range for merge, clear, or shift_decimals",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "rich_text": {
+            "additionalProperties": false,
+            "description": "Set mixed-format rich-text runs inside a single cell",
+            "properties": {
+              "ref": {
+                "maxLength": 12,
+                "minLength": 2,
+                "type": "string"
+              },
+              "runs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "bold": {
+                      "type": "boolean"
+                    },
+                    "color": {
+                      "description": "A colour like #1F4E79",
+                      "pattern": "^#[0-9A-Fa-f]{6}$",
+                      "type": "string"
+                    },
+                    "font": {
+                      "maxLength": 31,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "italic": {
+                      "type": "boolean"
+                    },
+                    "size": {
+                      "maximum": 409,
+                      "minimum": 1,
+                      "type": "number"
+                    },
+                    "strike": {
+                      "type": "boolean"
+                    },
+                    "text": {
+                      "maxLength": 32767,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "underline": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 500,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "ref",
+              "runs"
+            ],
+            "type": "object"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "shift_decimals": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "number"
+              },
+              {
+                "const": -1,
+                "type": "number"
+              }
+            ],
+            "description": "1 increases decimals by one digit; -1 decreases by one digit"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_merge",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "file_id": {
             "minLength": 1,
             "type": "string"
@@ -12878,6 +13382,411 @@
     {
       "approval": {
         "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "col_grand_totals": {
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "filters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "selected_item": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "row_grand_totals": {
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "source": {
+            "description": "Source range (A1:D20, Sheet!A1:D20) or table name",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "source_sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subtotals": {
+            "type": "boolean"
+          },
+          "target_cell": {
+            "description": "Top-left anchor cell (default A3 on new sheet)",
+            "maxLength": 16,
+            "minLength": 2,
+            "type": "string"
+          },
+          "target_sheet": {
+            "description": "Omitted creates a new worksheet (PivotTable1, …)",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agg": {
+                  "enum": [
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "product",
+                    "countNums",
+                    "stdDev",
+                    "var"
+                  ],
+                  "type": "string"
+                },
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "num_fmt": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "source"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "keep_values": {
+            "type": "boolean"
+          },
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "pivot",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "pivot",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_refresh",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "col_grand_totals": {
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "filters": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "selected_item": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "hidden_items": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pivot": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "row_grand_totals": {
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subtotals": {
+            "type": "boolean"
+          },
+          "values": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agg": {
+                  "enum": [
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "product",
+                    "countNums",
+                    "stdDev",
+                    "var"
+                  ],
+                  "type": "string"
+                },
+                "field": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "num_fmt": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field"
+              ],
+              "type": "object"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "pivot",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_pivot_update",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
         "gated": false,
         "risk": null
       },
@@ -12909,6 +13818,451 @@
       },
       "module": "drive",
       "name": "drive.sheet_read",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "items": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "hide_columns",
+                      "type": "string"
+                    },
+                    "from": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    },
+                    "hidden": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "to": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "hide_rows",
+                      "type": "string"
+                    },
+                    "from": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "hidden": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "to": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "group_columns",
+                      "type": "string"
+                    },
+                    "from": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    },
+                    "to": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "ungroup_columns",
+                      "type": "string"
+                    },
+                    "from": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    },
+                    "to": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "group_rows",
+                      "type": "string"
+                    },
+                    "from": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "to": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "ungroup_rows",
+                      "type": "string"
+                    },
+                    "from": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "to": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "collapse_columns",
+                      "type": "string"
+                    },
+                    "collapsed": {
+                      "type": "boolean"
+                    },
+                    "from": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    },
+                    "to": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "collapsed",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "collapse_rows",
+                      "type": "string"
+                    },
+                    "collapsed": {
+                      "type": "boolean"
+                    },
+                    "from": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "to": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "collapsed",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "set_outline_level",
+                      "type": "string"
+                    },
+                    "axis": {
+                      "enum": [
+                        "row",
+                        "col"
+                      ],
+                      "type": "string"
+                    },
+                    "level": {
+                      "maximum": 8,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "axis",
+                    "level"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "autofit_columns",
+                      "type": "string"
+                    },
+                    "from": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    },
+                    "locale": {
+                      "enum": [
+                        "en",
+                        "de"
+                      ],
+                      "type": "string"
+                    },
+                    "to": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "pattern": "^[A-Za-z]{1,3}$",
+                          "type": "string"
+                        }
+                      ],
+                      "description": "A column letter (C) or number from 1"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "action": {
+                      "const": "autofit_rows",
+                      "type": "string"
+                    },
+                    "from": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "locale": {
+                      "enum": [
+                        "en",
+                        "de"
+                      ],
+                      "type": "string"
+                    },
+                    "to": {
+                      "description": "Row number (1 = top)",
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "from"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "changes",
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_rows_cols",
       "output": null,
       "permission": {
         "roles": [
@@ -13540,6 +14894,496 @@
       },
       "module": "drive",
       "name": "drive.sheet_structure",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "description": "Exactly one of these shapes: {action: \"move_sheet\", file_id, sheet, position} | {action: \"set_sheet_color\", file_id, sheet, color} | {action: \"set_sheet_visibility\", file_id, sheet, state} | {action: \"duplicate_sheet\", file_id, sheet, name?, position?, accept_losses?} | {action: \"set_view_options\", file_id, sheet, show_gridlines?, show_headings?, zoom_scale?} | {action: \"set_page_setup\", file_id, sheet, orientation?, paper_size?, scale?, fit_to_width?, fit_to_height?, margins?, print_gridlines?, print_headings?, center_horizontally?, center_vertically?, print_area?, repeat_rows?, repeat_cols?}",
+        "properties": {
+          "accept_losses": {
+            "description": "Duplicate even if drawings/tables/comments are not copied",
+            "type": "boolean"
+          },
+          "action": {
+            "enum": [
+              "move_sheet",
+              "set_sheet_color",
+              "set_sheet_visibility",
+              "duplicate_sheet",
+              "set_view_options",
+              "set_page_setup"
+            ],
+            "type": "string"
+          },
+          "center_horizontally": {
+            "type": "boolean"
+          },
+          "center_vertically": {
+            "type": "boolean"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "description": "A colour like #1F4E79",
+                "pattern": "^#[0-9A-Fa-f]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "#RRGGBB tab colour, or null to clear"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "fit_to_height": {
+            "anyOf": [
+              {
+                "maximum": 99,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fit_to_width": {
+            "anyOf": [
+              {
+                "maximum": 99,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "margins": {
+            "additionalProperties": false,
+            "properties": {
+              "bottom": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
+              "footer": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
+              "header": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
+              "left": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
+              "right": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
+              "top": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": "Optional new sheet name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "orientation": {
+            "enum": [
+              "portrait",
+              "landscape"
+            ],
+            "type": "string"
+          },
+          "paper_size": {
+            "enum": [
+              "a4",
+              "letter",
+              "legal",
+              "a3",
+              "a5"
+            ],
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "description": "1-based target tab position",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "description": "Optional 1-based tab position",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            ]
+          },
+          "print_area": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "print_gridlines": {
+            "type": "boolean"
+          },
+          "print_headings": {
+            "type": "boolean"
+          },
+          "repeat_cols": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repeat_rows": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scale": {
+            "maximum": 400,
+            "minimum": 10,
+            "type": "integer"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "show_gridlines": {
+            "type": "boolean"
+          },
+          "show_headings": {
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "visible",
+              "hidden",
+              "veryHidden"
+            ],
+            "type": "string"
+          },
+          "zoom_scale": {
+            "maximum": 400,
+            "minimum": 10,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action",
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_tab",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_filter": {
+            "description": "Include AutoFilter drop-downs (default true)",
+            "type": "boolean"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "has_headers": {
+            "description": "Whether the first row holds column headers (default true; false shifts data down for headers)",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Table name (e.g. Orders; omitted: Table1, Table2, …)",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "range": {
+            "description": "Range like A1:D10 (or a single cell to expand its current region)",
+            "maxLength": 60,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "style": {
+            "description": "Built-in style like TableStyleMedium2",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "range",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_table_create",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "description": "convert_to_range (default: keeps values & rewrites structured refs to A1) or delete_cells",
+            "enum": [
+              "convert_to_range",
+              "delete_cells"
+            ],
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "table": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "table"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_table_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_filter": {
+            "type": "boolean"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "header_row": {
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Rename the table (structured refs follow)",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ref": {
+            "description": "Resize table range, e.g. A1:E12",
+            "maxLength": 60,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          },
+          "show_column_stripes": {
+            "type": "boolean"
+          },
+          "show_first_column": {
+            "type": "boolean"
+          },
+          "show_last_column": {
+            "type": "boolean"
+          },
+          "show_row_stripes": {
+            "type": "boolean"
+          },
+          "style": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "table": {
+            "description": "Current name of the table",
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "totals_columns": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "column": {
+                  "anyOf": [
+                    {
+                      "maxLength": 255,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "formula": {
+                  "maxLength": 4000,
+                  "type": "string"
+                },
+                "function": {
+                  "enum": [
+                    "none",
+                    "sum",
+                    "count",
+                    "average",
+                    "min",
+                    "max",
+                    "countNums",
+                    "stdDev",
+                    "var",
+                    "custom"
+                  ],
+                  "type": "string"
+                },
+                "label": {
+                  "maxLength": 255,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "column",
+                "function"
+              ],
+              "type": "object"
+            },
+            "maxItems": 256,
+            "type": "array"
+          },
+          "totals_row": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet",
+          "table"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_table_update",
       "output": null,
       "permission": {
         "roles": [

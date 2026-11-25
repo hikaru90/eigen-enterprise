@@ -3,7 +3,7 @@ import { createCalc, type Calc } from './calc'
 import { readDrawing } from './drawing'
 import { applyOp, lossesOf, prepareSave, type Loss, type OpResult, type SheetOp } from './ops'
 import { openWorkbook, XlsxError, type Images, type Workbook } from './workbook'
-import { all, REL } from './xml'
+import { all } from './xml'
 
 /**
  * One open workbook being edited: operations with undo/redo, calculated
@@ -116,17 +116,11 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
       .length,
   )
   let drawings = 0
-  let pivots = 0
-  let tables = 0
   let cf = 0
   let dv = 0
   const kept = new Map<string, number>()
   for (const s of wb.sheets()) {
     if (s.kind !== 'worksheet') continue
-    for (const r of wb.pkg.relationships(s.part)) {
-      if (r.type === `${REL}pivotTable`) pivots++
-      else if (r.type === `${REL}table`) tables++
-    }
     // Pictures, shapes, text boxes, notes and comments are shown; other drawing content is listed.
     drawings += readDrawing(wb, s).filter((o) => o.kind === 'other' || o.kind === 'frame').length
     const doc = wb.pkg.xml(s.part)
@@ -140,8 +134,6 @@ export function workbookNotes(ed: SheetEditor): WorkbookNote[] {
     }
   }
   add('drawings', drawings)
-  add('pivot_tables', pivots)
-  add('tables', tables)
   add('conditional_formats', cf)
   add('data_validations', dv)
   add(

@@ -23,7 +23,7 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-chart-tools.ts, ./sheet-drawing-tools.ts, ./sheet-comment-tools.ts, the Drive's spreadsheet editor). */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-chart-tools.ts, ./sheet-pivot-table-tools.ts, ./sheet-editing-tools.ts, ./sheet-drawing-tools.ts, ./sheet-comment-tools.ts, the Drive's spreadsheet editor): reads + writes. */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
@@ -32,6 +32,13 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_table_create',
+  'drive.sheet_table_update',
+  'drive.sheet_table_delete',
+  'drive.sheet_pivot_create',
+  'drive.sheet_pivot_update',
+  'drive.sheet_pivot_refresh',
+  'drive.sheet_pivot_delete',
   'drive.sheet_chart_list',
   'drive.sheet_chart_create',
   'drive.sheet_chart_update',
@@ -48,6 +55,13 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_comment_edit',
   'drive.sheet_comment_resolve',
   'drive.sheet_comment_delete',
+  'drive.sheet_copy_range',
+  'drive.sheet_fill',
+  'drive.sheet_find_replace',
+  'drive.sheet_merge',
+  'drive.sheet_rows_cols',
+  'drive.sheet_tab',
+  'drive.sheet_export_pdf',
 ] as const
 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
@@ -58,6 +72,13 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_table_create',
+  'drive.sheet_table_update',
+  'drive.sheet_table_delete',
+  'drive.sheet_pivot_create',
+  'drive.sheet_pivot_update',
+  'drive.sheet_pivot_refresh',
+  'drive.sheet_pivot_delete',
   'drive.sheet_chart_create',
   'drive.sheet_chart_update',
   'drive.sheet_chart_delete',
@@ -72,6 +93,12 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_comment_edit',
   'drive.sheet_comment_resolve',
   'drive.sheet_comment_delete',
+  'drive.sheet_copy_range',
+  'drive.sheet_fill',
+  'drive.sheet_find_replace',
+  'drive.sheet_merge',
+  'drive.sheet_rows_cols',
+  'drive.sheet_tab',
 ] as const
 
 /** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */

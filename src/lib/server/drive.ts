@@ -27,6 +27,7 @@ export {
   batchBody,
   batchMoveBody,
   batchShareBody,
+  DRIVE_STATUS,
   drivePage,
   grantsBody,
   itemType,
@@ -41,6 +42,7 @@ export {
 } from '../../../modules/drive/archive-suggest'
 export { renderDriveMarkdown } from '../../../modules/drive/markdown'
 export {
+  officeKind,
   parseCsv,
   previewKind,
   isRevisioned,

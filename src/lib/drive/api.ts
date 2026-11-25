@@ -325,6 +325,40 @@ export const driveApi = {
       method: 'DELETE',
       keepalive: true,
     }).then(() => undefined),
+  /** Renders an .xlsx workbook (or one sheet) to a paginated PDF (= drive.sheet_export_pdf). */
+  exportSheetPdf: async (
+    fileId: string,
+    opts: {
+      sheet?: string
+      locale?: 'en' | 'de'
+      orientation?: 'portrait' | 'landscape'
+      paperSize?: 'a4' | 'letter' | 'legal' | 'a3' | 'a5'
+      fitToWidth?: number | null
+      printGridlines?: boolean
+      printHeadings?: boolean
+    } = {},
+  ): Promise<{ filename: string; bytes: Uint8Array }> => {
+    const res = await fetch(`/api/drive/files/${fileId}/pdf`, send('POST', opts))
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as
+        | { error?: string; code?: string; holder?: LockHolder; running?: AppPreview }
+        | null
+      const shown = shownErrorOf(body)
+      throw new DriveApiError(
+        shown?.error ?? `PDF export failed (${res.status}).`,
+        res.status,
+        body?.code ?? null,
+        body?.holder ?? null,
+        body?.running ?? null,
+        shown?.agent ?? null,
+      )
+    }
+    const cd = res.headers.get('content-disposition') ?? ''
+    const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1]
+    const plain = /filename="([^"]+)"/i.exec(cd)?.[1]
+    const filename = utf8 ? decodeURIComponent(utf8) : plain || 'workbook.pdf'
+    return { filename, bytes: new Uint8Array(await res.arrayBuffer()) }
+  },
 }
 
 export function formatSize(n: number | undefined): string {

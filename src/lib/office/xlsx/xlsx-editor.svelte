@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { OfficeViewerProps } from '../viewers'
+  import type { ClearWhat, MergeMode } from './cells-edit'
   import type { ChartPlacement } from './chart-anchor'
   import type { ChartPosition } from './chart-ops'
   import type { StylePatch } from './format-cells'
   import ArrowDownAZIcon from '@lucide/svelte/icons/arrow-down-a-z'
   import ArrowDownZAIcon from '@lucide/svelte/icons/arrow-down-z-a'
   import ChartColumnIcon from '@lucide/svelte/icons/chart-column'
+  import CopyIcon from '@lucide/svelte/icons/copy'
   import DownloadIcon from '@lucide/svelte/icons/download'
-  import EyeOffIcon from '@lucide/svelte/icons/eye-off'
   import FunnelIcon from '@lucide/svelte/icons/funnel'
   import ImageIcon from '@lucide/svelte/icons/image'
   import InfoIcon from '@lucide/svelte/icons/info'
@@ -16,7 +17,11 @@
   import PencilIcon from '@lucide/svelte/icons/pencil'
   import PlusIcon from '@lucide/svelte/icons/plus'
   import Redo2Icon from '@lucide/svelte/icons/redo-2'
+  import ScissorsIcon from '@lucide/svelte/icons/scissors'
+  import SearchIcon from '@lucide/svelte/icons/search'
   import ShapesIcon from '@lucide/svelte/icons/shapes'
+  import SheetIcon from '@lucide/svelte/icons/sheet'
+  import TableIcon from '@lucide/svelte/icons/table'
   import TrashIcon from '@lucide/svelte/icons/trash'
   import Trash2Icon from '@lucide/svelte/icons/trash-2'
   import TypeIcon from '@lucide/svelte/icons/type'
@@ -27,6 +32,7 @@
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button } from '$lib/components/ui/button'
+  import * as Dialog from '$lib/components/ui/dialog'
   import type { DriveItem, LockHolder } from '$lib/drive/api'
   import { DriveApiError, driveApi } from '$lib/drive/api'
   import {
@@ -35,7 +41,6 @@
     type Autosave,
     type AutosaveState,
   } from '$lib/drive/autosave'
-  import { parseClipboardBlock } from '$lib/drive/csv-grid'
   import { driveShownError } from '$lib/drive/shown-error'
   import type { ShownError } from '$lib/errors/agent-report'
   import { m } from '$lib/paraglide/messages.js'
@@ -47,13 +52,24 @@
   import { chartsOn } from './chart-anchor'
   import ChartDialog from './chart-dialog.svelte'
   import ChartView from './chart-view.svelte'
+  import { readClip, type Clip, type PasteMode } from './clip'
+  import { clipFromClipboard, clipToHtml, clipToTsv } from './clip-interop'
   import CommentPanel from './comment-panel.svelte'
   import { markerAt, readDrawing, sheetGeometry, type Box } from './drawing'
   import { cellOrigin, SHAPE_GEOMETRIES, type ShapeGeometry } from './drawing-ops'
   import DrawingOverlay from './drawing-overlay.svelte'
   import { createSheetEditor, workbookNotes, type SheetEditor, type WorkbookNote } from './editor'
-  import { autoFilterOf, columnChoices, currentRegion, type FilterChoice } from './filter'
+  import { fillDownTo, fillShortcutRange } from './fill'
+  import {
+    autoFilterOf,
+    columnChoices,
+    currentRegion,
+    sheetFilters,
+    type FilterChoice,
+  } from './filter'
   import FilterMenu from './filter-menu.svelte'
+  import { findCells, listGoToNames, resolveGoTo, type FindHit } from './find'
+  import FindDialog from './find-dialog.svelte'
   import {
     displayValue,
     editText,
@@ -64,15 +80,56 @@
     type SheetLocale,
   } from './format'
   import FormatToolbar from './format-toolbar.svelte'
+  import FormulaAutocomplete from './formula-autocomplete.svelte'
+  import {
+    acceptAutocomplete,
+    activeFunctionCall,
+    autocompleteContext,
+    canInsertReferenceAt,
+    cycleAbsoluteAt,
+    formatPickedRef,
+    formulaHighlightRuns,
+    formulaReferences,
+    insertReferenceAt,
+  } from './formula-edit'
   import { borderCss, fontFamilyCss, verticalOf } from './grid-style'
   import ImagePicker from './image-picker.svelte'
   import { readNotes, type Note } from './notes'
   import { toShownFormula, XlsxLossError, type CellWrite, type Loss, type SheetOp } from './ops'
+  import PageSetupDialog from './page-setup-dialog.svelte'
   import { frozenOf } from './panes'
-  import { cellKey, cellName, colName, MAX_COLS, MAX_ROWS, rangeName, type Range } from './ref'
+  import { pivotCellLook, readSheetPivots } from './pivot'
+  import PivotFields, { type PivotLayout } from './pivot-fields.svelte'
+  import { pageSetupOf, viewOptionsOf, type PaperSize } from './print'
+  import {
+    cellKey,
+    cellName,
+    colName,
+    MAX_COLS,
+    MAX_ROWS,
+    parseCell,
+    parseRange,
+    rangeName,
+    type Range,
+  } from './ref'
+  import {
+    formatRange,
+    retext,
+    richCells,
+    runsText,
+    type RichRun,
+    type RunFormat,
+  } from './rich-text'
+  import { outlineOf } from './rows-cols'
+  import { selectionOf, selectionStats, type HeldSelection } from './selection'
   import SheetGrid, { type GridCell, type Pos } from './sheet-grid.svelte'
+  import { sheetTabColor } from './sheet-tabs'
+  import { quoteSheet } from './shift'
   import { guessHeader, type SortKey } from './sort'
   import SortDialog from './sort-dialog.svelte'
+  import TableBar from './table-bar.svelte'
+  import TableDialog from './table-dialog.svelte'
+  import { readSheetTables, tableCellLook, type TableCellLook } from './tables'
   import { readThreads, type Member, type Thread } from './threads'
   import { pxToWidth, XlsxError } from './workbook'
 
@@ -141,7 +198,15 @@
   let renameText = $state('')
   let confirm = $state<{ op: SheetOp; title: string; losses: Loss[] } | null>(null)
   let grid = $state<ReturnType<typeof SheetGrid> | null>(null)
-  let filterMenu = $state<{ col: number; at: DOMRect; choices: FilterChoice[] } | null>(null)
+  let filterMenu = $state<{
+    col: number
+    row: number
+    at: DOMRect
+    choices: FilterChoice[]
+  } | null>(null)
+  /** Create Table (Ctrl+T) / Create PivotTable: the dialog's starting range. */
+  let creating = $state<{ kind: 'table' | 'pivot'; range: string; header: boolean } | null>(null)
+  let pivotFieldsOpen = $state(true)
   let sorting = $state<{ range: Range; header: boolean; first: number } | null>(null)
   let selectedDrawingId = $state<string | null>(null)
   let imagePickerOpen = $state(false)
@@ -151,6 +216,34 @@
   let members = $state<Member[]>([])
   let fileInputEl = $state<HTMLInputElement | null>(null)
   let mediaUrls = $state<Record<string, string>>({})
+  let extraSelections = $state<Range[]>([])
+  let clipState = $state<{
+    clip: Clip
+    tsv: string
+    cut: boolean
+    sourceRange: Range
+    sourceSheet: string
+  } | null>(null)
+  let painterClip = $state<Clip | null>(null)
+  let findDialog = $state<{ mode: 'find' | 'replace' | 'goto' } | null>(null)
+  let findHits = $state<FindHit[]>([])
+  let findHitIndex = $state(0)
+  let findLastQuery = $state('')
+  let pageSetupOpen = $state(false)
+  let exportingPdf = $state(false)
+  let customFmtOpen = $state(false)
+  let customFmtInput = $state('')
+  let tabMenuSheet = $state<string | null>(null)
+  let draggedTab = $state<string | null>(null)
+  let refBoxEditing = $state(false)
+  let refBoxText = $state('')
+  let refBoxInput = $state<HTMLInputElement | null>(null)
+  let formulaInputEl = $state<HTMLInputElement | null>(null)
+  let formulaCursor = $state<{ start: number; end: number }>({ start: 0, end: 0 })
+  let formulaPointRange = $state<[number, number] | null>(null)
+  let acIndex = $state(0)
+  let editOrigin = $state<{ sheet: string; pos: Pos } | null>(null)
+  let draftRuns = $state<RichRun[] | null>(null)
   let chartDialog = $state<
     { mode: 'create'; range: string } | { mode: 'edit'; placement: ChartPlacement } | null
   >(null)
@@ -212,6 +305,8 @@
     void rev
     return editor && ready ? editor.wb.sheets() : []
   })
+  const visibleSheets = $derived(sheets.filter((s) => s.state === 'visible'))
+  const hiddenSheets = $derived(sheets.filter((s) => s.state === 'hidden'))
   const info = $derived(sheets.find((s) => s.name === sheet) ?? null)
   const data = $derived.by(() => {
     void rev
@@ -241,16 +336,35 @@
   const cols = $derived(
     Math.min(MAX_COLS, Math.max((data?.maxCol ?? 0) + 6, chartMax.col + 3, 26) + extraCols),
   )
-  const sel = $derived<Range>({
-    top: Math.min(active.row, anchor.row),
-    bottom: Math.max(active.row, anchor.row),
-    left: Math.min(active.col, anchor.col),
-    right: Math.max(active.col, anchor.col),
-  })
+  let held = $state<HeldSelection | null>(null)
+  const sel = $derived<Range>(selectionOf(active, anchor, held))
+  const allSelections = $derived([...extraSelections, sel])
   const activeRef = $derived(cellName(active))
+  const selBoxLabel = $derived(
+    sel.top === sel.bottom && sel.left === sel.right ? activeRef : rangeName(sel),
+  )
   const history = $derived.by(() => {
     void rev
     return { undo: editor?.canUndo() ?? false, redo: editor?.canRedo() ?? false }
+  })
+
+  const viewOpts = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet'
+      ? viewOptionsOf(editor.wb, info.name)
+      : { showGridlines: true, showHeadings: true, zoomScale: 100 }
+  })
+  const zoomFactor = $derived(viewOpts.zoomScale / 100)
+  const outline = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? outlineOf(editor.wb, info.name) : null
+  })
+  const tabColors = $derived.by(() => {
+    void rev
+    const out: Record<string, string | null> = {}
+    if (!editor || !ready) return out
+    for (const s of sheets) out[s.name] = sheetTabColor(editor.wb, s.name)
+    return out
   })
 
   /** Sort, filter and frozen panes of the sheet on screen (read from its XML). */
@@ -262,13 +376,34 @@
     void rev
     return editor && info?.kind === 'worksheet' ? autoFilterOf(editor.wb, info.name) : null
   })
+  /** Excel tables and pivot tables of the sheet on screen; the filters there are (the sheet's and its tables'). */
+  const tables = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? readSheetTables(editor.wb, info.name) : []
+  })
+  const pivots = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? readSheetPivots(editor.wb, info.name) : []
+  })
+  const filters = $derived.by(() => {
+    void rev
+    return editor && info?.kind === 'worksheet' ? sheetFilters(editor.wb, info.name) : []
+  })
+  const inRect = (r: Range, p: Pos) =>
+    p.row >= r.top && p.row <= r.bottom && p.col >= r.left && p.col <= r.right
+  const activeTable = $derived(tables.find((t) => inRect(t.ref, active)) ?? null)
+  const activePivot = $derived(pivots.find((p) => inRect(p.location, active)) ?? null)
   const gridFilter = $derived(
-    autoFilter
+    filters.length > 0
       ? {
-          range: autoFilter.range,
-          filtered: (c: number) => autoFilter.columns.some((x) => x.col === c),
+          ranges: filters.map((f) => f.range),
+          filtered: (r: number, c: number) =>
+            filters.some((f) => f.range.top === r && f.columns.some((x) => x.col === c)),
         }
       : null,
+  )
+  const menuFilter = $derived(
+    filterMenu ? (filters.find((f) => f.range.top === filterMenu!.row) ?? null) : null,
   )
   const filterStatus = $derived.by(() => {
     if (!autoFilter || autoFilter.columns.length === 0 || !data) return null
@@ -291,21 +426,23 @@
   const colWidth = $derived.by(() => {
     void rev
     const d = data
+    const z = zoomFactor
     return (c: number) => {
-      if (!d) return 64
+      if (!d) return Math.round(64 * z)
       const col = d.cols.find((x) => c >= x.min && c <= x.max)
       if (col?.hidden) return 0
-      return col?.widthPx ?? d.defaultColPx
+      return Math.round((col?.widthPx ?? d.defaultColPx) * z)
     }
   })
   const rowHeight = $derived.by(() => {
     void rev
     const d = data
+    const z = zoomFactor
     return (r: number) => {
-      if (!d) return 20
+      if (!d) return Math.round(20 * z)
       const row = d.rows.get(r)
       if (row?.hidden) return 0
-      return row?.heightPx ?? d.defaultRowPx
+      return Math.round((row?.heightPx ?? d.defaultRowPx) * z)
     }
   })
 
@@ -358,6 +495,15 @@
     const noteSet = new Set(cellNotes.map((n) => n.ref))
     const threadMap = new Map(sheetThreads.map((t) => [t.ref, t]))
     const cellImgMap = new Map(cellImages.map((ci) => [ci.ref, ci]))
+    const richMap = richCells(ed.wb, d.info.name)
+    const tbl = tables
+    const pvt = pivots
+    const lookAt = (r: number, c: number): TableCellLook | null =>
+      pivotCellLook(ed.wb, pvt, r, c) ?? tableCellLook(tbl, r, c)
+    const edge = (e: { style: string; color?: string | null } | undefined) =>
+      e
+        ? `${e.style === 'double' ? '3px double' : e.style === 'medium' ? '2px solid' : '1px solid'} ${e.color ?? 'currentColor'}`
+        : null
     const bordersAt = (r: number, c: number) => {
       const x = d.cells.get(cellKey(r, c))
       return x ? styles.xf(x.style).border : null
@@ -378,8 +524,17 @@
         filled: false,
       }
       const out = calc.cell(d.info.name, r, c)
+      // A table's or pivot table's style draws under the cell's own format.
+      const look = lookAt(r, c)
+      const lookCss: string[] = []
+      if (look) {
+        const top = edge(look.borderTop)
+        const bottom = edge(look.borderBottom)
+        if (top) lookCss.push(`border-top: ${top}`)
+        if (bottom) lookCss.push(`border-bottom: ${bottom}`)
+      }
       // An empty cell can still show a value: a dynamic array spilled into it.
-      if (!cell && out.value === null && !out.kept) {
+      if (!cell && out.value === null && !out.kept && !look) {
         // An empty cell still draws the lines its neighbours put on the edges it shares with them.
         const lines = borderCss(null, near)
         return lines.length > 0 || hasNote || thread || imageUrl
@@ -417,7 +572,7 @@
               ? 'left'
               : natural
       const css: string[] = []
-      if (st.font.bold) css.push('font-weight: 600')
+      if (st.font.bold || (look?.bold && !st.fill)) css.push('font-weight: 600')
       if (st.font.italic) css.push('font-style: italic')
       const deco = [st.font.underline ? 'underline' : '', st.font.strike ? 'line-through' : '']
         .filter(Boolean)
@@ -428,12 +583,18 @@
       if (color && (st.fill || color.toUpperCase() !== '#000000')) css.push(`color: ${color}`)
       else if (st.fill) css.push('color: #000')
       if (st.fill) css.push(`background-color: ${st.fill}`)
+      else if (look?.fill) {
+        css.push(`background-color: ${look.fill}`)
+        if (!color || color.toUpperCase() === '#000000') css.push(`color: ${look.color ?? '#000'}`)
+      }
       if (st.font.sizePt && st.font.sizePt !== 11)
         css.push(`font-size: ${Math.round(st.font.sizePt * 1.27)}px`)
       if (st.indent) css.push(`padding-left: ${4 + st.indent * 9}px`)
       const family = fontFamilyCss(st, plain)
       if (family) css.push(family)
-      css.push(...borderCss(st.border, { ...near, filled: !!st.fill }))
+      css.push(...borderCss(st.border, { ...near, filled: !!st.fill || !!look?.fill }))
+      css.push(...lookCss)
+      const runs = cell?.formula ? undefined : richMap.get(cellKey(r, c))
       return {
         text: shown.text,
         align,
@@ -445,6 +606,7 @@
         ...(hasNote ? { hasNote } : {}),
         ...(thread ? { thread } : {}),
         ...(imageUrl ? { imageUrl, imageAlt: ci?.alt } : {}),
+        ...(runs ? { runs } : {}),
       }
     }
   })
@@ -499,10 +661,13 @@
       percent: m.drive_sheet_format_percent(),
       currency_eur: m.drive_sheet_format_currency_eur(),
       currency_usd: m.drive_sheet_format_currency_usd(),
+      accounting: m.drive_sheet_fmt_accounting(),
       date: m.drive_sheet_format_date(),
       date_iso: m.drive_sheet_format_date_iso(),
       time: m.drive_sheet_format_time(),
       datetime: m.drive_sheet_format_datetime(),
+      fraction: m.drive_sheet_fmt_fraction(),
+      scientific: m.drive_sheet_fmt_scientific(),
       text: m.drive_sheet_format_text(),
     })[id]
 
@@ -557,6 +722,10 @@
         return m.drive_sheet_loss_formulas({ count })
       case 'names_ref_error':
         return m.drive_sheet_loss_names({ count })
+      case 'merged_values':
+        return m.drive_sheet_merge_center()
+      case 'not_copied':
+        return m.drive_sheet_tab_duplicate()
     }
   }
 
@@ -878,61 +1047,519 @@
   }
 
   async function commitCell(pos: Pos, text: string) {
-    if (!data || text === contentText(pos.row, pos.col)) return
-    await change({ op: 'set_cells', sheet, cells: [writeOf(pos, text)] })
+    const targetSheet = editOrigin?.sheet ?? sheet
+    const targetPos = editOrigin?.pos ?? pos
+    const runsToWrite = draftRuns
+    editOrigin = null
+    draftRuns = null
+    formulaPointRange = null
+    if (!editor) return
+    if (runsToWrite) {
+      await change({
+        op: 'set_rich_text',
+        sheet: targetSheet,
+        ref: cellName(targetPos),
+        runs: retext(runsToWrite, runsText(runsToWrite), text),
+      })
+      if (targetSheet !== sheet) sheet = targetSheet
+      return
+    }
+    const targetData =
+      editor.wb.findSheet(targetSheet)?.kind === 'worksheet' ? editor.wb.sheet(targetSheet) : null
+    const existing = targetData?.cells.get(cellKey(targetPos.row, targetPos.col))
+    const prevText =
+      existing && targetData
+        ? editText(
+            existing.value,
+            existing.formula === null ? null : toShownFormula(existing.formula),
+            formatCode(
+              editor.wb.styles().xf(existing.style).numFmtId,
+              editor.wb.styles().xf(existing.style).numFmt,
+              locale,
+            ),
+            locale,
+            editor.wb.date1904,
+          )
+        : ''
+    if (text === prevText) {
+      if (targetSheet !== sheet) sheet = targetSheet
+      return
+    }
+    await change({ op: 'set_cells', sheet: targetSheet, cells: [writeOf(targetPos, text)] })
+    if (targetSheet !== sheet) {
+      sheet = targetSheet
+      active = targetPos
+      anchor = targetPos
+    }
   }
 
-  async function clearRange(range: Range) {
+  async function clearRanges(ranges: Range[], what: ClearWhat = 'contents') {
     if (!data) return
-    const cells: CellWrite[] = []
-    for (const cell of data.cells.values())
-      if (
-        cell.row >= range.top &&
-        cell.row <= range.bottom &&
-        cell.col >= range.left &&
-        cell.col <= range.right &&
-        (cell.value !== null || cell.formula !== null) &&
-        !cell.inArrayOf
-      )
-        cells.push({ ref: cellName(cell), value: null })
-    if (cells.length) await change({ op: 'set_cells', sheet, cells })
+    const ops: SheetOp[] = ranges.map((r) => ({
+      op: 'clear_range',
+      sheet,
+      range: rangeName(r),
+      what,
+    }))
+    if (ops.length === 1) await change(ops[0]!)
+    else if (ops.length > 1) await change({ op: 'batch', ops })
+  }
+
+  function copyOrCut(range: Range, cut: boolean, event?: ClipboardEvent) {
+    if (!editor || !data) return
+    const clip = readClip(editor, sheet, range, fileId, locale)
+    const tsv = clipToTsv(clip)
+    const html = clipToHtml(clip)
+    clipState = { clip, tsv, cut, sourceRange: range, sourceSheet: sheet }
+    if (event?.clipboardData) {
+      event.clipboardData.setData('text/plain', tsv)
+      event.clipboardData.setData('text/html', html)
+      event.preventDefault()
+    } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+        void navigator.clipboard
+          .write([
+            new ClipboardItem({
+              'text/plain': new Blob([tsv], { type: 'text/plain' }),
+              'text/html': new Blob([html], { type: 'text/html' }),
+            }),
+          ])
+          .catch(() => navigator.clipboard.writeText(tsv).catch(() => {}))
+      } else {
+        void navigator.clipboard.writeText(tsv).catch(() => {})
+      }
+    }
+  }
+
+  async function pasteSpecial(
+    mode: PasteMode = 'all',
+    opts: {
+      pos?: Pos
+      transpose?: boolean
+      skipBlanks?: boolean
+      html?: string
+      plain?: string
+    } = {},
+  ) {
+    if (!editor) return
+    let clip: Clip | null = null
+    let isCut = false
+    const atPos = opts.pos ?? { row: sel.top, col: sel.left }
+    const atRef = opts.pos || (opts.transpose ?? false) ? cellName(atPos) : rangeName(sel)
+
+    const hasExternal = opts.html !== undefined || opts.plain !== undefined
+    if (clipState && (!hasExternal || (opts.plain !== undefined && opts.plain === clipState.tsv))) {
+      clip = clipState.clip
+      isCut = clipState.cut && mode === 'all' && !opts.transpose && !opts.skipBlanks
+    } else if (hasExternal) {
+      clip = clipFromClipboard({ html: opts.html ?? '', text: opts.plain ?? '' }, locale)
+    } else if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      try {
+        const plain = await navigator.clipboard.readText()
+        if (clipState && plain === clipState.tsv) {
+          clip = clipState.clip
+          isCut = clipState.cut && mode === 'all' && !opts.transpose && !opts.skipBlanks
+        } else if (plain) {
+          clip = clipFromClipboard({ text: plain }, locale)
+        }
+      } catch {
+        if (clipState) {
+          clip = clipState.clip
+          isCut = clipState.cut && mode === 'all' && !opts.transpose && !opts.skipBlanks
+        }
+      }
+    }
+    if (!clip) return
+    const ok = await change({
+      op: 'paste',
+      sheet,
+      at: atRef,
+      clip,
+      paste: mode,
+      ...(opts.transpose ? { transpose: true } : {}),
+      ...(opts.skipBlanks ? { skipBlanks: true } : {}),
+      ...(isCut ? { cut: true } : {}),
+    })
+    if (ok && isCut) clipState = null
   }
 
   async function pasteAt(pos: Pos, text: string) {
-    const block = parseClipboardBlock(text)
-    const cells: CellWrite[] = []
-    block.forEach((line, r) =>
-      line.forEach((t, c) => cells.push(writeOf({ row: pos.row + r, col: pos.col + c }, t))),
-    )
-    if (cells.length) await change({ op: 'set_cells', sheet, cells })
+    await pasteSpecial('all', { pos, plain: text })
+  }
+
+  function handlePasteClip(pos: Pos, event: ClipboardEvent) {
+    const html = event.clipboardData?.getData('text/html') ?? ''
+    const plain = event.clipboardData?.getData('text/plain') ?? ''
+    void pasteSpecial('all', { pos, html, plain })
   }
 
   function copyText(range: Range): string {
-    const out: string[] = []
-    for (let r = range.top; r <= range.bottom; r++) {
-      const line: string[] = []
-      for (let c = range.left; c <= range.right; c++) {
-        const t = cellAt(r, c)?.text ?? ''
-        line.push(/[\t\n"]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t)
-      }
-      out.push(line.join('\t'))
-    }
-    return out.join('\n')
+    if (!editor) return ''
+    return clipToTsv(readClip(editor, sheet, range, fileId, locale))
   }
 
   async function setFormat(id: string) {
+    if (id === '__custom__') {
+      customFmtInput = activeStyle?.numFmt ?? 'General'
+      customFmtOpen = true
+      return
+    }
     const choice = FORMAT_CHOICES.find((f) => f.id === id)
     if (!choice) return
-    await change({ op: 'set_format', sheet, range: rangeName(sel), format: choice.code })
+    await applyNumberFormat(choice.code)
     grid?.focus()
+  }
+
+  async function applyNumberFormat(code: string) {
+    const ops: SheetOp[] = allSelections.map((rg) => ({
+      op: 'set_format',
+      sheet,
+      range: rangeName(rg),
+      format: code,
+    }))
+    await change(ops.length === 1 ? ops[0]! : { op: 'batch', ops })
+  }
+
+  async function shiftSelDecimals(delta: 1 | -1) {
+    if (editing) grid?.finishEdit(true)
+    const ops: SheetOp[] = allSelections.map((rg) => ({
+      op: 'shift_decimals',
+      sheet,
+      range: rangeName(rg),
+      delta,
+    }))
+    await change(ops.length === 1 ? ops[0]! : { op: 'batch', ops })
+    grid?.focus()
+  }
+
+  async function applyMerge(mode: MergeMode) {
+    if (editing) grid?.finishEdit(true)
+    await change({ op: 'merge_cells', sheet, range: rangeName(sel), mode })
+    grid?.focus()
+  }
+
+  function togglePainter() {
+    if (!editor) return
+    if (painterClip) {
+      painterClip = null
+      return
+    }
+    painterClip = readClip(editor, sheet, sel, fileId, locale)
+  }
+
+  async function onSelectionCommit() {
+    if (!painterClip) return
+    const clip = painterClip
+    painterClip = null
+    await change({ op: 'paste', sheet, at: rangeName(sel), clip, paste: 'formats' })
+  }
+
+  async function fillRange(source: Range, target: Range) {
+    await change({ op: 'fill', sheet, source: rangeName(source), target: rangeName(target) })
+  }
+
+  async function fillDoubleClick(source: Range) {
+    if (!editor) return
+    if (!data) return
+    const bottom = fillDownTo(data, source)
+    if (bottom === null || bottom <= source.bottom) return
+    const target: Range = { ...source, bottom }
+    anchor = { row: target.top, col: target.left }
+    active = { row: target.bottom, col: target.right }
+    await change({ op: 'fill', sheet, source: rangeName(source), target: rangeName(target) })
+  }
+
+  async function fillShortcut(dir: 'down' | 'right', range: Range) {
+    const opRange = fillShortcutRange(range, dir)
+    if (!opRange) return
+    await change({
+      op: 'fill',
+      sheet,
+      source: rangeName(opRange.source),
+      target: rangeName(opRange.target),
+      series: 'copy',
+    })
+  }
+
+  async function autofitAxis(axis: 'col' | 'row', index: number) {
+    if (axis === 'col') {
+      const [from, to] =
+        wholeCols && index >= sel.left && index <= sel.right
+          ? [sel.left, sel.right]
+          : [index, index]
+      await change({ op: 'autofit_columns', sheet, from, to, locale })
+    } else {
+      const [from, to] =
+        wholeRows && index >= sel.top && index <= sel.bottom
+          ? [sel.top, sel.bottom]
+          : [index, index]
+      await change({ op: 'autofit_rows', sheet, from, to, locale })
+    }
+  }
+
+  async function runRowColAction(
+    action:
+      | 'hide_rows'
+      | 'unhide_rows'
+      | 'hide_cols'
+      | 'unhide_cols'
+      | 'group_rows'
+      | 'ungroup_rows'
+      | 'group_cols'
+      | 'ungroup_cols'
+      | 'autofit_col'
+      | 'autofit_row',
+  ) {
+    switch (action) {
+      case 'hide_rows':
+        await change({ op: 'hide_rows', sheet, from: sel.top, to: sel.bottom, hidden: true })
+        break
+      case 'unhide_rows':
+        await change({ op: 'hide_rows', sheet, from: sel.top, to: sel.bottom, hidden: false })
+        break
+      case 'hide_cols':
+        await change({ op: 'hide_columns', sheet, from: sel.left, to: sel.right, hidden: true })
+        break
+      case 'unhide_cols':
+        await change({ op: 'hide_columns', sheet, from: sel.left, to: sel.right, hidden: false })
+        break
+      case 'group_rows':
+        await change({ op: 'group_rows', sheet, from: sel.top, to: sel.bottom })
+        break
+      case 'ungroup_rows':
+        await change({ op: 'ungroup_rows', sheet, from: sel.top, to: sel.bottom })
+        break
+      case 'group_cols':
+        await change({ op: 'group_columns', sheet, from: sel.left, to: sel.right })
+        break
+      case 'ungroup_cols':
+        await change({ op: 'ungroup_columns', sheet, from: sel.left, to: sel.right })
+        break
+      case 'autofit_col':
+        await change({ op: 'autofit_columns', sheet, from: sel.left, to: sel.right, locale })
+        break
+      case 'autofit_row':
+        await change({ op: 'autofit_rows', sheet, from: sel.top, to: sel.bottom, locale })
+        break
+    }
+    grid?.focus()
+  }
+
+  async function runOutlineAction(act: {
+    axis: 'row' | 'col'
+    kind: 'toggle' | 'level'
+    from?: number
+    to?: number
+    collapsed?: boolean
+    level?: number
+  }) {
+    if (act.kind === 'level' && act.level !== undefined) {
+      await change({ op: 'set_outline_level', sheet, axis: act.axis, level: act.level })
+      return
+    }
+    if (
+      act.kind === 'toggle' &&
+      act.from !== undefined &&
+      act.to !== undefined &&
+      act.collapsed !== undefined
+    ) {
+      await change({
+        op: act.axis === 'row' ? 'collapse_rows' : 'collapse_columns',
+        sheet,
+        from: act.from,
+        to: act.to,
+        collapsed: act.collapsed,
+      })
+    }
+  }
+
+  function runFindSearch(opts: {
+    query: string
+    scope: 'sheet' | 'workbook'
+    lookIn: 'formulas' | 'values'
+    matchCase: boolean
+    wholeCell: boolean
+  }) {
+    if (!editor) return
+    findLastQuery = opts.query
+    findHits = findCells(
+      editor,
+      {
+        query: opts.query,
+        sheet: opts.scope === 'sheet' ? sheet : null,
+        lookIn: opts.lookIn,
+        matchCase: opts.matchCase,
+        wholeCell: opts.wholeCell,
+      },
+      locale,
+    )
+    findHitIndex = 0
+    if (findHits.length > 0) void jumpToHit(findHits[0]!)
+  }
+
+  async function jumpToHit(hit: FindHit) {
+    if (!editor) return
+    if (hit.sheet !== sheet) sheet = hit.sheet
+    const r = parseRange(hit.ref)
+    if (r) {
+      extraSelections = []
+      anchor = { row: r.top, col: r.left }
+      active = { row: r.top, col: r.left }
+      await tick()
+      grid?.revealActive()
+    }
+  }
+
+  function navigateFindHit(delta: 1 | -1) {
+    if (findHits.length === 0) return
+    findHitIndex = (findHitIndex + delta + findHits.length) % findHits.length
+    void jumpToHit(findHits[findHitIndex]!)
+  }
+
+  async function runReplaceOne(opts: {
+    find: string
+    replace: string
+    scope: 'sheet' | 'workbook'
+    matchCase: boolean
+    wholeCell: boolean
+  }) {
+    if (!editor) return
+    if (findHits.length === 0 || findLastQuery !== opts.find) {
+      runFindSearch({ ...opts, query: opts.find, lookIn: 'formulas' })
+      if (findHits.length === 0) return
+    }
+    const target = findHits[findHitIndex]
+    if (!target) return
+    await change({
+      op: 'replace',
+      find: opts.find,
+      replace: opts.replace,
+      sheet: opts.scope === 'sheet' ? sheet : null,
+      matchCase: opts.matchCase,
+      wholeCell: opts.wholeCell,
+      cells: [{ sheet: target.sheet, ref: target.ref }],
+    })
+    runFindSearch({ ...opts, query: opts.find, lookIn: 'formulas' })
+  }
+
+  async function runReplaceAll(opts: {
+    find: string
+    replace: string
+    scope: 'sheet' | 'workbook'
+    matchCase: boolean
+    wholeCell: boolean
+  }) {
+    await change({
+      op: 'replace',
+      find: opts.find,
+      replace: opts.replace,
+      sheet: opts.scope === 'sheet' ? sheet : null,
+      matchCase: opts.matchCase,
+      wholeCell: opts.wholeCell,
+    })
+    runFindSearch({ ...opts, query: opts.find, lookIn: 'formulas' })
+  }
+
+  function goToTarget(raw: string): string | null {
+    if (!editor) return null
+    try {
+      const target = resolveGoTo(editor.wb, sheet, raw)
+      if (target.sheet !== sheet) sheet = target.sheet
+      extraSelections = []
+      anchor = { row: target.range.top, col: target.range.left }
+      active = { row: target.range.top, col: target.range.left }
+      if (target.range.bottom !== target.range.top || target.range.right !== target.range.left) {
+        active = { row: target.range.bottom, col: target.range.right }
+        // Keep top-left as active cell and bottom-right as anchor so name box focuses A1 of range
+        anchor = { row: target.range.bottom, col: target.range.right }
+        active = { row: target.range.top, col: target.range.left }
+      }
+      void tick().then(() => {
+        grid?.revealActive()
+        grid?.focus()
+      })
+      return null
+    } catch (err) {
+      return err instanceof Error ? err.message : m.drive_sheet_confirm_change()
+    }
+  }
+
+  async function exportPdf(opts: { scope: 'active' | 'all' }) {
+    if (!editor) return
+    exportingPdf = true
+    failure = null
+    try {
+      if (autosave.unsaved() !== null || save.status === 'saving') {
+        await autosave.flush()
+      }
+      const res = await driveApi.exportSheetPdf(fileId, {
+        ...(opts.scope === 'active' ? { sheet } : {}),
+        locale,
+      })
+      const url = URL.createObjectURL(
+        new Blob([res.bytes.slice().buffer as ArrayBuffer], { type: 'application/pdf' }),
+      )
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.filename
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      pageSetupOpen = false
+    } catch (err) {
+      failure = driveShownError(err)
+    } finally {
+      exportingPdf = false
+    }
   }
 
   // ---------------------------------------------------------------------------
   // Cell format and sizes (./format-cells.ts; the same operations as drive.sheet_format)
 
+  function patchToRunFormat(patch: StylePatch): RunFormat {
+    const rf: RunFormat = {}
+    if (patch.bold !== undefined) rf.bold = patch.bold
+    if (patch.italic !== undefined) rf.italic = patch.italic
+    if (patch.underline !== undefined) rf.underline = patch.underline
+    if (patch.strike !== undefined) rf.strike = patch.strike
+    if (patch.fontColor !== undefined && patch.fontColor !== null) rf.color = patch.fontColor
+    if (patch.fontSize !== undefined) rf.size = patch.fontSize
+    if (patch.fontName !== undefined) rf.font = patch.fontName
+    return rf
+  }
+
   async function applyStyle(patch: StylePatch) {
+    if (
+      editing &&
+      !draft.startsWith('=') &&
+      formulaCursor.end > formulaCursor.start &&
+      formulaInputEl
+    ) {
+      const curRuns = draftRuns ??
+        (editor ? richCells(editor.wb, sheet).get(cellKey(active.row, active.col)) : undefined) ?? [
+          { text: draft },
+        ]
+      const nextRuns = formatRange(
+        retext(curRuns, runsText(curRuns), draft),
+        formulaCursor.start,
+        formulaCursor.end,
+        patchToRunFormat(patch),
+      )
+      draftRuns = nextRuns
+      const [s, e] = [formulaCursor.start, formulaCursor.end]
+      void tick().then(() => {
+        formulaInputEl?.focus()
+        formulaInputEl?.setSelectionRange(s, e)
+      })
+      return
+    }
     if (editing) grid?.finishEdit(true)
-    await change({ op: 'set_style', sheet, range: rangeName(sel), style: patch })
+    const ops: SheetOp[] = allSelections.map((rg) => ({
+      op: 'set_style',
+      sheet,
+      range: rangeName(rg),
+      style: patch,
+    }))
+    await change(ops.length === 1 ? ops[0]! : { op: 'batch', ops })
     grid?.focus()
   }
 
@@ -953,10 +1580,11 @@
     await change({ op: 'set_row_height', sheet, from, to, height: points })
   }
 
-  /** A dragged edge: pixels → Excel characters (columns) or points (rows, in quarter points). */
+  /** A dragged edge: pixels (divided by zoom) → Excel characters (columns) or points (rows, in quarter points). */
   function onResize(axis: 'col' | 'row', index: number, px: number) {
-    if (axis === 'col') void setColumnWidth(pxToWidth(px), index)
-    else void setRowHeight(Math.round(px * 3) / 4, index)
+    const unzoomed = px / (zoomFactor || 1)
+    if (axis === 'col') void setColumnWidth(pxToWidth(unzoomed), index)
+    else void setRowHeight(Math.round(unzoomed * 3) / 4, index)
   }
 
   async function insertRows(where: 'above' | 'below') {
@@ -995,6 +1623,7 @@
     if (!data || !editor) return null
     if (autoFilter && within(autoFilter.range, active))
       return { range: autoFilter.range, header: true }
+    if (activeTable) return { range: activeTable.ref, header: activeTable.headerRowCount > 0 }
     if (sel.top === sel.bottom && sel.left === sel.right) {
       const range = currentRegion(data, active)
       return { range, header: guessHeader(editor, sheet, range) }
@@ -1034,29 +1663,43 @@
 
   async function toggleFilter() {
     filterMenu = null
-    if (autoFilter) await change({ op: 'set_autofilter', sheet, range: null })
+    if (activeTable && activeTable.headerRowCount > 0)
+      await updateTable({ autoFilter: activeTable.autoFilter === null })
+    else if (autoFilter) await change({ op: 'set_autofilter', sheet, range: null })
     else await change({ op: 'set_autofilter', sheet, range: rangeName(sel) })
     grid?.focus()
   }
 
-  function openFilterMenu(col: number, at: DOMRect) {
+  function openFilterMenu(col: number, at: DOMRect, row: number) {
     if (!editor) return
+    const f = filters.find((x) => x.range.top === row)
     try {
-      filterMenu = { col, at, choices: columnChoices(editor, sheet, col, locale) }
+      filterMenu = { col, row, at, choices: columnChoices(editor, sheet, col, locale, f?.table) }
     } catch (err) {
       failure = shown(err)
     }
   }
 
   async function applyFilter(col: number, values: string[] | null, blanks: boolean) {
+    const table = menuFilter?.table
     filterMenu = null
-    await change({ op: 'filter_column', sheet, col, values, blanks })
+    await change({
+      op: 'filter_column',
+      sheet,
+      col,
+      values,
+      blanks,
+      ...(table ? { table } : {}),
+    })
     grid?.focus()
   }
 
   async function sortFromFilter(col: number, descending: boolean) {
+    const f = menuFilter
     filterMenu = null
-    if (autoFilter) await sortBy([{ col, descending }], { range: autoFilter.range, header: true })
+    if (!f) return
+    const t = f.table ? tables.find((x) => x.displayName === f.table) : null
+    await sortBy([{ col, descending }], { range: t ? t.ref : f.range, header: true })
   }
 
   async function freeze(choice: string) {
@@ -1070,6 +1713,89 @@
             : [0, 0]
     await change({ op: 'freeze_panes', sheet, rows, cols })
     grid?.focus()
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tables and pivot tables (./tables.ts, ./pivot.ts; = drive.sheet_table_*, drive.sheet_pivot_*)
+
+  /** Ctrl+T / PivotTable: the selection, or the block of cells around the active cell (a PivotTable in a table: the table). */
+  function openCreate(kind: 'table' | 'pivot') {
+    if (!data || !editor) return
+    if (kind === 'table' && activeTable) return
+    if (kind === 'pivot' && activeTable) {
+      creating = { kind, range: activeTable.displayName, header: true }
+      return
+    }
+    const single = sel.top === sel.bottom && sel.left === sel.right
+    const range = single ? currentRegion(data, active) : sel
+    const text = rangeName(range)
+    creating = {
+      kind,
+      range: kind === 'pivot' ? `${quoteSheet(sheet)}!${text}` : text,
+      header: kind === 'table' ? true : guessHeader(editor, sheet, range),
+    }
+  }
+
+  async function created(out: { range: string; header: boolean; at: string | null }) {
+    const c = creating
+    creating = null
+    if (!c) return
+    if (c.kind === 'table') {
+      await change({ op: 'create_table', sheet, range: out.range, hasHeaders: out.header })
+      grid?.focus()
+      return
+    }
+    const at = out.at !== null ? parseCell(out.at) : null
+    if (out.at !== null && !at) {
+      failure = { error: m.drive_sheet_pivot_bad_cell({ ref: out.at }), agent: null }
+      return
+    }
+    const ok = await change({
+      op: 'create_pivot',
+      source: out.range,
+      ...(at ? { targetSheet: sheet, targetCell: out.at! } : {}),
+    })
+    if (!ok) return
+    const pos = at ?? { row: 2, col: 0 }
+    active = pos
+    anchor = pos
+    pivotFieldsOpen = true
+  }
+
+  async function updateTable(patch: Record<string, unknown>) {
+    const t = activeTable
+    if (!t) return
+    await change({ op: 'update_table', sheet, table: t.displayName, ...patch })
+  }
+
+  async function convertTable() {
+    const t = activeTable
+    if (t)
+      await change({ op: 'delete_table', sheet, table: t.displayName, mode: 'convert_to_range' })
+  }
+
+  async function layoutPivot(l: PivotLayout) {
+    const p = activePivot
+    if (!p) return
+    await change({
+      op: 'update_pivot',
+      sheet,
+      pivot: p.name,
+      rowFields: l.rows,
+      colFields: l.columns,
+      pageFields: l.filters,
+      dataFields: l.values,
+    })
+  }
+
+  async function refreshPivot() {
+    const p = activePivot
+    if (p) await change({ op: 'refresh_pivot', sheet, pivot: p.name })
+  }
+
+  async function deletePivot() {
+    const p = activePivot
+    if (p) await change({ op: 'delete_pivot', sheet, pivot: p.name })
   }
 
   async function undo() {
@@ -1168,8 +1894,29 @@
       return
     }
     const mod = event.metaKey || event.ctrlKey
-    if (!mod || !editable) return
+    if (event.key === 'F5' && !mod && !event.altKey) {
+      event.preventDefault()
+      findDialog = { mode: 'goto' }
+      return
+    }
+    if (!mod) return
     const key = event.key.toLowerCase()
+    if (key === 'f' && !event.shiftKey && !event.altKey) {
+      event.preventDefault()
+      findDialog = { mode: 'find' }
+      return
+    }
+    if (key === 'g' && !event.shiftKey && !event.altKey) {
+      event.preventDefault()
+      findDialog = { mode: 'goto' }
+      return
+    }
+    if (!editable) return
+    if (key === 'h' && !event.shiftKey && !event.altKey) {
+      event.preventDefault()
+      findDialog = { mode: 'replace' }
+      return
+    }
     const toggle = { b: 'bold', i: 'italic', u: 'underline' } as const
     if ((key === 'b' || key === 'i' || key === 'u') && !event.shiftKey && !event.altKey) {
       event.preventDefault()
@@ -1181,6 +1928,11 @@
     } else if (key === 'y') {
       event.preventDefault()
       void redo()
+    } else if ((key === 't' || key === 'l') && !event.shiftKey && !event.altKey) {
+      // Excel: Ctrl+T (and Ctrl+L) create a table.
+      event.preventDefault()
+      if (editing) grid?.finishEdit(true)
+      openCreate('table')
     }
   }
 
@@ -1331,35 +2083,185 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Formula bar
+  // Formula bar, autocomplete, hints, coloured refs & point-to-select
+
+  const formulaTextNow = $derived(editing ? draft : barText)
+  const formulaHighlightSegs = $derived(
+    editing && draft.startsWith('=') ? formulaHighlightRuns(draft) : null,
+  )
+  const gridFormulaRefs = $derived.by(() => {
+    if (!editing || !draft.startsWith('=')) return []
+    const homeSheet = editOrigin?.sheet ?? sheet
+    return formulaReferences(draft).filter(
+      (r) =>
+        !r.sheet ||
+        r.sheet.toLowerCase() === sheet.toLowerCase() ||
+        (r.sheet === null && homeSheet.toLowerCase() === sheet.toLowerCase()),
+    )
+  })
+  const acCtx = $derived(
+    editing && draft.startsWith('=') ? autocompleteContext(draft, formulaCursor.end) : null,
+  )
+  const acMatches = $derived(acCtx?.matches ?? [])
+  const safeAcIndex = $derived(acMatches.length === 0 ? 0 : Math.min(acIndex, acMatches.length - 1))
+  const fnHint = $derived(
+    editing && draft.startsWith('=') ? activeFunctionCall(draft, formulaCursor.end) : null,
+  )
+  const pointSelectActive = $derived(
+    editing &&
+      draft.startsWith('=') &&
+      canInsertReferenceAt(draft, formulaCursor.start, formulaCursor.end, formulaPointRange),
+  )
+
+  function syncFormulaCursor() {
+    if (!formulaInputEl) return
+    formulaCursor = {
+      start: formulaInputEl.selectionStart ?? draft.length,
+      end: formulaInputEl.selectionEnd ?? draft.length,
+    }
+  }
+
+  function pickAutocompleteFn(name: string) {
+    if (!acCtx) return
+    const next = acceptAutocomplete(draft, acCtx, name)
+    draft = next.text
+    acIndex = 0
+    formulaPointRange = null
+    formulaCursor = { start: next.cursor, end: next.cursor }
+    void tick().then(() => {
+      formulaInputEl?.focus()
+      formulaInputEl?.setSelectionRange(next.cursor, next.cursor)
+    })
+  }
+
+  function handlePointSelect(range: Range, commit: boolean) {
+    if (!editing || !draft.startsWith('=')) return
+    const homeSheet = editOrigin?.sheet ?? sheet
+    const refText =
+      range.top === range.bottom && range.left === range.right
+        ? cellName({ row: range.top, col: range.left })
+        : rangeName(range)
+    const picked = formatPickedRef(refText, sheet, homeSheet)
+    const inserted = insertReferenceAt(
+      draft,
+      formulaCursor.start,
+      formulaCursor.end,
+      picked,
+      formulaPointRange,
+    )
+    draft = inserted.text
+    formulaPointRange = [inserted.refStart, inserted.refEnd]
+    formulaCursor = { start: inserted.refEnd, end: inserted.refEnd }
+    void tick().then(() => {
+      if (formulaInputEl) {
+        formulaInputEl.setSelectionRange(inserted.refEnd, inserted.refEnd)
+      }
+      if (commit && !formulaInputEl) {
+        const el = document.querySelector<HTMLTextAreaElement>('[data-testid="xlsx-cell-editor"]')
+        el?.setSelectionRange(inserted.refEnd, inserted.refEnd)
+      }
+    })
+  }
 
   function onFormulaFocus() {
     if (!editable) return
     if (!editing) {
       draft = barText
+      draftRuns = editor
+        ? (richCells(editor.wb, sheet).get(cellKey(active.row, active.col)) ?? null)
+        : null
+      editOrigin = { sheet, pos: { ...active } }
       editing = true
+    } else if (!editOrigin) {
+      editOrigin = { sheet, pos: { ...active } }
+    }
+    void tick().then(syncFormulaCursor)
+  }
+
+  function onFormulaInput(event: Event & { currentTarget: HTMLInputElement }) {
+    draft = event.currentTarget.value
+    formulaPointRange = null
+    acIndex = 0
+    formulaCursor = {
+      start: event.currentTarget.selectionStart ?? draft.length,
+      end: event.currentTarget.selectionEnd ?? draft.length,
     }
   }
 
   function onFormulaKeydown(event: KeyboardEvent) {
+    if (acMatches.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        acIndex = (safeAcIndex + 1) % acMatches.length
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        acIndex = (safeAcIndex - 1 + acMatches.length) % acMatches.length
+        return
+      }
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        pickAutocompleteFn(acMatches[safeAcIndex]!.name)
+        return
+      }
+    }
+    if (event.key === 'F4' && draft.startsWith('=')) {
+      event.preventDefault()
+      const start = formulaInputEl?.selectionStart ?? formulaCursor.start
+      const end = formulaInputEl?.selectionEnd ?? formulaCursor.end
+      const cycled = cycleAbsoluteAt(draft, start, end)
+      if (cycled) {
+        draft = cycled.text
+        formulaPointRange = null
+        // As Excel: the caret stays after the reference (typing goes on after it).
+        formulaCursor = { start: cycled.selEnd, end: cycled.selEnd }
+        void tick().then(() => formulaInputEl?.setSelectionRange(cycled.selEnd, cycled.selEnd))
+      }
+      return
+    }
     if (event.key === 'Enter') {
       event.preventDefault()
-      grid?.finishEdit(true, 'down')
+      grid?.finishEdit(true, event.shiftKey ? 'up' : 'down')
     } else if (event.key === 'Escape') {
       event.preventDefault()
+      editOrigin = null
+      draftRuns = null
+      formulaPointRange = null
       grid?.finishEdit(false)
     } else if (event.key === 'Tab') {
       event.preventDefault()
-      grid?.finishEdit(true, 'right')
+      grid?.finishEdit(true, event.shiftKey ? 'left' : 'right')
     }
   }
+
+  const selStats = $derived.by(() => {
+    void rev
+    if (!editor || !info || info.kind !== 'worksheet' || !ready) return null
+    return selectionStats(editor, info.name, allSelections)
+  })
+  const fmtStatNum = (n: number) =>
+    Number.isInteger(n)
+      ? n.toLocaleString(locale === 'de' ? 'de-DE' : 'en-US')
+      : n.toLocaleString(locale === 'de' ? 'de-DE' : 'en-US', { maximumFractionDigits: 4 })
 
   // ---------------------------------------------------------------------------
   // Sheet tabs
 
   async function pickSheet(n: string) {
+    const keepFormulaPoint = editing && draft.startsWith('=')
+    if (keepFormulaPoint) {
+      if (!editOrigin) editOrigin = { sheet, pos: { ...active } }
+      sheet = n
+      tabMenuSheet = null
+      extraRows = 0
+      extraCols = 0
+      return
+    }
     if (editing) grid?.finishEdit(true)
     sheet = n
+    tabMenuSheet = null
+    extraSelections = []
     active = { row: 0, col: 0 }
     anchor = { row: 0, col: 0 }
     extraRows = 0
@@ -1475,6 +2377,51 @@
           data-testid="xlsx-redo"><Redo2Icon class="size-4" aria-hidden="true" /></button
         >
         <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
+        <button
+          type="button"
+          class={btn}
+          onclick={() => copyOrCut(sel, false)}
+          title={m.drive_sheet_copy()}
+          aria-label={m.drive_sheet_copy()}
+          data-testid="xlsx-copy-btn"><CopyIcon class="size-4" aria-hidden="true" /></button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => copyOrCut(sel, true)}
+          title={m.drive_sheet_cut()}
+          aria-label={m.drive_sheet_cut()}
+          data-testid="xlsx-cut-btn"><ScissorsIcon class="size-4" aria-hidden="true" /></button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => void pasteSpecial('all')}
+          title={m.drive_sheet_paste()}
+          aria-label={m.drive_sheet_paste()}
+          data-testid="xlsx-paste-btn">{m.drive_sheet_paste()}</button
+        >
+        <select
+          class="h-8 w-32 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+          value=""
+          aria-label={m.drive_sheet_paste_special()}
+          onchange={(e) => {
+            const v = e.currentTarget.value
+            e.currentTarget.value = ''
+            if (v === 'values' || v === 'formulas' || v === 'formats') void pasteSpecial(v)
+            else if (v === 'transpose') void pasteSpecial('all', { transpose: true })
+            else if (v === 'skip_blanks') void pasteSpecial('all', { skipBlanks: true })
+          }}
+          data-testid="xlsx-paste-special"
+        >
+          <option value="" disabled>{m.drive_sheet_paste_special()}</option>
+          <option value="values">{m.drive_sheet_paste_values()}</option>
+          <option value="formulas">{m.drive_sheet_paste_formulas()}</option>
+          <option value="formats">{m.drive_sheet_paste_formats()}</option>
+          <option value="transpose">{m.drive_sheet_paste_transpose()}</option>
+          <option value="skip_blanks">{m.drive_sheet_paste_skip_blanks()}</option>
+        </select>
+        <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
         <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span class="sr-only sm:not-sr-only">{m.drive_sheet_format()}</span>
           <select
@@ -1488,6 +2435,7 @@
               >{/if}
             {#each FORMAT_CHOICES as f (f.id)}<option value={f.id}>{formatLabel(f.id)}</option
               >{/each}
+            <option value="__custom__">{m.drive_sheet_fmt_custom()}</option>
           </select>
         </label>
         <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
@@ -1557,6 +2505,24 @@
           data-testid="xlsx-filter-toggle"
           ><FunnelIcon class="size-4" aria-hidden="true" />{m.drive_sheet_filter()}</button
         >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => openCreate('table')}
+          disabled={!!activeTable}
+          title={m.drive_sheet_table_hint()}
+          aria-keyshortcuts="Control+T"
+          data-testid="xlsx-table-create-open"
+          ><TableIcon class="size-4" aria-hidden="true" />{m.drive_sheet_table()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => openCreate('pivot')}
+          title={m.drive_sheet_pivot_hint()}
+          data-testid="xlsx-pivot-create-open"
+          ><SheetIcon class="size-4" aria-hidden="true" />{m.drive_sheet_pivot()}</button
+        >
         <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span class="sr-only sm:not-sr-only">{m.drive_sheet_freeze()}</span>
           <select
@@ -1574,6 +2540,20 @@
             <option value="at">{m.drive_sheet_freeze_at({ ref: activeRef })}</option>
           </select>
         </label>
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (findDialog = { mode: 'find' })}
+          title={m.drive_sheet_find_replace()}
+          aria-label={m.drive_sheet_find_replace()}
+          data-testid="xlsx-find-btn"><SearchIcon class="size-4" aria-hidden="true" /></button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (pageSetupOpen = true)}
+          data-testid="xlsx-page-setup-btn">{m.drive_sheet_page_setup()}</button
+        >
         <span class="mx-1 h-5 w-px bg-border" aria-hidden="true"></span>
         <input
           type="file"
@@ -1661,9 +2641,15 @@
           {plainFont}
           width={activeWidth}
           height={activeHeight}
+          painterActive={!!painterClip}
           onstyle={(patch) => void applyStyle(patch)}
           onwidth={(chars) => void setColumnWidth(chars)}
           onheight={(points) => void setRowHeight(points)}
+          onmerge={(mode) => void applyMerge(mode)}
+          onclear={(what) => void clearRanges(allSelections, what)}
+          onpainter={togglePainter}
+          onshiftdecimals={(delta) => void shiftSelDecimals(delta)}
+          onrowcolaction={(act) => void runRowColAction(act)}
         />
       {/if}
       {#if selectedDrawing && (selectedDrawing.kind === 'picture' || selectedDrawing.kind === 'shape' || selectedDrawing.kind === 'textbox' || selectedDrawing.kind === 'connector')}
@@ -1755,6 +2741,22 @@
           </Button>
         </div>
       {/if}
+    {:else if ready}
+      <div class="flex flex-wrap items-center gap-1 border-b px-2 py-1" role="toolbar">
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (findDialog = { mode: 'find' })}
+          data-testid="xlsx-find-btn"
+          ><SearchIcon class="size-4" aria-hidden="true" />{m.drive_sheet_find_tab()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => (pageSetupOpen = true)}
+          data-testid="xlsx-page-setup-btn">{m.drive_sheet_export_pdf()}</button
+        >
+      </div>
     {/if}
 
     {#if mode.kind === 'watching'}
@@ -1847,25 +2849,85 @@
       </div>
     {/if}
 
-    <!-- Formula bar -->
-    <div class="flex items-center gap-2 border-b px-2 py-1">
-      <span
-        class="w-16 shrink-0 rounded border border-border px-1.5 py-0.5 text-center font-mono text-xs tabular-nums"
-        data-testid="xlsx-ref"
-        >{sel.top === sel.bottom && sel.left === sel.right ? activeRef : rangeName(sel)}</span
-      >
-      <span class="font-serif text-sm text-muted-foreground italic" aria-hidden="true">fx</span>
-      <input
-        value={editing ? draft : barText}
-        readonly={!editable}
-        class="h-7 min-w-0 flex-1 rounded border border-input bg-background px-2 font-mono text-sm"
-        aria-label={m.drive_sheet_formula_bar({ ref: activeRef })}
-        spellcheck="false"
-        onfocus={onFormulaFocus}
-        oninput={(e) => (draft = e.currentTarget.value)}
-        onkeydown={onFormulaKeydown}
-        data-testid="xlsx-formula"
+    {#if activeTable}
+      <TableBar
+        table={activeTable}
+        {editable}
+        onupdate={(patch) => void updateTable(patch)}
+        onconvert={() => void convertTable()}
       />
+    {/if}
+
+    <!-- Formula bar & Name Box -->
+    <div class="relative flex items-center gap-2 border-b px-2 py-1">
+      <input
+        bind:this={refBoxInput}
+        type="text"
+        value={refBoxEditing ? refBoxText : selBoxLabel}
+        class="h-7 w-20 shrink-0 rounded border border-border bg-background px-1.5 text-center font-mono text-xs tabular-nums focus:ring-1 focus:ring-ring focus:outline-none"
+        aria-label={m.drive_sheet_ref_box()}
+        onfocus={() => {
+          refBoxEditing = true
+          refBoxText = selBoxLabel
+          void tick().then(() => refBoxInput?.select())
+        }}
+        oninput={(e) => (refBoxText = e.currentTarget.value)}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            refBoxEditing = false
+            const err = goToTarget(refBoxText)
+            if (err) notice = err
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            refBoxEditing = false
+            grid?.focus()
+          }
+        }}
+        onblur={() => (refBoxEditing = false)}
+        data-testid="xlsx-ref"
+      />
+      <span class="font-serif text-sm text-muted-foreground italic" aria-hidden="true">fx</span>
+      <div class="relative min-w-0 flex-1">
+        {#if formulaHighlightSegs}
+          <div
+            class="pointer-events-none absolute inset-0 overflow-hidden px-2 font-mono text-sm leading-7 whitespace-pre"
+            aria-hidden="true"
+            data-testid="xlsx-formula-highlight"
+          >
+            {#each formulaHighlightSegs as seg, idx (idx)}<span
+                style={seg.color ? `color: ${seg.color}; font-weight: 600;` : undefined}
+                >{seg.text}</span
+              >{/each}
+          </div>
+        {/if}
+        <input
+          bind:this={formulaInputEl}
+          data-xlsx-formula-bar="true"
+          value={formulaTextNow}
+          readonly={!editable}
+          class="h-7 w-full rounded border border-input {formulaHighlightSegs
+            ? 'bg-transparent text-transparent caret-foreground'
+            : 'bg-background'} px-2 font-mono text-sm"
+          aria-label={m.drive_sheet_formula_bar({ ref: activeRef })}
+          spellcheck="false"
+          onfocus={onFormulaFocus}
+          oninput={onFormulaInput}
+          onclick={syncFormulaCursor}
+          onkeyup={syncFormulaCursor}
+          onselect={syncFormulaCursor}
+          onkeydown={onFormulaKeydown}
+          data-testid="xlsx-formula"
+        />
+        {#if editing && draft.startsWith('=')}
+          <FormulaAutocomplete
+            matches={acMatches}
+            selectedIndex={safeAcIndex}
+            hint={fnHint}
+            onpick={pickAutocompleteFn}
+          />
+        {/if}
+      </div>
       {#if data}
         {@const annCount = sheetThreads.length + cellNotes.length}
         <button
@@ -1927,190 +2989,231 @@
         </div>
       {/if}
     {:else if data}
-      <div class="flex min-h-0 flex-1 overflow-hidden">
-        <SheetGrid
-          bind:this={grid}
-          bind:active
-          bind:anchor
-          bind:editing
-          bind:draft
-          {rows}
-          {cols}
-          {colWidth}
-          {rowHeight}
-          {cellAt}
-          merges={data.merges}
-          {rev}
-          {editable}
-          label={m.drive_sheet_grid_label({ sheet: info?.name ?? '' })}
-          editTextOf={contentText}
-          oncommit={(pos, text) => void commitCell(pos, text)}
-          onclear={(r) => void clearRange(r)}
-          onpaste={(pos, text) => void pasteAt(pos, text)}
-          {copyText}
-          frozenRows={frozen?.rows ?? 0}
-          frozenCols={frozen?.cols ?? 0}
-          filter={gridFilter}
-          onfilter={openFilterMenu}
-          onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
-          onresize={onResize}
-          oncellselect={() => (selectedDrawingId = null)}
-          onnoteopen={(pos) => openCommentsPanel(cellName(pos))}
-          oncellhover={onCellHover}
-          onblocked={() =>
-            (notice = canEdit
-              ? mode.kind === 'watching'
-                ? m.drive_sheet_someone_editing({ name: mode.holder.name })
-                : notice
-              : m.drive_sheet_view_only())}
-        >
-          {#snippet overlay({ dx, dy })}
-            {#if geometry && (sheetDrawings.length > 0 || visibleNotes.length > 0)}
-              {#if sheetDrawings.length > 0}
-                <DrawingOverlay
-                  objects={sheetDrawings}
-                  {geometry}
-                  {dx}
-                  {dy}
-                  {mediaUrls}
-                  selectedId={selectedDrawingId}
-                  {editable}
-                  onselect={(id) => (selectedDrawingId = id)}
-                  onupdate={updateDrawing}
-                  onframeopen={(id) => {
-                    const c = chartOfDrawing(id)
-                    if (c) chartDialog = { mode: 'edit', placement: c }
-                  }}
-                >
-                  {#snippet frame(o, box, selected)}
-                    {@const c = sheetCharts.find((x) => x.part === o.chartPart)}
-                    {#if c && editor}
-                      <ChartView
-                        wb={editor.wb}
-                        calc={() => editor!.calc()}
-                        placement={c}
-                        width={Math.max(1, box.w)}
-                        height={Math.max(1, box.h)}
-                        {locale}
-                        {rev}
-                      />
-                      {#if editable && selected}
-                        <div
-                          class="flex items-center gap-1 rounded border border-border bg-background/95 p-0.5 shadow-sm"
-                          style="position: absolute; top: 6px; right: 6px; z-index: 11;"
-                          role="toolbar"
-                          tabindex="-1"
+      <div class="flex min-h-0 min-w-0 flex-1">
+      <SheetGrid
+        bind:this={grid}
+        bind:active
+        bind:anchor
+        bind:extraSelections
+        bind:held
+        bind:editing
+        bind:draft
+        {rows}
+        {cols}
+        {colWidth}
+        {rowHeight}
+        {cellAt}
+        merges={data.merges}
+        {rev}
+        {editable}
+        {data}
+        label={m.drive_sheet_grid_label({ sheet: info?.name ?? '' })}
+        editTextOf={contentText}
+        oncommit={(pos, text) => void commitCell(pos, text)}
+        onclear={(r) => void clearRanges([r], 'contents')}
+        onclearranges={(ranges) => void clearRanges(ranges, 'contents')}
+        onpaste={(pos, text) => void pasteAt(pos, text)}
+        {copyText}
+        oncopyclip={(range, ev) => copyOrCut(range, false, ev)}
+        oncutclip={(range, ev) => copyOrCut(range, true, ev)}
+        onpasteclip={handlePasteClip}
+        onfill={(src, tgt) => void fillRange(src, tgt)}
+        onfilldblclick={(src) => void fillDoubleClick(src)}
+        onfillshortcut={(dir, rg) => void fillShortcut(dir, rg)}
+        onautofit={(axis, idx) => void autofitAxis(axis, idx)}
+        {outline}
+        onoutline={(act) => void runOutlineAction(act)}
+        cutRange={clipState?.cut && clipState.sourceSheet === sheet ? clipState.sourceRange : null}
+        formulaRefs={gridFormulaRefs}
+        pointSelectMode={pointSelectActive}
+        onpointselect={handlePointSelect}
+        oneditcursor={(start, end) => (formulaCursor = { start, end })}
+        onselectcommit={() => void onSelectionCommit()}
+        onfind={(replace) => (findDialog = { mode: replace ? 'replace' : 'find' })}
+        ongoto={() => (findDialog = { mode: 'goto' })}
+        showGridlines={viewOpts.showGridlines}
+        showHeadings={viewOpts.showHeadings}
+        frozenRows={frozen?.rows ?? 0}
+        frozenCols={frozen?.cols ?? 0}
+        filter={gridFilter}
+        onfilter={openFilterMenu}
+        onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
+        onresize={onResize}
+        oncellselect={() => (selectedDrawingId = null)}
+        onnoteopen={(pos) => openCommentsPanel(cellName(pos))}
+        oncellhover={onCellHover}
+        onblocked={() =>
+          (notice = canEdit
+            ? mode.kind === 'watching'
+              ? m.drive_sheet_someone_editing({ name: mode.holder.name })
+              : notice
+            : m.drive_sheet_view_only())}
+      >
+        {#snippet overlay({ dx, dy })}
+          {#if geometry && (sheetDrawings.length > 0 || visibleNotes.length > 0)}
+            {#if sheetDrawings.length > 0}
+              <DrawingOverlay
+                objects={sheetDrawings}
+                {geometry}
+                {dx}
+                {dy}
+                {mediaUrls}
+                selectedId={selectedDrawingId}
+                {editable}
+                onselect={(id) => (selectedDrawingId = id)}
+                onupdate={updateDrawing}
+                onframeopen={(id) => {
+                  const c = chartOfDrawing(id)
+                  if (c) chartDialog = { mode: 'edit', placement: c }
+                }}
+              >
+                {#snippet frame(o, box, selected)}
+                  {@const c = sheetCharts.find((x) => x.part === o.chartPart)}
+                  {#if c && editor}
+                    <ChartView
+                      wb={editor.wb}
+                      calc={() => editor!.calc()}
+                      placement={c}
+                      width={Math.max(1, box.w)}
+                      height={Math.max(1, box.h)}
+                      {locale}
+                      {rev}
+                    />
+                    {#if editable && selected}
+                      <div
+                        class="flex items-center gap-1 rounded border border-border bg-background/95 p-0.5 shadow-sm"
+                        style="position: absolute; top: 6px; right: 6px; z-index: 11;"
+                        role="toolbar"
+                        tabindex="-1"
+                        aria-label={m.drive_sheet_chart_edit()}
+                        onpointerdown={(e) => e.stopPropagation()}
+                        ondblclick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          class="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                           aria-label={m.drive_sheet_chart_edit()}
-                          onpointerdown={(e) => e.stopPropagation()}
-                          ondblclick={(e) => e.stopPropagation()}
+                          title={m.drive_sheet_chart_edit()}
+                          onclick={() => (chartDialog = { mode: 'edit', placement: c })}
+                          data-testid="xlsx-chart-edit"><PencilIcon class="size-3.5" aria-hidden="true" /></button
                         >
-                          <button
-                            type="button"
-                            class="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                            aria-label={m.drive_sheet_chart_edit()}
-                            title={m.drive_sheet_chart_edit()}
-                            onclick={() => (chartDialog = { mode: 'edit', placement: c })}
-                            data-testid="xlsx-chart-edit"><PencilIcon class="size-3.5" aria-hidden="true" /></button
-                          >
-                          <button
-                            type="button"
-                            class="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-destructive"
-                            aria-label={m.drive_sheet_chart_delete()}
-                            title={m.drive_sheet_chart_delete()}
-                            onclick={() => deleteChart(c.id)}
-                            data-testid="xlsx-chart-delete"><Trash2Icon class="size-3.5" aria-hidden="true" /></button
-                          >
-                        </div>
-                      {/if}
+                        <button
+                          type="button"
+                          class="inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-destructive"
+                          aria-label={m.drive_sheet_chart_delete()}
+                          title={m.drive_sheet_chart_delete()}
+                          onclick={() => deleteChart(c.id)}
+                          data-testid="xlsx-chart-delete"><Trash2Icon class="size-3.5" aria-hidden="true" /></button
+                        >
+                      </div>
                     {/if}
-                  {/snippet}
-                </DrawingOverlay>
-              {/if}
-              {#each visibleNotes as vn (vn.note.ref)}
-                <div
-                  class="w-44 rounded border border-amber-400 bg-amber-100 p-2 text-xs text-amber-950 shadow-sm"
-                  style="position: absolute; z-index: 20; pointer-events: auto; left: {vn.x - dx}px; top: {vn.y - dy}px;"
-                  data-testid="xlsx-visible-note"
-                  data-ref={vn.note.ref}
-                >
-                  {#if vn.note.author}<div class="font-semibold">{vn.note.author}</div>{/if}
-                  <div class="whitespace-pre-wrap">{vn.note.text}</div>
-                </div>
-              {/each}
+                  {/if}
+                {/snippet}
+              </DrawingOverlay>
             {/if}
-          {/snippet}
-        </SheetGrid>
-        {#if commentsOpen}
-          <CommentPanel
-            sheet={data.info.name}
-            {activeRef}
-            {editable}
-            author={author ?? null}
-            {members}
-            threads={sheetThreads}
-            notes={cellNotes}
-            focusRef={commentFocusRef}
-            onjump={(row, col, ref) => {
-              active = { row, col }
-              anchor = { row, col }
-              commentFocusRef = ref
-              grid?.focus()
-            }}
-            onaddthread={(ref, text, mentions) =>
-              change({
-                op: 'add_comment',
-                sheet: data.info.name,
-                ref,
-                text,
-                author: author!,
-                mentions,
-              })}
-            onreply={(thread, text, mentions) =>
-              change({
-                op: 'reply_comment',
-                sheet: data.info.name,
-                thread,
-                text,
-                author: author!,
-                mentions,
-              })}
-            oneditcomment={(id, text, mentions) =>
-              change({
-                op: 'edit_comment',
-                sheet: data.info.name,
-                id,
-                text,
-                author: author!,
-                mentions,
-              })}
-            onresolve={(thread, resolved) =>
-              change({ op: 'resolve_comment', sheet: data.info.name, thread, resolved })}
-            ondeletecomment={(id) =>
-              change({ op: 'delete_comment', sheet: data.info.name, id, author: author! })}
-            onsetnote={(ref, text, visible) =>
-              change({
-                op: 'set_note',
-                sheet: data.info.name,
-                ref,
-                text,
-                ...(text !== undefined && author ? { author: author.name } : {}),
-                visible,
-              })}
-            ondeletenote={(ref) => change({ op: 'delete_note', sheet: data.info.name, ref })}
-            onclose={() => (commentsOpen = false)}
-          />
-        {/if}
+            {#each visibleNotes as vn (vn.note.ref)}
+              <div
+                class="w-44 rounded border border-amber-400 bg-amber-100 p-2 text-xs text-amber-950 shadow-sm"
+                style="position: absolute; z-index: 20; pointer-events: auto; left: {vn.x - dx}px; top: {vn.y - dy}px;"
+                data-testid="xlsx-visible-note"
+                data-ref={vn.note.ref}
+              >
+                {#if vn.note.author}<div class="font-semibold">{vn.note.author}</div>{/if}
+                <div class="whitespace-pre-wrap">{vn.note.text}</div>
+              </div>
+            {/each}
+          {/if}
+        {/snippet}
+      </SheetGrid>
+      {#if activePivot && pivotFieldsOpen}
+        <PivotFields
+          pivot={activePivot}
+          {editable}
+          onchange={(l) => void layoutPivot(l)}
+          onrefresh={() => void refreshPivot()}
+          ondelete={() => void deletePivot()}
+          onclose={() => (pivotFieldsOpen = false)}
+        />
+      {:else if activePivot}
+        <button
+          type="button"
+          class="{btn} self-start"
+          onclick={() => (pivotFieldsOpen = true)}
+          data-testid="xlsx-pivot-fields-open">{m.drive_sheet_pivot_fields()}</button
+        >
+      {/if}
+      {#if commentsOpen}
+        <CommentPanel
+          sheet={data.info.name}
+          {activeRef}
+          {editable}
+          author={author ?? null}
+          {members}
+          threads={sheetThreads}
+          notes={cellNotes}
+          focusRef={commentFocusRef}
+          onjump={(row, col, ref) => {
+            active = { row, col }
+            anchor = { row, col }
+            commentFocusRef = ref
+            grid?.focus()
+          }}
+          onaddthread={(ref, text, mentions) =>
+            change({
+              op: 'add_comment',
+              sheet: data.info.name,
+              ref,
+              text,
+              author: author!,
+              mentions,
+            })}
+          onreply={(thread, text, mentions) =>
+            change({
+              op: 'reply_comment',
+              sheet: data.info.name,
+              thread,
+              text,
+              author: author!,
+              mentions,
+            })}
+          oneditcomment={(id, text, mentions) =>
+            change({
+              op: 'edit_comment',
+              sheet: data.info.name,
+              id,
+              text,
+              author: author!,
+              mentions,
+            })}
+          onresolve={(thread, resolved) =>
+            change({ op: 'resolve_comment', sheet: data.info.name, thread, resolved })}
+          ondeletecomment={(id) =>
+            change({ op: 'delete_comment', sheet: data.info.name, id, author: author! })}
+          onsetnote={(ref, text, visible) =>
+            change({
+              op: 'set_note',
+              sheet: data.info.name,
+              ref,
+              text,
+              ...(text !== undefined && author ? { author: author.name } : {}),
+              visible,
+            })}
+          ondeletenote={(ref) => change({ op: 'delete_note', sheet: data.info.name, ref })}
+          onclose={() => (commentsOpen = false)}
+        />
+      {/if}
       </div>
     {/if}
 
     <!-- Sheet tabs -->
     <div
-      class="flex items-center gap-0.5 overflow-x-auto border-t bg-muted/30 px-1 py-1"
+      class="relative flex items-center gap-0.5 overflow-x-auto border-t bg-muted/30 px-1 py-1"
       role="tablist"
       aria-label={m.drive_sheet_tabs()}
       data-testid="xlsx-tabs"
     >
-      {#each sheets as s (s.part)}
+      {#each visibleSheets as s (s.part)}
+        {@const tabColor = tabColors[s.name] ?? null}
         {#if renaming === s.name}
           <input
             bind:value={renameText}
@@ -2125,23 +3228,35 @@
             type="button"
             role="tab"
             aria-selected={s.name === sheet}
+            draggable={editable && renaming === null}
             class="inline-flex h-7 shrink-0 items-center gap-1 rounded px-2.5 text-sm {s.name ===
             sheet
               ? 'bg-background font-medium text-foreground shadow-sm'
-              : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'} {s.state !==
-            'visible'
-              ? 'italic'
-              : ''}"
+              : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'}"
+            style={tabColor ? `border-bottom: 3px solid ${tabColor};` : undefined}
             onclick={() => void pickSheet(s.name)}
             ondblclick={() => void startRename(s.name)}
-            title={s.state !== 'visible'
-              ? m.drive_sheet_hidden_tab()
-              : editable
-                ? m.drive_sheet_tab_hint()
-                : undefined}
+            oncontextmenu={(e) => {
+              if (!editable) return
+              e.preventDefault()
+              tabMenuSheet = tabMenuSheet === s.name ? null : s.name
+            }}
+            ondragstart={() => (draggedTab = s.name)}
+            ondragover={(e) => {
+              if (editable && draggedTab && draggedTab !== s.name) e.preventDefault()
+            }}
+            ondrop={(e) => {
+              e.preventDefault()
+              const from = draggedTab
+              draggedTab = null
+              if (!editable || !from || from === s.name) return
+              const to = sheets.findIndex((x) => x.name === s.name)
+              if (to >= 0) void change({ op: 'move_sheet', sheet: from, to })
+            }}
+            title={editable ? m.drive_sheet_tab_hint() : undefined}
+            data-tab-color={tabColor ?? undefined}
             data-testid="xlsx-tab"
           >
-            {#if s.state !== 'visible'}<EyeOffIcon class="size-3.5" aria-hidden="true" />{/if}
             {#if s.kind !== 'worksheet'}<ChartColumnIcon class="size-3.5" aria-hidden="true" />{/if}
             {s.name}
           </button>
@@ -2170,6 +3285,39 @@
             onclick={() => void change({ op: 'delete_sheet', sheet: info.name })}
             data-testid="xlsx-delete-sheet">{m.drive_sheet_delete()}</button
           >
+          <button
+            type="button"
+            class="{btn} h-7 text-xs"
+            aria-label={m.drive_sheet_tab_actions({ name: info.name })}
+            onclick={() => (tabMenuSheet = tabMenuSheet === info.name ? null : info.name)}
+            data-testid="xlsx-tab-menu-btn"
+          >
+            ⋯
+          </button>
+        {/if}
+        {#if hiddenSheets.length > 0}
+          <select
+            class="h-7 rounded border border-input bg-background px-1.5 text-xs"
+            value=""
+            aria-label={m.drive_sheet_tab_hidden_list()}
+            onchange={(e) => {
+              const targetName = e.currentTarget.value
+              e.currentTarget.value = ''
+              if (targetName) {
+                void change({
+                  op: 'set_sheet_visibility',
+                  sheet: targetName,
+                  state: 'visible',
+                }).then((ok) => {
+                  if (ok) void pickSheet(targetName)
+                })
+              }
+            }}
+            data-testid="xlsx-unhide-sheet"
+          >
+            <option value="" disabled>{m.drive_sheet_tab_unhide()}</option>
+            {#each hiddenSheets as hs (hs.part)}<option value={hs.name}>{hs.name}</option>{/each}
+          </select>
         {/if}
       {:else if !canEdit}
         <span class="ml-auto px-2 text-xs text-muted-foreground" data-testid="xlsx-view-only"
@@ -2184,21 +3332,212 @@
         >
       {/if}
     </div>
+
+    {#if tabMenuSheet && editable}
+      {@const tmName = tabMenuSheet}
+      {@const tmIdx = sheets.findIndex((s) => s.name === tmName)}
+      <div
+        class="flex flex-wrap items-center gap-2 border-t bg-popover px-3 py-1.5 text-xs text-popover-foreground"
+        role="menu"
+        aria-label={m.drive_sheet_tab_actions({ name: tmName })}
+        data-testid="xlsx-tab-menu"
+      >
+        <span class="font-medium">{tmName}:</span>
+        <button
+          type="button"
+          class={btn}
+          onclick={() => {
+            const tm = tmName
+            tabMenuSheet = null
+            void startRename(tm)
+          }}
+          data-testid="xlsx-tab-action-rename">{m.drive_sheet_rename()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          onclick={() => {
+            const tm = tmName
+            tabMenuSheet = null
+            void change({ op: 'duplicate_sheet', sheet: tm })
+          }}
+          data-testid="xlsx-tab-action-duplicate">{m.drive_sheet_tab_duplicate()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          disabled={tmIdx <= 0}
+          onclick={() => {
+            const tm = tmName
+            const tmAt = tmIdx
+            tabMenuSheet = null
+            void change({ op: 'move_sheet', sheet: tm, to: Math.max(0, tmAt - 1) })
+          }}
+          data-testid="xlsx-tab-action-move-left">{m.drive_sheet_tab_move_left()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          disabled={tmIdx < 0 || tmIdx >= sheets.length - 1}
+          onclick={() => {
+            const tm = tmName
+            const tmAt = tmIdx
+            tabMenuSheet = null
+            void change({ op: 'move_sheet', sheet: tm, to: Math.min(sheets.length - 1, tmAt + 1) })
+          }}
+          data-testid="xlsx-tab-action-move-right">{m.drive_sheet_tab_move_right()}</button
+        >
+        <button
+          type="button"
+          class={btn}
+          disabled={visibleSheets.length <= 1}
+          onclick={() => {
+            const tm = tmName
+            tabMenuSheet = null
+            const fallback = visibleSheets.find((s) => s.name !== tm)?.name
+            void change({ op: 'set_sheet_visibility', sheet: tm, state: 'hidden' }).then((ok) => {
+              if (ok && sheet === tm && fallback) sheet = fallback
+            })
+          }}
+          data-testid="xlsx-tab-action-hide">{m.drive_sheet_tab_hide()}</button
+        >
+        <span class="text-muted-foreground">{m.drive_sheet_tab_color()}:</span>
+        {#each ['#1F4E79', '#C00000', '#548235', '#BF8F00', '#7030A0'] as swatch (swatch)}
+          <button
+            type="button"
+            class="size-4 rounded-full border border-border"
+            style="background-color: {swatch}"
+            aria-label="{m.drive_sheet_tab_color()} {swatch}"
+            onclick={() => {
+              const tm = tmName
+              tabMenuSheet = null
+              void change({ op: 'set_sheet_color', sheet: tm, color: swatch })
+            }}
+            data-testid="xlsx-tab-color-{swatch.slice(1)}"
+          ></button>
+        {/each}
+        <button
+          type="button"
+          class={btn}
+          onclick={() => {
+            const tm = tmName
+            tabMenuSheet = null
+            void change({ op: 'set_sheet_color', sheet: tm, color: null })
+          }}
+          data-testid="xlsx-tab-color-clear">{m.drive_sheet_tab_color_clear()}</button
+        >
+      </div>
+    {/if}
+
+    <!-- Status bar: selection aggregates + view toggles + zoom -->
+    <div
+      class="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-3 py-1 text-xs text-muted-foreground"
+      role="status"
+      aria-label={m.drive_sheet_status_bar()}
+      data-testid="xlsx-status-bar"
+    >
+      <div class="flex items-center gap-4 tabular-nums" data-testid="xlsx-selection-stats">
+        {#if selStats && selStats.count > 0}
+          <span data-testid="xlsx-stat-count"
+            >{m.drive_sheet_stat_count({ value: fmtStatNum(selStats.count) })}</span
+          >
+          {#if selStats.numericCount > 0}
+            <span data-testid="xlsx-stat-sum"
+              >{m.drive_sheet_stat_sum({ value: fmtStatNum(selStats.sum) })}</span
+            >
+            {#if selStats.average !== null}
+              <span data-testid="xlsx-stat-avg"
+                >{m.drive_sheet_stat_avg({ value: fmtStatNum(selStats.average) })}</span
+              >
+            {/if}
+          {/if}
+        {/if}
+      </div>
+      {#if info?.kind === 'worksheet'}
+        <div class="flex items-center gap-3">
+          {#if editable}
+            <label class="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                class="accent-primary"
+                checked={viewOpts.showGridlines}
+                onchange={(e) =>
+                  void change({
+                    op: 'set_view_options',
+                    sheet,
+                    showGridlines: e.currentTarget.checked,
+                  })}
+                data-testid="xlsx-toggle-gridlines"
+              />
+              {m.drive_sheet_view_gridlines()}
+            </label>
+            <label class="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                class="accent-primary"
+                checked={viewOpts.showHeadings}
+                onchange={(e) =>
+                  void change({
+                    op: 'set_view_options',
+                    sheet,
+                    showHeadings: e.currentTarget.checked,
+                  })}
+                data-testid="xlsx-toggle-headings"
+              />
+              {m.drive_sheet_view_headings()}
+            </label>
+            <label class="flex items-center gap-1.5">
+              <span>{m.drive_sheet_zoom()}</span>
+              <select
+                class="h-6 rounded border border-input bg-background px-1.5 text-xs text-foreground"
+                value={String(viewOpts.zoomScale)}
+                onchange={(e) =>
+                  void change({
+                    op: 'set_view_options',
+                    sheet,
+                    zoomScale: Number(e.currentTarget.value),
+                  })}
+                data-testid="xlsx-zoom"
+              >
+                {#each [50, 75, 100, 125, 150, 200] as pct (pct)}
+                  <option value={String(pct)}>{pct}%</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+        </div>
+      {/if}
+    </div>
   </div>
 {/if}
 
-{#if filterMenu && autoFilter}
+{#if filterMenu && menuFilter}
   {@const fm = filterMenu}
   <FilterMenu
     col={colName(fm.col)}
     choices={fm.choices}
-    current={autoFilter.columns.find((c) => c.col === fm.col)}
+    current={menuFilter.columns.find((c) => c.col === fm.col)}
     at={fm.at}
     {editable}
     onapply={(values, blanks) => void applyFilter(fm.col, values, blanks)}
     onsort={(descending) => void sortFromFilter(fm.col, descending)}
     onclose={() => {
       filterMenu = null
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if creating}
+  {@const cr = creating}
+  <TableDialog
+    kind={cr.kind}
+    range={cr.range}
+    header={cr.header}
+    at={activeRef}
+    oncreate={(out) => void created(out)}
+    onclose={() => {
+      creating = null
       grid?.focus()
     }}
   />
@@ -2307,6 +3646,92 @@
     onclose={() => (imagePickerOpen = false)}
   />
 {/if}
+{#if findDialog && editor}
+  <FindDialog
+    mode={findDialog.mode}
+    {editable}
+    namedTargets={listGoToNames(editor.wb, sheet).map((t) => ({
+      name: t.name,
+      label: `${t.sheet}!${rangeName(t.range)}`,
+    }))}
+    hits={findHits}
+    hitIndex={findHitIndex}
+    lastQuery={findLastQuery}
+    onsearch={runFindSearch}
+    onnavigatehit={navigateFindHit}
+    onreplaceone={(opts) => void runReplaceOne(opts)}
+    onreplaceall={(opts) => void runReplaceAll(opts)}
+    ongoto={goToTarget}
+    onclose={() => {
+      findDialog = null
+      grid?.focus()
+    }}
+  />
+{/if}
+
+{#if pageSetupOpen && editor && info?.kind === 'worksheet'}
+  <PageSetupDialog
+    initial={pageSetupOf(editor.wb, info.name)}
+    {editable}
+    exporting={exportingPdf}
+    onsave={(patch: {
+      orientation: 'portrait' | 'landscape'
+      paperSize: PaperSize
+      scale: number
+      fitToWidth: number | null
+      printGridlines: boolean
+      printHeadings: boolean
+      printArea: string | null
+      repeatRows: string | null
+      repeatCols: string | null
+    }) => void change({ op: 'set_page_setup', sheet, ...patch })}
+    onexportpdf={(opts) => void exportPdf(opts)}
+    onclose={() => {
+      pageSetupOpen = false
+      grid?.focus()
+    }}
+  />
+{/if}
+
+<Dialog.Root
+  open={customFmtOpen}
+  onOpenChange={(open) => {
+    if (!open) customFmtOpen = false
+  }}
+>
+  <Dialog.Content class="max-w-sm" data-testid="xlsx-custom-format-dialog">
+    <Dialog.Header>
+      <Dialog.Title>{m.drive_sheet_fmt_custom()}</Dialog.Title>
+      <Dialog.Description>{m.drive_sheet_fmt_custom_prompt()}</Dialog.Description>
+    </Dialog.Header>
+    <form
+      class="flex flex-col gap-3"
+      onsubmit={(e) => {
+        e.preventDefault()
+        const code = customFmtInput.trim()
+        customFmtOpen = false
+        if (code) void applyNumberFormat(code)
+        grid?.focus()
+      }}
+    >
+      <input
+        type="text"
+        class="h-8 w-full rounded-md border border-input bg-background px-2 font-mono text-sm"
+        bind:value={customFmtInput}
+        data-testid="xlsx-custom-format-input"
+      />
+      <Dialog.Footer>
+        <Button type="button" variant="outline" onclick={() => (customFmtOpen = false)}
+          >{m.drive_sheet_cancel()}</Button
+        >
+        <Button type="submit" data-testid="xlsx-custom-format-apply"
+          >{m.drive_sheet_go_ahead()}</Button
+        >
+      </Dialog.Footer>
+    </form>
+  </Dialog.Content>
+</Dialog.Root>
+
 <style>
   .chart-sheet-host {
     min-height: 24rem;

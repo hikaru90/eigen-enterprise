@@ -331,6 +331,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/drive/files/[id]/lock DELETE': transport(EDIT_LOCK),
   '/api/drive/files/[id]/lock POST': transport(EDIT_LOCK),
   '/api/drive/files/[id]/lock PUT': transport(EDIT_LOCK),
+  '/api/drive/files/[id]/pdf POST': tool('drive.sheet_export_pdf'),
   '/api/drive/files/[id]/revisions POST': tool('drive.restore_revision'),
   '/api/drive/files/[id]/text PUT': tool('drive.write_text'),
   '/api/drive/files/[id]/xlsx-copy POST': tool('drive.make_xlsx_copy'),

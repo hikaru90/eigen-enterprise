@@ -18,6 +18,21 @@ export function isLlmHttpError(e: unknown): e is LlmHttpError {
 }
 
 /**
+ * The upstream provider stopped a reply with finish_reason "length" before the
+ * max_tokens we asked for: its own limit (e.g. a small context window on one of
+ * the providers a router picked), not our budget. The reply is incomplete, so the
+ * gateway client retries it like a failed call instead of handing half an answer on.
+ */
+export class LlmCutShortError extends Error {
+  constructor(completionTokens: number, maxTokens: number) {
+    super(
+      `LLM provider cut the reply short at ${completionTokens} of ${maxTokens} tokens (finish_reason length below max_tokens)`,
+    )
+    this.name = 'LlmCutShortError'
+  }
+}
+
+/**
  * Missing/incomplete LLM gateway configuration (no base URL, no API key, no routing
  * rule/model). Thrown typed so user-facing surfaces (chat error terminal payload,
  * onboarding) can offer the provider-setup flow WITHOUT message string matching.

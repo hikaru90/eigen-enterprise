@@ -2017,6 +2017,48 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_copy_range": {
+    input: {
+      "cut"?: boolean
+      "file_id": string
+      "locale"?: "en" | "de"
+      "mode"?: "all" | "values" | "formulas" | "formats"
+      "skip_blanks"?: boolean
+      "source_file_id"?: string
+      "source_range": string
+      "source_sheet": string
+      "target_sheet"?: string
+      "to": string
+      "transpose"?: boolean
+    }
+    output: unknown
+  }
+  "drive.sheet_export_pdf": {
+    input: {
+      "file_id": string
+      "fit_to_width"?: number | null
+      "locale"?: "en" | "de"
+      "orientation"?: "portrait" | "landscape"
+      "paper_size"?: "a4" | "letter" | "legal" | "a3" | "a5"
+      "print_gridlines"?: boolean
+      "print_headings"?: boolean
+      "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_fill": {
+    input: {
+      "custom_lists"?: Array<Array<string>>
+      "file_id": string
+      "series"?: "auto" | "copy" | "linear" | "growth" | "days" | "weekdays" | "months" | "years"
+      "sheet": string
+      "source": string
+      "step"?: number
+      "stop"?: number
+      "target": string
+    }
+    output: unknown
+  }
   "drive.sheet_filter": {
     input: {
       "columns"?: Array<{
@@ -2028,6 +2070,24 @@ export type CoreApiTools = {
       "off"?: true
       "range"?: string
       "sheet": string
+      "table"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_find_replace": {
+    input: {
+      "cells"?: Array<{
+        "ref": string
+        "sheet": string
+      }>
+      "file_id": string
+      "find": string
+      "locale"?: "en" | "de"
+      "look_in"?: "formulas" | "values"
+      "match_case"?: boolean
+      "replace"?: string
+      "sheet"?: string
+      "whole_cell"?: boolean
     }
     output: unknown
   }
@@ -2076,6 +2136,31 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_merge": {
+    input: {
+      "accept_losses"?: boolean
+      "clear"?: "all" | "contents" | "formats"
+      "file_id": string
+      "mode"?: "center" | "merge" | "across" | "unmerge"
+      "range"?: string
+      "rich_text"?: {
+        "ref": string
+        "runs": Array<{
+          "bold"?: boolean
+          "color"?: string
+          "font"?: string
+          "italic"?: boolean
+          "size"?: number
+          "strike"?: boolean
+          "text": string
+          "underline"?: boolean
+        }>
+      }
+      "sheet": string
+      "shift_decimals"?: 1 | -1
+    }
+    output: unknown
+  }
   "drive.sheet_picture_delete": {
     input: {
       "file_id": string
@@ -2116,11 +2201,139 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_pivot_create": {
+    input: {
+      "col_grand_totals"?: boolean
+      "columns"?: Array<string>
+      "file_id": string
+      "filters"?: Array<{
+        "field": string
+        "selected_item"?: string
+      }>
+      "name"?: string
+      "row_grand_totals"?: boolean
+      "rows"?: Array<string>
+      "source": string
+      "source_sheet"?: string
+      "style"?: string
+      "subtotals"?: boolean
+      "target_cell"?: string
+      "target_sheet"?: string
+      "values"?: Array<{
+        "agg"?: "sum" | "count" | "average" | "min" | "max" | "product" | "countNums" | "stdDev" | "var"
+        "field": string
+        "name"?: string
+        "num_fmt"?: string
+      }>
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_delete": {
+    input: {
+      "file_id": string
+      "keep_values"?: boolean
+      "pivot": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_refresh": {
+    input: {
+      "file_id": string
+      "pivot": string
+      "sheet": string
+    }
+    output: unknown
+  }
+  "drive.sheet_pivot_update": {
+    input: {
+      "col_grand_totals"?: boolean
+      "columns"?: Array<string>
+      "file_id": string
+      "filters"?: Array<{
+        "field": string
+        "selected_item"?: string
+      }>
+      "hidden_items"?: Record<string, Array<string>>
+      "name"?: string
+      "pivot": string
+      "row_grand_totals"?: boolean
+      "rows"?: Array<string>
+      "sheet": string
+      "style"?: string
+      "subtotals"?: boolean
+      "values"?: Array<{
+        "agg"?: "sum" | "count" | "average" | "min" | "max" | "product" | "countNums" | "stdDev" | "var"
+        "field": string
+        "name"?: string
+        "num_fmt"?: string
+      }>
+    }
+    output: unknown
+  }
   "drive.sheet_read": {
     input: {
       "file_id": string
       "range"?: string
       "sheet"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_rows_cols": {
+    input: {
+      "changes": Array<({
+        "action": "hide_columns"
+        "from": number | string
+        "hidden"?: boolean
+        "to"?: number | string
+      }) | ({
+        "action": "hide_rows"
+        "from": number
+        "hidden"?: boolean
+        "to"?: number
+      }) | ({
+        "action": "group_columns"
+        "from": number | string
+        "to"?: number | string
+      }) | ({
+        "action": "ungroup_columns"
+        "from": number | string
+        "to"?: number | string
+      }) | ({
+        "action": "group_rows"
+        "from": number
+        "to"?: number
+      }) | ({
+        "action": "ungroup_rows"
+        "from": number
+        "to"?: number
+      }) | ({
+        "action": "collapse_columns"
+        "collapsed": boolean
+        "from": number | string
+        "to"?: number | string
+      }) | ({
+        "action": "collapse_rows"
+        "collapsed": boolean
+        "from": number
+        "to"?: number
+      }) | ({
+        "action": "set_outline_level"
+        "axis": "row" | "col"
+        "level": number
+      }) | ({
+        "action": "autofit_columns"
+        "from": number | string
+        "locale"?: "en" | "de"
+        "to"?: number | string
+      }) | ({
+        "action": "autofit_rows"
+        "from": number
+        "locale"?: "en" | "de"
+        "to"?: number
+      })>
+      "file_id": string
+      "sheet": string
     }
     output: unknown
   }
@@ -2219,6 +2432,87 @@ export type CoreApiTools = {
         "sheet": string
       })>
       "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_tab": {
+    input: {
+      "accept_losses"?: boolean
+      "action": "move_sheet" | "set_sheet_color" | "set_sheet_visibility" | "duplicate_sheet" | "set_view_options" | "set_page_setup"
+      "center_horizontally"?: boolean
+      "center_vertically"?: boolean
+      "color"?: string | null
+      "file_id": string
+      "fit_to_height"?: number | null
+      "fit_to_width"?: number | null
+      "margins"?: {
+        "bottom"?: number
+        "footer"?: number
+        "header"?: number
+        "left"?: number
+        "right"?: number
+        "top"?: number
+      }
+      "name"?: string
+      "orientation"?: "portrait" | "landscape"
+      "paper_size"?: "a4" | "letter" | "legal" | "a3" | "a5"
+      "position"?: number
+      "print_area"?: string | null
+      "print_gridlines"?: boolean
+      "print_headings"?: boolean
+      "repeat_cols"?: string | null
+      "repeat_rows"?: string | null
+      "scale"?: number
+      "sheet": string
+      "show_gridlines"?: boolean
+      "show_headings"?: boolean
+      "state"?: "visible" | "hidden" | "veryHidden"
+      "zoom_scale"?: number
+    }
+    output: unknown
+  }
+  "drive.sheet_table_create": {
+    input: {
+      "auto_filter"?: boolean
+      "file_id": string
+      "has_headers"?: boolean
+      "name"?: string
+      "range": string
+      "sheet": string
+      "style"?: string
+    }
+    output: unknown
+  }
+  "drive.sheet_table_delete": {
+    input: {
+      "file_id": string
+      "mode"?: "convert_to_range" | "delete_cells"
+      "sheet": string
+      "table": string
+    }
+    output: unknown
+  }
+  "drive.sheet_table_update": {
+    input: {
+      "auto_filter"?: boolean
+      "file_id": string
+      "header_row"?: boolean
+      "name"?: string
+      "ref"?: string
+      "sheet": string
+      "show_column_stripes"?: boolean
+      "show_first_column"?: boolean
+      "show_last_column"?: boolean
+      "show_row_stripes"?: boolean
+      "style"?: string
+      "table": string
+      "totals_columns"?: Array<{
+        "column": string | number
+        "formula"?: string
+        "function": "none" | "sum" | "count" | "average" | "min" | "max" | "countNums" | "stdDev" | "var" | "custom"
+        "label"?: string
+      }>
+      "totals_row"?: boolean
     }
     output: unknown
   }
@@ -4731,18 +5025,32 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.sheet_comment_list",
   "drive.sheet_comment_reply",
   "drive.sheet_comment_resolve",
+  "drive.sheet_copy_range",
+  "drive.sheet_export_pdf",
+  "drive.sheet_fill",
   "drive.sheet_filter",
+  "drive.sheet_find_replace",
   "drive.sheet_format",
   "drive.sheet_freeze",
+  "drive.sheet_merge",
   "drive.sheet_picture_delete",
   "drive.sheet_picture_insert",
   "drive.sheet_picture_update",
+  "drive.sheet_pivot_create",
+  "drive.sheet_pivot_delete",
+  "drive.sheet_pivot_refresh",
+  "drive.sheet_pivot_update",
   "drive.sheet_read",
+  "drive.sheet_rows_cols",
   "drive.sheet_shape_create",
   "drive.sheet_shape_delete",
   "drive.sheet_shape_update",
   "drive.sheet_sort",
   "drive.sheet_structure",
+  "drive.sheet_tab",
+  "drive.sheet_table_create",
+  "drive.sheet_table_delete",
+  "drive.sheet_table_update",
   "drive.sheet_write",
   "drive.suggest_archive",
   "drive.trash",

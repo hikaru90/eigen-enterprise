@@ -72,6 +72,14 @@ const filterInput = z
   .object({
     file_id: fileId,
     sheet: sheetName,
+    table: z
+      .string()
+      .min(1)
+      .max(255)
+      .optional()
+      .describe(
+        'Filter this Excel table’s columns instead of the sheet’s AutoFilter (its drop-downs are on with drive.sheet_table_update auto_filter)',
+      ),
     off: z.literal(true).optional().describe('Turn the sheet’s filter off (every row shows again)'),
     range: rangeText
       .optional()
@@ -166,7 +174,7 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
       name: 'drive.sheet_filter',
       module: DRIVE_MODULE_ID,
       summary:
-        'Filter a sheet of an Excel workbook (.xlsx) in Drive like Excel’s AutoFilter (file_id, sheet; range: turn the filter on for a range, its first row holds the drop-downs; columns: [{ column, values: shown texts to keep | null to clear, blanks }]; off: true turns it off and shows every row). Rows that don’t match are hidden as in Excel; conditions set in Excel that this editor can’t evaluate are kept as they are. A filter can’t overlap a table (tables filter themselves). Answers with the filter and how many rows show. Saved as a new revision that can be restored.',
+        'Filter a sheet of an Excel workbook (.xlsx) in Drive like Excel’s AutoFilter (file_id, sheet; range: turn the filter on for a range, its first row holds the drop-downs; columns: [{ column, values: shown texts to keep | null to clear, blanks }]; off: true turns it off and shows every row). Rows that don’t match are hidden as in Excel; conditions set in Excel that this editor can’t evaluate are kept as they are. A sheet filter can’t overlap a table; tables filter themselves — give table: its name to filter that table’s columns. Answers with the filter and how many rows show. Saved as a new revision that can be restored.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: z.infer<typeof filterInput>, output: unknown) => {
@@ -184,6 +192,11 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
         const i = filterInput.parse(input)
         if (i.off && (i.range || i.columns?.length))
           throw new DriveError('invalid', 'Turn the filter off, or set it: not both at once.')
+        if (i.table && (i.off || i.range))
+          throw new DriveError(
+            'invalid',
+            'A table’s filter is turned on and off with drive.sheet_table_update (auto_filter); give only columns here.',
+          )
         if (!i.off && !i.range && !i.columns?.length)
           throw new DriveError('invalid', 'Nothing to do: give a range, columns, or off: true.')
         const drive = await service()
@@ -199,6 +212,7 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
               col: colIndex(lib, c.column),
               values: c.values,
               blanks: c.blanks ?? false,
+              ...(i.table ? { table: i.table } : {}),
             })
         })
         const saved = editor.changed()
@@ -206,7 +220,11 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
           : { file: { id: file.id, name: file.name }, revision: null }
         const { filter: f } = await arrangeLib()
         const filter = await guarded(lib, () => {
-          const af = f.autoFilterOf(editor.wb, i.sheet)
+          const af = i.table
+            ? (f
+                .sheetFilters(editor.wb, i.sheet)
+                .find((x) => x.table?.toLowerCase() === i.table!.toLowerCase()) ?? null)
+            : f.autoFilterOf(editor.wb, i.sheet)
           if (!af) return null
           const rows = editor.wb.sheet(i.sheet).rows
           let hidden = 0
