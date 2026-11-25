@@ -11147,6 +11147,156 @@
     {
       "approval": {
         "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "description": "Filter columns by values; rows that don’t match are hidden as in Excel",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "blanks": {
+                  "description": "Keep empty cells too",
+                  "type": "boolean"
+                },
+                "column": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^[A-Za-z]{1,3}$",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "A column letter (C) or number from 1"
+                },
+                "values": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "maxLength": 255,
+                        "type": "string"
+                      },
+                      "maxItems": 10000,
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The shown texts to keep (as drive.sheet_read shows them, any case); null clears the column’s filter"
+                }
+              },
+              "required": [
+                "column",
+                "values"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "off": {
+            "const": true,
+            "description": "Turn the sheet’s filter off (every row shows again)",
+            "type": "boolean"
+          },
+          "range": {
+            "description": "Turn the filter on for this range (its first row holds the drop-downs); a single cell takes the block of filled cells around it",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_filter",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "description": "Columns from the left that stay in place (0 = none); rows and columns 0 unfreeze",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "rows": {
+            "description": "Rows from the top that stay in place (1 = the top row, 0 = none)",
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns",
+          "file_id",
+          "rows",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_freeze",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
         "gated": false,
         "risk": null
       },
@@ -11178,6 +11328,92 @@
       },
       "module": "drive",
       "name": "drive.sheet_read",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "accept_losses": {
+            "description": "Sort even when comments, pictures or tables in the range would stay where they are (the refusal names them)",
+            "type": "boolean"
+          },
+          "by": {
+            "description": "Sort keys in order: the first decides, the next breaks ties",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "column": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "pattern": "^[A-Za-z]{1,3}$",
+                      "type": "string"
+                    }
+                  ],
+                  "description": "A column of the range (letter or number from 1)"
+                },
+                "descending": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "column"
+              ],
+              "type": "object"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "file_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "header": {
+            "description": "The range’s first row is a header and stays on top (default false)",
+            "type": "boolean"
+          },
+          "range": {
+            "description": "The cells to sort, like A1:D20 (whole rows of it move)",
+            "maxLength": 30,
+            "minLength": 2,
+            "type": "string"
+          },
+          "sheet": {
+            "description": "The sheet (tab) name",
+            "maxLength": 31,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "by",
+          "file_id",
+          "range",
+          "sheet"
+        ],
+        "type": "object"
+      },
+      "module": "drive",
+      "name": "drive.sheet_sort",
       "output": null,
       "permission": {
         "roles": [

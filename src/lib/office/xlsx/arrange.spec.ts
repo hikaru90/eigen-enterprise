@@ -14,7 +14,14 @@ const xml = (bytes: Uint8Array, name: string) => strFromU8(parts(bytes)[name]!)
 const sheetXml = (bytes: Uint8Array, n = 1) => xml(bytes, `xl/worksheets/sheet${n}.xml`)
 
 /** A small table: header, four data rows (name, amount, formula), a second sheet that reads it. */
-function people(extra: { after?: string; rels?: Array<{ id: string; type: string; target: string }>; parts?: Record<string, { xml: string; type: string }>; rows?: string } = {}) {
+function people(
+  extra: {
+    after?: string
+    rels?: Array<{ id: string; type: string; target: string }>
+    parts?: Record<string, { xml: string; type: string }>
+    rows?: string
+  } = {},
+) {
   return buildXlsx({
     strings: ['Name', 'Amount', 'Double', 'bob', 'Alice', 'carol', 'Dave'],
     sheets: [
@@ -158,9 +165,15 @@ describe('sort_range', () => {
           {
             name: 'S',
             rows:
-              row(1, num('A1', 3) + '<c r="B1"><f t="shared" ref="B1:B3" si="0">A1*10</f><v>30</v></c>') +
+              row(
+                1,
+                num('A1', 3) + '<c r="B1"><f t="shared" ref="B1:B3" si="0">A1*10</f><v>30</v></c>',
+              ) +
               row(2, num('A2', 1) + '<c r="B2"><f t="shared" si="0"/><v>10</v></c>') +
-              row(3, num('A3', 2) + '<c r="B3"><f t="shared" si="0"/><v>20</v></c>' + fml('C3', 'A2', 1)),
+              row(
+                3,
+                num('A3', 2) + '<c r="B3"><f t="shared" si="0"/><v>20</v></c>' + fml('C3', 'A2', 1),
+              ),
           },
         ],
       }),
@@ -196,7 +209,13 @@ describe('sort_range', () => {
       people({ after: '<mergeCells count="1"><mergeCell ref="A3:B3"/></mergeCells>' }),
     )
     expect(() =>
-      merged.apply({ op: 'sort_range', sheet: 'Data', range: 'A1:C5', header: true, keys: [{ col: 1 }] }),
+      merged.apply({
+        op: 'sort_range',
+        sheet: 'Data',
+        range: 'A1:C5',
+        header: true,
+        keys: [{ col: 1 }],
+      }),
     ).toThrow(/merged/)
     expect(merged.changed()).toBe(false)
     const arr = createSheetEditor(
@@ -265,7 +284,12 @@ describe('sort_range', () => {
   it('is undone as a whole', () => {
     const bytes = people()
     const ed = createSheetEditor(bytes)
-    ed.apply({ op: 'sort_range', sheet: 'Data', range: 'A2:C5', keys: [{ col: 0, descending: true }] })
+    ed.apply({
+      op: 'sort_range',
+      sheet: 'Data',
+      range: 'A2:C5',
+      keys: [{ col: 0, descending: true }],
+    })
     expect(cellsOf(ed.toBytes(), 'Data', 0, 1, 4)).toEqual(['Dave', 'carol', 'bob', 'Alice'])
     ed.undo()
     expect(cellsOf(ed.toBytes(), 'Data', 0, 1, 4)).toEqual(['bob', 'Alice', 'carol', 'Dave'])

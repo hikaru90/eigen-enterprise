@@ -1,7 +1,6 @@
 import type { SheetEditor } from './editor'
 import { createCalc, type Calc } from './calc'
 import { displayValue, formatCode, type SheetLocale } from './format'
-import { quoteSheet } from './shift'
 import {
   cellKey,
   colName,
@@ -11,8 +10,9 @@ import {
   type CellAddr,
   type Range,
 } from './ref'
-import { dropEmptyRow, ensureRow, findRow } from './sheet-xml'
 import { WORKSHEET_ORDER } from './sheet-order'
+import { dropEmptyRow, ensureRow, findRow } from './sheet-xml'
+import { quoteSheet } from './shift'
 import { XlsxError, type SheetData, type SheetInfo, type Workbook } from './workbook'
 import { insertInOrder, kid, kids, make, REL, setText, WORKBOOK_ORDER } from './xml'
 
@@ -95,7 +95,7 @@ export function currentRegion(d: SheetData, at: CellAddr): Range {
         if (filled(d, y, x)) return true
     return false
   }
-  for (let grown = true; grown; ) {
+  for (let grown = true; grown;) {
     grown = false
     if (r.top > 0 && anyIn(r.top - 1, r.left - 1, r.top - 1, r.right + 1)) {
       r.top--
@@ -125,7 +125,9 @@ export function tableRanges(wb: Workbook, info: SheetInfo): Array<{ name: string
     .flatMap((r) => {
       const t = wb.pkg.xml(r.part!).documentElement!
       const range = parseRange(t.getAttribute('ref') ?? '')
-      return range ? [{ name: t.getAttribute('displayName') ?? t.getAttribute('name') ?? '', range }] : []
+      return range
+        ? [{ name: t.getAttribute('displayName') ?? t.getAttribute('name') ?? '', range }]
+        : []
     })
 }
 
@@ -305,7 +307,11 @@ export function setAutoFilter(wb: Workbook, info: SheetInfo, doc: XMLDocument, o
   const d = wb.sheet(info.name)
   if (range.top === range.bottom && range.left === range.right) {
     range = currentRegion(d, { row: range.top, col: range.left })
-    if (range.top === range.bottom && range.left === range.right && !filled(d, range.top, range.left))
+    if (
+      range.top === range.bottom &&
+      range.left === range.right &&
+      !filled(d, range.top, range.left)
+    )
       throw new XlsxError(
         `${rangeName(range)} is empty: select the cells to filter (the first row is the header).`,
       )

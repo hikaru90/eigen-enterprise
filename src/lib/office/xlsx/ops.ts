@@ -2,6 +2,8 @@ import { parse } from '@borgar/fx'
 import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
+import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
+import { freezePanes, type FreezeOp } from './panes'
 import {
   cellKey,
   cellName,
@@ -33,10 +35,8 @@ import {
   rewriteRefs,
   type RefEdit,
 } from './shift'
-import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
-import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
-import { freezePanes, type FreezeOp } from './panes'
 import { sortLosses, sortRange, type SortOp } from './sort'
+import { MINIMAL_STYLES, xfWithNumFmt } from './styles'
 import {
   relativeTarget,
   XlsxError,

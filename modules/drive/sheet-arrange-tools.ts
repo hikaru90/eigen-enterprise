@@ -1,6 +1,6 @@
+import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import type { SheetOp } from '$lib/office/xlsx/ops'
-import { z } from 'zod'
 import { DRIVE_MODULE_ID } from './manifest'
 import { DriveError } from './service'
 import {
@@ -210,7 +210,8 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
           if (!af) return null
           const rows = editor.wb.sheet(i.sheet).rows
           let hidden = 0
-          for (let r = af.range.top + 1; r <= af.range.bottom; r++) if (rows.get(r)?.hidden) hidden++
+          for (let r = af.range.top + 1; r <= af.range.bottom; r++)
+            if (rows.get(r)?.hidden) hidden++
           return {
             ...f.describeAutoFilter(af),
             rows_shown: af.range.bottom - af.range.top - hidden,

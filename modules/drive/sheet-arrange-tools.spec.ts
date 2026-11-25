@@ -53,7 +53,12 @@ async function setup() {
     principal: delegatedPrincipal({ id, roles: ['member'] }, 'orchestrator'),
     requestId: 'r',
   })
-  const f = await drive.upload(alice, null, { name: 'people.xlsx', bytes: table(), mime: XLSX }, 'fail')
+  const f = await drive.upload(
+    alice,
+    null,
+    { name: 'people.xlsx', bytes: table(), mime: XLSX },
+    'fail',
+  )
   const reread = async () => openWorkbook((await drive.readFile(alice, f.id)).bytes)
   return { drive, tool, as, f, reread }
 }
@@ -62,7 +67,11 @@ describe('drive.sheet_sort / sheet_filter / sheet_freeze (the grid’s sort, fil
   it('are mutating Drive tools with readable activity lines', async () => {
     const { tool } = await setup()
     for (const n of ['drive.sheet_sort', 'drive.sheet_filter', 'drive.sheet_freeze'])
-      expect(tool(n)).toMatchObject({ module: 'drive', auditClass: 'mutate', approvalRisk: 'internal' })
+      expect(tool(n)).toMatchObject({
+        module: 'drive',
+        auditClass: 'mutate',
+        approvalRisk: 'internal',
+      })
     const out = { file: { name: 'people.xlsx' } }
     expect(
       tool('drive.sheet_sort').activity!(
@@ -77,7 +86,10 @@ describe('drive.sheet_sort / sheet_filter / sheet_freeze (the grid’s sort, fil
       ),
     ).toBe('Filtered 1 column in Data of people.xlsx in Drive')
     expect(
-      tool('drive.sheet_freeze').activity!({ file_id: 'f', sheet: 'Data', rows: 1, columns: 1 }, out),
+      tool('drive.sheet_freeze').activity!(
+        { file_id: 'f', sheet: 'Data', rows: 1, columns: 1 },
+        out,
+      ),
     ).toBe('Froze 1 row and 1 column of Data in people.xlsx in Drive')
   })
 
@@ -92,7 +104,11 @@ describe('drive.sheet_sort / sheet_filter / sheet_freeze (the grid’s sort, fil
     })
     expect(await drive.listRevisions(alice, f.id)).toHaveLength(2)
     const s = (await reread()).sheet('Data')
-    expect([1, 2, 3].map((r) => s.cells.get(cellKey(r, 0))?.value)).toEqual(['bob', 'carol', 'Alice'])
+    expect([1, 2, 3].map((r) => s.cells.get(cellKey(r, 0))?.value)).toEqual([
+      'bob',
+      'carol',
+      'Alice',
+    ])
     expect(s.cells.get(cellKey(3, 2))).toMatchObject({ formula: 'B4*2', value: 20 })
     expect(s.cells.get(cellKey(0, 0))?.value).toBe('Name')
   })
@@ -116,7 +132,11 @@ describe('drive.sheet_sort / sheet_filter / sheet_freeze (the grid’s sort, fil
       sheets: Array<Record<string, unknown>>
     }
     expect(read.sheets[0]).toMatchObject({ filter: { range: 'A1:C4' } })
-    await tool('drive.sheet_filter').handler(as('alice'), { file_id: f.id, sheet: 'Data', off: true })
+    await tool('drive.sheet_filter').handler(as('alice'), {
+      file_id: f.id,
+      sheet: 'Data',
+      off: true,
+    })
     expect((await reread()).sheet('Data').rows.get(1)?.hidden ?? false).toBe(false)
     await expect(
       tool('drive.sheet_filter').handler(as('alice'), { file_id: f.id, sheet: 'Data' }),
