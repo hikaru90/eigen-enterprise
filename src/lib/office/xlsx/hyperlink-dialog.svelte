@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import type { HyperlinkOp, HyperlinkView } from './hyperlinks'
   import { untrack } from 'svelte'
   import { Button } from '$lib/components/ui/button'
@@ -62,6 +63,8 @@
 
   const field =
     'h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground'
+  let linkTextEl = $state<HTMLInputElement | null>(null)
+  let linkTipEl = $state<HTMLInputElement | null>(null)
 </script>
 
 <Dialog.Root
@@ -95,11 +98,15 @@
       </label>
       <label class="flex flex-col gap-1 text-xs">
         <span class="text-muted-foreground">{m.drive_sheet_link_text()}</span>
-        <input class={field} bind:value={text} data-testid="xlsx-link-text" />
+        <DictationField field={linkTextEl} kind="input" testid="xlsx-link-text-voice">
+          <input bind:this={linkTextEl} class={field} bind:value={text} data-testid="xlsx-link-text" />
+        </DictationField>
       </label>
       <label class="flex flex-col gap-1 text-xs">
         <span class="text-muted-foreground">{m.drive_sheet_link_tooltip()}</span>
-        <input class={field} bind:value={tooltip} data-testid="xlsx-link-tooltip" />
+        <DictationField field={linkTipEl} kind="input" testid="xlsx-link-tooltip-voice">
+          <input bind:this={linkTipEl} class={field} bind:value={tooltip} data-testid="xlsx-link-tooltip" />
+        </DictationField>
       </label>
       <Dialog.Footer>
         {#if current}

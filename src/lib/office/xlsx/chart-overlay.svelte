@@ -173,7 +173,7 @@
   {@const b = drag && drag.id === c.id ? drag.box : boxOf(c)}
   {@const active = selected === c.id}
   <div
-    class="c-frame pointer-events-auto absolute rounded-sm border bg-background shadow-sm outline-none {active
+    class="c-frame pointer-events-auto absolute rounded-sm border bg-background shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring {active
       ? 'c-frame-active z-10 border-primary ring-2 ring-primary/30'
       : 'border-border hover:border-muted-foreground/60'}"
     style="left: {b.x}px; top: {b.y}px; width: {b.width}px; height: {b.height}px; cursor: {editable &&

@@ -139,14 +139,14 @@
     </svg>
     {#if scene.cached}
       <span
-        class="cv-cached pointer-events-auto absolute top-1.5 left-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+        class="cv-cached pointer-events-auto absolute top-1.5 left-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300"
         title={m.drive_sheet_chart_cached()}
         data-testid="xlsx-chart-cached">cached</span
       >
     {/if}
     {#if scene.unsupported.length > 0}
       <div
-        class="cv-unsupported pointer-events-none absolute right-2 bottom-1.5 left-2 rounded bg-background/85 px-2 py-1 text-center text-[11px] text-muted-foreground"
+        class="cv-unsupported pointer-events-none absolute right-2 bottom-1.5 left-2 rounded bg-background/85 px-2 py-1 text-center text-xs text-muted-foreground"
         data-testid="xlsx-chart-unsupported"
       >
         {m.drive_sheet_chart_unsupported({ kinds: scene.unsupported.join(', ') })}
@@ -177,7 +177,7 @@
     pointer-events: auto;
     border-radius: 4px;
     padding: 2px 6px;
-    font-size: 10px;
+    font-size: 13px;
     font-weight: 500;
   }
 
@@ -190,6 +190,6 @@
     border-radius: 4px;
     padding: 4px 8px;
     text-align: center;
-    font-size: 11px;
+    font-size: 13px;
   }
 </style>

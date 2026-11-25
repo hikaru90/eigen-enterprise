@@ -6,6 +6,9 @@ import {
 import { BrowserUnavailableError } from '../../../../modules/brand/extract/capture-errors'
 import { renderWorkbookHtml, type RenderHtmlOptions } from './print'
 
+/** The browser capability's own error, re-exported so module code and specs need no cross-module import. */
+export { BrowserUnavailableError }
+
 /**
  * Workbook → PDF export via the server's headless Chromium capability
  * (EE_CAP_CHROMIUM, same path as `brand.material_export`). Fails loud with

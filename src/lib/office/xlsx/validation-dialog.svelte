@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import type { ValidationOp, ValidationRule, ValidationView } from './validation'
   import { untrack } from 'svelte'
   import { Button } from '$lib/components/ui/button'
@@ -135,6 +136,10 @@
 
   const field =
     'h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground'
+  let inTitleEl = $state<HTMLInputElement | null>(null)
+  let inMsgEl = $state<HTMLInputElement | null>(null)
+  let errTitleEl = $state<HTMLInputElement | null>(null)
+  let errMsgEl = $state<HTMLInputElement | null>(null)
 </script>
 
 <Dialog.Root
@@ -230,20 +235,24 @@
           {m.drive_sheet_dv_show_input()}
         </label>
         <div class="grid grid-cols-2 gap-2">
-          <input
+          <DictationField field={inTitleEl} kind="input" testid="xlsx-dv-input-title-voice">
+            <input bind:this={inTitleEl}
             class={field}
             bind:value={inputTitle}
             placeholder={m.drive_sheet_dv_input_title()}
             disabled={!showInput}
             data-testid="xlsx-dv-input-title"
           />
-          <input
+          </DictationField>
+          <DictationField field={inMsgEl} kind="input" testid="xlsx-dv-input-msg-voice">
+            <input bind:this={inMsgEl}
             class={field}
             bind:value={inputMessage}
             placeholder={m.drive_sheet_dv_input_msg()}
             disabled={!showInput}
             data-testid="xlsx-dv-input-msg"
           />
+          </DictationField>
         </div>
       </div>
 
@@ -261,20 +270,24 @@
           {#each ERROR_STYLES as s (s)}<option value={s}>{styleLabel(s)}</option>{/each}
         </select>
         <div class="grid grid-cols-2 gap-2">
-          <input
+          <DictationField field={errTitleEl} kind="input" testid="xlsx-dv-error-title-voice">
+            <input bind:this={errTitleEl}
             class={field}
             bind:value={errorTitle}
             placeholder={m.drive_sheet_dv_error_title()}
             disabled={!showError}
             data-testid="xlsx-dv-error-title"
           />
-          <input
+          </DictationField>
+          <DictationField field={errMsgEl} kind="input" testid="xlsx-dv-error-msg-voice">
+            <input bind:this={errMsgEl}
             class={field}
             bind:value={errorMessage}
             placeholder={m.drive_sheet_dv_error_msg()}
             disabled={!showError}
             data-testid="xlsx-dv-error-msg"
           />
+          </DictationField>
         </div>
       </div>
 

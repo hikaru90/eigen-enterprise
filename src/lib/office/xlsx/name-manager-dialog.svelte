@@ -131,7 +131,7 @@
               >
                 <td class="px-2 py-1.5 font-mono">
                   {n.name}
-                  {#if n.builtIn}<span class="ml-1 rounded bg-muted px-1 text-[10px]"
+                  {#if n.builtIn}<span class="ml-1 rounded bg-muted px-1 text-xs"
                       >{m.drive_sheet_names_builtin()}</span
                     >{/if}
                 </td>

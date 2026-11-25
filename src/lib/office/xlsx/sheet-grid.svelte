@@ -1267,7 +1267,7 @@
           {#each Array.from({ length: outline.maxColLevel + 1 }, (_, i) => i + 1) as lvl (lvl)}
             <button
               type="button"
-              class="inline-flex size-4 items-center justify-center rounded border border-border bg-background text-[10px] hover:bg-accent"
+              class="inline-flex size-4 items-center justify-center rounded border border-border bg-background text-xs hover:bg-accent"
               title={m.drive_sheet_outline_level({ level: lvl })}
               onclick={(e) => {
                 e.stopPropagation()
@@ -1282,7 +1282,7 @@
             {@const xIdx = Math.max(0, Math.min(cols - 1, g.summaryAt))}
             <button
               type="button"
-              class="g-abs top-0.5 inline-flex size-4 items-center justify-center rounded border border-border bg-background text-[11px] leading-none hover:bg-accent"
+              class="g-abs top-0.5 inline-flex size-4 items-center justify-center rounded border border-border bg-background text-xs leading-none hover:bg-accent"
               style="left: {colLefts[xIdx]! + 2}px;"
               title={m.drive_sheet_outline_toggle()}
               onclick={(e) => {
@@ -1317,7 +1317,7 @@
             {#each Array.from({ length: Math.min(2, outline.maxRowLevel + 1) }, (_, i) => i + 1) as lvl (lvl)}
               <button
                 type="button"
-                class="inline-flex size-3.5 items-center justify-center rounded border border-border bg-background text-[9px] hover:bg-accent"
+                class="inline-flex size-3.5 items-center justify-center rounded border border-border bg-background text-xs hover:bg-accent"
                 title={m.drive_sheet_outline_level({ level: lvl })}
                 onclick={(e) => {
                   e.stopPropagation()
@@ -1398,7 +1398,7 @@
             {@const rIdx = Math.max(fr, Math.min(rows - 1, g.summaryAt))}
             <button
               type="button"
-              class="g-abs left-0.5 inline-flex size-4 items-center justify-center rounded border border-border bg-background text-[11px] leading-none hover:bg-accent"
+              class="g-abs left-0.5 inline-flex size-4 items-center justify-center rounded border border-border bg-background text-xs leading-none hover:bg-accent"
               style="top: {rowTops[rIdx]! - FH + 2}px;"
               title={m.drive_sheet_outline_toggle()}
               onclick={(e) => {
