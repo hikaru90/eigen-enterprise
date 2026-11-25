@@ -234,7 +234,7 @@
                   <Button
                     type="button"
                     variant="ghost"
-                    class="h-auto rounded-full p-1.5 text-destructive hover:text-destructive/80"
+                    class="h-auto rounded-full p-1.5 text-destructive hover:bg-destructive/10"
                     aria-label={deletingId === snippet.id ? m.memory_knows_deleting() : m.memory_knows_delete()}
                     disabled={deletingId === snippet.id}
                     data-testid="brain-knows-delete"

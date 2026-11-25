@@ -150,7 +150,7 @@
         <h3 class="flex items-center gap-2 px-1 pb-1 text-[13px] font-medium">
           <span class="size-2 rounded-full {column.dot}" aria-hidden="true"></span>
           {column.title}
-          <span class="ml-auto text-xs font-normal text-foreground/50 tabular-nums"
+          <span class="ml-auto text-xs font-normal text-muted-foreground tabular-nums"
             >{items.length}</span
           >
         </h3>
@@ -194,7 +194,7 @@
                 <p class="text-xs text-foreground/60">{item.detail}</p>
               {/if}
               {#if item.status === 'shipped'}
-                <p class="text-xs text-foreground/50">Shipped {shippedOn(item.shippedAt)}</p>
+                <p class="text-xs text-muted-foreground">Shipped {shippedOn(item.shippedAt)}</p>
               {/if}
               {#if data.canEdit}
                 <div class="flex flex-wrap gap-1 pt-1">
@@ -212,7 +212,7 @@
             {/if}
           </article>
         {:else}
-          <p class="px-1 py-2 text-xs text-foreground/50">{column.empty}</p>
+          <p class="px-1 py-2 text-xs text-muted-foreground">{column.empty}</p>
         {/each}
       </section>
     {/each}

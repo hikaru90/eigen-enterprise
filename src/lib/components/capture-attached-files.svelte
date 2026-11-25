@@ -83,7 +83,7 @@
             <div class="flex shrink-0 flex-col items-end gap-1">
               <a
                 href="{resolve('/m/memory/notes')}?note={encodeURIComponent(file.id)}"
-                class="text-[10px] text-muted-foreground hover:text-foreground"
+                class="text-xs text-muted-foreground hover:text-foreground"
               >
                 {m.notes_open_in_library()}
               </a>

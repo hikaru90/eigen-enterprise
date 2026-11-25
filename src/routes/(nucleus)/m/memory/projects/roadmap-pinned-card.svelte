@@ -22,7 +22,7 @@
     <div class="flex min-w-0 items-center gap-2">
       <PinIcon class="size-4 shrink-0 text-primary" aria-hidden="true" />
       <span class="text-sm font-medium text-foreground">Roadmap</span>
-      <span class="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground"
+      <span class="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
         >Pinned · System project</span
       >
     </div>
