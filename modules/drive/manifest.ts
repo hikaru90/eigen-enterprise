@@ -23,7 +23,7 @@ export const DRIVE_PDF_ANNOTATE_TOOL_NAMES = [
   'drive.pdf_set_properties',
 ] as const
 
-/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, the Drive's spreadsheet editor): one read, six writes. */
+/** Excel workbooks (./sheet-tools.ts, ./sheet-format-tools.ts, ./sheet-arrange-tools.ts, ./sheet-editing-tools.ts): reads + writes. */
 export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_read',
   'drive.sheet_write',
@@ -32,6 +32,13 @@ export const DRIVE_SHEET_TOOL_NAMES = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_copy_range',
+  'drive.sheet_fill',
+  'drive.sheet_find_replace',
+  'drive.sheet_merge',
+  'drive.sheet_rows_cols',
+  'drive.sheet_tab',
+  'drive.sheet_export_pdf',
 ] as const
 
 /** The spreadsheet writes: each waits on the approval mode (wired in modules/index.ts). */
@@ -42,6 +49,12 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_sort',
   'drive.sheet_filter',
   'drive.sheet_freeze',
+  'drive.sheet_copy_range',
+  'drive.sheet_fill',
+  'drive.sheet_find_replace',
+  'drive.sheet_merge',
+  'drive.sheet_rows_cols',
+  'drive.sheet_tab',
 ] as const
 
 /** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */

@@ -3,11 +3,12 @@ import { parse } from '@borgar/fx'
 import { tokenize } from '@borgar/fx/xlsx'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
-import { runFormatOp, type FormatOp } from './format-cells'
 import { needsDynamicArray } from './calc-static'
+import { editLosses, runEditOp, type EditOp } from './edit-ops'
+import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
+import { runFormatOp, type FormatOp } from './format-cells'
 import { toFileText, toShownText } from './formula-text'
 import { ensureDynamicArrayCm } from './metadata'
-import { filterColumn, setAutoFilter, type AutoFilterOp, type FilterColumnOp } from './filter'
 import { freezePanes, type FreezeOp } from './panes'
 import {
   cellKey,
@@ -117,6 +118,10 @@ export type SheetOp =
   | AutoFilterOp
   | FilterColumnOp
   | FreezeOp
+  /** Everyday editing: paste, fill, replace, merge, rich text, clear, rows/columns, sheet tabs, view, page setup (./edit-ops.ts). */
+  | EditOp
+  /** Several operations as one change (one undo step): e.g. a format on each range of a multi-range selection. */
+  | { op: 'batch'; ops: SheetOp[] }
 
 /** A feature that would end up wrong after an operation (what, and how many). */
 export type Loss = { feature: LossFeature; count: number; detail?: string }
@@ -132,6 +137,8 @@ export type LossFeature =
   | 'pivot_sources'
   | 'formulas_ref_error'
   | 'names_ref_error'
+  | 'merged_values'
+  | 'not_copied'
 
 export class XlsxLossError extends XlsxError {
   constructor(readonly losses: Loss[]) {
@@ -154,6 +161,8 @@ const LOSS_TEXT: Record<LossFeature, string> = {
   pivot_sources: 'pivot tables that read these cells (they keep their old source range)',
   formulas_ref_error: 'formulas in other sheets that use it (they will show #REF!)',
   names_ref_error: 'defined names that use it (they will show #REF!)',
+  merged_values: 'values in the merged cells other than the upper-left one (they are cleared)',
+  not_copied: 'parts of the sheet that are not copied (the copy has no such part)',
 }
 
 export const describeLoss = (l: Loss) =>
@@ -462,6 +471,11 @@ export function lossesOf(wb: Workbook, op: SheetOp): Loss[] {
     }
     case 'sort_range':
       return sortLosses(wb, op)
+    case 'batch':
+      return op.ops.flatMap((o) => lossesOf(wb, o))
+    case 'merge_cells':
+    case 'duplicate_sheet':
+      return editLosses(wb, op)
     default:
       return []
   }
@@ -537,6 +551,18 @@ function run(wb: Workbook, op: SheetOp): OpResult {
     case 'filter_column':
     case 'freeze_panes':
       return arrange(wb, op)
+    case 'batch': {
+      const sheets = new Set<string>()
+      let focus: string | undefined
+      for (const o of op.ops) {
+        const r = run(wb, o)
+        for (const s of r.sheets) sheets.add(s)
+        focus = r.focus ?? focus
+      }
+      return focus ? { sheets: [...sheets], focus } : { sheets: [...sheets] }
+    }
+    default:
+      return runEditOp(wb, op)
   }
 }
 
@@ -657,7 +683,7 @@ function setCells(wb: Workbook, sheet: string, writes: CellWrite[]): OpResult {
  * content in a spilled cell blocks the spill (the formula keeps only its own
  * cell, Excel shows #SPILL!) and the rest of the old spill is cleared.
  */
-function clearSpillsUnder(
+export function clearSpillsUnder(
   wb: Workbook,
   doc: XMLDocument,
   data: ReturnType<Workbook['sheet']>,
@@ -829,7 +855,10 @@ function renameSheet(wb: Workbook, sheet: string, nameIn: string): OpResult {
  * Rewrites every formula of the workbook — cells, defined names, conditional
  * formats and data validations — editing only the parts where one changes.
  */
-function rewriteAllFormulas(wb: Workbook, rewrite: (formula: string, home: string) => string) {
+export function rewriteAllFormulas(
+  wb: Workbook,
+  rewrite: (formula: string, home: string) => string,
+) {
   for (const s of wb.sheets()) {
     if (s.kind !== 'worksheet') continue
     const doc = wb.pkg.xml(s.part)

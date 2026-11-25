@@ -560,6 +560,11 @@ export class Workbook {
     this.infoCache = null
     this.namesCache = null
   }
+
+  /** Shared strings changed outside `sharedStringIndex`: clear cached string table. */
+  forgetSharedStrings() {
+    this.sstCache = null
+  }
 }
 
 export function openWorkbook(bytes: Uint8Array): Workbook {

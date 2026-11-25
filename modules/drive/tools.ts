@@ -16,7 +16,9 @@ import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
 import { createDriveSheetFormatTools } from './sheet-format-tools'
 import { DOCUMENT_KINDS } from './service'
 import { createDriveSheetCopyTools } from './sheet-copy-tools'
+import type { ExportPdfDeps } from '$lib/office/xlsx/print-pdf'
 import { createDriveSheetArrangeTools } from './sheet-arrange-tools'
+import { createDriveSheetEditingTools } from './sheet-editing-tools'
 import { createDriveSheetTools } from './sheet-tools'
 
 /**
@@ -45,6 +47,8 @@ export type DriveToolDeps = {
   roleOf?: (userId: string) => Promise<MemberRole | null>
   /** Where EE_STATE_DIR comes from (the snapshot hand-off dir). */
   env?: Record<string, string | undefined>
+  /** Chromium launcher / probe behind drive.sheet_export_pdf (tests inject a fake). */
+  pdfDeps?: ExportPdfDeps
 }
 
 /** Batch size for one archive/unarchive call (one approval). */
@@ -320,5 +324,9 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     ...createDriveSheetFormatTools({ service }),
     ...createDriveSheetCopyTools({ service }),
     ...createDriveSheetArrangeTools({ service }),
+    ...createDriveSheetEditingTools({
+      service,
+      ...(opts.pdfDeps ? { pdfDeps: opts.pdfDeps } : {}),
+    }),
   ]
 }
