@@ -3,6 +3,7 @@ import { KernelError } from '$lib/kernel/errors'
 import { isDirectHuman } from '$lib/kernel/principals'
 import type { ToolDescriptor, ToolContext } from '$lib/kernel/types'
 import { createBrandExtractTools, type BrandExtractToolDeps } from './extract/tools'
+import { createBrandMaterialTools, type BrandMaterialToolDeps } from './material/tools'
 import { createBrandSelectionTools, type BrandSelectionToolDeps } from './selection/tools'
 import { createBrandSocialTools, type BrandSocialToolDeps } from './social/tools'
 import {
@@ -34,6 +35,8 @@ export type BrandToolDeps = {
   selection?: BrandSelectionToolDeps
   /** Deps for the Social post library tools (posts/voice/chat seams). */
   social?: BrandSocialToolDeps
+  /** Deps for the Material export / text tools (voice/chat/logo/render seams). */
+  material?: BrandMaterialToolDeps
 }
 
 /** G8: strategic brand decisions are human-owned; agents never self-author boundaries (G19). */
@@ -106,6 +109,7 @@ export function createBrandTools(deps: BrandToolDeps = {}): ToolDescriptor[] {
     ...createBrandExtractTools(deps.extract ?? {}),
     ...createBrandSelectionTools({ store, ...(deps.selection ?? {}) }),
     ...createBrandSocialTools({ brand: store, ...(deps.social ?? {}) }),
+    ...createBrandMaterialTools({ brand: store, ...(deps.material ?? {}) }),
     {
       name: 'brand.set_create',
       module: 'brand',

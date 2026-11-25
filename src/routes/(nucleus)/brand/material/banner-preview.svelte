@@ -11,6 +11,7 @@
    */
   let {
     setName,
+    logoUrl = null,
     cssVars,
     darkCssVars,
     mode,
@@ -20,6 +21,8 @@
     cta,
   }: {
     setName: string
+    /** The company logo, placed in place of the style mark. */
+    logoUrl?: string | null
     cssVars: Record<string, string>
     darkCssVars: Record<string, string> | null
     mode: 'light' | 'dark'
@@ -42,7 +45,7 @@
     class="items-center justify-between gap-6 p-6"
   >
     <div class="flex min-w-0 flex-col gap-2">
-      <MaterialMark {setName} />
+      <MaterialMark {setName} {logoUrl} />
       <h3 class="font-display text-2xl leading-tight break-words">{headline}</h3>
       <p class="text-sm break-words text-foreground/75">{body}</p>
     </div>
@@ -60,7 +63,7 @@
     testid="banner"
     class="max-w-56 flex-col justify-between p-6"
   >
-    <header><MaterialMark {setName} /></header>
+    <header><MaterialMark {setName} {logoUrl} /></header>
     <div class="flex flex-col gap-4">
       <h3 class="font-display text-3xl leading-tight break-words">{headline}</h3>
       <p class="text-sm break-words text-foreground/75">{body}</p>

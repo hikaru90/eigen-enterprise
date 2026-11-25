@@ -10,6 +10,7 @@
    */
   let {
     setName,
+    logoUrl = null,
     cssVars,
     darkCssVars,
     mode,
@@ -18,6 +19,8 @@
     cta,
   }: {
     setName: string
+    /** The company logo, placed in place of the style mark. */
+    logoUrl?: string | null
     cssVars: Record<string, string>
     darkCssVars: Record<string, string> | null
     mode: 'light' | 'dark'
@@ -37,7 +40,7 @@
   testid="flyer"
   class="max-w-md flex-col justify-between p-8"
 >
-  <header><MaterialMark {setName} /></header>
+  <header><MaterialMark {setName} {logoUrl} /></header>
   <div class="flex flex-col gap-4">
     <h3 class="font-display text-4xl leading-tight break-words">{headline}</h3>
     <p class="text-base break-words text-foreground/75">{body}</p>

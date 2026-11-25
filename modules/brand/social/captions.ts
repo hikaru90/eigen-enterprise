@@ -1,10 +1,10 @@
-import type { BrandStore } from '../store'
 import type { SocialPostStore } from './store'
 import { z } from 'zod'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
+import { resolveBrandVoice, type BrandVoice as Voice, type VoiceSource } from '../voice'
 import { NETWORK_CAPTION_LIMITS, SOCIAL_NETWORK_LABELS, SocialPostError, socialFormat, type SocialNetwork, type SocialPost } from './types'
 
 /**
@@ -35,7 +35,7 @@ export type CaptionChat = (input: {
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
-export type VoiceSource = Pick<BrandStore, 'listSets' | 'listVoiceExamples' | 'listLexicon' | 'listGlossary'>
+export type { VoiceSource }
 
 export type CaptionSuggestions = {
   postId: string
@@ -44,40 +44,6 @@ export type CaptionSuggestions = {
   /** Whether an active brand voice shaped the captions. */
   voice: boolean
   captions: Partial<Record<SocialNetwork, string[]>>
-}
-
-type Voice = {
-  locale: string
-  context: Record<string, unknown>
-  examples: Array<{ label: 'good' | 'bad'; body: string; contentType: string; rationale: string | null }>
-  lexicon: Array<{ term: string; kind: string; replacement: string | null }>
-  glossary: Array<{ term: string; definition: string; usageNote: string | null }>
-}
-
-/** The active voice to write in: the asked locale, else the only active one. Several without a locale fail loud. */
-async function resolveVoice(brand: VoiceSource, locale: string | undefined): Promise<Voice | null> {
-  const active = await brand.listSets({ status: 'active', ...(locale === undefined ? {} : { locale }) })
-  if (locale !== undefined && active.length === 0) {
-    throw new SocialPostError('invalid', `No brand voice is active for ${locale}.`)
-  }
-  if (active.length === 0) return null
-  if (active.length > 1) {
-    const locales = active.map((s) => s.locale).sort()
-    throw new SocialPostError('invalid', `Several brand voices are active (${locales.join(', ')}): say which language the captions are for.`)
-  }
-  const set = active[0]
-  const [examples, lexicon, glossary] = await Promise.all([
-    brand.listVoiceExamples(set.id),
-    brand.listLexicon(set.id),
-    brand.listGlossary(set.id),
-  ])
-  return {
-    locale: set.locale,
-    context: set.context as Record<string, unknown>,
-    examples: examples.map((e) => ({ label: e.label, body: e.body, contentType: e.contentType, rationale: e.rationale })),
-    lexicon: lexicon.map((l) => ({ term: l.term, kind: l.kind, replacement: l.replacement })),
-    glossary: glossary.map((g) => ({ term: g.term, definition: g.definition, usageNote: g.usageNote })),
-  }
 }
 
 function describePost(post: SocialPost) {
@@ -173,7 +139,7 @@ export async function suggestCaptions(
   const stray = networks.filter((n) => !post.networks.includes(n))
   if (stray.length) throw new SocialPostError('invalid', `The post does not target: ${stray.join(', ')}.`)
 
-  const voice = await resolveVoice(deps.brand, input.locale)
+  const voice = await resolveBrandVoice(deps.brand, input.locale, (message) => new SocialPostError('invalid', message), 'captions')
   const messages = buildCaptionMessages(post, networks, voice, input.brief?.trim() || undefined)
   let lastError = ''
   for (let attempt = 1; attempt <= CAPTION_MAX_ATTEMPTS; attempt++) {

@@ -33,6 +33,6 @@
       <Button href="/brand">Choose a style</Button>
     </div>
   {:else}
-    <MaterialWorkbench style={data.style} />
+    <MaterialWorkbench style={data.style} logoUrl={data.shell?.companyLogo ?? null} />
   {/if}
 </div>

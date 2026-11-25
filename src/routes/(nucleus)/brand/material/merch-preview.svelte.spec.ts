@@ -47,4 +47,21 @@ describe('brand material: merch preview', () => {
       expect(getComputedStyle(merch).getPropertyValue('--primary').trim()).toBe('rgb(0, 255, 0)')
     }
   })
+
+  it('with the company logo: the logo is the emblem, no style name', () => {
+    const { container, unmount } = render(MerchPreview, {
+      setName: 'Blueprint',
+      logoUrl: '/api/company/logo/abc',
+      cssVars: { '--primary': 'rgb(255, 0, 0)' },
+      darkCssVars: null,
+      mode: 'light',
+      format: formatById('merch-shirt'),
+      headline: 'Built with care',
+    })
+    mounted.push(unmount)
+    const merch = container.querySelector('[data-testid="merch"]') as HTMLElement
+    expect(merch.querySelectorAll('[data-testid="material-logo"]')).toHaveLength(1)
+    expect(merch.textContent).toContain('Built with care')
+    expect(merch.textContent).not.toContain('Blueprint')
+  })
 })

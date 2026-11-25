@@ -293,6 +293,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/brand/extract/propose POST': tool('brand.extract_propose'),
   '/api/brand/extract/session/[id] POST': tool('brand.extract_session_get'),
   '/api/brand/extract/start POST': tool('brand.extract_start'),
+  '/api/brand/material/export POST': tool('brand.material_export'),
+  '/api/brand/material/texts POST': tool('brand.material_text_suggest'),
   '/api/brand/picker/choose POST': tool('brand.picker_choose'),
   '/api/brand/selection/matches POST': tool('brand.selection_matches'),
   '/api/brand/social/posts POST': tool('brand.social_post_upload'),

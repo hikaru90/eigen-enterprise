@@ -48,4 +48,24 @@ describe('brand material: trade-show poster preview', () => {
     expect(poster.classList.contains('dark')).toBe(true)
     expect(getComputedStyle(poster).getPropertyValue('--primary').trim()).toBe('rgb(0, 255, 0)')
   })
+
+  it('with the company logo: the logo replaces the style mark (the style name is gone)', () => {
+    const { container, unmount } = render(PosterPreview, {
+      setName: 'Blueprint',
+      logoUrl: '/api/company/logo/abc',
+      cssVars: { '--primary': 'rgb(255, 0, 0)' },
+      darkCssVars: null,
+      mode: 'light',
+      format: formatById('poster-a1'),
+      headline: 'H',
+      body: 'B',
+      cta: 'C',
+    })
+    mounted.push(unmount)
+    const poster = container.querySelector('[data-testid="poster"]') as HTMLElement
+    const logos = poster.querySelectorAll('[data-testid="material-logo"]')
+    expect(logos).toHaveLength(1)
+    expect(logos[0].getAttribute('src')).toBe('/api/company/logo/abc')
+    expect(poster.textContent).not.toContain('Blueprint')
+  })
 })

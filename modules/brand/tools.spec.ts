@@ -75,6 +75,8 @@ describe('createBrandTools', () => {
       'brand.social_post_list',
       'brand.social_post_get',
       'brand.social_caption_suggest',
+      'brand.material_export',
+      'brand.material_text_suggest',
     ]
     const externals = ['brand.extract_start', 'brand.extract_propose']
     for (const descriptor of tools) {
@@ -88,8 +90,8 @@ describe('createBrandTools', () => {
     for (const descriptor of tools) {
       if (descriptor.name === 'brand.picker_choose') {
         expect(descriptor.permission.roles).toEqual(['owner'])
-      } else if (descriptor.name.startsWith('brand.social_')) {
-        // Social posts are working content, not guidelines: every member (and the brain as them) drafts them.
+      } else if (descriptor.name.startsWith('brand.social_') || descriptor.name.startsWith('brand.material_')) {
+        // Social posts and material are working content, not guidelines: every member (and the brain as them) makes them.
         expect(descriptor.permission.roles).toEqual(['admin', 'member', 'agent'])
       } else if (descriptor.auditClass === 'read') {
         expect(descriptor.permission.roles).toEqual(['admin', 'agent'])
