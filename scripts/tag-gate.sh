@@ -26,10 +26,13 @@ if [ -n "$dirty" ]; then
   exit 1
 fi
 
+# Each phase is timed (scripts/gate-step.sh); `npm run gate:times` shows the breakdown.
+export EE_GATE_RUN="${EE_GATE_RUN:-$(date +%Y%m%dT%H%M%S)-$$}"
+trap 'node "$(git rev-parse --show-toplevel)/scripts/gate-times.mjs" --run "$EE_GATE_RUN" --brief || true' EXIT
 echo "tag-gate: upgrade rehearsal on $head …"
-node scripts/upgrade-rehearsal.mjs
+"$(git rev-parse --show-toplevel)/scripts/gate-step.sh" release upgrade-rehearsal -- node scripts/upgrade-rehearsal.mjs
 echo "tag-gate: e2e on $head …"
-npm run test:e2e
+EE_GATE=release npm run test:e2e
 
 if [ "$(git rev-parse HEAD)" != "$head" ]; then
   echo "tag-gate: HEAD moved while the gate ran ($head → $(git rev-parse HEAD)); not stamping. Run it again." >&2

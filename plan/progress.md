@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-25 — Release timing: every gate step is timed (owner: "i need a way to see why a release takes this long. 30 min build time is unacceptable")
+
+- The GitHub release workflow is ~4 min (v0.5.43: amd64 2m33, arm64 3m02, publish 41s). The rest of the ~30 min is the local gates `npm run push` runs first, which recorded no timings.
+- `scripts/gate-step.sh` times each step into `<git common dir>/ee-gate/timings.tsv`. `ci:local` is now `scripts/ci-local.sh` (same seven checks, same order, stops at the first failure) and `test:e2e` is now `scripts/e2e.sh` (db:up, db:wait, db:migrate, playwright install, playwright test, plus extra args passed to playwright). `tag-gate.sh` times the upgrade rehearsal and e2e. One run id covers the whole push.
+- Vitest (unit + components) and Playwright also write JSON reports next to the timings. `npm run gate:times` shows the last run step by step and the slowest spec files; `-- --runs 10` compares runs, `-- --ci` adds the GitHub workflow's jobs and steps. The gates print the brief breakdown when they finish.
+- No numbers yet: the first breakdown comes from the next `npm run push`. Next: cut the biggest step (likely serial e2e, `workers: 1`).
+
 ## 2026-11-25 — Assistant chat failed on the demo company: a provider cut the compaction summary short (owner error report from demo.eigenenterprise.app; on main, not released)
 
 - **What broke:** on demo.eigenenterprise.app (v0.5.43, incus `customers/ee-demo` on rs500-1) a turn ended "Something went wrong on my side". Journal: `model_error: Compaction failed: Summarization hit the token limit; the summary is incomplete`. The summary call (`~deepseek/deepseek-flash-latest`) came back `finish_reason: length` at **1639 of the 8192 tokens we asked for**. Prompt 2410 + 1639 = 4049, right at a 4k window. So the router most likely picked an upstream with a small context window, and that upstream stopped the reply on its own limit. Other replies on the same box reach 7340 tokens. pi-durable treats a `length` summary as a hard failure and does not retry it.

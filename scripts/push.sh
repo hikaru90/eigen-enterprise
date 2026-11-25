@@ -8,6 +8,8 @@ set -euo pipefail
 
 gate_dir="$(git rev-parse --git-common-dir)/ee-gate"
 head="$(git rev-parse HEAD)"
+# One run id for the whole push, so `npm run gate:times` shows the CI and release gates together.
+export EE_GATE_RUN="${EE_GATE_RUN:-$(date +%Y%m%dT%H%M%S)-$$}"
 
 if [ "$(cat "$gate_dir/passed" 2>/dev/null || true)" = "$head" ]; then
   echo "push: gate already green for $head"
