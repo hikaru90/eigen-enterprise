@@ -2,6 +2,45 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-25 — Make-a-wish round across all boards: 8 wishes + 2 owner requests by subagents (owner: "get the latest contributions and integrate them … spawn subagents" · "i want all contributions. all eigenenterprise contributions"; plan `plan/contribute-round-2026-11-25.md`; merged to main, not pushed, not released)
+
+- **Merged to main:**
+  - **Assistant activity sortable** (ee-one 2a0ed534): the Calls table headers sort. Sorting flattens the groups into one row per loaded call, and a third click regroups.
+  - **Co-worker Save bug** (hub fc3c5174): `/coworkers` read the pre-multi-report form shape, so Save dropped "Reports to" and the avatar while saying saved.
+    - Fix: one form reader for `/coworkers`, Settings → Co-workers and the org chart (`src/lib/server/org/form-input.ts`). Managers post in stored order, so the primary manager stays.
+    - **Replaced (announced):** the org-chart diagram's single "Reports to" dropdown (with "Nobody") is now the same multi-select checkboxes as the list view. The dropdown silently dropped extra managers.
+  - **Accessibility rest** (cerberusblue b73604ff): the 65 remaining page-guard findings fixed. The guard's REMAINING list is removed, so no area is exempt.
+  - **What the brain took in** (ee-one 30a8d920 part 2): `memory.intake` read tool and `/m/memory/capture/intake`, with totals per period and source and the newest items. The caller's own items and company-shared documents only.
+  - **Brand material** (cerberusblue 288dc1d2):
+    - `brand.material_export`: print-ready PDF/PNG through the Chromium capability. A missing font or token fails loud.
+    - The company logo on the pieces.
+    - `brand.material_text_suggest`: 3 variants in the brand voice through the gateway.
+  - **Drive multi-select** (owner request): checkboxes, header select-all, shift ranges, keyboard, and an action bar with only the actions valid for all selected items.
+    - `drive.{move,trash,restore,delete_forever,share}_many`, per-item results, partial failures shown.
+    - `share_many` only adds access.
+    - No zip download (no export path for Drive items).
+  - **Questions for staff** (ee-one 057cd4d5, migration 0183): Memory › Questions and `questions.*`. Audience is the company or chosen groups/people, with manual tags (decision: free tags are an open set, so no Jev), answered inline, only the asker closes.
+  - **Handover** (ee-one b92e6ba5, migration 0184, `plan/handover.md`): Memory › Handover and `handover.*`.
+    - Readable by all, the owner writes, one entry per topic.
+    - Assigning reuses assigned tasks, so it lands in Needs you.
+    - `draft_entry`: status from the new Jev kind `memory.handover_status`, sentence from the gateway LLM.
+  - **Calendar K3** (cerberusblue df14e05a, migration 0185): phone reminders before events (`calendar.set_reminder`, default 10 min, job-queue tick, dedupe table) and video calls on events (`calendar.add_call`/`remove_call`, Join from the event and the push).
+    - Decisions: calls only on non-repeating timed events, and an event's time is locked while it has a call (Calls can't reschedule).
+    - Google/Outlook sync is not built; the owner registers the OAuth apps first (`plan/calendar-oauth-setup.md`).
+- **Traces from every box** (ee-one 3b18c845): concept only, `plan/traces-phone-home.md`. **Owner decisions:**
+  1. On by default, owner switch.
+  2. Only meta usage data leaves, personal data stripped, sent without approval; no content tier.
+  3. The hub keeps only usage statistics. Every value outside our closed sets is classified by Jev (`usage_meta | personal_or_content`) on the box before it is sent.
+- **Integration fixes on merge:**
+  - messages/*.json, parity-debt, core-api lock and the journal regenerated or merged.
+  - The boot wiring list gained the drive bulk tools and `memory.intake`.
+  - **Decision:** the calendar migration was renumbered 0186 → 0185 (0185 was unused) so the journal stays gap-free.
+  - Test DB migrates through 0185; `npm run check` 0 errors; targeted suites green (864 memory/kernel, 837 calendar/kernel).
+- **Not run:** full e2e (release gate). The evals `coworkers.pg` CD06 failure was reported by a subagent as present on main before these changes, not investigated.
+- **Open owner question:** "Dark" leaves the signed-in pages light unless a brand set is active (`marketing-light-theme` in the nucleus layout). Should Dark darken the signed-in app too?
+- **Still running:** the xlsx editing in Drive (owner request).
+- **Board:** notes updated on ee-one and cerberusblue; all stay `in_progress` until released and installed.
+
 ## 2026-11-25 — Release v0.5.42 (owner: "Yes, release"; tag on `4d2ad0d2`, GitHub release run 45507898796)
 
 - **Contents:** the six Contribute-board wishes (brand bare-host fix, sortable tables, calls: Call now / outside invites in the call / video quality / noise cancellation) and the org-chart Profile button.
