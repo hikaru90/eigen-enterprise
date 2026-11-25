@@ -9,6 +9,7 @@
    */
   let {
     setName,
+    logoUrl = null,
     cssVars,
     darkCssVars,
     mode,
@@ -16,6 +17,8 @@
     headline,
   }: {
     setName: string
+    /** The company logo, placed in place of the style mark. */
+    logoUrl?: string | null
     cssVars: Record<string, string>
     darkCssVars: Record<string, string> | null
     mode: 'light' | 'dark'
@@ -36,10 +39,14 @@
     ? 'items-center justify-center gap-6 p-6'
     : 'max-w-sm flex-col items-center justify-center gap-5 p-8 text-center'}
 >
-  <span class="size-12 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
+  {#if logoUrl}
+    <MaterialMark {setName} {logoUrl} class="h-16 max-w-56" />
+  {:else}
+    <span class="size-12 shrink-0 rounded-full bg-primary" aria-hidden="true"></span>
+  {/if}
   <div class={landscape ? 'flex min-w-0 flex-col gap-2' : 'flex flex-col items-center gap-3'}>
     <h3 class="font-display text-3xl leading-tight break-words">{headline}</h3>
     <div class="h-1.5 w-16 rounded-full bg-accent" aria-hidden="true"></div>
-    <MaterialMark {setName} />
+    {#if !logoUrl}<MaterialMark {setName} />{/if}
   </div>
 </MaterialCanvas>

@@ -649,5 +649,21 @@
   "coworkers_avatar_hint": "Pick an eigenEnterprise CI emblem or upload a square image (cropped to 256×256 WebP).",
   "coworkers_reports_to_multi_hint": "Select one or more managers. If none are checked, it answers to the owner.",
   "org_reports_to_multi_hint": "Select one or more managers (leave all unchecked for nobody).",
-  "table_sort_by": "Sort by {column}"
+  "table_sort_by": "Sort by {column}",
+  "material_write_texts": "Write texts",
+  "material_writing_texts": "Writing…",
+  "material_brief_label": "What is it about?",
+  "material_brief_placeholder": "e.g. trade fair, Hall 3, booth 12, 4–6 June",
+  "material_texts_hint": "Pick a variant, then edit it as you like before you download.",
+  "material_texts_no_voice": "No brand voice is active yet, so these are plain texts.",
+  "material_variant": "Variant {n}",
+  "material_use_variant": "Use",
+  "material_download_pdf": "Download PDF",
+  "material_download_png": "Download PNG",
+  "material_downloading": "Preparing the file…",
+  "material_export_pdf_hint": "Print-ready PDF, {size}",
+  "material_export_png_hint": "PNG, {width} × {height} px",
+  "material_logo_toggle": "Company logo",
+  "material_logo_missing": "Add your company logo under Settings → Company to place it on the material.",
+  "material_use_variant_label": "Use variant {n}"
 }
