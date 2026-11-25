@@ -248,7 +248,7 @@ function toAxisPatch(p: z.infer<typeof axisPatchInput>): AxisPatch {
   }
 }
 
-export function createDriveSheetChartTools({ service }: DriveSheetToolDeps): ToolDescriptor[] {
+export function createDriveSheetChartTools({ service, sheetLive }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'drive.sheet_chart_list',
@@ -261,7 +261,7 @@ export function createDriveSheetChartTools({ service }: DriveSheetToolDeps): Too
       handler: async (ctx, input) => {
         const i = listInput.parse(input)
         const lib = await xlsx()
-        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib)
+        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib, sheetLive)
         return guarded(lib, () => ({
           file: { id: file.id, name: file.name },
           charts: lib.chartOps.describeCharts(editor.wb, i.sheet),
@@ -295,7 +295,7 @@ export function createDriveSheetChartTools({ service }: DriveSheetToolDeps): Too
           )
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const series = i.series?.map(toSeriesDef)
         const targetSheet = await guarded(lib, () => {
           const res = editor.apply({
@@ -351,7 +351,7 @@ export function createDriveSheetChartTools({ service }: DriveSheetToolDeps): Too
           )
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const series = i.series?.map(toSeriesDef)
         const chartId = await guarded(lib, () => {
           const placed = lib.chartOps.requireChart(editor.wb, i.sheet, i.chart)
@@ -426,7 +426,7 @@ export function createDriveSheetChartTools({ service }: DriveSheetToolDeps): Too
         const i = deleteInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const target = await guarded(lib, () => {
           const placed = lib.chartOps.requireChart(editor.wb, i.sheet, i.chart)
           editor.apply({ op: 'chart_delete', sheet: placed.sheet, chart: placed.id })

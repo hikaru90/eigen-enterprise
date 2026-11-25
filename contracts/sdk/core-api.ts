@@ -2241,6 +2241,49 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.sheet_live_entries": {
+    input: {
+      "after": number
+      "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_live_join": {
+    input: {
+      "file_id": string
+    }
+    output: unknown
+  }
+  "drive.sheet_live_submit": {
+    input: {
+      "batch": {
+        "baseSeq": number
+        "changes": Array<{
+          "body": ({
+            "acceptLosses": boolean
+            "kind": "change"
+            "ops": Array<{
+              "op": "set_cells" | "set_format" | "add_sheet" | "rename_sheet" | "delete_sheet" | "insert_rows" | "delete_rows" | "insert_columns" | "delete_columns" | "set_style" | "set_column_width" | "set_row_height" | "sort_range" | "set_autofilter" | "filter_column" | "freeze_panes" | "insert_picture" | "insert_shape" | "update_drawing" | "delete_drawing" | "set_note" | "delete_note" | "add_comment" | "reply_comment" | "edit_comment" | "resolve_comment" | "delete_comment" | "cf_add" | "cf_update" | "cf_delete" | "cf_clear" | "cf_move" | "validation_set" | "validation_clear" | "hyperlink_set" | "hyperlink_remove" | "name_add" | "name_update" | "name_delete" | "protect_sheet" | "unprotect_sheet" | "protect_workbook" | "unprotect_workbook" | "set_cell_protection" | "create_table" | "update_table" | "delete_table" | "create_pivot" | "update_pivot" | "refresh_pivot" | "delete_pivot" | "chart_create" | "chart_update" | "chart_move" | "chart_delete" | "paste" | "fill" | "replace" | "merge_cells" | "clear_range" | "set_rich_text" | "shift_decimals" | "hide_columns" | "hide_rows" | "group_columns" | "ungroup_columns" | "group_rows" | "ungroup_rows" | "collapse_columns" | "collapse_rows" | "set_outline_level" | "autofit_columns" | "autofit_rows" | "move_sheet" | "set_sheet_color" | "set_sheet_visibility" | "duplicate_sheet" | "set_page_setup" | "set_view_options" | "batch"
+            }>
+          }) | ({
+            "images": Record<string, ({
+                "exists": false
+              }) | ({
+                "contentType": string
+                "data": string
+                "exists": true
+              })>
+            "kind": "revert"
+            "of": string
+          })
+          "opId": string
+        }>
+        "clientId": string
+      }
+      "file_id": string
+    }
+    output: unknown
+  }
   "drive.sheet_merge": {
     input: {
       "accept_losses"?: boolean
@@ -5226,6 +5269,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.sheet_freeze",
   "drive.sheet_hyperlink_remove",
   "drive.sheet_hyperlink_set",
+  "drive.sheet_live_entries",
+  "drive.sheet_live_join",
+  "drive.sheet_live_submit",
   "drive.sheet_merge",
   "drive.sheet_names_delete",
   "drive.sheet_names_list",

@@ -11,6 +11,7 @@ import { cellKey } from './ref'
 import { buildXlsx, fml, num, row, str } from './test-utils/build-xlsx'
 import { validationsOf } from './validation'
 import { openWorkbook } from './workbook'
+import { resetPlainLive } from './test-utils/live-api'
 import XlsxEditor from './xlsx-editor.svelte'
 
 const api = vi.hoisted(() => ({
@@ -30,7 +31,8 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('$lib/drive/api', async (importOriginal) => {
   const real = await importOriginal<typeof import('$lib/drive/api')>()
-  return { ...real, driveApi: { ...real.driveApi, ...api } }
+  const { liveOverPlainApi } = await import('./test-utils/live-api')
+  return { ...real, driveApi: { ...real.driveApi, ...api, ...liveOverPlainApi(api) } }
 })
 
 const props = {
@@ -89,6 +91,7 @@ async function typeInto(ref: string, text: string) {
 
 describe('xlsx editor: conditional formatting, validation, hyperlinks, names & protection', () => {
   beforeEach(() => {
+    resetPlainLive(api)
     BOOK = makeBaseBook()
     for (const fn of Object.values(api)) fn.mockReset()
     api.readBytes.mockImplementation(async () => api.writeBytes.mock.calls.at(-1)?.[1] ?? BOOK)

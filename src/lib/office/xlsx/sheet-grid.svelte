@@ -33,6 +33,12 @@
   }
   export type Pos = { row: number; col: number }
   export type Move = 'down' | 'up' | 'right' | 'left' | 'none'
+  export type GridPeer = {
+    clientId: string
+    name: string
+    color: string
+    range: Range
+  }
 </script>
 
 <script lang="ts">
@@ -118,6 +124,8 @@
     filter = null,
     onfilter,
     onresize,
+    peers = [],
+    onselect,
     overlay,
     oncellselect,
     onnoteopen,
@@ -193,6 +201,10 @@
     onfilter?: (col: number, at: DOMRect, row: number) => void
     /** A column's or row's edge was dragged to a new size (pixels); without it there are no drag handles. */
     onresize?: (axis: 'col' | 'row', index: number, px: number) => void
+    /** Remote co-editors' current selections on this sheet. */
+    peers?: GridPeer[]
+    /** Called whenever this grid's selection changes. */
+    onselect?: (range: Range) => void
     /** Floating layer over the main cell pane (`dx`/`dy` are the frozen offsets). */
     overlay?: Snippet<[{ dx: number; dy: number }]>
     /** A cell click moved selection back onto the grid. */
@@ -353,6 +365,15 @@
     scroller?.focus({ preventScroll: true })
   }
 
+  function notifySelection() {
+    onselect?.({
+      top: Math.min(active.row, anchor.row),
+      bottom: Math.max(active.row, anchor.row),
+      left: Math.min(active.col, anchor.col),
+      right: Math.max(active.col, anchor.col),
+    })
+  }
+
   export function revealActive() {
     void tick().then(reveal)
   }
@@ -368,6 +389,7 @@
       anchor = next
       extraSelections = []
     }
+    notifySelection()
     void tick().then(reveal)
   }
 
@@ -496,21 +518,25 @@
       case 'move_in_sel':
         held = { range: { ...sel }, active: action.to, anchor: { ...anchor } }
         active = action.to
+        notifySelection()
         void tick().then(reveal)
         break
       case 'select_range':
         extraSelections = []
         anchor = { row: action.range.top, col: action.range.left }
         active = { row: action.range.bottom, col: action.range.right }
+        notifySelection()
         void tick().then(reveal)
         break
       case 'select_cols':
         anchor = { row: 0, col: sel.left }
         active = { row: rows - 1, col: sel.right }
+        notifySelection()
         break
       case 'select_rows':
         anchor = { row: sel.top, col: 0 }
         active = { row: sel.bottom, col: cols - 1 }
+        notifySelection()
         break
       case 'begin_edit':
         void beginEdit(action.initial)
@@ -528,6 +554,7 @@
       case 'cancel':
         extraSelections = []
         anchor = { ...active }
+        notifySelection()
         break
       case 'fill_down':
         if (!editable) onblocked?.()
@@ -635,6 +662,7 @@
       }
     }
     dragging = true
+    notifySelection()
     oncellselect?.()
     focus()
     event.preventDefault()
@@ -649,7 +677,10 @@
     }
     if (!dragging) return
     const p = posFromEvent(event)
-    if (p && (p.row !== active.row || p.col !== active.col)) active = p
+    if (p && (p.row !== active.row || p.col !== active.col)) {
+      active = p
+      notifySelection()
+    }
   }
 
   function onPointerUp(event: PointerEvent) {
@@ -679,6 +710,7 @@
       anchor = { row: 0, col: c }
     }
     active = { row: rows - 1, col: c }
+    notifySelection()
     focus()
     onselectcommit?.(sel)
   }
@@ -696,6 +728,7 @@
       anchor = { row: r, col: 0 }
     }
     active = { row: r, col: cols - 1 }
+    notifySelection()
     focus()
     onselectcommit?.(sel)
   }
@@ -1056,6 +1089,31 @@
     aria-hidden="true"
     data-testid={quad === activeQuad ? 'xlsx-active' : undefined}
   ></div>
+  {#each peers as peer (peer.clientId)}
+    {@const clamped = {
+      top: Math.max(0, Math.min(rows - 1, peer.range.top)),
+      bottom: Math.max(0, Math.min(rows - 1, peer.range.bottom)),
+      left: Math.max(0, Math.min(cols - 1, peer.range.left)),
+      right: Math.max(0, Math.min(cols - 1, peer.range.right)),
+    }}
+    {@const pb = box(clamped)}
+    {@const labelQuad = `${clamped.top < fr ? 't' : 'b'}${clamped.left < fc ? 'l' : 'r'}`}
+    {@const labelTop = pb.top - dy >= 18 ? pb.top - dy - 18 : pb.top - dy + 2}
+    <div
+      class="g-abs g-ghost g-peer"
+      style="top: {pb.top - dy - 1}px; left: {pb.left - dx - 1}px; width: {pb.width +
+        1}px; height: {pb.height + 1}px; border: 2px solid {peer.color}; background-color: {peer.color}18;"
+      aria-hidden="true"
+    ></div>
+    {#if quad === labelQuad}
+      <span
+        class="g-abs g-ghost g-peer-tag rounded-xs px-1 py-0.5 text-xs leading-none font-medium text-white shadow-xs"
+        style="top: {labelTop}px; left: {pb.left - dx - 1}px; background-color: {peer.color};"
+        data-testid="xlsx-peer-cursor"
+        data-peer-id={peer.clientId}>{peer.name}</span
+      >
+    {/if}
+  {/each}
   {#if editable && !editing && onfill && quad === fillQuad}
     <div
       class="g-abs g-fill-handle border border-background bg-primary"
@@ -1625,6 +1683,13 @@
   }
   .g-ghost {
     pointer-events: none;
+  }
+  .g-peer {
+    z-index: 3;
+  }
+  .g-peer-tag {
+    z-index: 4;
+    white-space: nowrap;
   }
   .g-fill-handle {
     width: 8px;

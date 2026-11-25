@@ -124,7 +124,7 @@ async function resolveMentions(drive: DriveService, ids: string[] | undefined): 
   return out
 }
 
-export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): ToolDescriptor[] {
+export function createDriveSheetCommentTools({ service, sheetLive }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'drive.sheet_comment_list',
@@ -137,7 +137,7 @@ export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): T
       handler: async (ctx, input) => {
         const i = listInput.parse(input)
         const lib = await xlsx()
-        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib)
+        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib, sheetLive)
         return guarded(lib, () => {
           const sheet =
             i.sheet ??
@@ -182,7 +182,7 @@ export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): T
           i.kind === 'comment' ? resolveMentions(drive, i.mentions) : Promise.resolve([]),
           xlsx(),
         ])
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () => {
           if (i.kind === 'note') {
             return editor.apply({
@@ -235,7 +235,7 @@ export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): T
           resolveMentions(drive, i.mentions),
           xlsx(),
         ])
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () =>
           editor.apply({
             op: 'reply_comment',
@@ -279,7 +279,7 @@ export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): T
             memberOf(drive, ctx),
             resolveMentions(drive, i.mentions),
           ])
-          const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+          const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
           const res = await guarded(lib, () =>
             editor.apply({
               op: 'edit_comment',
@@ -297,7 +297,7 @@ export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): T
           throw new DriveError('invalid', 'Legacy notes do not support @mentions.')
         if (i.text === undefined && i.visible === undefined)
           throw new DriveError('invalid', 'Give text or visible to update the note.')
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () =>
           editor.apply({
             op: 'set_note',
@@ -330,7 +330,7 @@ export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): T
         const i = resolveInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () =>
           editor.apply({
             op: 'resolve_comment',
@@ -367,14 +367,14 @@ export function createDriveSheetCommentTools({ service }: DriveSheetToolDeps): T
         const lib = await xlsx()
         if (i.id) {
           const author = await memberOf(drive, ctx)
-          const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+          const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
           const res = await guarded(lib, () =>
             editor.apply({ op: 'delete_comment', sheet: i.sheet, id: i.id!, author }),
           )
           const saved = await save(drive, ctx, i.file_id, editor, base)
           return { ...saved, sheet: res.sheets[0]!, deleted: i.id! }
         }
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () =>
           editor.apply({ op: 'delete_note', sheet: i.sheet, ref: i.cell! }),
         )

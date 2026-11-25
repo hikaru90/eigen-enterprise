@@ -9,6 +9,7 @@ import { budgetBook, buildXlsx, row } from './test-utils/build-xlsx'
 import { commentBook, pictureBook, png } from './test-utils/drawing-fixtures'
 import { readPersons, readThreads } from './threads'
 import { openWorkbook } from './workbook'
+import { resetPlainLive } from './test-utils/live-api'
 import XlsxEditor from './xlsx-editor.svelte'
 
 /** End-to-end browser checks for XLSX pictures, shapes, text boxes, in-cell images, legacy notes and threaded comments. */
@@ -33,7 +34,8 @@ const api = vi.hoisted(() => ({
 
 vi.mock('$lib/drive/api', async (importOriginal) => {
   const real = await importOriginal<typeof import('$lib/drive/api')>()
-  return { ...real, driveApi: { ...real.driveApi, ...api } }
+  const { liveOverPlainApi } = await import('./test-utils/live-api')
+  return { ...real, driveApi: { ...real.driveApi, ...api, ...liveOverPlainApi(api) } }
 })
 
 const props = {
@@ -108,6 +110,8 @@ describe('xlsx editor: drawings, cell images, notes and threaded comments', () =
   let activeBytes: Uint8Array = budgetBook()
 
   beforeEach(() => {
+
+    resetPlainLive(api)
     for (const fn of Object.values(api)) fn.mockReset()
     activeBytes = budgetBook()
     api.readBytes.mockImplementation(async (id) => {

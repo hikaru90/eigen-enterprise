@@ -127,7 +127,7 @@ const freezeInput = z
   })
   .strict()
 
-export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): ToolDescriptor[] {
+export function createDriveSheetArrangeTools({ service, sheetLive }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'drive.sheet_sort',
@@ -148,7 +148,7 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
         const i = sortInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const warnings: string[] = []
         await guarded(lib, () => {
           const op: SheetOp = {
@@ -201,7 +201,7 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
           throw new DriveError('invalid', 'Nothing to do: give a range, columns, or off: true.')
         const drive = await service()
         const lib = await xlsx()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           if (i.off) editor.apply({ op: 'set_autofilter', sheet: i.sheet, range: null })
           else if (i.range) editor.apply({ op: 'set_autofilter', sheet: i.sheet, range: i.range })
@@ -265,7 +265,7 @@ export function createDriveSheetArrangeTools({ service }: DriveSheetToolDeps): T
         const i = freezeInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () =>
           editor.apply({ op: 'freeze_panes', sheet: i.sheet, rows: i.rows, cols: i.columns }),
         )

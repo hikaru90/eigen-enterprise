@@ -7,6 +7,7 @@ import { describeCharts } from './chart-ops'
 import { readChart } from './chart-read'
 import { chartXml, COLUMN_PLOT, PIE_PLOT, salesBook } from './test-utils/chart-fixtures'
 import { openWorkbook } from './workbook'
+import { resetPlainLive } from './test-utils/live-api'
 import XlsxEditor from './xlsx-editor.svelte'
 
 /** Browser component tests for XLSX SVG charts: grid overlay, live updates, insert, edit, move/resize, delete, and chart sheets. */
@@ -28,7 +29,8 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('$lib/drive/api', async (importOriginal) => {
   const real = await importOriginal<typeof import('$lib/drive/api')>()
-  return { ...real, driveApi: { ...real.driveApi, ...api } }
+  const { liveOverPlainApi } = await import('./test-utils/live-api')
+  return { ...real, driveApi: { ...real.driveApi, ...api, ...liveOverPlainApi(api) } }
 })
 
 const props = {
@@ -74,6 +76,7 @@ async function typeInto(ref: string, text: string) {
 
 describe('xlsx editor: charts', () => {
   beforeEach(() => {
+    resetPlainLive(api)
     BOOK = salesBook()
     for (const fn of Object.values(api)) fn.mockReset()
     api.readBytes.mockImplementation(async () => api.writeBytes.mock.calls.at(-1)?.[1] ?? BOOK)

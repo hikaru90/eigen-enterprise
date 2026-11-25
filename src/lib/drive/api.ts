@@ -1,5 +1,12 @@
 /** Browser client for /api/drive/*: every call throws the server's plain error sentence (and its agent report) on failure. */
 import { shownErrorOf, type AgentReport } from '$lib/errors/agent-report'
+import type {
+  JoinView,
+  LogEntry,
+  PresenceUpdate,
+  SubmitRequest,
+  SubmitResponse,
+} from '$lib/office/xlsx/collab/protocol'
 
 /** Where an item in the unified Drive overview comes from. */
 export type DriveOrigin = 'mine' | 'shared' | 'messages' | 'source'
@@ -325,6 +332,23 @@ export const driveApi = {
       method: 'DELETE',
       keepalive: true,
     }).then(() => undefined),
+  /** Joins an .xlsx co-editing session: returns the base SHA-256, entries since it, and live peers. */
+  sheetLiveJoin: (fileId: string) =>
+    call<JoinView>(`/api/drive/files/${fileId}/sheet-live/join`, { method: 'POST' }),
+  /** Submits a batch of pending workbook changes/undos into the server log. */
+  sheetLiveSubmit: (fileId: string, req: SubmitRequest) =>
+    call<SubmitResponse>(`/api/drive/files/${fileId}/sheet-live/submit`, send('POST', req)),
+  /** Fetches entries logged after `after` (used to catch up after a gap on the stream). */
+  sheetLiveEntries: async (fileId: string, after: number): Promise<LogEntry[]> =>
+    (await call<{ entries: LogEntry[] }>(`/api/drive/files/${fileId}/sheet-live/entries?after=${after}`)).entries,
+  /** Updates this tab's active sheet and cell selection for peer cursors. */
+  sheetLivePresence: (fileId: string, update: PresenceUpdate) =>
+    call<{ ok: true }>(`/api/drive/files/${fileId}/sheet-live/presence`, send('POST', update)),
+  /** Opens the server-sent event stream for live entries, peer cursors, saves and resets. */
+  sheetLiveStream: (fileId: string, clientId: string, after: number): EventSource =>
+    new EventSource(
+      `/api/drive/files/${fileId}/sheet-live/stream?clientId=${encodeURIComponent(clientId)}&after=${after}`,
+    ),
   /** Renders an .xlsx workbook (or one sheet) to a paginated PDF (= drive.sheet_export_pdf). */
   exportSheetPdf: async (
     fileId: string,

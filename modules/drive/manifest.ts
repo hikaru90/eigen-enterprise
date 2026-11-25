@@ -121,6 +121,16 @@ export const DRIVE_SHEET_WRITE_TOOLS = [
   'drive.sheet_protect',
 ] as const
 
+/** Co-editing a workbook (./sheet-live-tools.ts, plan/phase-office-files.md §7.9): the grid's join, log read and batch send. */
+export const DRIVE_SHEET_LIVE_TOOL_NAMES = [
+  'drive.sheet_live_join',
+  'drive.sheet_live_entries',
+  'drive.sheet_live_submit',
+] as const
+
+/** The co-editing write (a batch of changes): waits on the approval mode like the other sheet writes. */
+export const DRIVE_SHEET_LIVE_WRITE_TOOLS = ['drive.sheet_live_submit'] as const
+
 /** .xls / .ods, shown read-only (./sheet-copy-tools.ts): Make an editable .xlsx copy — a write, waits on the approval mode. */
 export const DRIVE_SHEET_COPY_TOOL_NAMES = ['drive.make_xlsx_copy'] as const
 
@@ -184,6 +194,7 @@ export const DRIVE_TOOL_NAMES = [
   ...DRIVE_PDF_ANNOTATE_TOOL_NAMES,
   ...DRIVE_SHEET_TOOL_NAMES,
   ...DRIVE_SHEET_COPY_TOOL_NAMES,
+  ...DRIVE_SHEET_LIVE_TOOL_NAMES,
 ] as const
 
 /**

@@ -6,6 +6,7 @@ import { readSheetPivots } from './pivot'
 import { readSheetTables } from './tables'
 import { buildXlsx, num, row, str } from './test-utils/build-xlsx'
 import { openWorkbook } from './workbook'
+import { resetPlainLive } from './test-utils/live-api'
 import XlsxEditor from './xlsx-editor.svelte'
 
 const api = vi.hoisted(() => ({
@@ -25,7 +26,8 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('$lib/drive/api', async (importOriginal) => {
   const real = await importOriginal<typeof import('$lib/drive/api')>()
-  return { ...real, driveApi: { ...real.driveApi, ...api } }
+  const { liveOverPlainApi } = await import('./test-utils/live-api')
+  return { ...real, driveApi: { ...real.driveApi, ...api, ...liveOverPlainApi(api) } }
 })
 
 const props = {
@@ -69,6 +71,7 @@ async function click(ref: string) {
 
 describe('xlsx editor: tables and pivot tables', () => {
   beforeEach(() => {
+    resetPlainLive(api)
     for (const fn of Object.values(api)) fn.mockReset()
     // One build per test: a ZIP built again a second later has other timestamps (another SHA), which the editor reads as a newer version.
     const original = sales()

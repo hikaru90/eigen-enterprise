@@ -1,6 +1,7 @@
 import type { RefEdit } from './shift'
 import { strToU8 } from 'fflate'
 import { relsPartOf } from '../ooxml/package'
+import { newGuid } from './ids'
 import {
   editIfChanged,
   NS_THREADED,
@@ -87,7 +88,8 @@ export type ThreadOp =
   /** A thread's first comment deletes the thread; a reply only itself (its author's). */
   | { op: 'delete_comment'; sheet: string; id: string; author: Member }
 
-const newId = () => `{${globalThis.crypto.randomUUID().toUpperCase()}}`
+/** From ./ids.ts: the same in every replica of a co-edited workbook. */
+const newId = newGuid
 
 // ---------------------------------------------------------------------------
 // Persons

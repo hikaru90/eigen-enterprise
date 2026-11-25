@@ -185,6 +185,7 @@ const pivotDeleteInput = z
 
 export function createDriveSheetPivotTableTools({
   service,
+  sheetLive,
 }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
@@ -207,7 +208,7 @@ export function createDriveSheetPivotTableTools({
         const drive = await service()
         const lib = await xlsx()
         const { tables } = await pivotTableLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           editor.apply({
             op: 'create_table',
@@ -249,7 +250,7 @@ export function createDriveSheetPivotTableTools({
         const drive = await service()
         const lib = await xlsx()
         const { tables } = await pivotTableLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           editor.apply({
             op: 'update_table',
@@ -294,7 +295,7 @@ export function createDriveSheetPivotTableTools({
         const i = tableDeleteInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           editor.apply({
             op: 'delete_table',
@@ -327,7 +328,7 @@ export function createDriveSheetPivotTableTools({
         const drive = await service()
         const lib = await xlsx()
         const { pivot } = await pivotTableLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () =>
           editor.apply({
             op: 'create_pivot',
@@ -393,7 +394,7 @@ export function createDriveSheetPivotTableTools({
         const drive = await service()
         const lib = await xlsx()
         const { pivot } = await pivotTableLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           editor.apply({
             op: 'update_pivot',
@@ -454,7 +455,7 @@ export function createDriveSheetPivotTableTools({
         const drive = await service()
         const lib = await xlsx()
         const { pivot } = await pivotTableLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           editor.apply({ op: 'refresh_pivot', sheet: i.sheet, pivot: i.pivot })
         })
@@ -484,7 +485,7 @@ export function createDriveSheetPivotTableTools({
         const i = pivotDeleteInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           editor.apply({
             op: 'delete_pivot',

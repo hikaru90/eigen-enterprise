@@ -408,6 +408,7 @@ export type DriveSheetEditingToolDeps = DriveSheetToolDeps & { pdfDeps?: ExportP
 
 export function createDriveSheetEditingTools({
   service,
+  sheetLive,
   pdfDeps,
 }: DriveSheetEditingToolDeps): ToolDescriptor[] {
   return [
@@ -435,9 +436,9 @@ export function createDriveSheetEditingTools({
         const drive = await service()
         const lib = await xlsx()
         const eLib = await editingLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const srcEditor = crossBook
-          ? (await openBook(drive, ctx, i.source_file_id!, lib)).editor
+          ? (await openBook(drive, ctx, i.source_file_id!, lib, sheetLive)).editor
           : editor
         const targetSheet = i.target_sheet ?? i.source_sheet
         let pasted = 0
@@ -493,7 +494,7 @@ export function createDriveSheetEditingTools({
         const i = fillInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           editor.apply({
             op: 'fill',
@@ -535,7 +536,7 @@ export function createDriveSheetEditingTools({
         const drive = await service()
         const lib = await xlsx()
         const eLib = await editingLib()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const hits = await guarded(lib, () =>
           eLib.find.findCells(
             editor,
@@ -636,7 +637,7 @@ export function createDriveSheetEditingTools({
           })
         const drive = await service()
         const lib = await xlsx()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const warnings: string[] = []
         await guarded(lib, () => {
           const batchOp: SheetOp = ops.length === 1 ? ops[0]! : { op: 'batch', ops }
@@ -671,7 +672,7 @@ export function createDriveSheetEditingTools({
         const drive = await service()
         const lib = await xlsx()
         const eLib = await editingLib()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           const ops = i.changes.map((c) => rowColToOp(lib, i.sheet, c))
           editor.apply(ops.length === 1 ? ops[0]! : { op: 'batch', ops })
@@ -702,7 +703,7 @@ export function createDriveSheetEditingTools({
         const i = tabInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const warnings: string[] = []
         let acceptLosses = false
         let op: SheetOp
@@ -784,7 +785,7 @@ export function createDriveSheetEditingTools({
         const lib = await xlsx()
         const { exportWorkbookPdf, PdfBrowserUnavailableError } =
           await import('$lib/office/xlsx/print-pdf')
-        const { file, editor } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const hasOverride =
           i.orientation !== undefined ||
           i.paper_size !== undefined ||

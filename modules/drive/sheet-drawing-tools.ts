@@ -194,7 +194,7 @@ function mergeUpdatedBox(
   }
 }
 
-export function createDriveSheetDrawingTools({ service }: DriveSheetToolDeps): ToolDescriptor[] {
+export function createDriveSheetDrawingTools({ service, sheetLive }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'drive.sheet_picture_insert',
@@ -220,7 +220,7 @@ export function createDriveSheetDrawingTools({ service }: DriveSheetToolDeps): T
         const image = i.image_file_id
           ? (await drive.readFile(actorOf(ctx), i.image_file_id)).bytes
           : decodeBase64Image(i.image_base64!)
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () => {
           const { x, y } = resolveOrigin(lib, editor.wb, i.sheet, i.cell, i.x, i.y, dlib.drawingOps)
           return editor.apply({
@@ -261,7 +261,7 @@ export function createDriveSheetDrawingTools({ service }: DriveSheetToolDeps): T
         const i = pictureUpdateInput.parse(input)
         const drive = await service()
         const [lib, dlib] = await Promise.all([xlsx(), drawingLib()])
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const sheetNameResolved = await guarded(lib, () => {
           const { info, box } = findObject(editor.wb, i.sheet, i.id, ['picture'], 'picture', dlib)
           const nextBox = mergeUpdatedBox(lib, editor.wb, info.name, box, i, dlib.drawingOps)
@@ -303,7 +303,7 @@ export function createDriveSheetDrawingTools({ service }: DriveSheetToolDeps): T
         const i = pictureDeleteInput.parse(input)
         const drive = await service()
         const [lib, dlib] = await Promise.all([xlsx(), drawingLib()])
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const sheetNameResolved = await guarded(lib, () => {
           const { info } = findObject(editor.wb, i.sheet, i.id, ['picture'], 'picture', dlib)
           editor.apply({ op: 'delete_drawing', sheet: info.name, id: i.id })
@@ -333,7 +333,7 @@ export function createDriveSheetDrawingTools({ service }: DriveSheetToolDeps): T
         const i = shapeCreateInput.parse(input)
         const drive = await service()
         const [lib, dlib] = await Promise.all([xlsx(), drawingLib()])
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const res = await guarded(lib, () => {
           const { x, y } = resolveOrigin(lib, editor.wb, i.sheet, i.cell, i.x, i.y, dlib.drawingOps)
           return editor.apply({
@@ -378,7 +378,7 @@ export function createDriveSheetDrawingTools({ service }: DriveSheetToolDeps): T
         const i = shapeUpdateInput.parse(input)
         const drive = await service()
         const [lib, dlib] = await Promise.all([xlsx(), drawingLib()])
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const sheetNameResolved = await guarded(lib, () => {
           const { info, box } = findObject(
             editor.wb,
@@ -439,7 +439,7 @@ export function createDriveSheetDrawingTools({ service }: DriveSheetToolDeps): T
         const i = shapeDeleteInput.parse(input)
         const drive = await service()
         const [lib, dlib] = await Promise.all([xlsx(), drawingLib()])
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const sheetNameResolved = await guarded(lib, () => {
           const { info } = findObject(
             editor.wb,

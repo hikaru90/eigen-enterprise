@@ -93,6 +93,8 @@ const SPEECH = 'Speech plumbing: audio to text or text to audio; it returns medi
 const PUSH = 'Push-notification plumbing for this device.'
 const HEARTBEAT = 'A realtime heartbeat from an open tab (presence, what is on screen).'
 const EDIT_LOCK = 'The browser editor’s session lock (acquire, heartbeat, release), not an action.'
+const SHEET_PRESENCE =
+  'A co-edited workbook tab’s presence (its sheet and selection, shown to the others), heartbeat plumbing like the edit lock.'
 const CLIENT_LOG = 'Client error logging into the server log.'
 
 // ─── noEffect ───────────────────────────────────────────────────────────────
@@ -333,6 +335,9 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/drive/files/[id]/lock PUT': transport(EDIT_LOCK),
   '/api/drive/files/[id]/pdf POST': tool('drive.sheet_export_pdf'),
   '/api/drive/files/[id]/revisions POST': tool('drive.restore_revision'),
+  '/api/drive/files/[id]/sheet-live/join POST': tool('drive.sheet_live_join'),
+  '/api/drive/files/[id]/sheet-live/presence POST': transport(SHEET_PRESENCE),
+  '/api/drive/files/[id]/sheet-live/submit POST': tool('drive.sheet_live_submit'),
   '/api/drive/files/[id]/text PUT': tool('drive.write_text'),
   '/api/drive/files/[id]/xlsx-copy POST': tool('drive.make_xlsx_copy'),
   '/api/drive/folders POST': tool('drive.create_folder'),

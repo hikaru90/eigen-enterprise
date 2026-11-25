@@ -35,25 +35,18 @@
   import TypeIcon from '@lucide/svelte/icons/type'
   import Undo2Icon from '@lucide/svelte/icons/undo-2'
   import UploadIcon from '@lucide/svelte/icons/upload'
-  import { onMount, tick, untrack } from 'svelte'
-  import { beforeNavigate, goto } from '$app/navigation'
+  import { onMount, tick } from 'svelte'
+  import { beforeNavigate } from '$app/navigation'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import * as AlertDialog from '$lib/components/ui/alert-dialog'
   import { Button } from '$lib/components/ui/button'
   import * as Dialog from '$lib/components/ui/dialog'
-  import type { DriveItem, LockHolder } from '$lib/drive/api'
-  import { DriveApiError, driveApi } from '$lib/drive/api'
-  import {
-    createAutosave,
-    LockLostError,
-    type Autosave,
-    type AutosaveState,
-  } from '$lib/drive/autosave'
+  import type { DriveItem } from '$lib/drive/api'
+  import { driveApi } from '$lib/drive/api'
   import { driveShownError } from '$lib/drive/shown-error'
   import type { ShownError } from '$lib/errors/agent-report'
   import { m } from '$lib/paraglide/messages.js'
   import { getLocale } from '$lib/paraglide/runtime'
-  import { createOfficeEditSession } from '../edit-session'
   import { OFFICE_MIME } from '../kinds'
   import { OpcError } from '../ooxml/package'
   import { readCellImages } from './cell-images'
@@ -62,6 +55,8 @@
   import ChartView from './chart-view.svelte'
   import { readClip, type Clip, type PasteMode } from './clip'
   import { clipFromClipboard, clipToHtml, clipToTsv } from './clip-interop'
+  import { createLiveSheet, type LiveSheet } from './collab/client'
+  import { PEER_COLORS, type LogEntry, type Peer } from './collab/protocol'
   import CommentPanel from './comment-panel.svelte'
   import { cfEvaluator, cfRulesOf } from './cond-format'
   import CondFormatPanel from './cond-format-panel.svelte'
@@ -143,7 +138,7 @@
   } from './rich-text'
   import { outlineOf } from './rows-cols'
   import { selectionOf, selectionStats, type HeldSelection } from './selection'
-  import SheetGrid, { type GridCell, type Pos } from './sheet-grid.svelte'
+  import SheetGrid, { type GridCell, type GridPeer, type Pos } from './sheet-grid.svelte'
   import { sheetTabColor } from './sheet-tabs'
   import { quoteSheet } from './shift'
   import { guessHeader, type SortKey } from './sort'
@@ -166,24 +161,18 @@
    * written back untouched; what it does not show is listed above the grid,
    * and a change that would leave something in the wrong place asks first.
    *
-   * Saving is the office editors' rule (W-6): the edit lock is taken with the
-   * first change (someone else editing: their name, Take over), changes save
-   * after a pause as one revision of the same file per session, the lock goes
-   * after `idleMs` quiet. The save names the content it started from, so a
-   * newer version saved elsewhere is never overwritten: the grid says so and
-   * offers the newer version or a download of this one. View-only people see
-   * the same grid without editing.
+   * Live `.xlsx` workbooks co-edit in real time over a server-authoritative
+   * `SheetOp` log and SSE stream (`./collab/client.ts`): editors stream ops and
+   * peer selections concurrently without exclusive locks, while viewers receive
+   * live updates read-only. Converted `.xls`/`.ods` previews (`source` prop)
+   * stay local and read-only.
    */
   let {
     fileId,
     name,
     canEdit,
-    heartbeatMs,
-    onsaved,
     folderId = null,
     author,
-    saveDelayMs = 1200,
-    idleMs = 60_000,
     source,
   }: OfficeViewerProps & {
     saveDelayMs?: number
@@ -196,12 +185,15 @@
 
   type View = { status: 'loading' } | ({ status: 'error' } & ShownError) | { status: 'ready' }
   let view = $state<View>({ status: 'loading' })
-  type Mode =
-    | { kind: 'open' }
-    | { kind: 'watching'; holder: LockHolder }
-    | { kind: 'lost'; holder: LockHolder | null }
-    | { kind: 'conflict'; message: string }
+  type Mode = { kind: 'open' } | { kind: 'conflict'; message: string }
   let mode = $state<Mode>({ kind: 'open' })
+  let liveCanEdit = $state(false)
+  let peers = $state<Peer[]>([])
+  let pendingCount = $state(0)
+  let connected = $state(true)
+  let offlineError = $state<string | null>(null)
+  let savedAt = $state<Date | null>(null)
+  let saveError = $state<string | null>(null)
   /** Bumped on every change: what the grid and toolbar read. */
   let rev = $state(0)
   let sheet = $state('')
@@ -215,8 +207,6 @@
   let notesOpen = $state(false)
   let notice = $state<string | null>(null)
   let failure = $state<ShownError | null>(null)
-  let save = $state<AutosaveState>({ status: 'saved', error: null, savedAt: null })
-  let locking = $state(false)
   let renaming = $state<string | null>(null)
   let renameText = $state('')
   let confirm = $state<{ op: SheetOp; title: string; losses: Loss[] } | null>(null)
@@ -286,46 +276,16 @@
   let chartSheetBox = $state({ width: 760, height: 460 })
 
   let editor: SheetEditor | null = null
+  let live: LiveSheet | null = null
+  let stream: EventSource | null = null
+  let clientId = ''
+  let presenceTimer: ReturnType<typeof setTimeout> | null = null
+  let lastPresenceKey = ''
+  let wasDisconnected = false
   let membersLoaded = false
   let lastCreatedId: string | null = null
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- holds blob object URLs keyed by OPC part path, exposed as reactive mediaUrls state
   const mediaCache = new Map<string, { bytes: Uint8Array; url: string }>()
-  /** The bytes as the server has them (last loaded or saved) and their SHA-256 (the save's base). */
-  let base: Uint8Array | null = null
-  let baseSha: string | null = null
-  let lostHolder: LockHolder | null = null
-  let idleTimer: ReturnType<typeof setTimeout> | null = null
-  let lockWait: Promise<boolean> | null = null
-
-  const session = createOfficeEditSession({
-    fileId: untrack(() => fileId),
-    heartbeatMs: untrack(() => heartbeatMs),
-    onLost: (holder) => lose(holder),
-  })
-  let autosave: Autosave = makeAutosave()
-
-  function makeAutosave(): Autosave {
-    return createAutosave({
-      delayMs: untrack(() => saveDelayMs),
-      onState: (s) => (save = s),
-      onLost: () => lose(lostHolder),
-      async save() {
-        const bytes = editor!.toBytes()
-        try {
-          const file = await session.save(bytes, baseSha ? { base: baseSha } : undefined)
-          base = bytes
-          baseSha = await sha256(bytes)
-          onsaved?.(file)
-        } catch (err) {
-          if (err instanceof DriveApiError && err.code === 'conflict') {
-            conflicted(err.message)
-            throw new LockLostError(err.message)
-          }
-          throw err
-        }
-      },
-    })
-  }
 
   async function sha256(bytes: Uint8Array): Promise<string> {
     const digest = await crypto.subtle.digest('SHA-256', bytes.slice().buffer as ArrayBuffer)
@@ -336,7 +296,27 @@
   // What is on screen
 
   const ready = $derived(view.status === 'ready')
-  const editable = $derived(canEdit && ready && mode.kind === 'open')
+  const editable = $derived(canEdit && liveCanEdit && ready && mode.kind === 'open')
+  const syncingNow = $derived(pendingCount > 0 && offlineError === null && connected)
+  const peerColorHex = (index: number) => PEER_COLORS[Math.abs(index) % PEER_COLORS.length] ?? PEER_COLORS[0]!
+  const gridPeers = $derived.by<GridPeer[]>(() => {
+    void rev
+    if (!info || info.kind !== 'worksheet') return []
+    const activeName = info.name.toLowerCase()
+    const out: GridPeer[] = []
+    for (const p of peers) {
+      if (!p.sheet || !p.range || p.sheet.toLowerCase() !== activeName) continue
+      const parsed = parseRange(p.range)
+      if (!parsed) continue
+      out.push({
+        clientId: p.clientId,
+        name: p.name,
+        color: peerColorHex(p.color),
+        range: parsed,
+      })
+    }
+    return out
+  })
   const sheets = $derived.by(() => {
     void rev
     return editor && ready ? editor.wb.sheets() : []
@@ -869,44 +849,144 @@
   onMount(() => {
     void load()
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (autosave.unsaved() === null && save.status !== 'saving') return
-      void autosave.flush()
+      if (pendingCount === 0) return
+      live?.resend()
       event.preventDefault()
     }
+    const onOnline = () => {
+      if (!source && live && mode.kind === 'open') retrySync()
+    }
     window.addEventListener('beforeunload', onBeforeUnload)
+    window.addEventListener('online', onOnline)
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload)
-      clearIdle()
+      window.removeEventListener('online', onOnline)
+      disconnectLive()
       revokeAllMedia()
-      if (session.held()) void autosave.flush().then(() => session.stop())
     }
   })
 
-  // In-app navigation waits for the last save, then continues.
-  let leaving = false
   beforeNavigate((nav) => {
-    if (leaving || autosave.unsaved() === null) return
-    const to = nav.to?.url
-    if (nav.type === 'leave' || !to || nav.type === 'popstate') {
-      void autosave.flush()
-      return
-    }
-    nav.cancel()
-    leaving = true
-    void autosave.flush().then(async () => {
-      try {
-        if (save.status === 'error' && !window.confirm(m.drive_sheet_leave_unsaved())) return
-        // eslint-disable-next-line svelte/no-navigation-without-resolve -- the navigation the person already started (an app URL SvelteKit resolved)
-        await goto(to.href, { invalidateAll: true })
-      } finally {
-        leaving = false
-      }
-    })
+    if (pendingCount === 0) return
+    live?.resend()
+    if (nav.type === 'leave' || !nav.to || nav.type === 'popstate') return
+    if (!window.confirm(m.drive_sheet_leave_unsaved())) nav.cancel()
   })
+
+  /** Resolves once this tab's changes are all in the server's log (rejects after `SYNC_WAIT_MS`). */
+  let syncWaiters: Array<() => void> = []
+  const SYNC_WAIT_MS = 20_000
+  function synced(): Promise<void> {
+    if (pendingCount === 0) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        syncWaiters = syncWaiters.filter((w) => w !== done)
+        reject(new Error(m.drive_sheet_offline_pending({ count: pendingCount })))
+      }, SYNC_WAIT_MS)
+      const done = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      syncWaiters.push(done)
+    })
+  }
+
+  function clearPresenceTimer() {
+    if (presenceTimer !== null) clearTimeout(presenceTimer)
+    presenceTimer = null
+  }
+
+  function disconnectLive() {
+    clearPresenceTimer()
+    stream?.close()
+    stream = null
+    live?.close()
+    live = null
+    connected = true
+    wasDisconnected = false
+  }
 
   async function load() {
+    disconnectLive()
     try {
-      await open(await (source ? source() : driveApi.readBytes(fileId)))
+      if (source) {
+        const next = createSheetEditor(await source())
+        liveCanEdit = false
+        peers = []
+        finishOpen(next)
+        return
+      }
+      let joined = await driveApi.sheetLiveJoin(fileId)
+      let bytes = await driveApi.readBytes(fileId)
+      if ((await sha256(bytes)) !== joined.baseSha256) {
+        joined = await driveApi.sheetLiveJoin(fileId)
+        bytes = await driveApi.readBytes(fileId)
+      }
+      const tabId = crypto.randomUUID()
+      clientId = tabId
+      let replica!: LiveSheet
+      replica = createLiveSheet({
+        bytes,
+        baseSeq: joined.baseSeq,
+        entries: joined.entries,
+        clientId: tabId,
+        newId: () => crypto.randomUUID(),
+        transport: {
+          submit: (req) => driveApi.sheetLiveSubmit(fileId, req),
+          entriesAfter: (seq) => driveApi.sheetLiveEntries(fileId, seq),
+        },
+        events: {
+          onChanged: (by) => {
+            if (live !== replica) return
+            if (by?.body.kind === 'change') {
+              for (const op of by.body.ops) {
+                if (op.op === 'rename_sheet' && op.sheet.toLowerCase() === sheet.toLowerCase()) {
+                  sheet = replica.wb.findSheet(op.name)?.name ?? op.name
+                }
+              }
+            }
+            if (!replica.wb.findSheet(sheet)) {
+              const all = replica.wb.sheets()
+              if (all.length > 0) sheet = (all.find((s) => s.state === 'visible') ?? all[0]!).name
+            }
+            notes = workbookNotes(replica)
+            rev++
+            sendPresenceSoon()
+          },
+          onRejected: (reason) => {
+            if (live !== replica) return
+            notice = reason ? m.drive_sheet_rejected({ reason }) : m.drive_sheet_rejected_gone()
+          },
+          onReload: (reason) => {
+            if (live !== replica) return
+            conflicted(reason)
+          },
+          onOffline: (err) => {
+            if (live !== replica) return
+            offlineError = err instanceof Error ? err.message : String(err)
+          },
+          onPending: (count) => {
+            if (live !== replica) return
+            pendingCount = count
+            if (count === 0) {
+              offlineError = null
+              for (const done of syncWaiters.splice(0)) done()
+            }
+          },
+        },
+      })
+      live = replica
+      liveCanEdit = joined.canEdit
+      peers = joined.peers.filter((p) => p.clientId !== tabId)
+      pendingCount = 0
+      offlineError = null
+      saveError = null
+      savedAt = null
+      lastPresenceKey = ''
+      mode = { kind: 'open' }
+      finishOpen(replica)
+      connectStream(replica, tabId)
+      sendPresenceNow()
     } catch (err) {
       view = { status: 'error', ...shown(err) }
     }
@@ -920,12 +1000,8 @@
     return driveShownError(err)
   }
 
-  /** Opens bytes as the workbook on screen (first load, a newer version, take over). */
-  async function open(bytes: Uint8Array) {
-    const next = createSheetEditor(bytes)
+  function finishOpen(next: SheetEditor) {
     editor = next
-    base = bytes
-    baseSha = await sha256(bytes)
     const all = next.wb.sheets()
     if (!all.some((s) => s.name === sheet))
       sheet = (all.find((s) => s.state === 'visible') ?? all[0]!).name
@@ -987,116 +1063,125 @@
     mediaUrls = next
   }
 
-  // ---------------------------------------------------------------------------
-  // The edit lock
-
-  /** The lock before a change: taken on the first one (and again after an idle release). */
-  async function ensureLock(): Promise<boolean> {
-    if (mode.kind !== 'open' || !canEdit) return false
-    if (session.held()) return true
-    lockWait ??= (async () => {
-      locking = true
-      try {
-        const v = await session.start()
-        if (v.state === 'held') {
-          // Someone may have saved since this copy was loaded: never save over that.
-          const now = await driveApi.readBytes(fileId)
-          if (base && (await sha256(now)) !== baseSha) {
-            await open(now)
-            notice = m.drive_sheet_reloaded()
-            return false
-          }
-          return true
-        }
-        if (v.state === 'locked') {
-          grid?.finishEdit(false)
-          mode = { kind: 'watching', holder: v.holder }
-          return false
-        }
-        failure = { error: m.drive_sheet_lock_failed(), agent: null }
-        return false
-      } catch (err) {
-        failure = driveShownError(err)
-        return false
-      } finally {
-        locking = false
-        lockWait = null
+  function connectStream(replica: LiveSheet, tabId: string) {
+    stream?.close()
+    wasDisconnected = false
+    const es = driveApi.sheetLiveStream(fileId, tabId, replica.seq())
+    stream = es
+    es.addEventListener('open', () => {
+      if (live !== replica) return
+      connected = true
+      offlineError = null
+      if (wasDisconnected) {
+        wasDisconnected = false
+        void driveApi
+          .sheetLiveEntries(fileId, replica.seq())
+          .then((more) => {
+            if (live !== replica) return
+            replica.receive(more)
+            replica.resend()
+          })
+          .catch((err) => {
+            if (live === replica) offlineError = err instanceof Error ? err.message : String(err)
+          })
+      } else {
+        replica.resend()
       }
-    })()
-    return lockWait
+      sendPresenceNow()
+    })
+    es.addEventListener('entry', (ev) => {
+      if (live !== replica) return
+      replica.receive([JSON.parse((ev as MessageEvent<string>).data) as LogEntry])
+    })
+    es.addEventListener('peers', (ev) => {
+      if (live !== replica) return
+      const list = JSON.parse((ev as MessageEvent<string>).data) as Peer[]
+      peers = list.filter((p) => p.clientId !== tabId)
+    })
+    es.addEventListener('saved', (ev) => {
+      if (live !== replica) return
+      const d = JSON.parse((ev as MessageEvent<string>).data) as { seq: number; at: string }
+      saveError = null
+      savedAt = new Date(d.at)
+    })
+    es.addEventListener('reset', (ev) => {
+      if (live !== replica) return
+      const d = JSON.parse((ev as MessageEvent<string>).data) as { reason: string }
+      conflicted(d.reason)
+    })
+    es.addEventListener('save_failed', (ev) => {
+      if (live !== replica) return
+      const d = JSON.parse((ev as MessageEvent<string>).data) as { error: string }
+      saveError = d.error
+      notice = m.drive_sheet_save_warning({ error: d.error })
+    })
+    es.addEventListener('error', () => {
+      if (live !== replica) return
+      connected = false
+      wasDisconnected = true
+    })
   }
 
-  /** Someone took over: the work stays on screen, read-only, and nothing more is saved. */
-  function lose(holder: LockHolder | null) {
-    lostHolder = holder ?? lostHolder
-    if (mode.kind === 'lost' || mode.kind === 'conflict') return
-    clearIdle()
-    autosave.stop()
-    grid?.finishEdit(false)
-    mode = { kind: 'lost', holder: lostHolder }
+  function retrySync() {
+    if (!live || mode.kind !== 'open') return
+    offlineError = null
+    const replica = live
+    // An explicit retry opens the stream again unless it is up (a stream stuck reconnecting too).
+    if (!connected || !stream || stream.readyState === EventSource.CLOSED) {
+      connectStream(replica, clientId)
+    } else {
+      void driveApi
+        .sheetLiveEntries(fileId, replica.seq())
+        .then((more) => {
+          if (live === replica) replica.receive(more)
+        })
+        .catch(() => {})
+    }
+    replica.resend()
+    sendPresenceNow()
   }
 
-  /** The file changed elsewhere since this copy was opened: nothing more is saved over it. */
+  function currentPresenceRange(): string | null {
+    if (!info || info.kind !== 'worksheet') return null
+    return rangeName({
+      top: Math.min(active.row, anchor.row),
+      bottom: Math.max(active.row, anchor.row),
+      left: Math.min(active.col, anchor.col),
+      right: Math.max(active.col, anchor.col),
+    })
+  }
+
+  function sendPresenceNow() {
+    clearPresenceTimer()
+    if (source || !live || !info || mode.kind !== 'open' || view.status !== 'ready') return
+    const range = currentPresenceRange()
+    const key = `${info.name}\0${range ?? ''}`
+    if (key === lastPresenceKey) return
+    lastPresenceKey = key
+    void driveApi.sheetLivePresence(fileId, { clientId, sheet: info.name, range }).catch(() => {})
+  }
+
+  function sendPresenceSoon() {
+    if (source || !live || mode.kind !== 'open' || view.status !== 'ready') return
+    clearPresenceTimer()
+    presenceTimer = setTimeout(() => {
+      presenceTimer = null
+      sendPresenceNow()
+    }, 60)
+  }
+
+  /** The file was replaced outside the co-editing session: edits stop; reload the newest version. */
   function conflicted(message: string) {
-    clearIdle()
     grid?.finishEdit(false)
+    disconnectLive()
     mode = { kind: 'conflict', message }
-    void session.stop()
   }
 
-  async function takeOver() {
+  /** After a reset/conflict: reload the newer version from the server and rejoin co-editing. */
+  async function reloadNewest() {
     notice = null
     failure = null
-    locking = true
-    try {
-      const v = await session.start({ takeover: true })
-      if (v.state !== 'held') {
-        failure = { error: m.drive_sheet_lock_failed(), agent: null }
-        return
-      }
-      lostHolder = null
-      await open(await driveApi.readBytes(fileId))
-      autosave = makeAutosave()
-      save = autosave.state()
-      mode = { kind: 'open' }
-      touchIdle()
-    } catch (err) {
-      failure = driveShownError(err)
-    } finally {
-      locking = false
-    }
-  }
-
-  /** After a conflict: the newer version from the server, editing again. */
-  async function reloadNewest() {
-    failure = null
-    try {
-      await open(await driveApi.readBytes(fileId))
-      autosave = makeAutosave()
-      save = autosave.state()
-      mode = { kind: 'open' }
-    } catch (err) {
-      failure = driveShownError(err)
-    }
-  }
-
-  function clearIdle() {
-    if (idleTimer !== null) clearTimeout(idleTimer)
-    idleTimer = null
-  }
-  function touchIdle() {
-    clearIdle()
-    idleTimer = setTimeout(() => void idleRelease(), idleMs)
-  }
-  /** A quiet spell: everything saved, the lock goes back (the next change takes it again). */
-  async function idleRelease() {
-    idleTimer = null
-    if (mode.kind !== 'open' || !session.held()) return
-    if (editing) return touchIdle()
-    await autosave.flush()
-    if (mode.kind !== 'open' || autosave.unsaved() !== null || save.status !== 'saved')
-      return touchIdle()
-    await session.stop()
+    await load()
   }
 
   function downloadCopy() {
@@ -1114,9 +1199,9 @@
   // ---------------------------------------------------------------------------
   // Changes
 
-  /** Applies an operation under the edit lock; one with losses asks first. */
+  /** Applies an operation locally and queues it for co-editing sync; one with losses asks first. */
   async function change(op: SheetOp, opts: { acceptLosses?: boolean } = {}): Promise<boolean> {
-    if (!editor) return false
+    if (!editor || !editable) return false
     notice = null
     failure = null
     if (!opts.acceptLosses) {
@@ -1133,7 +1218,6 @@
         return false
       }
     }
-    if (!(await ensureLock())) return false
     try {
       const result = editor.apply(op, { acceptLosses: true })
       lastCreatedId = result.created ?? null
@@ -1145,10 +1229,10 @@
           : shown(err)
       return false
     }
+    notes = workbookNotes(editor)
     rev++
+    sendPresenceSoon()
     syncMediaUrls()
-    autosave.change(String(editor.version()))
-    touchIdle()
     return true
   }
 
@@ -1384,10 +1468,6 @@
   function onGridBlocked(pos?: Pos) {
     if (!canEdit) {
       notice = m.drive_sheet_view_only()
-      return
-    }
-    if (mode.kind === 'watching') {
-      notice = m.drive_sheet_someone_editing({ name: mode.holder.name })
       return
     }
     if (editor && info?.kind === 'worksheet' && sheetProt && pos) {
@@ -1718,9 +1798,8 @@
     exportingPdf = true
     failure = null
     try {
-      if (autosave.unsaved() !== null || save.status === 'saving') {
-        await autosave.flush()
-      }
+      // The export reads the file as the session has it: this tab's changes go first.
+      await synced()
       const res = await driveApi.exportSheetPdf(fileId, {
         ...(opts.scope === 'active' ? { sheet } : {}),
         locale,
@@ -2028,13 +2107,13 @@
   }
 
   async function undo() {
-    if (!editor?.canUndo() || !(await ensureLock())) return
+    if (!editable || !editor?.canUndo()) return
     const r = editor.undo()
     if (r?.focus && editor.wb.findSheet(r.focus)) sheet = editor.wb.findSheet(r.focus)!.name
     afterHistory()
   }
   async function redo() {
-    if (!editor?.canRedo() || !(await ensureLock())) return
+    if (!editable || !editor?.canRedo()) return
     const r = editor.redo()
     if (r?.focus && editor.wb.findSheet(r.focus)) sheet = editor.wb.findSheet(r.focus)!.name
     afterHistory()
@@ -2042,10 +2121,10 @@
   function afterHistory() {
     if (!editor) return
     if (!editor.wb.findSheet(sheet)) sheet = editor.wb.sheets()[0]!.name
+    notes = workbookNotes(editor)
     rev++
+    sendPresenceSoon()
     syncMediaUrls()
-    autosave.change(String(editor.version()))
-    touchIdle()
   }
 
   // ---------------------------------------------------------------------------
@@ -2500,6 +2579,7 @@
     anchor = { row: 0, col: 0 }
     extraRows = 0
     extraCols = 0
+    sendPresenceNow()
     selectedDrawingId = null
     commentFocusRef = null
     hoverNote = null
@@ -2547,15 +2627,23 @@
   }
 
   const saveLabel = $derived(
-    save.status === 'saving'
-      ? m.drive_sheet_saving()
-      : save.status === 'dirty'
-        ? m.drive_sheet_unsaved()
-        : save.status === 'error'
-          ? m.drive_sheet_save_failed()
-          : save.savedAt
-            ? m.drive_sheet_saved()
-            : '',
+    source
+      ? ''
+      : offlineError !== null
+        ? pendingCount > 0
+          ? m.drive_sheet_offline_pending({ count: pendingCount })
+          : m.drive_sheet_reconnecting()
+        : pendingCount > 0
+          ? connected
+            ? m.drive_sheet_syncing()
+            : m.drive_sheet_offline_pending({ count: pendingCount })
+          : !connected
+            ? m.drive_sheet_reconnecting()
+            : saveError
+              ? m.drive_sheet_save_failed()
+              : savedAt
+                ? m.drive_sheet_saved()
+                : '',
   )
 
   const btn =
@@ -2904,13 +2992,13 @@
           role="status"
           data-testid="xlsx-save-state"
         >
-          {#if locking || save.status === 'saving'}<LoaderIcon
+          {#if syncingNow}<LoaderIcon
               class="size-3.5 animate-spin"
               aria-hidden="true"
             />{/if}
           {saveLabel}
-          {#if save.status === 'error'}
-            <button type="button" class="underline" onclick={() => void autosave.retry()}
+          {#if offlineError !== null || saveError !== null || (!connected && pendingCount > 0)}
+            <button type="button" class="underline" onclick={retrySync} data-testid="xlsx-retry"
               >{m.drive_sheet_retry()}</button
             >
           {/if}
@@ -3040,41 +3128,7 @@
       </div>
     {/if}
 
-    {#if mode.kind === 'watching'}
-      <div
-        class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2 text-sm"
-        role="status"
-        data-testid="xlsx-watching"
-      >
-        <span>{m.drive_sheet_someone_editing({ name: mode.holder.name })}</span>
-        <Button
-          size="sm"
-          variant="outline"
-          onclick={() => void takeOver()}
-          disabled={locking}
-          data-testid="xlsx-take-over">{m.drive_sheet_take_over()}</Button
-        >
-      </div>
-    {:else if mode.kind === 'lost'}
-      <div
-        class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2 text-sm"
-        role="status"
-        data-testid="xlsx-lost"
-      >
-        <span
-          >{mode.holder
-            ? m.drive_sheet_taken_over({ name: mode.holder.name })
-            : m.drive_sheet_lock_lost()}</span
-        >
-        <Button size="sm" variant="outline" onclick={downloadCopy}
-          ><DownloadIcon class="size-4" aria-hidden="true" />
-          {m.drive_sheet_download_mine()}</Button
-        >
-        <Button size="sm" variant="outline" onclick={() => void takeOver()} disabled={locking}
-          >{m.drive_sheet_take_back()}</Button
-        >
-      </div>
-    {:else if mode.kind === 'conflict'}
+    {#if mode.kind === 'conflict'}
       <div
         class="flex flex-wrap items-center gap-2 border-b border-destructive/40 bg-destructive/10 px-3 py-2 text-sm"
         role="alert"
@@ -3230,6 +3284,27 @@
           {/if}
         </button>
       {/if}
+      {#if !source && peers.length > 0}
+        <div
+          class="flex shrink-0 items-center gap-1"
+          aria-label={m.drive_sheet_peers_label()}
+          data-testid="xlsx-peers"
+        >
+          {#each peers as p (p.clientId)}
+            {@const hex = peerColorHex(p.color)}
+            <span
+              class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+              style="border-color: {hex}40; background-color: {hex}14;"
+              title={p.editing ? p.name : m.drive_sheet_peer_viewing({ name: p.name })}
+              data-testid="xlsx-peer"
+              data-peer-id={p.clientId}
+            >
+              <span class="size-2 shrink-0 rounded-full" style="background-color: {hex};" aria-hidden="true"></span>
+              <span class="max-w-28 truncate">{p.name}</span>
+            </span>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     {#if info && info.kind !== 'worksheet'}
@@ -3326,6 +3401,8 @@
         onfilter={openFilterMenu}
         onreach={(axis) => (axis === 'row' ? (extraRows += 100) : (extraCols += 10))}
         onresize={onResize}
+        peers={gridPeers}
+        onselect={() => sendPresenceSoon()}
         oncellselect={() => (selectedDrawingId = null)}
         onnoteopen={(pos) => openCommentsPanel(cellName(pos))}
         oncellhover={onCellHover}

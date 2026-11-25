@@ -448,7 +448,7 @@ function presentValidation(
   }
 }
 
-export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): ToolDescriptor[] {
+export function createDriveSheetRulesTools({ service, sheetLive }: DriveSheetToolDeps): ToolDescriptor[] {
   return [
     {
       name: 'drive.sheet_conditional_format_list',
@@ -462,7 +462,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const i = cfListInput.parse(input)
         const lib = await xlsx()
         const { condFormat } = await rulesLib()
-        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib)
+        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib, sheetLive)
         return guarded(lib, () => {
           const info = editor.wb.requireWorksheet(i.sheet)
           return {
@@ -497,7 +497,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const drive = await service()
         const lib = await xlsx()
         const { condFormat } = await rulesLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           if (i.priority === undefined) {
             if (!i.range || !i.rule)
@@ -567,7 +567,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const drive = await service()
         const lib = await xlsx()
         const { condFormat } = await rulesLib()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           if (hasPriority) editor.apply({ op: 'cf_delete', sheet: i.sheet, priority: i.priority! })
           else editor.apply({ op: 'cf_clear', sheet: i.sheet, range: i.range ?? null })
@@ -602,7 +602,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const i = validationSetInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         const rule: ValidationRule = {
           type: i.type,
           ...(i.operator !== undefined ? { operator: i.operator } : {}),
@@ -650,7 +650,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const i = validationClearInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () =>
           editor.apply({ op: 'validation_clear', sheet: i.sheet, range: i.range }),
         )
@@ -684,7 +684,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const i = hyperlinkSetInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () =>
           editor.apply({
             op: 'hyperlink_set',
@@ -729,7 +729,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const i = hyperlinkRemoveInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () =>
           editor.apply({ op: 'hyperlink_remove', sheet: i.sheet, range: i.range }),
         )
@@ -762,7 +762,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const i = namesListInput.parse(input)
         const lib = await xlsx()
         const { names } = await rulesLib()
-        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib)
+        const { file, editor } = await openBook(await service(), ctx, i.file_id, lib, sheetLive)
         return guarded(lib, () => ({
           file: { id: file.id, name: file.name },
           names: names.listNames(editor.wb).map((n) => ({
@@ -798,7 +798,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const drive = await service()
         const lib = await xlsx()
         const { names } = await rulesLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           const scope = i.scope ? editor.wb.requireSheet(i.scope).name : null
           const key = i.name.trim().toLowerCase()
@@ -868,7 +868,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const drive = await service()
         const lib = await xlsx()
         const { names } = await rulesLib()
-        const { editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () =>
           editor.apply({
             op: 'name_delete',
@@ -919,7 +919,7 @@ export function createDriveSheetRulesTools({ service }: DriveSheetToolDeps): Too
         const i = protectInput.parse(input)
         const drive = await service()
         const lib = await xlsx()
-        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib)
+        const { file, editor, base } = await openBook(drive, ctx, i.file_id, lib, sheetLive)
         await guarded(lib, () => {
           let op: SheetOp
           if (i.action === 'protect_sheet') {

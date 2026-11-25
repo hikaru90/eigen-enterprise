@@ -33,7 +33,6 @@ import { createGitHubTokenClient } from '$lib/server/github/token'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { ASSISTANT_MODULE_ID, assistantManifest } from './assistant/manifest'
 import { createAssistantTools } from './assistant/tools'
-import { createWebsiteFoundingTools } from './website/founding-tools'
 import { BRAND_MODULE_ID, BRAND_WRITE_TOOLS, brandManifest } from './brand/manifest'
 import { createBrandTools } from './brand/tools'
 import { CALENDAR_MODULE_ID, CALENDAR_WRITE_TOOLS, calendarManifest } from './calendar/manifest'
@@ -52,6 +51,8 @@ import { contributeHubManifest } from './contribute/hub/manifest'
 import { createContributeHubTools } from './contribute/hub/tools'
 import { CONTRIBUTE_MODULE_ID, CONTRIBUTE_WRITE_TOOLS, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
+import { COWORKERS_GATED_TOOLS, COWORKERS_MODULE_ID, coworkersManifest } from './coworkers/manifest'
+import { createCoworkersTools } from './coworkers/tools'
 import { DEMO_GUEST_ACCESS_SET_TOOL, DEMO_SEED_TOOL, demoManifest } from './demo/manifest'
 import { createDemoTools } from './demo/tools'
 import { DOMAINS_MODULE_ID, domainsManifest } from './domains/manifest'
@@ -60,6 +61,7 @@ import { driveSourceWriter } from './drive'
 import {
   DRIVE_MODULE_ID,
   DRIVE_SHEET_COPY_TOOL_NAMES,
+  DRIVE_SHEET_LIVE_WRITE_TOOLS,
   DRIVE_SHEET_WRITE_TOOLS,
   DRIVE_WRITE_TOOLS,
   driveManifest,
@@ -73,8 +75,6 @@ import { createOwleryTools } from './email/owlery/tools'
 import { EMAIL_PLATFORM_WRITE_TOOLS } from './email/platform/tool-names'
 import { createEmailPlatformTools } from './email/platform/tools'
 import { createEmailTools } from './email/tools'
-import { COWORKERS_GATED_TOOLS, COWORKERS_MODULE_ID, coworkersManifest } from './coworkers/manifest'
-import { createCoworkersTools } from './coworkers/tools'
 import { MEMBERS_MODULE_ID, membersManifest } from './members/manifest'
 import { createMembersTools } from './members/tools'
 import { MEMORY_MODULE_ID, memoryManifest } from './memory/manifest'
@@ -94,6 +94,7 @@ import { RECAP_MODULE_ID } from './recap/types'
 import { provideReposPorts, reposService } from './repos/live'
 import { REPOS_MODULE_ID, reposManifest } from './repos/manifest'
 import { createReposTools } from './repos/tools'
+import { createWebsiteFoundingTools } from './website/founding-tools'
 
 export type { RecapBoot } from './recap'
 import { createActivityTools } from './website/activity-tools'
@@ -258,6 +259,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   ...DRIVE_SHEET_WRITE_TOOLS,
   // Drive: an editable .xlsx copy of an .xls/.ods (a new file next to the original).
   ...DRIVE_SHEET_COPY_TOOL_NAMES,
+  // Drive spreadsheets co-edited: a batch of changes into an open workbook's log.
+  ...DRIVE_SHEET_LIVE_WRITE_TOOLS,
   // Calls: ringing, booking meetings / inviting guests (external mail), removing a guest and
   // the Company Brain's switch and shares wait on the approval mode.
   ...CALLS_WRITE_TOOLS,

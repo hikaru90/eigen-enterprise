@@ -1,5 +1,6 @@
 import type { Calc } from './calc'
 import { compare } from './calc-values'
+import { newGuid } from './ids'
 import { finishSheet, sheetDoc, stylesDoc, toFileFormula, toShownFormula } from './ops'
 import { cellName, type Range } from './ref'
 import { ruleCalc } from './rule-formulas'
@@ -840,14 +841,8 @@ export type CfOp =
 const xmlns = (el: Element, prefix: string, ns: string) =>
   el.setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, ns)
 
-function guid(): string {
-  const b = new Uint8Array(16)
-  crypto.getRandomValues(b)
-  b[6] = (b[6]! & 0x0f) | 0x40
-  b[8] = (b[8]! & 0x3f) | 0x80
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0').toUpperCase()).join('')
-  return `{${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}}`
-}
+/** A GUID from ./ids.ts (the same in every replica of a co-edited workbook). */
+const guid = newGuid
 
 /** The styles part's dxf index for `style` (an identical record is reused). */
 function dxfIndex(wb: Workbook, style: CfStyle): number {

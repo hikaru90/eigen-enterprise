@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { delegatedPrincipal } from '$lib/kernel/principals'
+import type { StreamEvent } from '$lib/office/xlsx/collab/protocol'
 import { cellKey } from '$lib/office/xlsx/ref'
 import { budgetBook, buildXlsx, num, row } from '$lib/office/xlsx/test-utils/build-xlsx'
 import { commentBook, pictureBook } from '$lib/office/xlsx/test-utils/drawing-fixtures'
 import { openWorkbook } from '$lib/office/xlsx/workbook'
+import { createSheetLive } from '$lib/server/sheet-live/service'
+import { memorySheetLiveStore } from '$lib/server/sheet-live/store'
 import { memoryEditLockStore } from './locks'
 import { DRIVE_SHEET_TOOL_NAMES, DRIVE_SHEET_WRITE_TOOLS, DRIVE_TOOL_NAMES } from './manifest'
 import { memoryDriveAccess } from './memory-access'
@@ -277,6 +280,93 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     expect(out.content).toContain('| Rent | 1200 |  |  |')
     expect(out.content).toContain('| Total | 1500 | 125 | 1500 |')
     expect(out.content).toContain('## Sheet: Summary')
+  })
+
+  it('routes drive.sheet_* reads and writes through SheetLive while an open session is active', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'drive-sheet-live-'))
+    dirs.push(dir)
+    const access = memoryDriveAccess({
+      users: { alice: { role: 'member' }, bob: { role: 'member' } },
+    })
+    const drive = createDriveService({
+      store: memoryDriveStore(),
+      blobs: diskBlobStore(dir),
+      access,
+      maxUploadBytes: 1 << 22,
+      locks: memoryEditLockStore(),
+    })
+    const live: ReturnType<typeof createSheetLive> = createSheetLive({
+      drive,
+      store: memorySheetLiveStore(),
+      publish: async (m) => live.receive(m),
+      nameOf: async (a) => (a.kind === 'user' ? a.userId : a.id),
+    })
+    const tools = createDriveTools({ service: async () => drive, sheetLive: async () => live })
+    const tool = (n: string) => tools.find((t) => t.name === n)!
+    const as = (id: string) => ({
+      principal: delegatedPrincipal({ id, roles: ['member'] }, 'orchestrator'),
+      requestId: 'r-live',
+    })
+    const folder = await drive.createFolder(alice, null, 'Coedit')
+    access.grants.push({
+      resourceType: 'folder',
+      resourceId: folder.id,
+      subject: { kind: 'user', userId: 'bob' },
+      level: 'edit',
+    })
+    const f = await drive.upload(alice, folder.id, { name: 'budget.xlsx', bytes: budgetBook(), mime: XLSX }, 'fail')
+
+    await live.join(alice, f.id)
+    const events: StreamEvent[] = []
+    const disconnect = await live.connect(alice, f.id, 'tab-alice', 0, (e) => events.push(e))
+
+    // Unflushed edit in the browser's live session is visible to drive.sheet_read.
+    await live.submit(alice, f.id, {
+      clientId: 'tab-alice',
+      baseSeq: 0,
+      changes: [{ opId: 'a1', body: { kind: 'change', ops: [{ op: 'set_cells', sheet: 'Budget', cells: [{ ref: 'B2', value: 999 }] }], acceptLosses: false } }],
+    })
+    const readOut = (await tool('drive.sheet_read').handler(as('bob'), { file_id: f.id, sheet: 'Budget', range: 'B2' })) as {
+      cells: Array<{ ref: string; value?: unknown }>
+    }
+    expect(readOut.cells[0]?.value).toBe(999)
+
+    // Tool edits commit to the live log and broadcast to open peers immediately, without saving a premature Drive revision.
+    const writeOut = (await tool('drive.sheet_write').handler(as('bob'), {
+      file_id: f.id,
+      sheet: 'Budget',
+      cells: [{ ref: 'D2', value: 'tool-edit' }],
+    })) as { revision: unknown; cells: Array<{ ref: string; value?: unknown }> }
+    expect(writeOut.revision).toBeNull()
+    expect(writeOut.cells[0]?.value).toBe('tool-edit')
+
+    const fmtOut = (await tool('drive.sheet_format').handler(as('bob'), {
+      file_id: f.id,
+      sheet: 'Budget',
+      styles: [{ range: 'D2', bold: true }],
+    })) as { revision: unknown; sheet: string }
+    expect(fmtOut.revision).toBeNull()
+    expect(fmtOut.sheet).toBe('Budget')
+
+    const freezeOut = (await tool('drive.sheet_freeze').handler(as('bob'), {
+      file_id: f.id,
+      sheet: 'Budget',
+      rows: 1,
+      columns: 0,
+    })) as { revision: unknown; frozen: { rows: number; columns: number } }
+    expect(freezeOut.revision).toBeNull()
+    expect(freezeOut.frozen).toEqual({ rows: 1, columns: 0 })
+
+    await new Promise((r) => setTimeout(r, 20))
+    const entrySeqs = events.filter((e) => e.event === 'entry').map((e) => e.data.seq)
+    expect(entrySeqs).toEqual([1, 2, 3, 4])
+
+    // Disconnecting the last peer flushes all browser + agent changes into Drive.
+    await disconnect()
+    const saved = openWorkbook((await drive.readFile(alice, f.id)).bytes)
+    expect(saved.sheet('Budget').cells.get(cellKey(1, 1))?.value).toBe(999)
+    expect(saved.sheet('Budget').cells.get(cellKey(1, 3))?.value).toBe('tool-edit')
+    live.stop()
   })
 
   it('drive.sheet_read includes drawings, notes and threaded comments summaries and details', async () => {

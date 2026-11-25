@@ -8,6 +8,7 @@ import { outlineOf } from './rows-cols'
 import { sheetTabColor } from './sheet-tabs'
 import { buildXlsx, fml, num, row, str } from './test-utils/build-xlsx'
 import { openWorkbook } from './workbook'
+import { resetPlainLive } from './test-utils/live-api'
 import XlsxEditor from './xlsx-editor.svelte'
 
 const api = vi.hoisted(() => ({
@@ -35,7 +36,8 @@ const api = vi.hoisted(() => ({
 
 vi.mock('$lib/drive/api', async (importOriginal) => {
   const real = await importOriginal<typeof import('$lib/drive/api')>()
-  return { ...real, driveApi: { ...real.driveApi, ...api } }
+  const { liveOverPlainApi } = await import('./test-utils/live-api')
+  return { ...real, driveApi: { ...real.driveApi, ...api, ...liveOverPlainApi(api) } }
 })
 
 const props = {
@@ -70,6 +72,8 @@ let latestBytes: Uint8Array
 const savedBook = () => openWorkbook(latestBytes)
 
 beforeEach(() => {
+
+  resetPlainLive(api)
   vi.clearAllMocks()
   latestBytes = sampleBook()
   api.readBytes.mockResolvedValue(latestBytes)

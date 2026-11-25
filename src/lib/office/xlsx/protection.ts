@@ -1,4 +1,5 @@
 import { contentText, replacedText } from './find'
+import { randomBytes } from './ids'
 import { finishSheet, restyle, sheetDoc, stylesDoc } from './ops'
 import { cellKey, cellName, rangeName, requireRange, type Range } from './ref'
 import { SHEET_ALLOW, type SheetAllow } from './rules-choices'
@@ -182,8 +183,8 @@ function writePassword(el: Element, a: HashAttrs, password: string | null | unde
   for (const k of [a.algorithm, a.hash, a.salt, a.spin, a.legacy]) el.removeAttribute(k)
   if (!password) return
   if (password.length > 255) throw new XlsxError('A password can have at most 255 characters.')
-  const salt = new Uint8Array(16)
-  crypto.getRandomValues(salt)
+  // From ./ids.ts: the same in every replica of a co-edited workbook.
+  const salt = randomBytes(16)
   const saltB64 = toB64(salt)
   el.setAttribute(a.algorithm, 'SHA-512')
   el.setAttribute(a.hash, sha512PasswordHash(password, saltB64, SPIN_COUNT))
