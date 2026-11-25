@@ -71,6 +71,16 @@ export const REMINDER_TOOL_NAMES = [
   'reminders.snooze',
 ] as const
 
+/** Team questions to colleagues (question-tools.ts): the `questions` namespace belongs to Memory. */
+export const QUESTION_TOOL_NAMES = [
+  'questions.ask',
+  'questions.list',
+  'questions.get',
+  'questions.answer',
+  'questions.close',
+  'questions.tags',
+] as const
+
 /** Projects, scheduled tasks, timeline items, assigned-task "seen" (project-schedule-tools.ts). */
 export const PROJECT_SCHEDULE_TOOL_NAMES = [
   'memory.create_project',
@@ -98,7 +108,7 @@ export const memoryManifest: ModuleManifest = {
   version: '0.1.0',
   description:
     'Thought capture, hybrid retrieval, and GTD project/text-note tools over the eigen memory system.',
-  toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders'],
-  tools: [...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES],
+  toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders', 'questions'],
+  tools: [...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...QUESTION_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

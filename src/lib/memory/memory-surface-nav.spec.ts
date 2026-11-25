@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { activeMemorySurfaceTab, MEMORY_TABS } from './memory-surface-nav'
 
 describe('MEMORY_TABS', () => {
-  it('is the one sub-navigation of the Memory page: Tasks · Projects · Documents · Reminders · What the brain knows (plan/concept-memory-one-door.md §2.2)', () => {
+  it('is the one sub-navigation of the Memory page: Tasks · Projects · Documents · Reminders · Questions · What the brain knows (plan/concept-memory-one-door.md §2.2)', () => {
     expect(MEMORY_TABS.map((t) => [t.id, t.label(), t.href])).toEqual([
       ['tasks', 'Tasks', '/m/memory/tasks'],
       ['projects', 'Projects', '/m/memory/projects'],
       ['documents', 'Documents', '/m/memory/notes'],
       ['reminders', 'Reminders', '/m/memory/reminders'],
+      ['questions', 'Questions', '/m/memory/questions'],
       ['knows', 'What the brain knows', '/m/memory/capture'],
     ])
   })
@@ -22,6 +23,7 @@ describe('MEMORY_TABS', () => {
       projects: 'An outcome with several steps.',
       documents: 'Kept as you wrote it. The brain reads it, but doesn’t rewrite it.',
       reminders: 'Comes back on the weekdays you pick, until you stop it.',
+      questions: 'Short questions for colleagues, answered right here.',
       knows: 'Everything the brain took in, and whether it’s indexed yet.',
     })
     for (const tab of MEMORY_TABS) expect(tab.description()).not.toContain('\n')
@@ -32,6 +34,7 @@ describe('activeMemorySurfaceTab', () => {
   it.each([
     ['/m/memory/tasks', 'tasks'],
     ['/m/memory/reminders', 'reminders'],
+    ['/m/memory/questions', 'questions'],
     ['/m/memory/projects', 'projects'],
     ['/m/memory/projects/7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f60', 'projects'],
     ['/m/memory/notes', 'documents'],

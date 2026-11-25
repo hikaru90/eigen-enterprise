@@ -14,6 +14,7 @@ import {
 import { MEMORY_TOOL_NAMES } from './manifest'
 import { createOwnTaskTools, type OwnTaskToolDeps } from './own-task-tools'
 import { createProjectScheduleTools, type ProjectScheduleToolDeps } from './project-schedule-tools'
+import { createQuestionTools, type QuestionToolDeps } from './question-tools'
 import { createReminderTools, type ReminderToolDeps } from './reminder-tools'
 import { createTaskTools, type TaskToolDeps } from './task-tools'
 import { createThoughtTools, type ThoughtToolDeps } from './thought-tools'
@@ -46,6 +47,8 @@ export type MemoryToolDeps = {
   ownTasks?: OwnTaskToolDeps
   /** The reminders.* tools (reminder-tools.ts); they share writerOf unless given their own. */
   reminders?: ReminderToolDeps
+  /** The questions.* tools (question-tools.ts); they share writerOf unless given their own. */
+  questions?: QuestionToolDeps
   /** Thoughts / entities / graph / connected-agent tools (thought-tools.ts). */
   thoughts?: ThoughtToolDeps
   /** Projects, scheduled tasks, timeline items (project-schedule-tools.ts); they share writerOf unless given their own. */
@@ -306,6 +309,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ...createThoughtTools({ writerOf: opts.writerOf, ...opts.thoughts }),
     ...createTaskTools({ writerOf: opts.writerOf, ...opts.tasks }),
     ...createReminderTools({ writerOf: opts.writerOf, ...opts.reminders }),
+    ...createQuestionTools({ writerOf: opts.writerOf, ...opts.questions }),
     ...createProjectScheduleTools({ writerOf: opts.writerOf, ...opts.projectSchedule }),
   ].map(refusingCoworkerWhereHumanOnly)
 }
