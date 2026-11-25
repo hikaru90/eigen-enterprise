@@ -174,5 +174,6 @@ describe('briefs (the assistant prompt block)', () => {
     expect(briefs.at(-1)!.fullName).toBe('kindred/r2')
     const folder = (await t.service.list()).find((s) => s.fullName === 'kindred/shop')!.driveFolderId
     expect(briefs[0]!.driveFolderId).toBe(folder)
-  })
+    // 21 repos × 5 sync ticks: ~4 s alone, past the 15 s default under the full parallel CI gate.
+  }, 30_000)
 })
