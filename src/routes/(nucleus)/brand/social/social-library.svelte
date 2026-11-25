@@ -109,12 +109,12 @@
     >
     <Button variant="outline" onclick={() => (uploadOpen = true)}>Upload a post</Button>
     <span class="flex-1"></span>
-    <p class="text-xs text-foreground/55" data-testid="social-not-connected">
+    <p class="text-xs text-muted-foreground" data-testid="social-not-connected">
       Posting to the networks isn’t connected yet.
     </p>
   </div>
   {#if !style}
-    <p class="text-sm text-foreground/55">
+    <p class="text-sm text-muted-foreground">
       Graphics are drawn from your active style. <a class="underline" href={resolve('/brand')}
         >Choose a style</a
       > to make one.
@@ -155,7 +155,7 @@
       data-testid="social-empty"
     >
       <h3 class="text-base font-semibold">No posts yet</h3>
-      <p class="max-w-sm text-sm text-foreground/55">
+      <p class="max-w-sm text-sm text-muted-foreground">
         Ask the company brain for a post in your style, start a graphic, or upload posts you’ve
         already made.
       </p>
@@ -200,15 +200,15 @@
                     />
                   </div>
                 {:else if post.media[0]?.mime.startsWith('video/')}
-                  <span class="text-xs text-foreground/55">Video</span>
+                  <span class="text-xs text-muted-foreground">Video</span>
                 {:else if post.media[0]}
                   <img class="size-full object-cover" src={mediaUrl(post.media[0].id)} alt="" />
                 {:else}
-                  <span class="text-xs text-foreground/55">Graphic</span>
+                  <span class="text-xs text-muted-foreground">Graphic</span>
                 {/if}
               </div>
               <span class="truncate text-sm font-medium">{post.title}</span>
-              <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground/55">
+              <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 <span class="inline-flex items-center gap-1">
                   <span
                     class={cn(
@@ -226,7 +226,7 @@
                 {#if post.plannedFor}<span>{day(post.plannedFor)}</span>{/if}
                 {#if post.media.length > 1}<span>{post.media.length} images</span>{/if}
               </span>
-              <span class="truncate text-xs text-foreground/55"
+              <span class="truncate text-xs text-muted-foreground"
                 >{post.networks.map((n) => SOCIAL_NETWORK_LABELS[n]).join(' · ')}</span
               >
             </button>

@@ -67,7 +67,7 @@
   <header class="mt-8 flex min-w-0 flex-wrap items-end justify-between gap-4">
     <div class="flex min-w-0 flex-col gap-1">
       <h2 class="text-base font-semibold tracking-tight">Design system</h2>
-      <p class="text-sm text-foreground/55">
+      <p class="text-sm text-muted-foreground">
         {#if style}
           Every component in <span class="text-foreground">{style.name}</span>, the active style.
         {:else}
@@ -107,7 +107,7 @@
         {/each}
       </div>
       <h2 class="text-lg font-semibold">Choose a style first</h2>
-      <p class="max-w-sm text-sm text-foreground/55">
+      <p class="max-w-sm text-sm text-muted-foreground">
         The design system shows buttons, forms, cards, tables and type in your company's style. Pick
         a style and it appears here — light and dark.
       </p>
@@ -153,7 +153,7 @@
         <div class="flex flex-col gap-3">
           {#each TYPE_SCALE as step (step.id)}
             <div class="grid grid-cols-[5.5rem_1fr] items-baseline gap-4">
-              <span class="font-mono text-[11px] text-muted-foreground">{step.label}</span>
+              <span class="font-mono text-xs text-muted-foreground">{step.label}</span>
               <svelte:element
                 this={step.tag}
                 class={cn(fontClass[step.font], step.className, 'min-w-0')}
@@ -342,7 +342,7 @@
               >
                 {on ? 'Aa' : ''}
               </div>
-              <span class="font-mono text-[11px]">--{role}</span>
+              <span class="font-mono text-xs">--{role}</span>
             </div>
           {/each}
         </div>
@@ -355,13 +355,13 @@
           {#each RADIUS_SAMPLES as r (r)}
             <div class="flex flex-col items-center gap-1.5" data-radius={r}>
               <div class={cn('size-16 border border-border bg-muted', radiusClass[r])}></div>
-              <span class="font-mono text-[11px]">radius-{r}</span>
+              <span class="font-mono text-xs">radius-{r}</span>
             </div>
           {/each}
           {#each SHADOW_SAMPLES as s (s)}
             <div class="flex flex-col items-center gap-1.5" data-shadow={s}>
               <div class="size-16 rounded-md bg-card" style:box-shadow={`var(${s}, none)`}></div>
-              <span class="font-mono text-[11px]">{s.slice(2)}</span>
+              <span class="font-mono text-xs">{s.slice(2)}</span>
             </div>
           {/each}
         </div>

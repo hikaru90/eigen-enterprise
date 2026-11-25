@@ -201,7 +201,7 @@
         </Button>
       {:else}
         <p
-          class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-foreground/55"
+          class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground"
         >
           This graphic is drawn from your active style. <a
             class="underline"
@@ -358,14 +358,14 @@
   <div class="flex flex-col gap-4">
     <h3 class="text-sm font-medium">Captions</h3>
     {#if networks.length === 0}
-      <p class="text-sm text-foreground/55">Pick a network to write its caption.</p>
+      <p class="text-sm text-muted-foreground">Pick a network to write its caption.</p>
     {/if}
     {#each networks as n (n)}
       <div class="flex flex-col gap-1.5">
         <div class="flex items-center justify-between gap-2">
           <Label for="caption-{n}">{SOCIAL_NETWORK_LABELS[n]}</Label>
           <span class="flex items-center gap-2">
-            <span class="text-xs text-foreground/55 tabular-nums"
+            <span class="text-xs text-muted-foreground tabular-nums"
               >{(captions[n] ?? '').length} / {NETWORK_CAPTION_LIMITS[n]}</span
             >
             <Button size="sm" variant="ghost" onclick={() => copy(n)} disabled={!captions[n]}>
@@ -387,7 +387,7 @@
       <div class="flex flex-col gap-3 rounded-lg border border-border p-4">
         <div class="flex flex-col gap-1.5">
           <Label for="social-brief"
-            >What should the captions say? <span class="font-normal text-foreground/55"
+            >What should the captions say? <span class="font-normal text-muted-foreground"
               >(optional)</span
             ></Label
           >
@@ -421,7 +421,7 @@
         {/if}
         {#if suggestions}
           {#if !suggestions.voice}
-            <p class="text-xs text-foreground/55">
+            <p class="text-xs text-muted-foreground">
               No brand voice is active yet, so these follow the post only.
             </p>
           {/if}
@@ -449,7 +449,7 @@
         {/if}
       </div>
     {:else if networks.length > 0}
-      <p class="text-xs text-foreground/55">
+      <p class="text-xs text-muted-foreground">
         Save the post to get caption suggestions for the networks you added.
       </p>
     {/if}
@@ -467,10 +467,10 @@
     <Button onclick={save} disabled={saving || networks.length === 0 || !title.trim()}
       >{saving ? 'Saving…' : 'Save'}</Button
     >
-    {#if saved}<span class="text-sm text-foreground/55" role="status">Saved</span>{/if}
+    {#if saved}<span class="text-sm text-muted-foreground" role="status">Saved</span>{/if}
     <span class="flex-1"></span>
     {#if confirmDelete}
-      <span class="text-sm text-foreground/55"
+      <span class="text-sm text-muted-foreground"
         >Delete this post{post.media.length ? ' and its files' : ''}?</span
       >
       <Button variant="destructive" size="sm" onclick={remove}>Delete</Button>

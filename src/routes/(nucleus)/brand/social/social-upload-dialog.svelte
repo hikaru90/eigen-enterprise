@@ -118,7 +118,7 @@
       </div>
       <div class="flex flex-col gap-1.5">
         <Label for="upload-caption"
-          >Caption <span class="font-normal text-foreground/55"
+          >Caption <span class="font-normal text-muted-foreground"
             >(for every network; edit each later)</span
           ></Label
         >

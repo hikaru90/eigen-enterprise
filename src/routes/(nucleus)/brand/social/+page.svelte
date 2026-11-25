@@ -15,7 +15,7 @@
 <div class="mt-8 flex w-full flex-col gap-6">
   <header class="flex flex-col gap-1">
     <h2 class="text-base font-semibold tracking-tight">Social posts</h2>
-    <p class="text-sm text-foreground/55">Posts in your company's style, with captions for each network.</p>
+    <p class="text-sm text-muted-foreground">Posts in your company's style, with captions for each network.</p>
   </header>
   <SocialLibrary
     posts={data.posts}
