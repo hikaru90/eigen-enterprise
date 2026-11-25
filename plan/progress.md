@@ -18,7 +18,60 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - **Unblocked (`7e1b05fe`):** the guard failures are fixed on main. Prose fields in the chart, validation and hyperlink dialogs now take dictation; the formula/range dialogs are exempt, with reasons. Text has the 13px floor and the chart frame a focus ring. The drive spec imports the browser error through `print-pdf`. `ci:local` is green on main at 7e1b05fe: 11,170 unit and 1,046 component tests. Main now also holds the merged xlsx charts, pivots/tables, everyday editing and CF/validation streams (all unreleased), so the v0.5.44 tag at `5870460a` is stale; re-bump before releasing.
 - **Not done:** not released, not on the demo box. The demo company is still unseeded: the owner should start a **new** chat and run `kernel.module_activate {module_id: demo}`, then `demo.seed_company`, then `demo.guest_access_set {enabled: true, ai_calls_per_ip: 2}`. Open: asking OpenRouter for providers with enough context instead of retrying until one has it.
 
-## 2026-11-25 — STOPPED: feature-complete xlsx editor, six streams mid-work (owner: "take some open source repo like the one i share [Univer] to clean room code a xlsx editor that is feature complete … why would i want an xlsx editor without charts?", then "stop and write down current state")
+## 2026-11-25 — Feature-complete xlsx editor: all six streams merged (owner: "clean room code a xlsx editor that is feature complete" · "continue"; merges `e03ee74e`, `f24843ec`, `eda5311e`, `d5c2d01f`, `5cf871c9`, `1c7279c8`, guard fix `7e1b05fe`; on main, not pushed, not released)
+
+Spec: Univer's docs and behaviour plus Excel's documented behaviour; no Univer source copied. Libraries MIT/Apache/BSD only. **No new runtime dependency in this round** (charts use our own SVG renderer, not ECharts). Plan sections §7.4–§7.9 in `plan/phase-office-files.md`.
+
+- **Charts (§7.4):**
+  - Existing charts are drawn at their anchors, and chart sheets too.
+  - Types: column/bar (clustered/stacked/100%), line, area, pie, doughnut, scatter, bubble, radar, stock, and combo with a secondary axis.
+  - Series read their cells live; when a ref can't be resolved, the cache is used and marked.
+  - Insert from the selection, edit, drag to move/resize, delete.
+  - Charts follow row/column insert and delete.
+  - Tools: `drive.sheet_chart_*`.
+  - Not drawn: 3-D (shown flat), surface, pie-of-pie, treemap/sunburst/waterfall, trendlines and error bars (all kept in the file).
+- **Pictures, shapes, text boxes, notes, threaded comments (§7.5):**
+  - One drawing layer shared with charts; each anchor moves once.
+  - "Place in cell" pictures are shown.
+  - Notes and threads (with @mentions of members) move with cut/paste, inserts and sort.
+  - Tools: `drive.sheet_picture_*`, `sheet_shape_*`, `sheet_comment_*`.
+- **PivotTables, Excel tables, remaining formulas (§7.6):**
+  - Excel tables: Ctrl+T, styles, total row, auto-expand, sort/filter on tables.
+  - PivotTables: create, field list, refresh, GETPIVOTDATA. Unsupported pivot features are refused, never dropped.
+  - New formulas: TEXTBEFORE/AFTER, REGEX*, GROUPBY/PIVOTBY, SUBTOTAL/AGGREGATE, unions, financial functions.
+  - The `calc-params.ts` audit test fails on any unclassified function, which closes the wrong-value risk.
+- **Everyday editing (§7.7):**
+  - Clipboard with Excel/Google/Numbers interop, paste special, fill handle and series, find/replace, Go To.
+  - Merge cells, rich text, format painter.
+  - Hide/group/autofit rows and columns; sheet tabs (reorder, colour, hide, duplicate).
+  - Formula autocomplete, F4, status bar sums, keyboard parity, zoom, page setup and PDF via Chromium.
+  - **Behaviour changes:** hidden sheets leave the tab bar (Unhide menu) as in Excel; Tab/Enter move inside a multi-cell selection.
+- **Conditional formatting, validation, hyperlinks, names, protection (§7.8):**
+  - All conditional-format rule types including the Excel 2010 data bars and icon sets.
+  - Validation with dropdowns and alerts.
+  - Name Manager; SHA-512 protection.
+  - One guard covers every op.
+  - **Security fix:** approval requests now store a redacted copy of tool input (`*password`, `*key`, `*token`, `*secret`, including camelCase forms). The approver sees the redacted copy. An always-ask approval is matched on the redacted form, so it covers any secret value.
+- **Real-time co-editing (§7.9):**
+  - Server-authoritative SheetOp log over SSE + Postgres LISTEN/NOTIFY; no new service.
+  - Migration `0186_sheet_live`.
+  - Transforms exist for every op type. Moves that can't be fitted safely (inside a concurrent sort, partial cut ranges, pivot refresh, pixel-anchored drawings under row shifts) are refused with a reason, never guessed.
+  - Presence boxes; single-writer save.
+  - Agent tools write through the live log; passwords never reach the log.
+  - **Removal (announced):** the exclusive edit lock and "Take over" are gone for .xlsx/.xlsm; everyone with edit access edits at once. Other file types keep the lock.
+- **Guard fix `7e1b05fe`** (unblocked the v0.5.44 gate): dictation on prose fields in the chart, validation and hyperlink dialogs; 13px floor; focus ring; no cross-module import in the drive spec.
+- **Process notes:**
+  - Several agents found their own pre-stop uncommitted work after a resume and took it over; all of it was reviewed in place.
+  - The charts agent caught and removed its own rule that rewrote series refs on sort.
+  - `npm run check` is incremental and once missed a type error that a full `svelte-check` found. The final verification below includes a full run.
+- **Gate on main after all merges:**
+  - `ci:local` first failed on one spec, `src/lib/server/sheet-live/service.spec.ts`: a wrong relative path to `modules/drive`. It was fixed in `d7a430cd`.
+  - Final results: unit 11,279 passed (the fixed spec re-run alone); components 1,052 passed; check 0 errors, plus a full non-incremental svelte-check (8,197 files, 0 errors); contract current (492 tools); migrations clean.
+  - e2e and the upgrade rehearsal were not run (release gate).
+  - The local v0.5.44 tag (`5870460a`) is stale; re-bump before releasing.
+- **Not checked in real Excel:** no generated file was opened in Excel or LibreOffice. Validity rests on schema-order tests and round-trips.
+
+## 2026-11-25 — (superseded by the entry above) STOPPED: feature-complete xlsx editor, six streams mid-work (owner: "take some open source repo like the one i share [Univer] to clean room code a xlsx editor that is feature complete … why would i want an xlsx editor without charts?", then "stop and write down current state")
 
 - **Goal:** Excel-level editor. Univer's docs/behaviour and Excel's documented behaviour (ECMA-376, Microsoft docs) are the spec. No Univer source is copied. Libraries must be MIT/Apache/BSD (never GPL) and lazy-loaded. Built on our lossless OPC editor (§7).
 - **State:** all six agents were stopped by the owner mid-work. **Nothing from this round is in main.**
