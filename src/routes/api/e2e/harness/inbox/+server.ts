@@ -67,6 +67,8 @@ async function connectFakeMail(): Promise<string> {
   if (!(await owlery.isConfigured())) {
     const sender = `company@${E2E_INBOX_DOMAIN}`
     await defaultFakeMailStore().verifyIdentity(sender)
+    // The fake SES knows the domain too, so a manual Re-check agrees with the seeded state.
+    await defaultFakeMailStore().verifyIdentity(E2E_INBOX_DOMAIN)
     await owlery.saveVerified({
       region: 'eu-central-1',
       accessKeyId: 'AKIAFAKE',
@@ -102,10 +104,16 @@ export const POST: RequestHandler = async ({ request }) => {
   const { appSql, createScopedDrizzle } = await import('$lib/server/db')
   const { dbInboxStore } = await import('../../../../../../modules/email/inbox/db-store')
   const store = dbInboxStore(createScopedDrizzle(appSql))
+  // The state of a domain Amazon has fully verified: SUCCESS everywhere and no background
+  // re-checks (is_verifying false). With is_verifying left at its default, the email tick
+  // re-checked it against the fake SES — which never knew the domain — flipped it to
+  // NOT_STARTED, and every later send was refused (timing-dependent: it failed only in full runs).
   const [domain] = await appSql<{ id: string }[]>`
-    insert into mail_domains (name, region, dkim_selector, public_key, status, created_by)
-    values (${E2E_INBOX_DOMAIN}, 'eu-central-1', 'ee', 'e2e', 'SUCCESS', 'e2e-harness')
-    on conflict (name) do update set name = excluded.name
+    insert into mail_domains (name, region, dkim_selector, public_key, status, dkim_status, mail_from_status, is_verifying, last_checked_at, created_by)
+    values (${E2E_INBOX_DOMAIN}, 'eu-central-1', 'ee', 'e2e', 'SUCCESS', 'SUCCESS', 'SUCCESS', false, now(), 'e2e-harness')
+    on conflict (name) do update set
+      status = 'SUCCESS', dkim_status = 'SUCCESS', mail_from_status = 'SUCCESS',
+      is_verifying = false, last_checked_at = now(), error_message = null
     returning id`
   if (!domain) throw new Error('mail_domains upsert returned no row')
 
