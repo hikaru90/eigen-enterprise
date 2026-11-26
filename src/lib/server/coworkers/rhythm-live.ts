@@ -1,5 +1,5 @@
 import type { NoticeDeps } from './notices'
-import type { RhythmDeps, TargetAccess } from './rhythms'
+import type { RhythmDeps, RhythmTarget, TargetAccess } from './rhythms'
 
 /**
  * Live wiring of the rhythms and the "Needs you" notices (C6): the Postgres
@@ -30,22 +30,37 @@ export const liveRhythmTargets: TargetAccess = {
     const others = (await d.store.memberIds(c.id)).filter((id) => id !== coworkerUserId)
     return others.map((id) => people.get(id) ?? 'Former member').join(', ')
   },
+  // Only what a target needs: may the co-worker post, may the reader see it, its title. Not
+  // Messages' listConversations — that summarizes every conversation (unread counts …) one by
+  // one, and with a few hundred channels Settings → Co-workers took 20 s per co-worker.
   async listFor(coworkerUserId, readerId) {
-    const [{ messagesDeps }, { canUse, listConversations }] = await Promise.all([
+    const [{ messagesDeps }, { canUse }] = await Promise.all([
       import('../../../../modules/messages/live'),
       import('../../../../modules/messages/service'),
     ])
     const d = await messagesDeps()
-    const member = (await d.directory.role(readerId)) !== null
-    const out = []
-    for (const s of await listConversations(d, coworkerUserId)) {
-      const c = await d.store.getConversation(s.id)
-      if (!c || !(await canUse(d, coworkerUserId, c, 'edit'))) continue
-      const readable = member ? await canUse(d, readerId, c, 'view') : c.kind === 'channel' && !c.private
-      if (!readable) continue
-      out.push({ id: s.id, kind: s.kind, title: s.kind === 'channel' ? `#${s.title}` : s.title })
-    }
-    return out
+    const [role, channels, dms, people] = await Promise.all([
+      d.directory.role(readerId),
+      d.store.listChannels(),
+      d.store.listDmsFor(coworkerUserId),
+      d.directory.listPeople(),
+    ])
+    const member = role !== null
+    const names = new Map(people.map((p) => [p.id, p.name.trim() || p.email]))
+    const open = channels.filter((c) => !c.archived).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+    const dmsNewestFirst = [...dms].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    const checked = await Promise.all(
+      [...open, ...dmsNewestFirst].map(async (c) => {
+        if (!(await canUse(d, coworkerUserId, c, 'edit'))) return null
+        const readable = member ? await canUse(d, readerId, c, 'view') : c.kind === 'channel' && !c.private
+        if (!readable) return null
+        if (c.kind === 'channel') return { id: c.id, kind: c.kind, title: `#${c.name ?? ''}` }
+        const others = (await d.store.memberIds(c.id)).filter((id) => id !== coworkerUserId)
+        const title = others.length === 0 ? 'Just you' : others.map((id) => names.get(id) ?? 'Former member').join(', ')
+        return { id: c.id, kind: c.kind, title }
+      }),
+    )
+    return checked.filter((t): t is RhythmTarget => t !== null)
   },
 }
 

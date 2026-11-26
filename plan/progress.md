@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-26 — Settings → Co-workers took ~20 s per co-worker (found by the v0.5.45 release gate)
+
+- `coworkers.e2e.ts` failed every time on step 3 (click "Manage" → /settings/coworkers within 15 s). The page load runs `coworkers.rhythm_list` per co-worker, and its targets (`liveRhythmTargets.listFor`, `src/lib/server/coworkers/rhythm-live.ts`) went through Messages' `listConversations`. That summarizes every conversation one by one (view check, unread count), then re-read and re-checked each one. With the e2e database's ~420 conversations, that was 19–25 s for one co-worker. A real performance bug: it grows with a company's channel count. It surfaced now only because the test database keeps growing.
+- **Fix:** listFor reads channels, the co-worker's DMs and people once, then checks post and see rights in parallel; no summaries. Same targets, same order and titles: `rhythm-live.spec.ts` compares it with the old computation for owner, member and outsider. In the e2e run: 5–7 s, test green.
+- **Still open:** 5–7 s is still slow. Each channel is one `access.canAccess` call; a batched access query (one round trip for all channels) is the next step.
+
 ## 2026-11-26 — AI co-worker costs: Claude Sonnet removed from the pool, OpenRouter session pinning, cache tokens logged (owner: "a lot of costs on my AI agents … it shouldn't be with deep seek" · "fix the code … I don't want to use Sonnet at all. Never. Remove it")
 
 - **Diagnosis (ee-one, Nov 24–26, from `coworkers.runs`):** ≈ $10.90 on three co-workers. Vertriebs Verónica (Sonnet 5.5) $4.97, Marketing Melanie (Sonnet 5.5) $3.77, Finanz Finn (now Gemini 3.8 Flash) $2.17. A turn cost $0.20–1.09 on Sonnet against about $0.005–0.01 on DeepSeek Flash. All three hit their $2/day cap, and the OpenRouter workspace hit its $10 weekly budget (resets 2026-11-30). os.cerberusblue.com, on DeepSeek Flash: $0.44 in 14 days.
