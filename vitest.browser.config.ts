@@ -78,6 +78,7 @@ export default defineConfig({
     // (in-spec vi.mock) before joining this job.
     include: [
       'src/lib/components/smoke.svelte.spec.ts',
+      'src/routes/(nucleus)/m/email/mailboxes/mailboxes-page.svelte.spec.ts',
       'src/lib/components/settings/speech-status.svelte.spec.ts',
       'src/lib/components/settings/logo-cropper.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/flyer-preview.svelte.spec.ts',

@@ -140,6 +140,10 @@ export type InboxStore = {
   insertAddress(row: AddressRow): Promise<void>
   /** Removes an alias; a primary address is never deleted on its own. */
   deleteAlias(address: string): Promise<void>
+  /** In one transaction: the mailbox's primary address and `next.address` (if an alias of it) go, `next` becomes the primary. */
+  replacePrimary(mailboxId: string, next: AddressRow): Promise<void>
+  /** The mailbox, its addresses, mail, attachments and labels (cascade). */
+  deleteMailbox(id: string): Promise<void>
 
   insertMessage(row: MessageRow): Promise<void>
   /**

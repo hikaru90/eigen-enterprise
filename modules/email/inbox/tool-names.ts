@@ -12,6 +12,8 @@ export const EMAIL_INBOX_WRITE_TOOLS = [
   'email.mailbox_assign',
   'email.mailbox_create_shared',
   'email.mailbox_set_disabled',
+  'email.mailbox_set_address',
+  'email.mailbox_delete',
   'email.mailbox_alias_add',
   'email.mailbox_alias_remove',
   'email.label_create',

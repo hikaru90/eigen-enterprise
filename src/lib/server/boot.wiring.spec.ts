@@ -616,6 +616,8 @@ const MEMBER_LOSES_VIA_BRAIN = [
   'email.mailbox_assign',
   'email.mailbox_create_mine',
   'email.mailbox_create_shared',
+  'email.mailbox_delete',
+  'email.mailbox_set_address',
   'email.mailbox_set_disabled',
   'email.send_mail',
   'email.send_template',

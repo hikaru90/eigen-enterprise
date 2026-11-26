@@ -35,6 +35,22 @@
     localPart = unassigned.find((m) => m.id === memberId)?.suggested ?? ''
   }
 
+  /** Which row has its change-address, add-alias or delete form open. */
+  let open = $state<{ id: string; mode: 'address' | 'alias' | 'delete' } | null>(null)
+  function toggle(id: string, mode: 'address' | 'alias' | 'delete') {
+    open = open?.id === id && open.mode === mode ? null : { id, mode }
+  }
+
+  /** As `submitting`, and the row's form closes once the change went through. */
+  const closingAfter = () => {
+    busy = true
+    return async ({ result, update }: { result: { type: string }; update: () => Promise<void> }) => {
+      await update()
+      busy = false
+      if (result.type === 'success') open = null
+    }
+  }
+
   const submitting = () => {
     busy = true
     return async ({ update }: { update: () => Promise<void> }) => {
@@ -206,7 +222,7 @@
     {/if}
   </section>
 
-  {#each ['alias', 'removeAlias', 'disable', 'enable'] as a (a)}
+  {#each ['alias', 'removeAlias', 'setAddress', 'deleteMailbox', 'disable', 'enable'] as a (a)}
     {@const shown = shownErrorOf(feedback(a))}
     {#if shown}<ErrorNotice {...shown} class="mt-4" />{/if}
   {/each}
@@ -221,7 +237,8 @@
       data-testid="mailboxes-list"
     >
       {#each data.admin.mailboxes as b (b.id)}
-        <li class="grid gap-2 px-4 py-3 sm:px-5" data-testid={`mailbox-row-${b.address}`}>
+        {@const openHere = open?.id === b.id ? open.mode : null}
+        <li class="grid gap-3 px-4 py-3 sm:px-5" data-testid={`mailbox-row-${b.address}`}>
           <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium">{b.address}</span>
@@ -235,9 +252,51 @@
                 class="rounded-full border border-border px-2 py-0.5 text-xs font-medium"
                 data-testid="mailbox-disabled">Receives no new mail</span
               >
+            {/if}
+          </div>
+
+          {#if b.aliases.length}
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs text-muted-foreground">Also receives mail sent to</span>
+              <ul class="flex flex-wrap gap-2" aria-label={`Aliases of ${b.address}`}>
+                {#each b.aliases as alias (alias)}
+                  <li
+                    class="flex items-center gap-1 rounded-full border border-border py-0.5 pr-1 pl-2.5 text-xs"
+                  >
+                    {alias}
+                    <form method="POST" action="?/removeAlias" use:enhance>
+                      <input type="hidden" name="address" value={alias} />
+                      <Button
+                        type="submit"
+                        size="sm"
+                        variant="ghost"
+                        class="h-6 px-2 text-destructive"
+                        aria-label={`Remove ${alias}`}>Remove</Button
+                      >
+                    </form>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+
+          <div class="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant={openHere === 'address' ? 'secondary' : 'outline'}
+              onclick={() => toggle(b.id, 'address')}
+              aria-expanded={openHere === 'address'}>Change address</Button
+            >
+            <Button
+              size="sm"
+              variant={openHere === 'alias' ? 'secondary' : 'outline'}
+              onclick={() => toggle(b.id, 'alias')}
+              aria-expanded={openHere === 'alias'}>Add alias</Button
+            >
+            {#if b.disabled}
               <form method="POST" action="?/enable" use:enhance>
                 <input type="hidden" name="mailboxId" value={b.id} />
-                <Button type="submit" size="sm" variant="outline">Turn on</Button>
+                <Button type="submit" size="sm" variant="outline">Turn receiving on</Button>
               </form>
             {:else}
               <form method="POST" action="?/disable" use:enhance>
@@ -245,54 +304,85 @@
                 <Button type="submit" size="sm" variant="ghost">Stop receiving</Button>
               </form>
             {/if}
-          </div>
-          {#if b.aliases.length}
-            <ul class="flex flex-wrap gap-2" aria-label={`Aliases of ${b.address}`}>
-              {#each b.aliases as alias (alias)}
-                <li
-                  class="flex items-center gap-1 rounded-full border border-border py-0.5 pr-1 pl-2.5 text-xs"
-                >
-                  {alias}
-                  <form method="POST" action="?/removeAlias" use:enhance>
-                    <input type="hidden" name="address" value={alias} />
-                    <Button
-                      type="submit"
-                      size="sm"
-                      variant="ghost"
-                      class="h-6 px-2 text-destructive"
-                      aria-label={`Remove ${alias}`}>Remove</Button
-                    >
-                  </form>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-          <form
-            method="POST"
-            action="?/alias"
-            class="flex flex-wrap items-end gap-2"
-            use:enhance={submitting}
-          >
-            <input type="hidden" name="mailboxId" value={b.id} />
-            <Input
-              dictation={false}
-              name="localPart"
-              required
-              placeholder="another address"
-              class="h-8 w-44"
-              aria-label={`New alias for ${b.address}`}
-              disabled={busy}
-            />
-            <select
-              name="domainId"
-              class="h-8 rounded-md border border-input bg-background px-2 text-xs"
-              aria-label="Domain"
-              disabled={busy}
+            <Button
+              size="sm"
+              variant="ghost"
+              class="text-destructive"
+              onclick={() => toggle(b.id, 'delete')}
+              aria-expanded={openHere === 'delete'}>Delete</Button
             >
-              {#each data.admin.domains as d (d.id)}<option value={d.id}>@{d.name}</option>{/each}
-            </select>
-            <Button type="submit" size="sm" variant="outline" disabled={busy}>Add alias</Button>
-          </form>
+          </div>
+
+          {#if openHere === 'address' || openHere === 'alias'}
+            <form
+              method="POST"
+              action={openHere === 'address' ? '?/setAddress' : '?/alias'}
+              class="grid gap-2 rounded-md bg-muted/40 p-3"
+              use:enhance={closingAfter}
+            >
+              <p class="text-xs text-muted-foreground">
+                {#if openHere === 'address'}
+                  The new address replaces {b.address}. Mail sent to the old one stops arriving; the
+                  mail already in this mailbox stays.
+                {:else}
+                  An extra address for this mailbox: mail sent to it lands here too.
+                {/if}
+              </p>
+              <div class="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="mailboxId" value={b.id} />
+                <Input
+                  dictation={false}
+                  name="localPart"
+                  required
+                  placeholder={openHere === 'address' ? 'firstname.lastname' : 'e.g. alex'}
+                  class="h-8 w-48"
+                  aria-label={openHere === 'address'
+                    ? `New address for ${b.address}`
+                    : `New alias for ${b.address}`}
+                  disabled={busy}
+                />
+                <select
+                  name="domainId"
+                  class="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  aria-label="Domain"
+                  disabled={busy}
+                >
+                  {#each data.admin.domains as d (d.id)}<option value={d.id}>@{d.name}</option
+                    >{/each}
+                </select>
+                <Button type="submit" size="sm" disabled={busy}
+                  >{openHere === 'address' ? 'Change address' : 'Add alias'}</Button
+                >
+                <Button type="button" size="sm" variant="ghost" onclick={() => (open = null)}
+                  >Cancel</Button
+                >
+              </div>
+            </form>
+          {:else if openHere === 'delete'}
+            <form
+              method="POST"
+              action="?/deleteMailbox"
+              class="grid gap-2 rounded-md border border-destructive/40 p-3"
+              use:enhance={closingAfter}
+              data-testid="mailbox-delete-confirm"
+            >
+              <input type="hidden" name="mailboxId" value={b.id} />
+              <p class="text-sm">
+                Delete {b.address}{b.aliases.length ? ' and its aliases' : ''} for good? Mail sent to
+                it stops arriving{b.messages > 0
+                  ? `, and the ${b.messages} ${b.messages === 1 ? 'mail' : 'mails'} in it ${b.messages === 1 ? 'is' : 'are'} deleted`
+                  : ''}. This can’t be undone.
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <Button type="submit" size="sm" variant="destructive" disabled={busy}
+                  >Delete for good</Button
+                >
+                <Button type="button" size="sm" variant="ghost" onclick={() => (open = null)}
+                  >Cancel</Button
+                >
+              </div>
+            </form>
+          {/if}
         </li>
       {/each}
     </ul>

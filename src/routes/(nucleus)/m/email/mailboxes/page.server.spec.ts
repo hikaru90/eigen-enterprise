@@ -129,6 +129,21 @@ describe('Email › Setup › Mailboxes', () => {
     expect(box).toMatchObject({ aliases: [], disabled: false })
   })
 
+  it('changes a mailbox’s address and deletes a mailbox, re-syncing each time', async () => {
+    await actions.assign(form({ memberId: 'ana', localPart: 'ana.lnid', domainId: 'd-1' }))
+    const id = ((await run()).admin as { mailboxes: Array<{ id: string }> }).mailboxes[0]!.id
+    expect(await actions.setAddress(form({ mailboxId: id, localPart: 'ana.lind', domainId: 'd-1' }))).toMatchObject({
+      action: 'setAddress',
+      ok: true,
+      address: 'ana.lind@example.com',
+    })
+    const box = ((await run()).admin as { mailboxes: Array<Record<string, unknown>> }).mailboxes[0]
+    expect(box).toMatchObject({ address: 'ana.lind@example.com', aliases: [] })
+    expect(await actions.deleteMailbox(form({ mailboxId: id }))).toMatchObject({ action: 'deleteMailbox', ok: true, address: 'ana.lind@example.com' })
+    expect(((await run()).admin as { mailboxes: unknown[] }).mailboxes).toEqual([])
+    expect(syncs).toHaveBeenCalledTimes(3)
+  })
+
   it('a member sees only the addresses they read, no admin view', async () => {
     await actions.assign(form({ memberId: 'ana', localPart: 'ana', domainId: 'd-1' }))
     await actions.assign(form({ memberId: 'ben', localPart: 'ben', domainId: 'd-1' }))

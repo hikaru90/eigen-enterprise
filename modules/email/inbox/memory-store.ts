@@ -73,6 +73,24 @@ export function memoryInboxStore(): InboxStore & {
       if (a?.primary) throw new Error(`${address} is a primary address`)
       addresses.delete(address)
     },
+    async replacePrimary(mailboxId, next) {
+      if (!next.primary || next.mailboxId !== mailboxId) throw new Error('next must be a primary of this mailbox')
+      const held = addresses.get(next.address)
+      if (held && held.mailboxId !== mailboxId) throw new Error(`address ${next.address} exists`)
+      for (const [k, a] of addresses) if (a.mailboxId === mailboxId && a.primary) addresses.delete(k)
+      addresses.set(next.address, copy(next))
+    },
+    async deleteMailbox(id) {
+      mailboxes.delete(id)
+      for (const [k, a] of addresses) if (a.mailboxId === id) addresses.delete(k)
+      for (const [k, l] of labels) if (l.mailboxId === id) labels.delete(k)
+      for (const [k, m] of messages) {
+        if (m.mailboxId !== id) continue
+        messages.delete(k)
+        tagged.delete(k)
+        for (const [ak, at] of attachments) if (at.messageId === k) attachments.delete(ak)
+      }
+    },
     async insertMessage(row) {
       if (messages.has(row.id)) throw new Error(`message ${row.id} exists`)
       messages.set(row.id, copy(row))

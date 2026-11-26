@@ -4,6 +4,8 @@ import { inboxDeps } from '../../../../../../modules/email/inbox/live'
 import {
   addAlias,
   assignPersonalMailbox,
+  changeMailboxAddress,
+  deleteMailbox,
   createSharedMailbox,
   mailboxAdmin,
   readableMailboxes,
@@ -92,6 +94,26 @@ export const actions: Actions = {
     return act('removeAlias', 'Removing an alias from a mailbox', async () => {
       await removeAlias(await inboxDeps(), me.userId, { address: field(form, 'address') })
       return synced({})
+    })
+  },
+  setAddress: async ({ locals, request }) => {
+    const me = await requireAdmin(locals)
+    const form = await request.formData()
+    return act('setAddress', 'Changing a mailbox’s address', async () => {
+      const box = await changeMailboxAddress(await inboxDeps(), me.userId, {
+        mailboxId: field(form, 'mailboxId'),
+        localPart: field(form, 'localPart'),
+        domainId: field(form, 'domainId'),
+      })
+      return synced({ address: box.address })
+    })
+  },
+  deleteMailbox: async ({ locals, request }) => {
+    const me = await requireAdmin(locals)
+    const form = await request.formData()
+    return act('deleteMailbox', 'Deleting a mailbox', async () => {
+      const out = await deleteMailbox(await inboxDeps(), me.userId, { mailboxId: field(form, 'mailboxId') })
+      return synced({ address: out.address })
     })
   },
   disable: async ({ locals, request }) => {

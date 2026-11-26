@@ -220,6 +220,46 @@ export async function removeAlias(deps: InboxDeps, actorId: string, input: { add
   await deps.audit({ type: 'email.mailbox_alias_removed', principalId: actorId, payload: { mailboxId: row.mailboxId, address } })
 }
 
+/**
+ * The mailbox's main address becomes another one (an alias of it may be promoted). The old main
+ * address goes and stops receiving (decision 2026-11-26: fixing a typo must not keep the typo);
+ * to keep receiving on it, add it back as an alias. The mail the mailbox holds stays.
+ */
+export async function changeMailboxAddress(
+  deps: InboxDeps,
+  actorId: string,
+  input: { mailboxId: string; localPart: string; domainId: string },
+): Promise<MailboxView> {
+  await assertAdmin(deps, actorId)
+  const mailbox = await mailboxFor(deps, input.mailboxId)
+  const from = (await viewOf(deps, mailbox)).address
+  const local = normalizeLocalPart(input.localPart)
+  if (!local.ok) throw new InboxError('invalid', local.message)
+  const domain = (await deps.domains()).find((d) => d.id === input.domainId)
+  if (!domain) throw new InboxError('invalid', 'Pick a verified domain. Domains are added and verified under Setup › Account.')
+  const to = `${local.value}@${domain.name.toLowerCase()}`
+  if (to === from) throw new InboxError('invalid', `${to} is already this mailbox’s address.`)
+  const held = await deps.store.getAddress(to)
+  if (held && held.mailboxId !== mailbox.id) throw new InboxError('taken', `${to} is already in use. Pick another address.`)
+  await deps.store.replacePrimary(mailbox.id, { address: to, mailboxId: mailbox.id, domainId: domain.id, primary: true, createdBy: actorId, createdAt: now(deps) })
+  await deps.audit({ type: 'email.mailbox_address_changed', principalId: actorId, payload: { mailboxId: mailbox.id, from, to } })
+  return viewOf(deps, mailbox)
+}
+
+/**
+ * The mailbox goes for good: its addresses stop receiving, and the mail it holds, its attachments'
+ * records and its labels are deleted. A member whose personal mailbox is deleted can be given a new one.
+ */
+export async function deleteMailbox(deps: InboxDeps, actorId: string, input: { mailboxId: string }): Promise<{ address: string; messages: number }> {
+  await assertAdmin(deps, actorId)
+  const mailbox = await mailboxFor(deps, input.mailboxId)
+  const { address } = await viewOf(deps, mailbox)
+  const messages = (await deps.store.stats()).get(mailbox.id)?.messages ?? 0
+  await deps.store.deleteMailbox(mailbox.id)
+  await deps.audit({ type: 'email.mailbox_deleted', principalId: actorId, payload: { mailboxId: mailbox.id, address, kind: mailbox.kind, messages } })
+  return { address, messages }
+}
+
 /** A disabled mailbox receives no new mail; what it holds stays readable. */
 export async function setMailboxDisabled(
   deps: InboxDeps,

@@ -113,6 +113,17 @@ export function dbInboxStore(db: AppDatabase): InboxStore {
     async deleteAlias(address) {
       await db.delete(mailboxAddresses).where(and(eq(mailboxAddresses.address, address), eq(mailboxAddresses.isPrimary, false)))
     },
+    async replacePrimary(mailboxId, next) {
+      if (!next.primary || next.mailboxId !== mailboxId) throw new Error('next must be a primary of this mailbox')
+      await db.transaction(async (tx) => {
+        await tx.delete(mailboxAddresses).where(and(eq(mailboxAddresses.mailboxId, mailboxId), eq(mailboxAddresses.isPrimary, true)))
+        await tx.delete(mailboxAddresses).where(and(eq(mailboxAddresses.mailboxId, mailboxId), eq(mailboxAddresses.address, next.address)))
+        await tx.insert(mailboxAddresses).values(addressValues(next))
+      })
+    },
+    async deleteMailbox(id) {
+      await db.delete(mailboxes).where(eq(mailboxes.id, id))
+    },
     async insertMessage(row: MessageRow) {
       await db.insert(inboxMessages).values(row)
     },

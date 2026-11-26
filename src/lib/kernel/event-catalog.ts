@@ -82,6 +82,8 @@ export const CORE_EVENTS = {
   // Email (the inbox's mailboxes).
   'email.mailbox_alias_added': { module: 'email', payload: null },
   'email.mailbox_alias_removed': { module: 'email', payload: null },
+  'email.mailbox_address_changed': { module: 'email', payload: null },
+  'email.mailbox_deleted': { module: 'email', payload: null },
   'email.mailbox_assigned': { module: 'email', payload: null },
   'email.mailbox_disabled': { module: 'email', payload: null },
   'email.mailbox_enabled': { module: 'email', payload: null },

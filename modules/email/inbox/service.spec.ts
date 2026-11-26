@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   addAlias,
   assignPersonalMailbox,
+  changeMailboxAddress,
+  deleteMailbox,
   createSharedMailbox,
   getMessage,
   listMessages,
@@ -233,5 +235,67 @@ describe('aliases, disabling and the receiving list', () => {
     const { deps, box } = await anaWithMailbox()
     await expect(addAlias(deps, 'ana', { mailboxId: box.id, localPart: 'x', domainId: 'd-1' })).rejects.toMatchObject({ code: 'forbidden' })
     await expect(setMailboxDisabled(deps, 'ana', { mailboxId: box.id, disabled: true })).rejects.toMatchObject({ code: 'forbidden' })
+  })
+})
+
+describe('changing a mailbox’s address and deleting a mailbox', () => {
+  it('a new main address replaces the old one, which stops receiving; mail stays; audited with addresses only', async () => {
+    const { deps, store, box, events } = await anaWithMailbox()
+    const m = message(box.id)
+    await store.insertMessage(m)
+    const out = await changeMailboxAddress(deps, 'olga', { mailboxId: box.id, localPart: 'Ana', domainId: 'd-1' })
+    expect(out).toMatchObject({ id: box.id, address: 'ana@example.com', aliases: [] })
+    expect(await receivingAddresses(deps)).toEqual(['ana@example.com'])
+    expect(await getMessage(deps, 'ana', m.id)).toMatchObject({ id: m.id })
+    expect(events.at(-1)).toEqual({
+      type: 'email.mailbox_address_changed',
+      principalId: 'olga',
+      payload: { mailboxId: box.id, from: 'ana.lind@example.com', to: 'ana@example.com' },
+    })
+  })
+
+  it('an alias of the same mailbox becomes its main address', async () => {
+    const { deps, box } = await anaWithMailbox()
+    await addAlias(deps, 'olga', { mailboxId: box.id, localPart: 'ana', domainId: 'd-1' })
+    await addAlias(deps, 'olga', { mailboxId: box.id, localPart: 'a.lind', domainId: 'd-1' })
+    const out = await changeMailboxAddress(deps, 'olga', { mailboxId: box.id, localPart: 'ana', domainId: 'd-1' })
+    expect(out).toMatchObject({ address: 'ana@example.com', aliases: ['a.lind@example.com'] })
+  })
+
+  it('refuses an address another mailbox uses, the same address, a bad one, and non-admins', async () => {
+    const { deps, box } = await anaWithMailbox()
+    await createSharedMailbox(deps, 'olga', { groupId: 'g-sales', localPart: 'sales', domainId: 'd-1' })
+    await expect(changeMailboxAddress(deps, 'olga', { mailboxId: box.id, localPart: 'sales', domainId: 'd-1' })).rejects.toMatchObject({ code: 'taken' })
+    await expect(changeMailboxAddress(deps, 'olga', { mailboxId: box.id, localPart: 'ana.lind', domainId: 'd-1' })).rejects.toMatchObject({
+      code: 'invalid',
+      message: 'ana.lind@example.com is already this mailbox’s address.',
+    })
+    await expect(changeMailboxAddress(deps, 'olga', { mailboxId: box.id, localPart: 'a b', domainId: 'd-1' })).rejects.toMatchObject({ code: 'invalid' })
+    await expect(changeMailboxAddress(deps, 'ana', { mailboxId: box.id, localPart: 'ana', domainId: 'd-1' })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(changeMailboxAddress(deps, 'olga', { mailboxId: crypto.randomUUID(), localPart: 'x', domainId: 'd-1' })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('deleting removes the mailbox, its addresses and its mail; the member can get a new one', async () => {
+    const { deps, store, box, events } = await anaWithMailbox()
+    await addAlias(deps, 'olga', { mailboxId: box.id, localPart: 'ana', domainId: 'd-1' })
+    const m = message(box.id)
+    await store.insertMessage(m)
+    expect(await deleteMailbox(deps, 'olga', { mailboxId: box.id })).toEqual({ address: 'ana.lind@example.com', messages: 1 })
+    expect(await receivingAddresses(deps)).toEqual([])
+    expect(await readableMailboxes(deps, 'ana')).toEqual([])
+    expect(store.messages.size).toBe(0)
+    expect(events.at(-1)).toEqual({
+      type: 'email.mailbox_deleted',
+      principalId: 'olga',
+      payload: { mailboxId: box.id, address: 'ana.lind@example.com', kind: 'personal', messages: 1 },
+    })
+    const again = await assignPersonalMailbox(deps, 'olga', { memberId: 'ana', localPart: 'ana.lind', domainId: 'd-1' })
+    expect(again.address).toBe('ana.lind@example.com')
+  })
+
+  it('deleting is owner/admin only and needs an existing mailbox', async () => {
+    const { deps, box } = await anaWithMailbox()
+    await expect(deleteMailbox(deps, 'ana', { mailboxId: box.id })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(deleteMailbox(deps, 'olga', { mailboxId: crypto.randomUUID() })).rejects.toMatchObject({ code: 'not_found' })
   })
 })

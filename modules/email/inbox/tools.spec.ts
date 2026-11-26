@@ -172,6 +172,16 @@ describe('mailbox administration', () => {
     expect(admin.mailboxes).toHaveLength(4)
   })
 
+  it('admins change a mailbox’s address and delete a mailbox — and receiving is synced', async () => {
+    const { t, syncs } = await setup()
+    const box = (await t('email.mailbox_assign').handler(as('adam'), { memberId: 'ben', localPart: 'ben.typo', domainId: 'd-1' })) as { id: string }
+    const changed = (await t('email.mailbox_set_address').handler(as('adam'), { mailboxId: box.id, localPart: 'ben', domainId: 'd-1' })) as { address: string }
+    expect(changed.address).toBe('ben@example.com')
+    expect(await t('email.mailbox_delete').handler(as('adam'), { mailboxId: box.id })).toEqual({ mailboxId: box.id, address: 'ben@example.com', messages: 0, deleted: true })
+    expect(syncs()).toBe(3)
+    await expect(t('email.mailbox_delete').handler(as('ana'), { mailboxId: box.id })).rejects.toMatchObject({ code: 'forbidden' })
+  })
+
   it('a member cannot administer mailboxes', async () => {
     const { t } = await setup()
     await expect(t('email.mailbox_assign').handler(as('ana'), { memberId: 'ben', localPart: 'ben', domainId: 'd-1' })).rejects.toMatchObject({ code: 'forbidden' })

@@ -23,13 +23,14 @@ describe.skipIf(!url)('inbox store (Postgres)', () => {
   const domainId = randomUUID()
   const ana = `pg-ana-${run}`
   const ben = `pg-ben-${run}`
+  const cy = `pg-cy-${run}`
 
   beforeAll(async () => {
     sql = postgres(url!, { prepare: false, max: 2, onnotice: () => {} })
     db = drizzle(sql) as unknown as AppDatabase
     await sql`insert into mail_domains (id, name, region, dkim_selector, public_key, created_by)
               values (${domainId}, ${domain}, 'eu-central-1', 'ee', 'k', 'pg-spec')`
-    for (const id of [ana, ben]) {
+    for (const id of [ana, ben, cy]) {
       await sql`insert into "user" (id, name, email) values (${id}, ${id}, ${`${id}@home.example`})`
     }
   })
@@ -37,7 +38,7 @@ describe.skipIf(!url)('inbox store (Postgres)', () => {
   afterAll(async () => {
     await sql`delete from mailboxes where created_by = ${run}`
     await sql`delete from mail_domains where id = ${domainId}`
-    await sql`delete from "user" where id in (${ana}, ${ben})`
+    await sql`delete from "user" where id in (${ana}, ${ben}, ${cy})`
     await sql.end()
   })
 
@@ -60,6 +61,24 @@ describe.skipIf(!url)('inbox store (Postgres)', () => {
     primary,
     createdBy: run,
     createdAt: new Date(),
+  })
+
+  it('replaces the primary address (promoting an alias) and deletes a mailbox with everything in it', async () => {
+    const store = dbInboxStore(db)
+    const m = box({ ownerUserId: cy })
+    await store.insertMailbox(m, addr(m.id, 'cy.typo'))
+    await store.insertAddress(addr(m.id, 'cy', false))
+    await store.replacePrimary(m.id, addr(m.id, 'cy'))
+    const mine = (await store.listAddresses()).filter((a) => a.mailboxId === m.id)
+    expect(mine.map((a) => [a.address, a.primary])).toEqual([[`cy@${domain}`, true]])
+    const mail = message(m.id, { id: randomUUID(), threadId: randomUUID(), sesMessageId: `del-${run}` })
+    await store.insertMessage(mail)
+    await store.insertLabel({ id: randomUUID(), mailboxId: m.id, name: 'x', color: 'sky', createdBy: run, createdAt: new Date() })
+    await store.deleteMailbox(m.id)
+    expect(await store.getMailbox(m.id)).toBeNull()
+    expect(await store.getAddress(`cy@${domain}`)).toBeNull()
+    expect(await store.getMessage(mail.id)).toBeNull()
+    expect(await store.listLabels(m.id)).toEqual([])
   })
 
   it('stores a mailbox with its primary address, aliases, and keeps addresses unique', async () => {

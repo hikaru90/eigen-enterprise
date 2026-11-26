@@ -7,7 +7,14 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Cause (reproduced on ee-one with the box's own key):** the webmail sends SESv2 `Content.Raw`, which SES authorizes as `ses:SendRawEmail`; the managed box policy only allowed `ses:SendEmail`, so system mail (Simple) worked and every inbox send was refused. SES production access, DNS and the domain were fine.
 - **Fix in eigenEnterprise-cloud** `9307034` (pushed, not deployed): policy allows both, versioned (`MAIL_POLICY_VERSION`), re-put on existing boxes on their next poll. Takes effect after the owner redeploys the control plane in Coolify.
 - **Fix here:** in managed mode an AWS permission refusal now says it's on our side (`MANAGED_REFUSED_MESSAGE`) instead of the own-SES "give the IAM user permission" advice the owner can't act on, and logs Amazon's reason (it was logged nowhere, so the cause took a live probe to find). Test: `managed.spec.ts`.
-- **Seen, not changed:** ee-one's personal mailbox is `alex.bueckni@eigenenterprise.app` (suggested `alex.bueckner`); receiving has never been proven with a real mail (T4).
+- **Receiving** has never been proven with a real mail on a managed box (T4).
+
+## 2026-11-26 — Mailboxes: change a mailbox's address, delete a mailbox (owner: "change it" for a typo'd address, "and add a feature to delete an address")
+
+- **New registry tools** (so `ee`, MCP and the agent get them; approval-gated like every inbox write): `email.mailbox_set_address` {mailboxId, localPart, domainId} and `email.mailbox_delete` {mailboxId} (destructive). Page actions `?/setAddress`, `?/deleteMailbox` mapped in `ui-parity.ts` (debt stays 0). Events `email.mailbox_address_changed` {mailboxId, from, to}, `email.mailbox_deleted` {mailboxId, address, kind, messages}; receipt rules re-sync after both.
+- **Decisions:** changing the address drops the old main address (a typo fix must not keep the typo; add it back as an alias to keep receiving on it); an alias of the same mailbox can be promoted; the mail stays. Deleting removes the mailbox, its addresses, mail, attachment records and labels (FK cascades; calendar proposals from that mail too); the member can be given a new mailbox. **Not done:** the raw MIME objects of deleted mail stay in the inbound S3 bucket.
+- **Page:** each row now says what aliases are ("Also receives mail sent to …"), and the always-open "another address / Add alias" form is behind buttons: Change address, Add alias, Stop receiving, Delete (inline confirm naming how many mails go).
+- **Tests:** service (5), Postgres store (1), tools (1), page server (1), browser component `mailboxes-page.svelte.spec.ts` (enrolled), wiring lists. svelte-check 0 errors.
 
 ## 2026-11-25 — Release timing: every gate step is timed (owner: "i need a way to see why a release takes this long. 30 min build time is unacceptable")
 

@@ -21,6 +21,8 @@ import {
   readableMailboxes,
   removeAlias,
   setMailboxDisabled,
+  changeMailboxAddress,
+  deleteMailbox,
   setMessageLabel,
   setRead,
   setStarred,
@@ -73,6 +75,8 @@ const sharedInput = z.object({ groupId: z.string().min(1), localPart, domainId, 
 const disabledInput = z.object({ mailboxId, disabled: z.boolean() }).strict()
 const aliasInput = z.object({ mailboxId, localPart, domainId }).strict()
 const removeAliasInput = z.object({ address: z.string().min(3) }).strict()
+const setAddressInput = z.object({ mailboxId, localPart, domainId }).strict()
+const deleteMailboxInput = z.object({ mailboxId }).strict()
 const labelCreateInput = z.object({ mailboxId, name: z.string().min(1), color: z.enum(LABEL_COLORS) }).strict()
 const labelDeleteInput = z.object({ labelId: z.uuid() }).strict()
 const mailLabelInput = z.object({ messageId, labelId: z.uuid(), on: z.boolean().describe('true puts it on, false takes it off') }).strict()
@@ -288,6 +292,25 @@ export function createInboxTools(opts: InboxToolDeps = {}): ToolDescriptor[] {
       (i: z.infer<typeof disabledInput>) => `${i.disabled ? 'Disabled' : 'Enabled'} a mailbox`,
       async (ctx, i: z.infer<typeof disabledInput>) => synced(mailboxOut(await setMailboxDisabled(await inbox(), actor(ctx), i))),
       { permission: ADMIN_ROLES },
+    ),
+    write(
+      'email.mailbox_set_address',
+      'Owner/admin: change a mailbox’s main address (e.g. fix a typo). The old main address stops receiving; an alias of the mailbox can be promoted. The mail stays.',
+      setAddressInput,
+      (i: z.infer<typeof setAddressInput>) => `Changed a mailbox’s address to ${i.localPart}`,
+      async (ctx, i: z.infer<typeof setAddressInput>) => synced(mailboxOut(await changeMailboxAddress(await inbox(), actor(ctx), i))),
+      { permission: ADMIN_ROLES },
+    ),
+    write(
+      'email.mailbox_delete',
+      'Owner/admin: delete a mailbox for good — its addresses stop receiving and all the mail in it is deleted.',
+      deleteMailboxInput,
+      () => 'Deleted a mailbox',
+      async (ctx, i: z.infer<typeof deleteMailboxInput>) => {
+        const out = await deleteMailbox(await inbox(), actor(ctx), i)
+        return synced({ mailboxId: i.mailboxId, ...out, deleted: true })
+      },
+      { permission: ADMIN_ROLES, approvalRisk: 'destructive' },
     ),
     write(
       'email.mailbox_alias_add',
