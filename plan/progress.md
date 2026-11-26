@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-26 — Local release build of v0.5.45 (arm64) green; SheetJS bundles (owner: "test build release build locally")
+
+- `scripts/release.sh arm64` on `ca6cb8cc` passed and the bundle was signed: `dist/release/eigenenterprise-0.5.45-ca6cb8ccf44e-linux-arm64.tar.gz`. Not pushed, not tagged on origin, not installed anywhere.
+- This closes the open item from the 11-25 formula round ("a release build with it has not run yet"): SheetJS CE 0.20.3, a devDependency, is bundled into `build/server/chunks/xlsx-*.js`, and the production `node_modules` holds no `xlsx`. In a `node:22-bookworm` container the bundled chunk wrote .xls (BIFF8) and .ods files and read them back unchanged.
+- Not checked: amd64 build, e2e, upgrade rehearsal (they run in the push/tag gate).
+
 ## 2026-11-26 — Inbox send on ee-one refused ("These AWS keys are not allowed to use Amazon SES"): control-plane policy lacked ses:SendRawEmail (owner report)
 
 - **Cause (reproduced on ee-one with the box's own key):** the webmail sends SESv2 `Content.Raw`, which SES authorizes as `ses:SendRawEmail`; the managed box policy only allowed `ses:SendEmail`, so system mail (Simple) worked and every inbox send was refused. SES production access, DNS and the domain were fine.
