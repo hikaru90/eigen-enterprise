@@ -43,6 +43,29 @@ export function e2eDeps() {
     return r && fs.existsSync(path.join(root, r)) && fs.statSync(path.join(root, r)).isFile() ? r : null
   }
 
+  /** scriptId → source, fetched once per script that ran more than its module body */
+  const sources = new Map()
+  /**
+   * Did the module's own code run, beyond loading? Not counted: the module body and Vite's
+   * wrapper around it (they contain every other function), and the export getters Vite's SSR
+   * transform writes (`() => { try { return x } catch {} }`): those run whenever an importer
+   * reads the binding, which makes the file count for that test, but they are not its code.
+   * @param {{ scriptId: string, functions: { ranges: { startOffset: number, endOffset: number, count: number }[] }[] }} sc
+   * @param {{ ranges: { startOffset: number, endOffset: number, count: number }[] }[]} ran
+   */
+  async function ranOwnCode(sc, ran) {
+    const all = sc.functions.map((f) => f.ranges[0])
+    const outer = (r) => all.every((o) => r.startOffset <= o.startOffset && r.endOffset >= o.endOffset)
+    const candidates = ran.map((f) => f.ranges[0]).filter((r) => !outer(r))
+    if (candidates.length === 0) return false
+    if (!sources.has(sc.scriptId)) {
+      const { scriptSource } = await session.post('Debugger.getScriptSource', { scriptId: sc.scriptId })
+      sources.set(sc.scriptId, scriptSource)
+    }
+    const src = sources.get(sc.scriptId)
+    return candidates.some((r) => !src.startsWith('() => { try { return ', r.startOffset))
+  }
+
   async function take() {
     const files = new Set()
     const ranInner = new Set()
@@ -54,10 +77,7 @@ export function e2eDeps() {
       if (ran.length === 0) continue
       files.add(file)
       seen.add(file)
-      // The module body (and Vite's wrapper around it) spans to the end of the script and runs
-      // once, on load; any function that ends earlier is the module's own code running.
-      const end = Math.max(...sc.functions.map((f) => f.ranges[0].endOffset))
-      if (ran.some((f) => f.ranges[0].endOffset < end)) {
+      if (await ranOwnCode(sc, ran)) {
         inner.add(file)
         ranInner.add(file)
       }
@@ -100,6 +120,8 @@ export function e2eDeps() {
       server = s
       session = new Session()
       session.connect()
+      // The debugger domain only serves script sources (export getters are told apart by text).
+      await session.post('Debugger.enable')
       await session.post('Profiler.enable')
       await session.post('Profiler.startPreciseCoverage', { callCount: true, detailed: false })
       s.middlewares.use((req, res, next) => {
