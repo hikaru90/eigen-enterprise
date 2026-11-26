@@ -34,7 +34,7 @@ function coworker(id: string, principal: ToolPrincipal, overrides: Partial<Agent
     memoryScope: 'company',
     verificationPolicy: 'none',
     instructions: (turn) => `You are ${id}. You act as ${turn.principal.id}.`,
-    modelId: 'anthropic/claude-sonnet-5.5',
+    modelId: 'google/gemini-3.8-flash',
     actsAs: selfActing(principal),
     enabled: true,
     ...overrides,
@@ -218,7 +218,7 @@ describe('AgentRuntime — agents that act as themselves (AI co-workers)', () =>
     const byId = new Map(fx.contexts.map((c) => [c.principal.id, c]))
     expect(byId.get('cw-marketing')).toMatchObject({
       llmUserId: 'cw-marketing',
-      agent: { id: 'coworker-marketing', modelId: 'anthropic/claude-sonnet-5.5' },
+      agent: { id: 'coworker-marketing', modelId: 'google/gemini-3.8-flash' },
       instructions: { kind: 'own', text: 'You are coworker-marketing. You act as cw-marketing.' },
     })
     expect(byId.get('cw-gtm')).toMatchObject({
@@ -405,7 +405,7 @@ describe('AgentRuntime — registering many agents (register / replace / unregis
         instructions: 'own',
         actsAs: 'self',
         dailySpendCapUsd: 2,
-        modelId: 'anthropic/claude-sonnet-5.5',
+        modelId: 'google/gemini-3.8-flash',
       }),
       expect.objectContaining({ id: 'orchestrator', instructions: 'engine-default', actsAs: 'person' }),
     ])

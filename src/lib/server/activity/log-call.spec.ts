@@ -40,7 +40,28 @@ describe('logActivityCall', () => {
       markupRate: '0.200000',
       groupId: undefined,
       durationMs: undefined,
+      promptTokens: null,
+      completionTokens: null,
+      cachedTokens: null,
+      cacheWriteTokens: null,
     })
+  })
+
+  it('persists the token counts the gateway reported, cache reads and writes included', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+
+    await logActivityCall(db, 'u1', {
+      provider: 'openrouter',
+      operation: 'llm.chat.durable_agent.success(attempt=1)',
+      baseCostUsd: 0.01,
+      tokens: { prompt: 12000, completion: 300, cacheRead: 11000, cacheWrite: 500 },
+    })
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({ promptTokens: 12000, completionTokens: 300, cachedTokens: 11000, cacheWriteTokens: 500 }),
+    )
   })
 
   it('uses tenant RLS user for user_id when tenant context is set', async () => {

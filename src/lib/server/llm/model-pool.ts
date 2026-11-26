@@ -50,12 +50,8 @@ export const MODEL_POOL: readonly PoolModel[] = [
   // AI Co-workers (plan/phase-ai-coworkers.md §5): different model families, so co-workers in
   // different seats do not all think alike. Pinned ids (no moving `~…-latest` aliases). Vetted on
   // OpenRouter's model list: chat, `tools` in supported_parameters, live tool-capable endpoints.
-  {
-    id: 'anthropic/claude-sonnet-5.5',
-    slot: 'chat',
-    vettedOn: '2026-11-23',
-    note: 'Anthropic family for co-workers: strong at long instructions and careful tool use; reads images and PDFs.',
-  },
+  // Claude Sonnet 5.5 was removed 2026-11-26 (owner): one co-worker turn cost up to $1, 50–100×
+  // a DeepSeek Flash turn. No Sonnet model is offered in any slot.
   {
     id: 'google/gemini-3.8-flash',
     slot: 'chat',

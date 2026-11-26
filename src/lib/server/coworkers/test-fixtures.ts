@@ -58,7 +58,7 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
   addCoworker(f, { id: 'cw-mkt', slug: 'marketing', name: 'Marketing' })
   addCoworker(f, { id: 'cw-gtm', slug: 'gtm', name: 'GTM' })
   const coworkers = new Map<string, CoworkerView>([
-    ['cw-mkt', view('cw-mkt', 'marketing', 'Marketing', 'Marketing Manager', 'anthropic/claude-sonnet-5.5')],
+    ['cw-mkt', view('cw-mkt', 'marketing', 'Marketing', 'Marketing Manager', 'google/gemini-3.8-flash')],
     ['cw-gtm', view('cw-gtm', 'gtm', 'GTM', 'Go-to-Market Manager', 'google/gemini-3.8-flash')],
   ])
   const chart = (): { people: OrgChartEntry[] } => ({

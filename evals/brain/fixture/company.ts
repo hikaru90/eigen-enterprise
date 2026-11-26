@@ -26,7 +26,7 @@ export const COMPANY: CompanyFixture = {
   ],
 
   coworkers: [
-    { key: 'marketing', id: 'eb-cw-marketing', name: 'Marketing', templateId: 'marketing-manager', modelId: 'anthropic/claude-sonnet-5.5', reportsTo: 'martin' },
+    { key: 'marketing', id: 'eb-cw-marketing', name: 'Marketing', templateId: 'marketing-manager', modelId: 'google/gemini-3.8-flash', reportsTo: 'martin' },
     { key: 'gtm', id: 'eb-cw-gtm', name: 'GTM', templateId: 'go-to-market-manager', modelId: 'google/gemini-3.8-flash', reportsTo: 'marketing' },
     { key: 'designer', id: 'eb-cw-designer', name: 'Designer', templateId: 'designer', modelId: 'openai/gpt-5-mini', reportsTo: 'marketing' },
   ],

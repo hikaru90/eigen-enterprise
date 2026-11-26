@@ -66,7 +66,7 @@ describe.skipIf(!DATABASE_URL)('co-worker turns on Postgres with the mock gatewa
     }
     const svc = await import('./index')
     const admin = { id: boss, role: 'admin' as const, kind: 'person' as const }
-    marketing = await svc.createCoworker(admin, { templateId: 'marketing-manager', name: `Marketing ${tag}`, modelId: 'anthropic/claude-sonnet-5.5', reportsToUserId: ann }, svc.coworkerDeps())
+    marketing = await svc.createCoworker(admin, { templateId: 'marketing-manager', name: `Marketing ${tag}`, modelId: 'google/gemini-3.8-flash', reportsToUserId: ann }, svc.coworkerDeps())
     gtm = await svc.createCoworker(admin, { templateId: 'go-to-market-manager', name: `GTM ${tag}`, modelId: 'google/gemini-3.8-flash', reportsToUserId: marketing.id }, svc.coworkerDeps())
 
     const { messagesDeps, messagesHub } = await import('../../../../modules/messages/live')
@@ -228,9 +228,9 @@ describe.skipIf(!DATABASE_URL)('co-worker turns on Postgres with the mock gatewa
 
     // Each model request carried its own model and its own system prompt, billed to itself, in its run's trace.
     expect(seen.map((s) => [s.userId, s.model])).toEqual([
-      [marketing.id, 'anthropic/claude-sonnet-5.5'],
+      [marketing.id, 'google/gemini-3.8-flash'],
       [gtm.id, 'google/gemini-3.8-flash'],
-      [marketing.id, 'anthropic/claude-sonnet-5.5'],
+      [marketing.id, 'google/gemini-3.8-flash'],
     ])
     expect(seen[0]!.system).toContain(`You are ${marketing.name} (@${marketing.slug})`)
     expect(seen[0]!.system).not.toContain('You are the company brain.')

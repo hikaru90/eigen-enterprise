@@ -57,7 +57,7 @@ const coworker = {
   title: 'Marketing Manager',
   accountabilities: ['Pipeline'],
   lens: 'Cares about reach.',
-  modelId: 'anthropic/claude-sonnet-5.5',
+  modelId: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   templateId: 'marketing-manager',
@@ -110,9 +110,9 @@ beforeEach(() => {
   _coworkersPageDeps.timeZone = async () => 'Europe/Berlin'
   _coworkersPageDeps.chatModels = () => [
     {
-      id: 'anthropic/claude-sonnet-5.5',
-      family: 'Anthropic',
-      name: 'claude-sonnet-5.5',
+      id: 'google/gemini-3.8-flash',
+      family: 'Google',
+      name: 'gemini-3.8-flash',
       note: 'n',
       recommended: false,
     },
@@ -146,7 +146,7 @@ describe('load', () => {
     expect((data.people as { id: string; modelId: string | null }[]).map((p) => [p.id, p.modelId])).toEqual([
       ['owner', null],
       ['me', null],
-      ['cw1', 'anthropic/claude-sonnet-5.5'],
+      ['cw1', 'google/gemini-3.8-flash'],
     ])
     expect(data.coworkers).toEqual([])
     expect(data.rhythms).toEqual({})
@@ -172,7 +172,7 @@ describe('load', () => {
     })
     expect(data.timeZone).toBe('Europe/Berlin')
     expect((data.templates as { id: string }[]).map((t) => t.id)).toEqual(['designer'])
-    expect((data.models as { family: string }[])[0]!.family).toBe('Anthropic')
+    expect((data.models as { family: string }[])[0]!.family).toBe('Google')
     expect(data.seats).toEqual([
       { id: 'owner', name: 'Olga', kind: 'human' },
       { id: 'me', name: 'Ony', kind: 'human' },
@@ -343,7 +343,7 @@ describe('actions', () => {
         ['title', 'Marketing Manager'],
         ['accountabilities', 'Pipeline'],
         ['lens', 'Reach'],
-        ['model_id', 'anthropic/claude-sonnet-5.5'],
+        ['model_id', 'google/gemini-3.8-flash'],
         ['daily_cap_usd', '2'],
         ['reports_to_sent', '1'],
         ['reports_to_user_ids', 'owner'],
@@ -358,7 +358,7 @@ describe('actions', () => {
       name: 'Mara',
       title: 'Marketing Manager',
       lens: 'Reach',
-      model_id: 'anthropic/claude-sonnet-5.5',
+      model_id: 'google/gemini-3.8-flash',
       accountabilities: ['Pipeline'],
       reports_to_user_ids: ['owner', 'me'],
       avatar_preset: 'orbit',

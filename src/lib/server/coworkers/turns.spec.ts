@@ -218,7 +218,7 @@ describe('what a turn carries', () => {
     await fx.settle()
     // Marketing pulls in GTM, GTM answers Marketing, Marketing pulls in GTM … until the budget.
     const [mkt, gtm] = fx.calls
-    expect(mkt!.modelId).toBe('anthropic/claude-sonnet-5.5')
+    expect(mkt!.modelId).toBe('google/gemini-3.8-flash')
     expect(gtm!.modelId).toBe('google/gemini-3.8-flash')
     expect(mkt!.system).toContain('You are Marketing (@marketing)')
     expect(gtm!.system).toContain('You are GTM (@gtm)')

@@ -1,4 +1,5 @@
 import { isUuidV4 } from '$lib/random-uuid'
+import type { CallTokens } from '$lib/server/llm/gateway-cost'
 import type { AppDatabase } from '$lib/server/db/context'
 import { activityCallLog } from '$lib/server/db/schema'
 import { resolveTenantUserId } from '$lib/server/db/tenant-context'
@@ -25,6 +26,8 @@ export async function logActivityCall(
     errorMessage?: string
     groupId?: string
     durationMs?: number
+    /** Token counts the gateway reported (billable model calls), cache reads and writes included. */
+    tokens?: CallTokens
   },
 ): Promise<void> {
   const priced = priceCall(input.baseCostUsd)
@@ -55,5 +58,9 @@ export async function logActivityCall(
     markupRate: priced.markupRate,
     groupId: resolveActivityGroupId(input.groupId),
     durationMs: input.durationMs,
+    promptTokens: input.tokens?.prompt ?? null,
+    completionTokens: input.tokens?.completion ?? null,
+    cachedTokens: input.tokens?.cacheRead ?? null,
+    cacheWriteTokens: input.tokens?.cacheWrite ?? null,
   })
 }

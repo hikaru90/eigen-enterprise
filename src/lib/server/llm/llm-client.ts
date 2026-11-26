@@ -7,12 +7,17 @@ import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { getDb } from '$lib/server/db'
 import { env } from '$lib/server/env/private-env'
 import { LlmCutShortError, LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
-import { gatewayReportedCostUsdForLog, reportedTokenCount, type TokenUsage } from '$lib/server/llm/gateway-cost'
+import {
+  gatewayReportedCostUsdForLog,
+  reportedCallTokens,
+  reportedTokenCount,
+  type TokenUsage,
+} from '$lib/server/llm/gateway-cost'
 import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
 import { assertGatewayCallWithinMemberDailyCap } from '$lib/server/llm/member-daily-cap'
 import { assertPoolModel, modelSupportsTemperature } from '$lib/server/llm/model-pool'
-import { companySlotSource, resolveSlot, type SlotTarget } from '$lib/server/llm/slots'
+import { companySlotSource, resolveSlot, routesByPoolModel, type SlotTarget } from '$lib/server/llm/slots'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
 
@@ -763,6 +768,10 @@ async function llmChatCompletionInner(input: {
   const observedText = keepsText(origin) ? { $ai_input: messagesForObservability(messages) } : {}
   const aiSessionId = normalizeAiIdentifier(input.aiSessionId, `user-${input.userId}`)
   const aiTraceId = normalizeAiIdentifier(input.aiTraceId, randomUUID())
+  // OpenRouter pins a session's calls to one provider endpoint, so its prompt cache stays warm
+  // across an agent's steps and turns. Only a caller's own session, never the per-user fallback.
+  const providerSessionId =
+    input.aiSessionId?.trim() && routesByPoolModel(config.provider) ? aiSessionId.slice(0, 256) : null
 
   const maxTokens = input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS
   const maxAttempts = 3
@@ -814,6 +823,7 @@ async function llmChatCompletionInner(input: {
               : {}),
             ...(input.tools !== undefined ? { tools: input.tools } : {}),
             ...(input.toolChoice !== undefined ? { tool_choice: input.toolChoice } : {}),
+            ...(providerSessionId ? { session_id: providerSessionId } : {}),
           }),
         })
       } finally {
@@ -859,6 +869,8 @@ async function llmChatCompletionInner(input: {
           prompt_tokens: usage?.prompt_tokens,
           completion_tokens: usage?.completion_tokens,
           total_tokens: usage?.total_tokens,
+          cached_tokens: usage?.prompt_tokens_details?.cached_tokens,
+          cache_write_tokens: usage?.prompt_tokens_details?.cache_write_tokens,
         })
       }
       logLlmChatResponse(logCtx, attempt, json, origin)
@@ -873,6 +885,7 @@ async function llmChatCompletionInner(input: {
         baseCostUsd: baseCost,
         context: chatActivityPreview(input.messages, origin),
         durationMs: attemptMs,
+        tokens: reportedCallTokens(usage),
       })
       captureServerEvent({
         distinctId: input.userId,
@@ -884,6 +897,8 @@ async function llmChatCompletionInner(input: {
           $ai_provider: config.provider,
           ...observedText,
           $ai_input_tokens: usage?.prompt_tokens,
+          $ai_cache_read_input_tokens: usage?.prompt_tokens_details?.cached_tokens,
+          $ai_cache_creation_input_tokens: usage?.prompt_tokens_details?.cache_write_tokens,
           ...(keepsText(origin) ? { $ai_output_choices: extractAiOutputChoices(json) } : {}),
           $ai_output_tokens: usage?.completion_tokens,
           $ai_latency: attemptMs / 1000,

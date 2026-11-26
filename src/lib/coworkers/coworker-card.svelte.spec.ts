@@ -11,7 +11,7 @@ import CoworkerCard from './coworker-card.svelte'
  */
 
 const models = [
-  { id: 'anthropic/claude-sonnet-5.5', family: 'Anthropic', name: 'claude-sonnet-5.5', note: 'Careful tool use.', recommended: false },
+  { id: 'google/gemini-3.8-flash', family: 'Google', name: 'gemini-3.8-flash', note: 'Careful tool use.', recommended: false },
 ]
 const seats = [
   { id: 'olga', name: 'Olga Owner', kind: 'human' as const },
@@ -25,7 +25,7 @@ const coworker = {
   title: 'Marketing Manager',
   accountabilities: ['Pipeline'],
   lens: 'Cares about reach.',
-  modelId: 'anthropic/claude-sonnet-5.5',
+  modelId: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   // Primary manager Ony, second Olga: not the order the checkboxes are listed in.

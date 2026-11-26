@@ -100,7 +100,7 @@ describe.skipIf(!url)('co-worker event reactions (Postgres) + Jev on the mock de
     title: 'Marketing Manager',
     accountabilities: ['Launch communication'],
     lens: 'On brand, on time.',
-    modelId: 'anthropic/claude-sonnet-5.5',
+    modelId: 'google/gemini-3.8-flash',
     enabled: true,
     dailyCapUsd: 2,
     templateId: null,

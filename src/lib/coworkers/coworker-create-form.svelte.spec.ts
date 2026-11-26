@@ -16,7 +16,7 @@ const templates = [
     title: 'Marketing Manager',
     accountabilities: ['Pipeline from content', 'Launch plans'],
     lens: 'You care about reach.',
-    suggestedModelId: 'anthropic/claude-sonnet-5.5',
+    suggestedModelId: 'google/gemini-3.8-flash',
     suggestedDailyCapUsd: 2,
   },
   {
@@ -30,7 +30,7 @@ const templates = [
 ]
 const models = [
   { id: '~deepseek/deepseek-flash-latest', family: 'DeepSeek', name: 'deepseek-flash-latest', note: 'The default.', recommended: true },
-  { id: 'anthropic/claude-sonnet-5.5', family: 'Anthropic', name: 'claude-sonnet-5.5', note: 'Careful tool use.', recommended: false },
+  { id: 'google/gemini-3.8-flash', family: 'Google', name: 'gemini-3.8-flash', note: 'Careful tool use.', recommended: false },
   { id: 'qwen/qwen3.8-flash', family: 'Qwen', name: 'qwen3.8-flash', note: 'The cheap seat.', recommended: false },
 ]
 const seats = [
@@ -67,10 +67,10 @@ describe('coworker-create-form.svelte', () => {
     expect(value('new-coworker-title')).toBe('Marketing Manager')
     expect(value('new-coworker-accountabilities')).toBe('Pipeline from content\nLaunch plans')
     expect(value('new-coworker-lens')).toBe('You care about reach.')
-    expect(value('new-coworker-model')).toBe('anthropic/claude-sonnet-5.5')
+    expect(value('new-coworker-model')).toBe('google/gemini-3.8-flash')
     expect(value('new-coworker-cap')).toBe('2')
     const options = [...(page.getByTestId('new-coworker-model').element() as HTMLSelectElement).options].map((o) => o.textContent)
-    expect(options).toEqual(['DeepSeek · deepseek-flash-latest (recommended)', 'Anthropic · claude-sonnet-5.5', 'Qwen · qwen3.8-flash'])
+    expect(options).toEqual(['DeepSeek · deepseek-flash-latest (recommended)', 'Google · gemini-3.8-flash', 'Qwen · qwen3.8-flash'])
     await expect.element(page.getByTestId('new-coworker-model-note')).toHaveTextContent('Careful tool use.')
   })
 
@@ -90,7 +90,7 @@ describe('coworker-create-form.svelte', () => {
     render(CoworkerCreateForm, { templates, models, seats })
     await page.getByRole('radio', { name: /Designer/ }).click()
     await userEvent.fill(page.getByLabelText('Name', { exact: true }), 'Dana')
-    await userEvent.selectOptions(page.getByLabelText('Model', { exact: true }), 'Anthropic · claude-sonnet-5.5')
+    await userEvent.selectOptions(page.getByLabelText('Model', { exact: true }), 'Google · gemini-3.8-flash')
     await page.getByTestId('new-coworker-manager').getByRole('checkbox', { name: 'Olga Owner' }).click()
     await page.getByTestId('new-coworker-manager').getByRole('checkbox', { name: 'Mara (AI)' }).click()
     await page.getByTestId('new-coworker-avatar-preset-orbit').click()
@@ -104,7 +104,7 @@ describe('coworker-create-form.svelte', () => {
           title: 'Designer',
           accountabilities: 'Look and feel',
           lens: 'Taste first.',
-          model_id: 'anthropic/claude-sonnet-5.5',
+          model_id: 'google/gemini-3.8-flash',
           reports_to_sent: '1',
           reports_to_user_ids: ['olga', 'mara'],
           daily_cap_usd: '1',

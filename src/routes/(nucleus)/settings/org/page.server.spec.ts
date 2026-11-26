@@ -67,7 +67,7 @@ const coworker = {
   slug: 'mia-mwujrl74',
   image: '/avatars/coworkers/prism.svg',
   lens: 'Reach first.',
-  modelId: 'anthropic/claude-sonnet-5.5',
+  modelId: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },
@@ -127,7 +127,7 @@ describe('org chart load', () => {
     expect(data.people.map((p) => [p.id, p.modelId])).toEqual([
       ['owner', null],
       ['me', null],
-      ['cw1', 'anthropic/claude-sonnet-5.5'],
+      ['cw1', 'google/gemini-3.8-flash'],
     ])
     expect(data.me).toEqual({ id: 'me', canManage: false })
   })
@@ -219,7 +219,7 @@ describe('profile load', () => {
     expect(data.coworker).toEqual({
       handle: 'mia-mwujrl74',
       lens: 'Reach first.',
-      modelId: 'anthropic/claude-sonnet-5.5',
+      modelId: 'google/gemini-3.8-flash',
       enabled: true,
       dailyCapUsd: 2,
       accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },

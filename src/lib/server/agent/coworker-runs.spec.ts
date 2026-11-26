@@ -133,7 +133,7 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
   it('each request carries its own system prompt, its own model and its own billing identity', async () => {
     const fx = await fixture()
     fx.runtime.registerAgent(
-      coworker('coworker-marketing', marketing, (input) => `ROLE: Marketing Manager. Trigger: ${input}`, 'anthropic/claude-sonnet-5.5'),
+      coworker('coworker-marketing', marketing, (input) => `ROLE: Marketing Manager. Trigger: ${input}`, 'google/gemini-3.8-flash'),
     )
     fx.runtime.registerAgent(
       coworker('coworker-gtm', gtm, (input) => `ROLE: Go-to-Market Manager. Trigger: ${input}`, 'google/gemini-3.8-flash'),
@@ -155,7 +155,7 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
     expect(byUser('cw-marketing')).toHaveLength(2)
     expect(byUser('cw-gtm')).toHaveLength(2)
     for (const request of byUser('cw-marketing')) {
-      expect(request.modelOverride).toBe('anthropic/claude-sonnet-5.5')
+      expect(request.modelOverride).toBe('google/gemini-3.8-flash')
       expect(request.system).toContain('ROLE: Marketing Manager. Trigger: plan the launch')
       expect(request.system).not.toContain(BRAIN_PROMPT)
       expect(request.tools).toContain(DEFAULT_MOCK_TOOL.replace(/\./g, '__'))
@@ -180,7 +180,7 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
   it('a co-worker’s prompt is assembled per turn, and a changed model takes effect on its next turn', async () => {
     const fx = await fixture()
     let lens = 'growth first'
-    fx.runtime.registerAgent(coworker('coworker-marketing', marketing, () => `Lens: ${lens}`, 'anthropic/claude-sonnet-5.5'))
+    fx.runtime.registerAgent(coworker('coworker-marketing', marketing, () => `Lens: ${lens}`, 'google/gemini-3.8-flash'))
     const session = 'coworker:cw-marketing:conv-1:root-1'
 
     await fx.runtime.dispatchAsAgent('coworker-marketing', session, '[mock-tool:none] first', undefined, {})
@@ -189,7 +189,7 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
     await fx.runtime.dispatchAsAgent('coworker-marketing', session, '[mock-tool:none] second', undefined, {})
 
     expect(fx.seen.map((r) => [r.modelOverride, r.system])).toEqual([
-      ['anthropic/claude-sonnet-5.5', expect.stringContaining('Lens: growth first')],
+      ['google/gemini-3.8-flash', expect.stringContaining('Lens: growth first')],
       ['qwen/qwen3.8-flash', expect.stringContaining('Lens: brand first')],
     ])
     expect(fx.seen[1]!.system).not.toContain('growth first')
@@ -210,14 +210,14 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
       actsAs: 'person',
       enabled: true,
     })
-    fx.runtime.registerAgent(coworker('coworker-marketing', marketing, () => 'ROLE: Marketing Manager.', 'anthropic/claude-sonnet-5.5'))
+    fx.runtime.registerAgent(coworker('coworker-marketing', marketing, () => 'ROLE: Marketing Manager.', 'google/gemini-3.8-flash'))
 
     await fx.runtime.dispatch('orchestrator', 'chat-1', '[mock-tool:none] hi', undefined, { person: { id: 'ann', roles: ['member'] } })
     await fx.runtime.dispatchAsAgent('coworker-marketing', 'coworker:cw-marketing:c:r', '[mock-tool:none] hi', undefined, {})
 
     expect(fx.seen).toEqual([
       expect.objectContaining({ userId: 'ann', modelOverride: undefined, system: expect.stringContaining(BRAIN_PROMPT) }),
-      expect.objectContaining({ userId: 'cw-marketing', modelOverride: 'anthropic/claude-sonnet-5.5' }),
+      expect.objectContaining({ userId: 'cw-marketing', modelOverride: 'google/gemini-3.8-flash' }),
     ])
     expect(fx.seen[1]!.system).not.toContain(BRAIN_PROMPT)
   })

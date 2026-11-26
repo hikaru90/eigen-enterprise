@@ -2,6 +2,17 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-26 — AI co-worker costs: Claude Sonnet removed from the pool, OpenRouter session pinning, cache tokens logged (owner: "a lot of costs on my AI agents … it shouldn't be with deep seek" · "fix the code … I don't want to use Sonnet at all. Never. Remove it")
+
+- **Diagnosis (ee-one, Nov 24–26, from `coworkers.runs`):** ≈ $10.90 on three co-workers. Vertriebs Verónica (Sonnet 5.5) $4.97, Marketing Melanie (Sonnet 5.5) $3.77, Finanz Finn (now Gemini 3.8 Flash) $2.17. A turn cost $0.20–1.09 on Sonnet against about $0.005–0.01 on DeepSeek Flash. All three hit their $2/day cap, and the OpenRouter workspace hit its $10 weekly budget (resets 2026-11-30). os.cerberusblue.com, on DeepSeek Flash: $0.44 in 14 days.
+- **Caching was not on for Sonnet:** Anthropic caches only behind `cache_control` breakpoints, and the gateway never sent any. DeepSeek, OpenAI and Gemini cache automatically. No `session_id` was sent either, so OpenRouter keyed provider pinning on a hash of the first system message. A co-worker's system message holds the conversation, so the key changed every turn.
+- **Removed (owner decision, announced here):** `anthropic/claude-sonnet-5.5` is out of the model pool (no Anthropic model remains). A spec guards that no `anthropic/claude-sonnet*` id comes back. **Breaks on release:** a co-worker still set to Sonnet fails loud with `ModelNotInPoolError` until its model is switched. On ee-one that is Melanie and Verónica (owner switches them).
+- **Gateway:** a chat call with a caller session (`aiSessionId`: durable co-worker/agent runs, assistant chat) sends it as OpenRouter `session_id` (eigenInference and OpenRouter keys only, never to EUrouter or other providers). Calls without one send none.
+- **Cost transparency:** `activity_call_log` gets `prompt_tokens`, `completion_tokens`, `cached_tokens` and `cache_write_tokens` (migration `0187_activity_call_tokens`, add-only). Values come from OpenRouter `usage` / `prompt_tokens_details`, as reported, never estimated. `/api/activity` returns them with each row, and PostHog gets cache read/creation tokens.
+- **Not changed:** the co-worker prompt order. Its rules section is per-turn (turns left, who asked, "the task above"), and the stable prefix (role, org chart, company) already comes first.
+- **Tests:** llm-client (session_id on pool namespace / none without a session / none on EUrouter; tokens logged), log-call (token columns), model-pool (no Sonnet). Specs that used Sonnet as "another pool model" now use Gemini 3.8 Flash. svelte-check 0 errors, migration lint clean, 0187 applied on the test DB.
+- **Next:** read cache hit rates from the new columns after a day of co-worker runs. If Gemini or Qwen turns stay expensive, add explicit breakpoints per pool model (Qwen needs them).
+
 ## 2026-11-26 — Local release build of v0.5.45 (arm64) green; SheetJS bundles (owner: "test build release build locally")
 
 - `scripts/release.sh arm64` on `ca6cb8cc` passed and the bundle was signed: `dist/release/eigenenterprise-0.5.45-ca6cb8ccf44e-linux-arm64.tar.gz`. Not pushed, not tagged on origin, not installed anywhere.

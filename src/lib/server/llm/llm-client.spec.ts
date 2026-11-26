@@ -189,6 +189,14 @@ describe('llm client retries', () => {
     )
   })
 
+  it('never sends session_id to a provider outside the OpenRouter namespace', async () => {
+    const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }], aiSessionId: 'conv-42' })
+    const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
+    expect(body).not.toHaveProperty('session_id')
+  })
+
   it('chat succeeds and logs activity', async () => {
     vi.stubGlobal(
       'fetch',
@@ -871,14 +879,54 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
     await llmChatCompletion({
       userId: 'coworker-1',
       messages: [{ role: 'user', content: 'hi' }],
-      modelOverride: 'anthropic/claude-sonnet-5.5',
+      modelOverride: 'google/gemini-3.8-flash',
     })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }
-    expect(body.model).toBe('anthropic/claude-sonnet-5.5')
+    expect(body.model).toBe('google/gemini-3.8-flash')
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'coworker-1',
       expect.objectContaining({ operation: 'llm.chat.chat.success(attempt=1)' }),
+    )
+  })
+
+  it('sends the session as OpenRouter session_id so the prompt cache stays on one endpoint', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+    const fetchMock = okFetch()
+    await llmChatCompletion({ userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }], aiSessionId: 'conv-42' })
+    await llmChatCompletion({ userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }] })
+    const withSession = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
+    const without = JSON.parse(fetchMockInit(fetchMock, 1).body as string) as Record<string, unknown>
+    expect(withSession.session_id).toBe('conv-42')
+    // No caller session: no pinning on a made-up key.
+    expect(without).not.toHaveProperty('session_id')
+  })
+
+  it('logs prompt, completion, cache-read and cache-write tokens the gateway reported', async () => {
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        response(true, 200, {
+          usage: {
+            prompt_tokens: 12000,
+            completion_tokens: 300,
+            cost: 0.004,
+            prompt_tokens_details: { cached_tokens: 11000, cache_write_tokens: 500 },
+          },
+          choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        }),
+      ),
+    )
+    await llmChatCompletion({ userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }] })
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'coworker-1',
+      expect.objectContaining({
+        tokens: { prompt: 12000, completion: 300, cacheRead: 11000, cacheWrite: 500 },
+      }),
     )
   })
 

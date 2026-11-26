@@ -35,7 +35,7 @@ const people: OrgPerson[] = [
     title: 'Marketing Manager',
     accountabilities: ['Pipeline', 'Launches'],
     enabled: true,
-    modelId: 'anthropic/claude-sonnet-5.5',
+    modelId: 'google/gemini-3.8-flash',
   }),
   seat('dana', {
     name: 'Dana',
@@ -91,7 +91,7 @@ describe('org-chart-tree.svelte', () => {
     render(OrgChartTree, { people, me: { id: 'ony', canManage: false } })
     const mara = seatEl('mara')
     const mark = mara.querySelector('[data-testid="ai-mark"]')!
-    expect(mark.getAttribute('data-family')).toBe('Anthropic')
+    expect(mark.getAttribute('data-family')).toBe('Google')
     expect(mark.textContent).toContain('AI')
     await expect
       .element(page.getByRole('list', { name: 'Accountabilities of Mara' }))

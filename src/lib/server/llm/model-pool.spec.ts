@@ -53,7 +53,6 @@ describe('the model pool', () => {
 
   it('offers co-workers chat models from distinct families (AI Co-workers C2, vetted 2026-11-23)', () => {
     const widened = [
-      'anthropic/claude-sonnet-5.5',
       'google/gemini-3.8-flash',
       'qwen/qwen3.8-flash',
       'mistralai/mistral-large-4-0',
@@ -64,7 +63,12 @@ describe('the model pool', () => {
       expect(entry?.recommended, id).toBeUndefined()
     }
     const families = new Set(poolFor('chat').map((m) => m.id.replace(/^~/, '').split('/')[0]))
-    expect([...families].sort()).toEqual(['anthropic', 'deepseek', 'google', 'mistralai', 'openai', 'qwen'])
+    expect([...families].sort()).toEqual(['deepseek', 'google', 'mistralai', 'openai', 'qwen'])
+  })
+
+  it('holds no Claude Sonnet model in any slot (owner, 2026-11-26: too expensive, never offered)', () => {
+    expect(MODEL_POOL.filter((m) => m.id.startsWith('anthropic/claude-sonnet'))).toEqual([])
+    expect(isPoolModel('chat', 'anthropic/claude-sonnet-5.5')).toBe(false)
   })
 
   it('keeps the chat recommendation where it was: the widened pool adds choices, not a new default', () => {
@@ -77,12 +81,12 @@ describe('the model pool', () => {
 
     expect(modelSupportsTemperature('openai/gpt-5-mini')).toBe(false)
     expect(modelSupportsTemperature('~deepseek/deepseek-flash-latest')).toBe(true)
-    expect(modelSupportsTemperature('anthropic/claude-sonnet-5.5')).toBe(true)
+    expect(modelSupportsTemperature('google/gemini-3.8-flash')).toBe(true)
     expect(modelSupportsTemperature('custom/unlisted')).toBe(true)
 
     expect(modelMaxTools('openai/gpt-5-mini')).toBe(128)
     expect(modelMaxTools('~deepseek/deepseek-flash-latest')).toBeNull()
-    expect(modelMaxTools('anthropic/claude-sonnet-5.5')).toBeNull()
+    expect(modelMaxTools('google/gemini-3.8-flash')).toBeNull()
     expect(modelMaxTools('custom/unlisted')).toBeNull()
   })
 })

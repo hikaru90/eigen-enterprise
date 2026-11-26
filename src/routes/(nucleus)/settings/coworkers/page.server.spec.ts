@@ -26,7 +26,7 @@ const coworker = {
   title: 'Marketing Manager',
   accountabilities: ['Pipeline'],
   lens: 'Cares about reach.',
-  modelId: 'anthropic/claude-sonnet-5.5',
+  modelId: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   templateId: 'marketing-manager',
@@ -55,7 +55,7 @@ beforeEach(() => {
   }) as typeof _coworkersDeps.run
   _coworkersDeps.timeZone = async () => 'Europe/Berlin'
   _coworkersDeps.chatModels = () => [
-    { id: 'anthropic/claude-sonnet-5.5', family: 'Anthropic', name: 'claude-sonnet-5.5', note: 'n', recommended: false },
+    { id: 'google/gemini-3.8-flash', family: 'Google', name: 'gemini-3.8-flash', note: 'n', recommended: false },
   ]
 })
 
@@ -83,7 +83,7 @@ describe('load', () => {
       { id: 'owner', name: 'Olga', kind: 'human' },
       { id: 'cw1', name: 'Mara', kind: 'coworker' },
     ])
-    expect((data.models as { family: string }[])[0]!.family).toBe('Anthropic')
+    expect((data.models as { family: string }[])[0]!.family).toBe('Google')
   })
 
   it('refuses a member (403) without reading anything', async () => {

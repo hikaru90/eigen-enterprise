@@ -34,7 +34,7 @@ const people: DiagramPerson[] = [
     title: 'Marketing Manager',
     accountabilities: ['Pipeline', 'Launches', 'Messaging', 'Analytics'],
     enabled: true,
-    modelId: 'anthropic/claude-sonnet-5.5',
+    modelId: 'google/gemini-3.8-flash',
   }),
   seat('dana', {
     name: 'Dana',
@@ -112,7 +112,7 @@ describe('org-diagram.svelte', () => {
 
     const mara = seatEl('mara')
     const mark = mara.querySelector(':scope > article [data-testid="ai-mark"]')!
-    expect(mark.getAttribute('data-family')).toBe('Anthropic')
+    expect(mark.getAttribute('data-family')).toBe('Google')
     expect(mark.textContent).toContain('AI')
     await expect
       .element(page.getByRole('list', { name: 'Accountabilities of Mara' }))

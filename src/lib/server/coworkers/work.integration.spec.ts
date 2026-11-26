@@ -70,7 +70,7 @@ describe.skipIf(!DATABASE_URL)('co-worker rhythms and assignments on Postgres wi
     const admin = { id: boss, role: 'admin' as const, kind: 'person' as const }
     marketing = await svc.createCoworker(
       admin,
-      { templateId: 'marketing-manager', name: `Marketing ${tag}`, modelId: 'anthropic/claude-sonnet-5.5', reportsToUserId: ann },
+      { templateId: 'marketing-manager', name: `Marketing ${tag}`, modelId: 'google/gemini-3.8-flash', reportsToUserId: ann },
       svc.coworkerDeps(),
     )
     expect(marketing.accountableHuman).toMatchObject({ id: ann, reason: 'chain' })

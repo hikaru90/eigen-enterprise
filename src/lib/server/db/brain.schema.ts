@@ -536,6 +536,13 @@ export const activityCallLog = pgTable(
     markupRate: text('markup_rate').notNull().default('0.20'),
     groupId: uuid('group_id'),
     durationMs: integer('duration_ms'),
+    /** Tokens the gateway reported for a model call; null for non-LLM rows and rows before 0187. */
+    promptTokens: integer('prompt_tokens'),
+    completionTokens: integer('completion_tokens'),
+    /** Prompt tokens served from the provider's prompt cache (OpenRouter prompt_tokens_details.cached_tokens). */
+    cachedTokens: integer('cached_tokens'),
+    /** Prompt tokens written to the provider's prompt cache (OpenRouter prompt_tokens_details.cache_write_tokens). */
+    cacheWriteTokens: integer('cache_write_tokens'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => [index('activity_call_log_user_idx').on(t.userId)],

@@ -66,7 +66,7 @@ const view = (over: Partial<CoworkerView> = {}): CoworkerView => ({
   title: 'Marketing Manager',
   accountabilities: ['Launch communication', 'The blog'],
   lens: 'Is it on-brand and on time?',
-  modelId: 'anthropic/claude-sonnet-5.5',
+  modelId: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   templateId: null,
