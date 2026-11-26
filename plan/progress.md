@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-26 — Inbox send on ee-one refused ("These AWS keys are not allowed to use Amazon SES"): control-plane policy lacked ses:SendRawEmail (owner report)
+
+- **Cause (reproduced on ee-one with the box's own key):** the webmail sends SESv2 `Content.Raw`, which SES authorizes as `ses:SendRawEmail`; the managed box policy only allowed `ses:SendEmail`, so system mail (Simple) worked and every inbox send was refused. SES production access, DNS and the domain were fine.
+- **Fix in eigenEnterprise-cloud** `9307034` (pushed, not deployed): policy allows both, versioned (`MAIL_POLICY_VERSION`), re-put on existing boxes on their next poll. Takes effect after the owner redeploys the control plane in Coolify.
+- **Fix here:** in managed mode an AWS permission refusal now says it's on our side (`MANAGED_REFUSED_MESSAGE`) instead of the own-SES "give the IAM user permission" advice the owner can't act on, and logs Amazon's reason (it was logged nowhere, so the cause took a live probe to find). Test: `managed.spec.ts`.
+- **Seen, not changed:** ee-one's personal mailbox is `alex.bueckni@eigenenterprise.app` (suggested `alex.bueckner`); receiving has never been proven with a real mail (T4).
+
 ## 2026-11-25 — Release timing: every gate step is timed (owner: "i need a way to see why a release takes this long. 30 min build time is unacceptable")
 
 - The GitHub release workflow is ~4 min (v0.5.43: amd64 2m33, arm64 3m02, publish 41s). The rest of the ~30 min is the local gates `npm run push` runs first, which recorded no timings.

@@ -39,6 +39,10 @@ export type OwleryStatus =
 /** D8: AWS paused the company's tenant (SendingStatus DISABLED). */
 export const MANAGED_PAUSED_MESSAGE = 'Sending is paused because too many mails bounced or were marked as spam. Contact support.'
 
+/** Managed mode: Amazon refused the box's own key. That is the control plane's policy, never something the owner can change. */
+export const MANAGED_REFUSED_MESSAGE =
+  'eigenEnterprise Mail refused this mail on our side: your company’s mail permissions are missing something. Nothing in your setup is wrong and there is nothing for you to change. Contact support.'
+
 /** Managed mode before a default sender exists (system mail has nothing to go out from). */
 export const MANAGED_NO_SENDER_MESSAGE =
   'eigenEnterprise Mail has no default sender yet. Add a domain under Email › Setup, then a sender on it under Email › Senders.'
@@ -240,6 +244,12 @@ export class OwleryService implements CompanyMail {
       } catch {
         // GetTenant failing too: Amazon's own reason for the failed send is the better message.
       }
+    }
+    const code = awsErrorCode(err)
+    if (code === 'AccessDeniedException' || code === 'AuthorizationErrorException') {
+      // Amazon's reason names the missing action and resource (ARNs, no secrets): the one clue support needs.
+      console.error(`[mail] managed send refused by Amazon (${code}): ${err instanceof Error ? err.message : String(err)}`)
+      return MANAGED_REFUSED_MESSAGE
     }
     return describeSesError(err)
   }

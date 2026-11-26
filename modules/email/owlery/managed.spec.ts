@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MailSetupError } from '$lib/server/mail/company-mail'
 import type { ManagedMailConfig } from '$lib/server/mail/managed-config'
 import { InMemoryMailLog } from '../platform/memory-log'
 import { awsError, FakeSes, FakeSns } from './fake-ses'
 import { MANAGED } from './managed-fixtures'
-import { MANAGED_NO_SENDER_MESSAGE, MANAGED_PAUSED_MESSAGE, OwleryService } from './service'
+import { MANAGED_NO_SENDER_MESSAGE, MANAGED_PAUSED_MESSAGE, MANAGED_REFUSED_MESSAGE, OwleryService } from './service'
 import { InMemoryOwleryStore, owlerySealKey } from './store'
 
 const key = owlerySealKey('master-key-for-tests')
@@ -111,6 +111,23 @@ describe('OwleryService in managed mode (eigenEnterprise Mail)', () => {
     expect(err).toBeInstanceOf(MailSetupError)
     expect((err as Error).message).toBe(MANAGED_PAUSED_MESSAGE)
     expect(ses.calls).not.toContain('isSandbox')
+  })
+
+  it('a permission refusal is our side, not the owner\'s: plain message, never the own-SES IAM advice, and Amazon\'s reason in the log', async () => {
+    const { service, ses, log } = setup()
+    await service.setDefaultSender('hello@kindred.test', 'u1')
+    log.senders.set('hello@kindred.test', { ok: true, displayName: null, tracking: false })
+    const reason = "User 'arn:aws:iam::1:user/ee-box1' is not authorized to perform 'ses:SendRawEmail'"
+    ses.failSend = awsError('AccessDeniedException', reason)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const err = await service
+      .sendMailboxMail({ fromAddress: 'hello@kindred.test', recipients: { to: ['x@y.test'], cc: [], bcc: [] }, raw: new Uint8Array([1]) })
+      .catch((e: unknown) => e)
+    expect((err as Error).message).toBe(MANAGED_REFUSED_MESSAGE)
+    expect((err as Error).message).not.toMatch(/IAM|AWS keys/)
+    await expect(service.send({ to: 'x@y.test', subject: 's', html: 'h', text: 't' })).rejects.toThrow(MANAGED_REFUSED_MESSAGE)
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining(reason))
+    logged.mockRestore()
   })
 
   it('status: managed, no sandbox, the pause from GetTenant, the sender checked by its domain only', async () => {
