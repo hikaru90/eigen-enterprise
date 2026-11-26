@@ -3111,8 +3111,22 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "email.mailbox_delete": {
+    input: {
+      "mailboxId": string
+    }
+    output: unknown
+  }
   "email.mailbox_list": {
     input: Record<string, never>
+    output: unknown
+  }
+  "email.mailbox_set_address": {
+    input: {
+      "domainId": string
+      "localPart": string
+      "mailboxId": string
+    }
     output: unknown
   }
   "email.mailbox_set_disabled": {
@@ -5344,7 +5358,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "email.mailbox_assign",
   "email.mailbox_create_mine",
   "email.mailbox_create_shared",
+  "email.mailbox_delete",
   "email.mailbox_list",
+  "email.mailbox_set_address",
   "email.mailbox_set_disabled",
   "email.send_mail",
   "email.send_template",

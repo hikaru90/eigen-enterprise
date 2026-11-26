@@ -164,6 +164,11 @@
     {
       "module": "email",
       "payload": null,
+      "type": "email.mailbox_address_changed"
+    },
+    {
+      "module": "email",
+      "payload": null,
       "type": "email.mailbox_alias_added"
     },
     {
@@ -175,6 +180,11 @@
       "module": "email",
       "payload": null,
       "type": "email.mailbox_assigned"
+    },
+    {
+      "module": "email",
+      "payload": null,
+      "type": "email.mailbox_deleted"
     },
     {
       "module": "email",
@@ -18887,6 +18897,38 @@
     {
       "approval": {
         "always": false,
+        "gated": true,
+        "risk": "destructive"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "mailboxId": {
+            "description": "the mailbox id (email.mailbox_list)",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mailboxId"
+        ],
+        "type": "object"
+      },
+      "module": "email",
+      "name": "email.mailbox_delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
         "gated": false,
         "risk": null
       },
@@ -18904,6 +18946,50 @@
           "admin",
           "agent",
           "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "domainId": {
+            "description": "a verified domain id (email.mailbox_admin domains)",
+            "minLength": 1,
+            "type": "string"
+          },
+          "localPart": {
+            "description": "the part before the @",
+            "minLength": 1,
+            "type": "string"
+          },
+          "mailboxId": {
+            "description": "the mailbox id (email.mailbox_list)",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domainId",
+          "localPart",
+          "mailboxId"
+        ],
+        "type": "object"
+      },
+      "module": "email",
+      "name": "email.mailbox_set_address",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
         ]
       }
     },
