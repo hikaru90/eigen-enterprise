@@ -19,5 +19,7 @@ step lint:migrations -- npm run -s lint:migrations
 step assert:svelte-naming -- npm run -s assert:svelte-naming
 step check -- npm run -s check
 step contract:check -- npm run -s contract:check
-step test:unit -- npm run -s test:unit -- --reporter=default --reporter=json --outputFile.json="$reports/vitest-unit.json"
-step test:components -- npm run -s test:components -- --reporter=default --reporter=json --outputFile.json="$reports/vitest-components.json"
+# Test cache (scripts/test-cache/README.md): only the spec files a change can affect since the
+# suite last passed on a clean tree; EE_GATE_FULL=1 runs all of them.
+step test:unit -- node scripts/test-cache/vitest.mjs unit -- --reporter=default --reporter=json --outputFile.json="$reports/vitest-unit.json"
+step test:components -- node scripts/test-cache/vitest.mjs components -- --reporter=default --reporter=json --outputFile.json="$reports/vitest-components.json"

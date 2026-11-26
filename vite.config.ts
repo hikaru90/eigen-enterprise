@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { searchForWorkspaceRoot } from 'vite'
 import { defineConfig } from 'vitest/config'
 import { officePrebundle } from './scripts/office-prebundle.mjs'
+import { e2eDeps } from './scripts/test-cache/vite-e2e-deps.mjs'
 
 /** Watch / file-scoped re-runs only instrument a subset; thresholds would false-fail. */
 const enforceCoverageThresholds = process.env.CI === 'true' || process.argv.includes('run')
@@ -59,6 +60,8 @@ export default defineConfig({
     tailwindcss(),
     sveltekit(),
     paraglideVitePlugin({ project: './project.inlang', outdir: './src/lib/paraglide' }),
+    // Test cache: on only in a recording e2e harness (EE_E2E_DEPS=1).
+    e2eDeps(),
   ],
   test: {
     expect: { requireAssertions: true },

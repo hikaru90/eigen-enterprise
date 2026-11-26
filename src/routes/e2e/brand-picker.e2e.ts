@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './e2e-test'
 import postgres from 'postgres'
 import { registerUser, waitForHydration } from './test-helpers'
 

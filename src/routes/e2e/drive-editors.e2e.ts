@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page } from './e2e-test'
 import Papa from 'papaparse'
 import postgres from 'postgres'
 import { completeProfileViaApi, profileNames, registerUser } from './test-helpers'

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './e2e-test'
 import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 import { registerUser } from './test-helpers'
 

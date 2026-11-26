@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 import { completeProfileStepInUi, gotoHydrated, loginUser, registerUser, signOut } from './test-helpers'

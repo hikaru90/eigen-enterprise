@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './e2e-test'
 import postgres from 'postgres'
 import { completeProfileViaApi, profileNames, registerUser } from './test-helpers'
 

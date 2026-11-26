@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { registerUser, signOut } from './test-helpers'
 

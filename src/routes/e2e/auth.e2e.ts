@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './e2e-test'
 import { assertRedirectsToLogin, loginUser, registerUser, signOut } from './test-helpers'
 
 test.describe('Auth redirects (AC-019)', () => {

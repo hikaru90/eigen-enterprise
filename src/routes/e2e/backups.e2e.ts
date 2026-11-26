@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import path from 'node:path'
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { registerUser } from './test-helpers'
 

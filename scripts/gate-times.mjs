@@ -94,6 +94,23 @@ function printRun(run) {
   }
 }
 
+/** Test cache (scripts/test-cache/README.md): what each suite ran in this gate run. */
+function printSelections(run) {
+  const file = join(gateDir, 'test-cache', 'selections.tsv')
+  if (!existsSync(file)) return
+  const rows = readFileSync(file, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => l.split('\t'))
+    .filter(([id]) => id === run.id)
+  if (!rows.length) return
+  console.log('\nTest cache (only what a change can affect; EE_GATE_FULL=1 runs everything)\n')
+  for (const [, , suite, , selected, total, reason] of rows) {
+    const what = selected === 'all' ? 'all' : `${selected}${total ? ` of ${total}` : ''} file(s)`
+    console.log(`  ${suite.padEnd(10)}  ${what.padEnd(16)}  ${reason}`)
+  }
+}
+
 function printRuns(runs) {
   const gates = [...new Set(runs.flatMap((r) => r.steps.map((s) => s.gate)))]
   console.log(`\nLast ${runs.length} gate runs (seconds of steps per gate)\n`)
@@ -206,6 +223,7 @@ if (value('--runs')) {
   const run = id ? runs.find((r) => r.id === id) : runs.at(-1)
   if (!run) throw new Error(`no gate run ${id} in ${timingsFile}`)
   printRun(run)
+  printSelections(run)
   if (!flag('--brief')) {
     slowestVitest('vitest-unit.json', 'unit specs')
     slowestVitest('vitest-components.json', 'component specs')

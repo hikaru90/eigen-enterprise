@@ -299,8 +299,10 @@ function shardServers(sh: Shard) {
 
 export default defineConfig({
   webServer: shards.flatMap(shardServers),
-  // Each shard's company gets its owner before any spec runs (fresh DB per shard).
-  globalSetup: './src/routes/e2e/global-setup.ts',
+  // In order: each shard's company gets its owner before any spec runs (fresh DB per shard);
+  // then the test cache (scripts/test-cache/README.md) notes what ran up to here as startup
+  // on every shard's server when EE_E2E_DEPS=1.
+  globalSetup: ['./src/routes/e2e/global-setup.ts', './scripts/test-cache/playwright-deps.ts'],
   testMatch: '**/*.e2e.{ts,js}',
   // The release smoke (@release) runs against a real AI provider and its own .env
   // (release-helpers.ts preflight); it has its own script, npm run test:e2e:release:headed.
