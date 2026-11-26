@@ -10,6 +10,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **Gateway:** a chat call with a caller session (`aiSessionId`: durable co-worker/agent runs, assistant chat) sends it as OpenRouter `session_id` (eigenInference and OpenRouter keys only, never to EUrouter or other providers). Calls without one send none.
 - **Cost transparency:** `activity_call_log` gets `prompt_tokens`, `completion_tokens`, `cached_tokens` and `cache_write_tokens` (migration `0187_activity_call_tokens`, add-only). Values come from OpenRouter `usage` / `prompt_tokens_details`, as reported, never estimated. `/api/activity` returns them with each row, and PostHog gets cache read/creation tokens.
 - **Not changed:** the co-worker prompt order. Its rules section is per-turn (turns left, who asked, "the task above"), and the stable prefix (role, org chart, company) already comes first.
+- **Eval fixture:** its Marketing co-worker moves from Sonnet to Mistral Large 4 (the fixture wants a distinct model per co-worker).
 - **Tests:** llm-client (session_id on pool namespace / none without a session / none on EUrouter; tokens logged), log-call (token columns), model-pool (no Sonnet). Specs that used Sonnet as "another pool model" now use Gemini 3.8 Flash. svelte-check 0 errors, migration lint clean, 0187 applied on the test DB.
 - **Next:** read cache hit rates from the new columns after a day of co-worker runs. If Gemini or Qwen turns stay expensive, add explicit breakpoints per pool model (Qwen needs them).
 
