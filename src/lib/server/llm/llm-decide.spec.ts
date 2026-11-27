@@ -1,9 +1,9 @@
+import type { SlotTarget } from './slots'
 import { describe, expect, it, vi } from 'vitest'
 import { mockDecision } from '../../../../scripts/mock-gateway-decisions.mjs'
 import { LlmHttpError, LlmNotConfiguredError } from './errors'
 import { DecisionOutOfSetError, decisionsUrl, llmDecide, type LlmDecideDeps } from './llm-decide'
 import { ModelNotInPoolError } from './model-pool'
-import type { SlotTarget } from './slots'
 
 const target = (over: Partial<SlotTarget> = {}): SlotTarget => ({
   slot: 'decision',

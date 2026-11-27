@@ -1,7 +1,7 @@
-import type { ChatMessage } from '$lib/server/llm/llm-client'
 import type { ContactsDeps } from './service'
 import type { NextUpCache } from './store'
 import { z } from 'zod'
+import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { askContactsAi, readJson, type ContactsAiCall, type ExtractChat } from './extract'
 import { pipeline } from './service'
 import {

@@ -1,6 +1,6 @@
 import type { RepoSnapshot } from './snapshot-types'
-import { aiTaskOperation } from '$lib/ai-usage/tasks'
 import { describe, expect, it, vi } from 'vitest'
+import { aiTaskOperation } from '$lib/ai-usage/tasks'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { takeSnapshot } from './snapshot'
 import {

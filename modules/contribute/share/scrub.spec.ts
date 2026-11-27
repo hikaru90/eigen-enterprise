@@ -1,6 +1,6 @@
 import type { JudgeChat } from '../judge'
-import { aiTaskOperation } from '$lib/ai-usage/tasks'
 import { describe, expect, it } from 'vitest'
+import { aiTaskOperation } from '$lib/ai-usage/tasks'
 import { judged } from '../test-fixtures'
 import { buildScrubMessages, parseScrubOutput, SCRUB_MAX_ATTEMPTS, ScrubFailedError, scrubTitle } from './scrub'
 

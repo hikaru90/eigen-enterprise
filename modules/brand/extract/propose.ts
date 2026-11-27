@@ -1,5 +1,5 @@
-import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { GuideMime } from './guide'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { ChatAttachment, ChatMessage } from '$lib/server/llm/llm-client'
 import { expandSeeds } from '../style-format/expand'
 import { brandSeedsSchema, SEED_SHAPE_DESCRIPTION, type BrandSeeds } from '../style-format/seeds'

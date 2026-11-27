@@ -1,6 +1,6 @@
-import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { HighlightKind, PullSnap, RepoSnapshot, RepoSummary } from './snapshot-types'
 import { z } from 'zod'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'

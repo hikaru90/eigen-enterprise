@@ -252,7 +252,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   ),
   durable_conversations: meta(
     always,
-    ['id', 'conversation_key', 'agent_id', 'llm_user_id', 'pi_conversation_id', 'provider_session_id', 'created_at', 'updated_at', 'run_principal_id', 'run_tools'],
+    ['id', 'conversation_key', 'agent_id', 'llm_user_id', 'pi_conversation_id', 'provider_session_id', 'created_at', 'updated_at', 'run_principal_id', 'run_tools', 'task'],
     ['user_title'],
   ),
   // Derived from the Memory tables above (rebuilt from them), or run logs.

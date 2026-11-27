@@ -1,10 +1,10 @@
+import type { AiUsageOverview, AiUsageRow } from '../ai-usage/overview'
+import type { ToolContext } from './types'
 import { describe, expect, it } from 'vitest'
 import { createAiUsageTools, KERNEL_AI_USAGE_TOOL_NAMES, type AiUsagePort } from './ai-usage-tools'
 import { InMemoryApprovalModeStore, InMemoryApprovalStore, ModeAwareApprovalPolicy } from './approvals'
 import { InMemoryEventSink } from './events'
 import { KernelRegistry } from './registry'
-import type { ToolContext } from './types'
-import type { AiUsageOverview, AiUsageRow } from '../ai-usage/overview'
 
 const ctx = (id: string, roles: ('admin' | 'member')[]): ToolContext => ({
   principal: { id, kind: 'human', roles },

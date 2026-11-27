@@ -1,6 +1,6 @@
+import type { ExtractChat } from './extract'
 import { describe, expect, it, vi } from 'vitest'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
-import type { ExtractChat } from './extract'
 import { memoryNextUpCache } from './memory-store'
 import { NEXT_UP_NO_PROVIDER_MESSAGE, buildNextUpMessages, nextUp, parseNextUpOutput } from './next-up'
 import { createContact, logContact, pipeline, updateContact } from './service'

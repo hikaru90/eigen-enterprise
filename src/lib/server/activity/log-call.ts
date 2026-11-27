@@ -1,9 +1,9 @@
 import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { isUuidV4 } from '$lib/random-uuid'
-import type { CallTokens } from '$lib/server/llm/gateway-cost'
 import type { AppDatabase } from '$lib/server/db/context'
 import { activityCallLog } from '$lib/server/db/schema'
 import { resolveTenantUserId } from '$lib/server/db/tenant-context'
+import type { CallTokens } from '$lib/server/llm/gateway-cost'
 import { priceCall } from '$lib/server/pricing'
 import { getCurrentTraceGroupId } from './trace-context'
 

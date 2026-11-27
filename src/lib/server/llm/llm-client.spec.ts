@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtendedPrivateEnv } from '$lib/server/env/private-env'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
 import { LlmDailyCapError, LlmNotConfiguredError } from './errors'
-import { ModelNotInPoolError } from './model-pool'
 import {
   DEFAULT_CHAT_MAX_TOKENS,
   describeChatModel,
@@ -11,6 +10,7 @@ import {
   llmCreateSpeech,
   llmCreateTranscription,
 } from './llm-client'
+import { ModelNotInPoolError } from './model-pool'
 
 /** The company's per-person daily AI cap (DC3): unset (null) unless a spec sets it. */
 const { capStore } = vi.hoisted(() => ({
