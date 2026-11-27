@@ -6,7 +6,8 @@
 //   npm run gate:times -- --ci         also the latest GitHub release workflow run, job by job (gh)
 //   --run <id>  one run   --brief  steps only (the gates print this when they finish)
 //
-// Reads <git common dir>/ee-gate/timings.tsv (scripts/gate-step.sh writes it) and the JSON
+// Reads <git common dir>/ee-gate/timings.tsv (scripts/gate-step.sh writes it; a step skipped by the
+// result cache, scripts/gate-cache.mjs, has `cached:<key>` in its 8th column) and the JSON
 // reports the gates leave next to it: vitest-unit.json, vitest-components.json, playwright.json.
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
@@ -44,8 +45,17 @@ function readRows() {
     .split('\n')
     .filter(Boolean)
     .map((line) => {
-      const [run, commit, gate, step, seconds, exit, at] = line.split('\t')
-      return { run, commit, gate, step, seconds: Number(seconds), exit: Number(exit), at }
+      const [run, commit, gate, step, seconds, exit, at, cached] = line.split('\t')
+      return {
+        run,
+        commit,
+        gate,
+        step,
+        seconds: Number(seconds),
+        exit: Number(exit),
+        at,
+        cached: cached?.startsWith('cached:') ? cached.slice('cached:'.length) : null,
+      }
     })
 }
 
@@ -61,17 +71,22 @@ function groupRuns(rows) {
 function printRun(run) {
   const total = run.steps.reduce((a, s) => a + s.seconds, 0)
   const failed = run.steps.find((s) => s.exit !== 0)
+  const cached = run.steps.filter((s) => s.cached).length
   const wall =
     (Date.parse(run.steps.at(-1).at) - Date.parse(run.steps[0].at)) / 1000 + run.steps[0].seconds
   console.log(
     `\nGate run ${run.id} on ${run.steps[0].commit}${failed ? `  ✗ failed at ${failed.gate} › ${failed.step}` : ''}`,
   )
   console.log(
-    `steps ${fmt(total)}, wall ${fmt(wall)} (the gap is time between gates: hooks, git, docker)\n`,
+    `steps ${fmt(total)}, wall ${fmt(wall)} (the gap is time between gates: hooks, git, docker)${cached ? `, ${cached} cached` : ''}\n`,
   )
   const width = Math.max(...run.steps.map((s) => `${s.gate} › ${s.step}`.length))
   for (const s of run.steps) {
     const label = `${s.gate} › ${s.step}`.padEnd(width)
+    if (s.cached) {
+      console.log(`  ${label}  ${'cached'.padStart(7)}       green on ${s.cached}`)
+      continue
+    }
     const pct = total ? `${Math.round((s.seconds / total) * 100)}%`.padStart(4) : ''
     console.log(
       `  ${label}  ${fmt(s.seconds).padStart(7)} ${pct}  ${bar(s.seconds, total)}${s.exit ? '  ✗' : ''}`,
@@ -91,8 +106,10 @@ function printRuns(runs) {
     )
     const total = per.reduce((a, b) => a + b, 0)
     const fail = r.steps.some((s) => s.exit !== 0) ? ' ✗' : ''
+    const hits = r.steps.filter((s) => s.cached).length
+    const cachedNote = hits ? `  (${hits} cached)` : ''
     console.log(
-      `  ${r.id.padEnd(24)} ${r.steps[0].commit.padEnd(12)} ${per.map((p) => (p ? fmt(p) : '—').padStart(9)).join(' ')} ${fmt(total).padStart(9)}${fail}`,
+      `  ${r.id.padEnd(24)} ${r.steps[0].commit.padEnd(12)} ${per.map((p) => (p ? fmt(p) : '—').padStart(9)).join(' ')} ${fmt(total).padStart(9)}${fail}${cachedNote}`,
     )
   }
 }
