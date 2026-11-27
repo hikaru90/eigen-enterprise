@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-27 — AI usage overview: where the company's AI money goes (owner: "I have absolutely no visibility where those dollars went … broken down by user and by task … every single AI-enabled product"; in progress)
+
+- **Plan:** `plan/phase-ai-usage-overview.md`. A closed task catalog (task → product), every model call names its task, migration 0189 adds `activity_call_log.task` + `model` (legacy rows backfilled by exact table, the rest shown as unattributed), read tool `settings.ai_usage_overview` (owner + admin), page Settings → AI usage.
+- **Decisions (owner may veto):** (1) owner + admins see everyone, members keep their own `settings.my_ai_usage`. (2) A call counts toward its task's product (brain retrieval inside an assistant turn = Brain); co-workers' full spend is one row in People with a per-product split. (3) Shown cost = billed total incl. markup, as the cap and reply cost. (4) No guessing for old rows: unmatched ones are an explicit "Not attributed" bucket.
+- **Build:** delegated to one lower-model subagent in a worktree.
+
+## 2026-11-27 — Multiplayer presence: see where everyone is working (owner: "I want eigenEnterprise to be inherently multiplayer … display where every person is so when you work together you don't feel so alone"; in progress)
+
+- **Plan:** `plan/phase-multiplayer-presence.md`. Contract `src/lib/presence/where.ts` + spec (`df12693e`).
+- **In flight:** workstream A (server: tracker keeps each tab's where, per-viewer filtered SSE `/api/messages/presence/stream`, `messages.presence` + `messages.set_share_where` tools, migration 0188 `user_preference.share_where`) and B (client: heartbeat sends where + beats on navigation, avatars on sidebar entries and the dashboard badge, "Here with you" in the top bar, "Share where I am" switch). C (avatars on Messages/Drive rows) follows the merge.
+- **Decisions (owner may veto):** (1) SSE over the existing in-memory tracker. No WebSocket, and no LiveKit for presence: it would mean a media-server connection per tab. (2) Where someone is lives in memory like their status; only the share switch is stored. (3) Sharing is on by default. Each viewer sees the area always, but the open file/chat (and its path) only if they can open it themselves; DMs only to their participants. (4) Every navigation sends a beat at once.
+
 ## 2026-11-26 — Settings → Co-workers took ~20 s per co-worker (found by the v0.5.45 release gate)
 
 - `coworkers.e2e.ts` failed every time on step 3 (click "Manage" → /settings/coworkers within 15 s). The page load runs `coworkers.rhythm_list` per co-worker, and its targets (`liveRhythmTargets.listFor`, `src/lib/server/coworkers/rhythm-live.ts`) went through Messages' `listConversations`. That summarizes every conversation one by one (view check, unread count), then re-read and re-checked each one. With the e2e database's ~420 conversations, that was 19–25 s for one co-worker. A real performance bug: it grows with a company's channel count. It surfaced now only because the test database keeps growing.
