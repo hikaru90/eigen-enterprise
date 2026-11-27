@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import postgres from 'postgres'
 import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
-import { completeProfileStepInUi, loginUser, registerUser, signOut } from './test-helpers'
+import { completeProfileStepInUi, gotoHydrated, loginUser, registerUser, signOut } from './test-helpers'
 
 /**
  * Phase-2e: the boot sequence is the FIRST screen on `/` for every production
@@ -225,8 +225,9 @@ test.describe('welcome boot sequence', () => {
   ): Promise<{ email: string }> {
     const registered = await registerUser(context, page, options)
     owner = await becomeCompanyOwner(registered.email)
-    // The open page rendered for a member; load it again as the owner.
-    await page.goto('/')
+    // The open page rendered for a member; load it again as the owner — hydrated, or the
+    // first click (Skip, Continue) lands on server markup with no handler and does nothing.
+    await gotoHydrated(page, '/')
     return registered
   }
 
