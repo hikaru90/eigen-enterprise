@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExtendedPrivateEnv } from '$lib/server/env/private-env'
 import { fetchMockInit, fetchMockUrl } from '$lib/test/vitest-mock-call'
 import { LlmDailyCapError, LlmNotConfiguredError } from './errors'
-import { ModelNotInPoolError } from './model-pool'
+import { ModelNotInPoolError, ModelNotServedError } from './model-pool'
 import {
   DEFAULT_CHAT_MAX_TOKENS,
   describeChatModel,
@@ -1663,6 +1663,164 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     await expect(
       llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
     ).rejects.toThrow(/PLATFORM_LLM_MODEL_CHAT is not set/)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('eigenInference on Opper (PLATFORM_LLM_PROVIDER=opper)', () => {
+  const OPPER = {
+    PLATFORM_LLM_BASE_URL: 'https://api.opper.ai/v3/compat',
+    PLATFORM_LLM_API_KEY: 'sk-opper',
+    PLATFORM_LLM_MODEL_CHAT: '~deepseek/deepseek-flash-latest',
+    PLATFORM_LLM_MODEL_EMBEDDING: 'qwen/qwen3-embedding-8b',
+    PLATFORM_LLM_PROVIDER: 'opper',
+  }
+  const env = mockEnv as Record<string, string | undefined>
+  const json = (body: unknown, headers: Record<string, string> = {}) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json', ...headers } })
+  const sent = (fetchMock: ReturnType<typeof vi.fn>, i = 0) => JSON.parse(String(fetchMockInit(fetchMock, i)?.body)) as Record<string, unknown>
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    mockSequentialDbLimitResults()
+    mockEnv.LLM_MODEL_CHAT = ''
+    mockEnv.LLM_MODEL_EMBEDDING = ''
+    mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = '0'
+    mockEnv.LLM_REQUEST_TIMEOUT_MS = ''
+    Object.assign(env, OPPER)
+    Object.assign(companyPicks, { chat: null, stt: null, tts: null, decision: null })
+    pinnedEmbedding.model = null
+    const { isByokBilling } = await import('$lib/server/llm/preferences')
+    vi.mocked(isByokBilling).mockResolvedValue(false)
+  })
+
+  afterEach(() => {
+    for (const name of Object.keys(OPPER)) delete env[name]
+    Object.assign(companyPicks, { chat: null, stt: null, tts: null, decision: null })
+    pinnedEmbedding.model = null
+    mockEnv.LLM_MODEL_CHAT = 'gpt-test'
+    mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
+  })
+
+  it("chat sends Opper's EU id for the slot's pool model, no OpenRouter session_id, cost from usage.cost", async () => {
+    const fetchMock = vi.fn(async () => json({ usage: { prompt_tokens: 3, cost: 0.0002 }, choices: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], aiSessionId: 'conv-1' })
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://api.opper.ai/v3/compat/chat/completions')
+    expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe('Bearer sk-opper')
+    const body = sent(fetchMock)
+    expect(body.model).toBe('mistral/deepseek-v4-1-flash-1017')
+    expect(body.session_id).toBeUndefined()
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ provider: 'platform', gatewayHost: 'api.opper.ai', baseCostUsd: 0.0002 }),
+    )
+    expect(captureServerEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        properties: expect.objectContaining({ $ai_model: 'mistral/deepseek-v4-1-flash-1017', eigen_inference_provider: 'opper' }),
+      }),
+    )
+  })
+
+  it('a pool model keeps its traits under its Opper id (gpt-5-mini: no temperature)', async () => {
+    companyPicks.chat = 'openai/gpt-5-mini'
+    const fetchMock = vi.fn(async () => json({ usage: { cost: 0.001 }, choices: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], temperature: 0.2 })
+    expect(sent(fetchMock)).toMatchObject({ model: 'azure/gpt-5-mini' })
+    expect(sent(fetchMock).temperature).toBeUndefined()
+  })
+
+  it("a co-worker's own pool model goes out under its Opper id", async () => {
+    const fetchMock = vi.fn(async () => json({ usage: { cost: 0.001 }, choices: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'qwen/qwen3.8-flash' })
+    expect(sent(fetchMock).model).toBe('alibaba:eu/qwen3.8-flash')
+  })
+
+  it('describes the chat model as Opper routes it', async () => {
+    await expect(describeChatModel('u1')).resolves.toMatchObject({ provider: 'platform', model: 'mistral/deepseek-v4-1-flash-1017', gatewayHost: 'api.opper.ai' })
+  })
+
+  it('embeddings: the pinned pool model under its Opper id, 1536 dimensions, cost from the x-opper-cost header', async () => {
+    const long = Array.from({ length: 4096 }, (_, i) => (i < 1536 ? 0.5 : 0.01))
+    const fetchMock = vi.fn(async () => json({ data: [{ embedding: long }] }, { 'x-opper-cost': '0.0000123' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const out = (await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })) as { data: Array<{ embedding: number[] }> }
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://api.opper.ai/v3/compat/embeddings')
+    expect(sent(fetchMock)).toMatchObject({ model: 'ovhcloud/Qwen3-Embedding-8B', dimensions: 1536 })
+    // still the pool model's Matryoshka handling (by pool id, not the wire id)
+    expect(out.data[0]!.embedding).toHaveLength(1536)
+    expect(logActivityCallMock).toHaveBeenCalledWith(expect.anything(), 'u1', expect.objectContaining({ baseCostUsd: 0.0000123 }))
+  })
+
+  it('embeddings: an install pinned to text-embedding-3-small fails loud on Opper and sends nothing', async () => {
+    pinnedEmbedding.model = 'openai/text-embedding-3-small'
+    vi.stubGlobal('fetch', vi.fn())
+    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toBeInstanceOf(ModelNotServedError)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it("speech to text: Opper's /v3/audio/transcriptions, JSON data-URL audio, Voxtral, cost from usage.cost", async () => {
+    const fetchMock = vi.fn(async () => json({ id: 't1', model: 'mistral/voxtral-mini-transcribe-3-0', text: 'Hallo Welt', duration: 1.2, usage: { cost: 0.00004, seconds: 1.2 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const out = (await llmCreateTranscription({
+      userId: 'u1',
+      audio: { bytes: new Uint8Array([1, 2, 3]), format: 'webm', language: 'de', prompt: 'Kindred' },
+    })) as { text: string }
+    expect(out.text).toBe('Hallo Welt')
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://api.opper.ai/v3/audio/transcriptions')
+    expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe('Bearer sk-opper')
+    expect(sent(fetchMock)).toEqual({
+      model: 'mistral/voxtral-mini-transcribe-3-0',
+      audio: `data:audio/webm;base64,${Buffer.from([1, 2, 3]).toString('base64')}`,
+      language: 'de',
+    })
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ provider: 'platform', gatewayHost: 'api.opper.ai', baseCostUsd: 0.00004 }),
+    )
+  })
+
+  it('speech to text: a stored pick Opper does not serve fails loud before any request', async () => {
+    companyPicks.stt = 'qwen/qwen3-asr-1.7b'
+    vi.stubGlobal('fetch', vi.fn())
+    await expect(
+      llmCreateTranscription({ userId: 'u1', audio: { bytes: new Uint8Array([1]), format: 'webm' } }),
+    ).rejects.toThrow(/not available on Opper.*Settings → AI/)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it("text to speech: Opper's /v3/audio/speech, Voxtral in its default voice (no Qwen voice), mp3 bytes, cost logged", async () => {
+    const mp3 = new Uint8Array([0x49, 0x44, 0x33, 7])
+    const fetchMock = vi.fn(async () =>
+      json({ id: 's1', model: 'mistral/voxtral-mini-tts-3-0', audio: { b64_json: Buffer.from(mp3).toString('base64'), mime_type: 'audio/mpeg' }, usage: { cost: 0.0003, characters: 5 } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const bytes = await llmCreateSpeech({ userId: 'u1', voice: 'longanhuan_v3.6', text: 'Hallo' })
+    expect([...bytes]).toEqual([...mp3])
+    expect(fetchMockUrl(fetchMock, 0)).toBe('https://api.opper.ai/v3/audio/speech')
+    expect(sent(fetchMock)).toEqual({ model: 'mistral/voxtral-mini-tts-3-0', input: 'Hallo' })
+    expect(logActivityCallMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'u1',
+      expect.objectContaining({ provider: 'platform', gatewayHost: 'api.opper.ai', baseCostUsd: 0.0003 }),
+    )
+  })
+
+  it('text to speech: an answer without audio fails loud', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ id: 's1', usage: { cost: 0.0003 } })))
+    await expect(llmCreateSpeech({ userId: 'u1', voice: 'x', text: 'Hallo' })).rejects.toThrow(/no audio/)
+  })
+
+  it('a base that is not Opper\'s …/compat API fails speech loud instead of guessing the audio path', async () => {
+    env.PLATFORM_LLM_BASE_URL = 'https://api.opper.ai/v3'
+    vi.stubGlobal('fetch', vi.fn())
+    await expect(
+      llmCreateTranscription({ userId: 'u1', audio: { bytes: new Uint8Array([1]), format: 'webm' } }),
+    ).rejects.toThrow(/\/compat/)
     expect(fetch).not.toHaveBeenCalled()
   })
 })
