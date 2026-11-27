@@ -996,7 +996,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
     expect(body.temperature).toBeUndefined()
   })
 
-  it('openai/gpt-5-mini omits temperature when resolved from company chat slot as well', async () => {
+  it("on eigenInference a stored chat pick is ignored: it runs on our pick (the company's picks are for its own key)", async () => {
     const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     companyPicks.chat = 'openai/gpt-5-mini'
@@ -1008,8 +1008,8 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
       temperature: 0,
     })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
-    expect(body.model).toBe('openai/gpt-5-mini')
-    expect('temperature' in body).toBe(false)
+    expect(body.model).toBe('~deepseek/deepseek-flash-latest')
+    expect(body.temperature).toBe(0)
   })
 
   it('DeepSeek keeps temperature: 0 when passed', async () => {
@@ -1760,10 +1760,9 @@ describe('eigenInference on Opper (PLATFORM_LLM_PROVIDER=opper)', () => {
   })
 
   it('a pool model keeps its traits under its Opper id (gpt-5-mini: no temperature)', async () => {
-    companyPicks.chat = 'openai/gpt-5-mini'
     const fetchMock = vi.fn(async () => json({ usage: { cost: 0.001 }, choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', task: 'assistant.turn', messages: [{ role: 'user', content: 'hi' }], temperature: 0.2 })
+    await llmChatCompletion({ userId: 'u1', task: 'assistant.turn', messages: [{ role: 'user', content: 'hi' }], temperature: 0.2, modelOverride: 'openai/gpt-5-mini' })
     expect(sent(fetchMock)).toMatchObject({ model: 'azure/gpt-5-mini' })
     expect(sent(fetchMock).temperature).toBeUndefined()
   })
@@ -1821,13 +1820,12 @@ describe('eigenInference on Opper (PLATFORM_LLM_PROVIDER=opper)', () => {
     )
   })
 
-  it('speech to text: a stored pick Opper does not serve fails loud before any request', async () => {
+  it("speech to text: a stored pick Opper does not serve is ignored, Voxtral runs (picks are for the company's own key)", async () => {
     companyPicks.stt = 'qwen/qwen3-asr-1.7b'
-    vi.stubGlobal('fetch', vi.fn())
-    await expect(
-      llmCreateTranscription({ userId: 'u1', task: 'speech.stt', audio: { bytes: new Uint8Array([1]), format: 'webm' } }),
-    ).rejects.toThrow(/not available on Opper.*Settings → AI/)
-    expect(fetch).not.toHaveBeenCalled()
+    const fetchMock = vi.fn(async () => json({ id: 't1', text: 'ok', usage: { cost: 0.00001 } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await llmCreateTranscription({ userId: 'u1', task: 'speech.stt', audio: { bytes: new Uint8Array([1]), format: 'webm' } })
+    expect(sent(fetchMock).model).toBe('mistral/voxtral-mini-transcribe-3-0')
   })
 
   it("text to speech: Opper's /v3/audio/speech, Voxtral in its default voice (no Qwen voice), mp3 bytes, cost logged", async () => {
