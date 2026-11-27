@@ -5219,3 +5219,18 @@ was an LLM promise with no execution behind it.
 - os runs on eigenEnterprise Mail when all ten EE_MAIL_* are set and no own SES keys are saved (own keys win, D1); partial set throws at boot.
 - Sends carry TenantName; no provisioning calls in managed mode; domains via GetEmailIdentity (Easy DKIM); receiving = flag only; webhooks pinned to env ARNs + `${prefix}/`; unrouted inbound deleted; tenant pause → D8 message; tenant-scoped unsuppress; setup card + "Use your own Amazon SES instead"; GET /api/fleet/mail-domains.
 - Decision: managed default sender lives in new table managed_mail_sender (migration 0150), since an owlery_settings row means "own SES"; the first sender added on a company domain becomes the default. Until then isConfigured() is false (sign-in codes keep their dev/no-mail path), while the onboarding mail step counts as done.
+
+## 2026-11-27 — contributes: approvals page removed, AI-usage pills say what they mean
+- a8494cc2: the Approval-mode settings page is gone (owner: the mode lives in the chat composer).
+  `approvals.manage` capability retired — PUT /api/approvals/mode keeps its own isUserAdmin check;
+  settings nav, shell-walk e2e, role-aware spec, settings-tools ELSEWHERE pointer updated. 94e2e26d.
+- cfc2df03/f3d03bd0: AI-usage period pills now read Last 7/30/90 days, All time — and on the
+  hosted plan every pill reads "(invoiced)" so the window names what the € amounts are.
+- 5e9d1936: the active pill is the royal blue (--tone-blue) instead of plain inverted. 59654f80.
+- Fixed red gate: boot-wiring member-surface pins handover.delete (7944a580 missed the list). 8311395b.
+- Environment: livekit-server 1.13.11 (the pinned version) installed via brew — the e2e-harness
+  check and scripts/vite-config.spec.ts ran red on this Mac since the e2e parallel-workers change.
+- Verification: unit 11533 passed (2 pre-existing livekit-related env fails before the install,
+  then gate green incl. unit); components green; check 0 errors; lint 0 errors; migrations clean;
+  CI gate green for 8311395b; pushed.
+- Not yet released: ships with the next release run.
