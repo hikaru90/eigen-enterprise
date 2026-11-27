@@ -105,6 +105,11 @@ export type SesApi = {
   createIdentity(identity: string): Promise<void>
   /** GetAccount — true while the account can only send to verified addresses. */
   isSandbox(): Promise<boolean>
+  /**
+   * GetAccount's reputation verdict (plan/mail-reputation.md): EnforcementStatus (HEALTHY, PROBATION
+   * = under review, SHUTDOWN = paused by Amazon) and SendingEnabled (the owner's own switch).
+   */
+  accountReputation(): Promise<AccountReputation>
   send(input: SesSendInput): Promise<{ messageId: string | null }>
   /** SendEmail with Content.Raw: the bytes go out as built (SES adds its own headers, e.g. its Message-ID). */
   sendRaw(input: SesRawSendInput): Promise<{ messageId: string | null }>
@@ -125,6 +130,8 @@ export type SesApi = {
 }
 
 export type SesFactory = (credentials: SesCredentials) => SesApi
+
+export type AccountReputation = { enforcement: 'HEALTHY' | 'PROBATION' | 'SHUTDOWN'; sendingEnabled: boolean }
 
 /** AWS error code (the SDK's exception `name`), or null for non-AWS errors. */
 export function awsErrorCode(err: unknown): string | null {
@@ -164,6 +171,14 @@ export const awsSes: SesFactory = (c) => {
     async isSandbox() {
       const out = await client.send(new GetAccountCommand({}))
       return out.ProductionAccessEnabled !== true
+    },
+    async accountReputation() {
+      const out = await client.send(new GetAccountCommand({}))
+      const enforcement = out.EnforcementStatus
+      if (enforcement !== 'HEALTHY' && enforcement !== 'PROBATION' && enforcement !== 'SHUTDOWN') {
+        throw new Error(`Amazon SES returned an unknown enforcement status: ${String(enforcement)}`)
+      }
+      return { enforcement, sendingEnabled: out.SendingEnabled === true }
     },
     async send(input) {
       const tags = Object.entries(input.tags ?? {}).map(([Name, Value]) => ({ Name, Value }))

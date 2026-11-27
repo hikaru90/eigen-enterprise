@@ -34,6 +34,9 @@ export class FakeSes {
   rawSent: SesRawSendInput[] = []
   credentials: SesCredentials[] = []
   sandbox = false
+  /** GetAccount's reputation verdict. */
+  enforcement: 'HEALTHY' | 'PROBATION' | 'SHUTDOWN' = 'HEALTHY'
+  sendingEnabled = true
   failAccount: Error | null = null
   failSend: Error | null = null
   failCreateDomain: Error | null = null
@@ -74,6 +77,10 @@ export class FakeSes {
       isSandbox: async () => {
         if (this.failAccount) throw this.failAccount
         return this.sandbox
+      },
+      accountReputation: async () => {
+        if (this.failAccount) throw this.failAccount
+        return { enforcement: this.enforcement, sendingEnabled: this.sendingEnabled }
       },
       send: async (input) => {
         if (this.failSend) throw this.failSend

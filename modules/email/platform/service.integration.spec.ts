@@ -7,8 +7,9 @@ import { INBOUND_RULE_SET } from '../inbox/receiving-contract'
 import { FakeInboundBucket, FakeSesReceiving } from '../owlery/fake-receiving'
 import { awsError, FakeSes, FakeSns } from '../owlery/fake-ses'
 import { ReceivingService } from '../owlery/receiving'
-import { OwleryService } from '../owlery/service'
+import { OwleryService, ReputationHoldError } from '../owlery/service'
 import { InMemoryOwleryStore, owlerySealKey } from '../owlery/store'
+import { ReputationError } from './reputation-service'
 import { EmailPlatform, EmailPlatformError } from './service'
 import { EmailStore } from './store'
 import { emailBrandFromCssVars } from './templates/brand'
@@ -485,5 +486,249 @@ describe.skipIf(!hasDb)('EmailPlatform (test database)', () => {
 
     const imported = await a.importContacts(other.id, 'email,first\nnew@x.co,Grace\nbroken\n')
     expect(imported).toEqual({ added: 1, updated: 0, invalid: ['broken'] })
+  })
+})
+
+/**
+ * Sender reputation end to end on the test database (plan/mail-reputation.md):
+ * SES events → the ledger → the send gate → the hourly check → an admin's resume.
+ */
+describe.skipIf(!hasDb)('sender reputation (test database, plan/mail-reputation.md)', () => {
+  let db: AppDatabase
+  let now = new Date('2026-11-27T12:00:00Z')
+  let ses: FakeSes
+  let owlery: OwleryService
+  let platform: EmailPlatform
+  let store: EmailStore
+
+  beforeAll(async () => {
+    const { createScopedDrizzle, appSql } = await import('$lib/server/db')
+    db = createScopedDrizzle(appSql)
+  })
+
+  beforeEach(async () => {
+    store = new EmailStore(db)
+    await store.clearAll()
+    now = new Date('2026-11-27T12:00:00Z')
+    ses = new FakeSes()
+    ses.verify('hello@kindred.test')
+    const sns = new FakeSns()
+    const settingsStore = new InMemoryOwleryStore()
+    owlery = new OwleryService({
+      store: settingsStore,
+      key: () => owlerySealKey('reputation'),
+      ses: ses.factory,
+      sns: sns.factory,
+      log: store,
+      reputation: async () => platform.reputation,
+      now: () => now.getTime(),
+    })
+    await owlery.saveVerified({
+      region: 'eu-central-1',
+      accessKeyId: 'AKIA',
+      secretAccessKey: 's',
+      emailFrom: 'hello@kindred.test',
+      testRecipient: 'owner@kindred.test',
+      updatedBy: 'u1',
+    })
+    platform = new EmailPlatform({
+      owlery,
+      store,
+      resolveMx: async () => [],
+      receiving: new ReceivingService({
+        store: settingsStore,
+        credentials: () => owlery.settings(),
+        ses: new FakeSesReceiving().factory,
+        bucket: new FakeInboundBucket().factory,
+        sns: sns.factory,
+      }),
+      receivingRecipients: async () => [],
+      resolveTxt: async () => [],
+      fetch: (async () => new Response('ok')) as unknown as typeof fetch,
+      brand: async () => emailBrandFromCssVars(null, 'Kindred'),
+      db,
+      origin: () => 'https://os.kindred.test',
+      now: () => now,
+    })
+  })
+
+  afterAll(async () => {
+    await new EmailStore(db).clearAll()
+  })
+
+  /** n API mails through the one send path, each with its SES Send event; the first `bounces` bounce permanently. */
+  async function sendApiMail(n: number, bounces: number) {
+    for (let i = 0; i < n; i++) {
+      const out = await owlery.send({
+        to: `p${i}@example.com`,
+        subject: 'Hi',
+        text: 't',
+        html: '<p>t</p>',
+        source: 'api',
+      })
+      const mail = {
+        messageId: out.messageId!,
+        timestamp: now.toISOString(),
+        tags: { ee_message: [out.id] },
+        destination: [`p${i}@example.com`],
+      }
+      await platform.applySesEvent({ eventType: 'Send', mail })
+      if (i < bounces) {
+        const bounce = {
+          eventType: 'Bounce',
+          mail,
+          bounce: {
+            bounceType: 'Permanent',
+            bounceSubType: 'General',
+            feedbackId: `fb-${i}`,
+            bouncedRecipients: [{ emailAddress: `p${i}@example.com` }],
+          },
+        }
+        await platform.applySesEvent(bounce)
+        // SNS delivers at least once: the redelivery counts once.
+        await platform.applySesEvent(bounce)
+      }
+    }
+  }
+
+  it('holds every mail but system mail once 5% bounced, and records the check', async () => {
+    await sendApiMail(100, 5)
+    const view = await platform.reputation.check()
+    expect(view).toMatchObject({
+      band: 'held',
+      sendingHeld: true,
+      rates: { recipients: 100, bounces: 5 },
+    })
+
+    await expect(
+      owlery.send({ to: 'new@example.com', subject: 'x', text: 't', html: 'h', source: 'agent' }),
+    ).rejects.toBeInstanceOf(ReputationHoldError)
+    await expect(
+      owlery.send({ to: 'new@example.com', subject: 'x', text: 't', html: 'h', source: 'agent' }),
+    ).rejects.toThrow(/on hold/)
+    // Sign-in codes still go out.
+    await expect(
+      owlery.send({
+        to: 'owner@kindred.test',
+        subject: 'Your code',
+        text: '123',
+        html: '123',
+        source: 'system',
+      }),
+    ).resolves.toMatchObject({ status: 'sent' })
+
+    const { checks } = await platform.reputation.history()
+    expect(checks[0]).toMatchObject({
+      band: 'held',
+      recipients: 100,
+      bounces: 5,
+      awsStatus: 'HEALTHY',
+      mode: 'own',
+      awsError: null,
+    })
+  })
+
+  it('counts personal mail as one slice with no sender, and keeps no address in the ledger', async () => {
+    const mail = {
+      messageId: 'raw-1',
+      timestamp: now.toISOString(),
+      tags: { ee_webmail: ['1'] },
+      destination: ['a@x.co', 'b@x.co'],
+    }
+    await platform.applySesEvent({ eventType: 'Send', mail })
+    await platform.applySesEvent({
+      eventType: 'Bounce',
+      mail,
+      bounce: {
+        bounceType: 'Permanent',
+        feedbackId: 'w1',
+        bouncedRecipients: [{ emailAddress: 'a@x.co' }],
+      },
+    })
+    const rows = await store.reputationWindow(new Date(now.getTime() - 1000), 10)
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        {
+          sesMessageId: 'raw-1',
+          kind: 'send',
+          recipients: 2,
+          origin: 'webmail',
+          sender: null,
+          ref: null,
+        },
+        {
+          sesMessageId: 'raw-1',
+          kind: 'hard_bounce',
+          recipients: 1,
+          origin: 'webmail',
+          sender: null,
+          ref: null,
+        },
+      ]),
+    )
+    expect(JSON.stringify(rows)).not.toContain('@x.co')
+  })
+
+  it("Amazon's review holds sending and cannot be resumed here; once lifted, an admin resumes and the window restarts", async () => {
+    await sendApiMail(100, 6)
+    ses.enforcement = 'PROBATION'
+    expect((await platform.reputation.check()).band).toBe('held')
+    await expect(platform.reputation.resume('u1', 'cleaned the list')).rejects.toThrow(
+      /Amazon itself holds this account \(PROBATION\)/,
+    )
+
+    ses.enforcement = 'HEALTHY'
+    now = new Date(now.getTime() + 1000)
+    await expect(platform.reputation.resume('u1', '  ')).rejects.toBeInstanceOf(ReputationError)
+    const { view, reset } = await platform.reputation.resume('u1', 'removed the bought list')
+    expect(reset).toMatchObject({
+      resetBy: 'u1',
+      reason: 'removed the bought list',
+      band: 'held',
+      recipients: 100,
+    })
+    expect(view).toMatchObject({ band: 'unjudged', sendingHeld: false, rates: { recipients: 0 } })
+    await expect(
+      owlery.send({ to: 'new@example.com', subject: 'x', text: 't', html: 'h', source: 'agent' }),
+    ).resolves.toMatchObject({ status: 'sent' })
+    await expect(platform.reputation.resume('u1', 'again')).rejects.toThrow(/Nothing is on hold/)
+  })
+
+  it('a failed read of Amazon is recorded and never lifts the hold Amazon gave', async () => {
+    ses.enforcement = 'SHUTDOWN'
+    expect((await platform.reputation.check()).band).toBe('paused')
+    ses.failAccount = Object.assign(new Error('throttled'), {
+      name: 'TooManyRequestsException',
+      $metadata: {},
+    })
+    const view = await platform.reputation.check()
+    expect(view.band).toBe('paused')
+    expect(view.lastCheck?.awsError).toMatch(/limiting/)
+  })
+
+  it('a scheduled mail due while held fails with the reason instead of going out', async () => {
+    const at = new Date(now.getTime() + 60_000)
+    const scheduled = await owlery.send({
+      to: 'later@example.com',
+      subject: 'x',
+      text: 't',
+      html: 'h',
+      source: 'api',
+      scheduledAt: at,
+    })
+    await sendApiMail(100, 10)
+    await platform.reputation.check()
+    now = new Date(at.getTime() + 1000)
+    await owlery.sendScheduled(scheduled.id)
+    const row = await store.getMessage(scheduled.id)
+    expect(row).toMatchObject({ status: 'failed' })
+    expect(row!.error).toMatch(/on hold/)
+  })
+
+  it('the tick checks once an hour', async () => {
+    expect((await platform.tick()).reputationChecked).toBe(true)
+    expect((await platform.tick()).reputationChecked).toBe(false)
+    now = new Date(now.getTime() + 61 * 60 * 1000)
+    expect((await platform.tick()).reputationChecked).toBe(true)
   })
 })

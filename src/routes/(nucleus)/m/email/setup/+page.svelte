@@ -28,6 +28,14 @@
   const testError = $derived(shownErrorOf(feedback('test')))
   const eventsError = $derived(shownErrorOf(feedback('events')))
   const receivingError = $derived(shownErrorOf(feedback('receiving')))
+  const reputationLabel: Record<string, string> = {
+    unjudged: 'Not enough mail yet',
+    healthy: 'Healthy',
+    watch: 'Watch',
+    held: 'Sending on hold',
+    paused: 'Paused by Amazon',
+  }
+  const pctOf = (r: number | null) => (r === null ? '—' : `${(r * 100).toFixed(r < 0.01 ? 2 : 1)}%`)
   let busy = $state<string | null>(null)
   let changingKeys = $state(false)
 
@@ -483,6 +491,30 @@
         <p class="mt-3 text-sm text-muted-foreground">Not connected yet.</p>
       {/if}
     </div>
+
+    {#if data.reputation}
+      {@const rep = data.reputation}
+      <a
+        class="block rounded-lg border px-4 py-3 text-sm hover:bg-muted/50 {rep.sendingHeld
+          ? 'border-destructive/50'
+          : 'border-border'}"
+        href={resolve('/m/email/reputation')}
+        data-testid="email-reputation"
+        data-band={rep.band}
+      >
+        <span class="flex items-baseline justify-between gap-3">
+          <span class="font-medium">Sender reputation</span>
+          <span class="text-xs {rep.sendingHeld ? 'text-destructive' : 'text-muted-foreground'}"
+            >{reputationLabel[rep.band] ?? rep.band}</span
+          >
+        </span>
+        <span class="mt-1 block text-muted-foreground tabular-nums"
+          >{rep.bounceRate === null ? 'No mail counted yet' : `${pctOf(rep.bounceRate)} bounced · ${pctOf(rep.complaintRate)} spam`}{rep.flagged > 0
+            ? ` · ${rep.flagged} flagged`
+            : ''}</span
+        >
+      </a>
+    {/if}
 
     {#if account}
       <div>

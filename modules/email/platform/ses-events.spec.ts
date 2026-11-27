@@ -43,6 +43,27 @@ describe('parseSesEvent', () => {
     expect(transient!.suppress).toEqual([])
   })
 
+  it('feeds the reputation ledger: Send counts its recipients, hard bounces and complaints count, nothing else does', () => {
+    const multi = { ...mail, destination: ['a@x.co', 'b@x.co', 'c@x.co'] }
+    expect(parseSesEvent({ eventType: 'Send', mail: multi })!.reputation).toEqual({ kind: 'send', recipients: 3, eventKey: 'ses-1:send' })
+    expect(parseSesEvent({ eventType: 'Delivery', mail })!.reputation).toBeNull()
+    const hard = parseSesEvent({
+      eventType: 'Bounce',
+      mail,
+      bounce: { bounceType: 'Permanent', bounceSubType: 'General', feedbackId: 'fb-1', bouncedRecipients: [{ emailAddress: 'a@x.co' }, { emailAddress: 'b@x.co' }] },
+    })
+    expect(hard!.reputation).toEqual({ kind: 'hard_bounce', recipients: 2, eventKey: 'ses-1:hard_bounce:fb-1' })
+    const soft = parseSesEvent({ eventType: 'Bounce', mail, bounce: { bounceType: 'Transient', bouncedRecipients: [{ emailAddress: 'a@x.co' }] } })
+    expect(soft!.reputation).toBeNull()
+    // SES's own refusal for a suppressed address is not a bounce Amazon counts.
+    for (const sub of ['OnAccountSuppressionList', 'OnSuppressionList']) {
+      const suppressed = parseSesEvent({ eventType: 'Bounce', mail, bounce: { bounceType: 'Permanent', bounceSubType: sub, bouncedRecipients: [{ emailAddress: 'a@x.co' }] } })
+      expect(suppressed!.reputation).toBeNull()
+    }
+    const complaint = parseSesEvent({ eventType: 'Complaint', mail, complaint: { feedbackId: 'fb-2', complainedRecipients: [{ emailAddress: 'a@x.co' }] } })
+    expect(complaint!.reputation).toEqual({ kind: 'complaint', recipients: 1, eventKey: 'ses-1:complaint:fb-2' })
+  })
+
   it('a complaint suppresses the complainer', () => {
     expect(
       parseSesEvent({ eventType: 'Complaint', mail, complaint: { complainedRecipients: [{ emailAddress: 'a@x.co' }], complaintFeedbackType: 'abuse' } }),

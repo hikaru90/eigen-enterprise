@@ -10,6 +10,7 @@ export const EMAIL_PLATFORM_READ_TOOLS = [
   'email.contact_lists',
   'email.flow_list',
   'email.list_contacts',
+  'email.reputation_get',
 ] as const
 
 /** Every one of these waits on the approval gate (modules/index APPROVAL_REQUIRED_TOOLS). */
@@ -37,6 +38,8 @@ export const EMAIL_PLATFORM_WRITE_TOOLS = [
   'email.sender_set_default',
   'email.setup_events',
   'email.setup_receiving',
+  'email.reputation_check',
+  'email.reputation_resume',
   // Destructive: removes a domain, a layout, a template, a flow, a list, a person on a list, a sender.
   'email.domain_delete',
   'email.layout_delete',

@@ -5,6 +5,7 @@ import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { MailNotConfiguredError, MailSetupError } from '$lib/server/mail/company-mail'
 import { InboxError } from '../../../../../modules/email/inbox/errors'
 import { AudienceError } from '../../../../../modules/email/platform/flows/service'
+import { ReputationError } from '../../../../../modules/email/platform/reputation-service'
 import { EmailPlatformError } from '../../../../../modules/email/platform/service'
 import {
   TemplateError,
@@ -52,6 +53,7 @@ export async function act<T extends Record<string, unknown>>(
       })
     if (
       err instanceof EmailPlatformError ||
+      err instanceof ReputationError ||
       err instanceof TemplateError ||
       err instanceof AudienceError ||
       err instanceof InboxError ||

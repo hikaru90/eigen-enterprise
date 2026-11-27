@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 /**
  * The email platform (plan/phase-polish-1.md P-6; migration 0114 upward): the
@@ -150,4 +150,71 @@ export const mailTemplates = pgTable('mail_templates', {
   createdBy: text('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+/**
+ * The sender-reputation ledger (plan/mail-reputation.md R1, migration 0189): one row per SES Send,
+ * hard bounce or complaint, with the slice it belongs to. Numbers only: no recipient, no subject,
+ * no content; a webmail send is origin 'webmail' with no sender (S5 privacy).
+ */
+export const mailReputationLedger = pgTable(
+  'mail_reputation_ledger',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** `<ses message id>:<kind>[:<feedback id>]`: an SNS redelivery is a no-op. */
+    eventKey: text('event_key').notNull().unique(),
+    sesMessageId: text('ses_message_id').notNull(),
+    /** send | hard_bounce | complaint */
+    kind: text('kind').notNull(),
+    recipients: integer('recipients').notNull(),
+    /** The mail's source (MailSource) or 'webmail'. */
+    origin: text('origin').notNull(),
+    sender: text('sender'),
+    /** 'flow:<id>' | 'api_key:<id>' | null */
+    ref: text('ref'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('mail_reputation_ledger_kind_at_idx').on(t.kind, t.occurredAt), index('mail_reputation_ledger_message_idx').on(t.sesMessageId)],
+)
+
+/** Every reputation check (hourly, and "Check now"): the history on Email › Setup › Reputation (R7). */
+export const mailReputationChecks = pgTable(
+  'mail_reputation_checks',
+  {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** unjudged | healthy | watch | held | paused */
+  band: text('band').notNull(),
+  recipients: integer('recipients').notNull(),
+  bounces: integer('bounces').notNull(),
+  complaints: integer('complaints').notNull(),
+  bounceRate: doublePrecision('bounce_rate'),
+  complaintRate: doublePrecision('complaint_rate'),
+  /** own: HEALTHY | PROBATION | SHUTDOWN; managed: ENABLED | REINSTATED | DISABLED; null when unread. */
+  awsStatus: text('aws_status'),
+  /** own mode: GetAccount.SendingEnabled (null in managed mode or when unread). */
+  awsSendingEnabled: boolean('aws_sending_enabled'),
+  /** own | managed */
+  mode: text('mode').notNull(),
+  /** Amazon could not be read: its reason (the band then rests on our own rates and the last status). */
+  awsError: text('aws_error'),
+  reasons: jsonb('reasons').$type<string[]>().notNull().default([]),
+  /** Flagged slices at that moment: dimension, value, band, rates. */
+  slices: jsonb('slices').$type<Record<string, unknown>[]>().notNull().default([]),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('mail_reputation_checks_at_idx').on(t.checkedAt)],
+)
+
+/** An admin resumed sending after a hold (R6): the window restarts from here. */
+export const mailReputationResets = pgTable('mail_reputation_resets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  resetBy: text('reset_by').notNull(),
+  reason: text('reason').notNull(),
+  /** The band and rates the reset cleared. */
+  band: text('band').notNull(),
+  recipients: integer('recipients').notNull(),
+  bounceRate: doublePrecision('bounce_rate'),
+  complaintRate: doublePrecision('complaint_rate'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })

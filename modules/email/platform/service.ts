@@ -19,6 +19,7 @@ import {
   type MxRecord,
 } from './dns'
 import { AudienceService, FLOW_STEP_JOB } from './flows/service'
+import { ReputationService } from './reputation-service'
 import { isRepeatableEngagement, parseSesEvent, type ParsedSesEvent } from './ses-events'
 import { isSnsUrl, type SnsMessage } from './sns-signature'
 import { nextStatus, type MessageStatus } from './status'
@@ -103,6 +104,8 @@ export class EmailPlatform {
   readonly templates: TemplateService
   /** Contact lists and flows (stage 3). */
   readonly audience: AudienceService
+  /** Sender reputation: the ledger, Amazon's verdict, the send gate (plan/mail-reputation.md). */
+  readonly reputation: ReputationService
 
   constructor(private readonly deps: EmailPlatformDeps) {
     this.templates = new TemplateService({ store: deps.store, owlery: deps.owlery, brand: deps.brand })
@@ -114,6 +117,7 @@ export class EmailPlatform {
       origin: deps.origin,
       ...(deps.now ? { now: deps.now } : {}),
     })
+    this.reputation = new ReputationService({ store: deps.store, owlery: deps.owlery, ...(deps.now ? { now: deps.now } : {}) })
     this.handlers.set(FLOW_STEP_JOB, (job) => this.audience.runJob(job))
     // A hard bounce or a spam complaint also unsubscribes the address from every list.
     this.eventListeners.push(async (e) => {
@@ -570,10 +574,24 @@ export class EmailPlatform {
       }
     }
     if (!message) {
-      // Webmail (S5): no log row by design (a mailbox is private); bounces and complaints still suppress.
+      // Webmail (S5): no log row by design (a mailbox is private); bounces and complaints still suppress
+      // and still count for the reputation, as one slice with no sender.
       if (!e.webmail) return { applied: false }
+      if (e.reputation) {
+        await this.deps.store.recordReputation({ ...e.reputation, sesMessageId: e.sesMessageId, origin: 'webmail', sender: null, ref: null, occurredAt: e.occurredAt })
+      }
       for (const s of e.suppress) await this.deps.store.addSuppression(s.email, s.reason, WEBMAIL_SUPPRESSION_SOURCE)
       return { applied: true }
+    }
+    if (e.reputation) {
+      await this.deps.store.recordReputation({
+        ...e.reputation,
+        sesMessageId: e.sesMessageId,
+        origin: message.source,
+        sender: message.fromAddress,
+        ref: message.flowId ? `flow:${message.flowId}` : message.apiKeyId ? `api_key:${message.apiKeyId}` : null,
+        occurredAt: e.occurredAt,
+      })
     }
 
     if (isRepeatableEngagement(e.status) && (await this.deps.store.hasEvent(message.id, e.status))) {
@@ -670,10 +688,17 @@ export class EmailPlatform {
   }
 
   /** One pass of the module's background work. */
-  async tick(): Promise<{ domains: number; jobs: { done: number; failed: number } }> {
+  async tick(): Promise<{ domains: number; jobs: { done: number; failed: number }; reputationChecked: boolean }> {
     const domains = await this.refreshDueDomains()
+    let reputationChecked = false
+    try {
+      reputationChecked = await this.reputation.checkIfDue()
+    } catch (err) {
+      // The hourly record is not worth blocking the jobs for; the next tick tries again.
+      console.error('[email] reputation check failed', { error: err instanceof Error ? err.message : String(err) })
+    }
     const jobs = await this.runJobs()
-    return { domains, jobs }
+    return { domains, jobs, reputationChecked }
   }
 }
 

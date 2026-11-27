@@ -38,6 +38,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       counts: { total: 0, byStatus: {} as Record<string, number> },
       sentAny: false,
       recent: [],
+      reputation: null,
     }
   }
   const managed = settings.mode === 'managed'
@@ -57,12 +58,13 @@ export const load: PageServerLoad = async ({ locals }) => {
       plain: (e) => (e instanceof MailSetupError ? e.message : describeSesError(e)),
     })
   }
-  const [domains, senders, counts, recent, receiving] = await Promise.all([
+  const [domains, senders, counts, recent, receiving, reputation] = await Promise.all([
     platform.listDomains(),
     platform.listSenders(),
     platform.store.countMessages(),
     platform.store.listMessages({ limit: 5 }),
     managed ? null : platform.receivingState(),
+    platform.reputation.view(),
   ])
   return {
     me: { email: me.email },
@@ -141,6 +143,14 @@ export const load: PageServerLoad = async ({ locals }) => {
       isDefault: s.isDefault,
     })),
     counts,
+    // Email › Setup › Reputation in one line (plan/mail-reputation.md).
+    reputation: {
+      band: reputation.band,
+      sendingHeld: reputation.sendingHeld,
+      bounceRate: reputation.rates.bounceRate,
+      complaintRate: reputation.rates.complaintRate,
+      flagged: reputation.slices.length,
+    },
     sentAny: LEFT.some((s) => (counts.byStatus[s] ?? 0) > 0),
     recent: recent.map((m) => ({
       id: m.id,

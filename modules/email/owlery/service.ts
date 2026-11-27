@@ -1,7 +1,6 @@
+import type { SendSlice } from '../platform/reputation'
 import { z } from 'zod'
 import { env } from '$lib/server/env/private-env'
-import type { ManagedMailConfig } from '$lib/server/mail/managed-config'
-import { managedMailFromEnv } from '$lib/server/mail/managed-env'
 import {
   MailNotConfiguredError,
   MailSetupError,
@@ -11,6 +10,8 @@ import {
   type SendMailInput,
   type SendMailResult,
 } from '$lib/server/mail/company-mail'
+import type { ManagedMailConfig } from '$lib/server/mail/managed-config'
+import { managedMailFromEnv } from '$lib/server/mail/managed-env'
 import { LOG_ID_TAG, WEBMAIL_TAG } from '../platform/ses-events'
 import { defaultEmailStore, type EmailStore, type MessageRow } from '../platform/store'
 import { defaultFakeMailStore, fakeSns, fakeStoreSes } from './fake-store'
@@ -61,7 +62,20 @@ export type OwleryServiceDeps = {
   sns?: SnsFactory
   /** eigenEnterprise Mail's config (EE_MAIL_*), or null on a box without it. */
   managed?: () => ManagedMailConfig | null
+  /** The sender-reputation gate (plan/mail-reputation.md R5); the app always wires it. */
+  reputation?: () => Promise<ReputationGate>
   now?: () => number
+}
+
+/** Answers whether a mail may go out under the company's sender reputation. */
+export type ReputationGate = { refusal(send: SendSlice): Promise<string | null> }
+
+/** A send refused because the sender reputation is below Amazon's criteria (R5); the message says why and what to do. */
+export class ReputationHoldError extends MailSetupError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ReputationHoldError'
+  }
 }
 
 /** The background job that sends a scheduled message (EmailPlatform.runJobs). */
@@ -254,6 +268,12 @@ export class OwleryService implements CompanyMail {
     return describeSesError(err)
   }
 
+  /** The reputation gate's reason this mail may not go out, or null. */
+  private async reputationRefusal(send: SendSlice): Promise<string | null> {
+    if (!this.deps.reputation) return null
+    return (await this.deps.reputation()).refusal(send)
+  }
+
   private client(s: SesCredentials): SesApi {
     return this.sesFactory({ region: s.region, accessKeyId: s.accessKeyId, secretAccessKey: s.secretAccessKey })
   }
@@ -283,6 +303,9 @@ export class OwleryService implements CompanyMail {
     if (!check.ok && (s.mode === 'managed' || fromAddress !== s.emailFrom.toLowerCase())) throw new MailSetupError(check.reason)
     const from = formatFrom(fromAddress, check.ok ? check.displayName : null)
     const tracking = check.ok && check.tracking
+    const ref = input.flowId ? `flow:${input.flowId}` : input.apiKey ? `api_key:${input.apiKey.id}` : null
+    const held = await this.reputationRefusal({ origin: source, sender: fromAddress, ref })
+    if (held) throw new ReputationHoldError(held)
 
     const scheduled = input.scheduledAt && input.scheduledAt.getTime() > (this.deps.now?.() ?? Date.now())
     const suppressed = await this.deps.log.isSuppressed(input.to)
@@ -347,6 +370,9 @@ export class OwleryService implements CompanyMail {
     const suppressed: string[] = []
     for (const r of all) if (await this.deps.log.isSuppressed(r)) suppressed.push(r)
     if (suppressed.length > 0) throw new MailSetupError(suppressedMessage(suppressed))
+    // Personal mail is one slice, never per mailbox (S5 privacy).
+    const held = await this.reputationRefusal({ origin: 'webmail', sender: null, ref: null })
+    if (held) throw new ReputationHoldError(held)
 
     const eventsWired = s.eventsStatus === 'ready' || s.eventsStatus === 'waiting'
     const configurationSet = eventsWired ? (s.configSet ?? undefined) : undefined
@@ -400,6 +426,13 @@ export class OwleryService implements CompanyMail {
     if (!check.ok && (s.mode === 'managed' || row.fromAddress !== s.emailFrom.toLowerCase())) {
       await this.deps.log.updateMessage(row.id, { status: 'failed', error: check.reason })
       await this.deps.log.addEvent(row.id, 'failed', { error: check.reason })
+      return
+    }
+    const ref = row.flowId ? `flow:${row.flowId}` : row.apiKeyId ? `api_key:${row.apiKeyId}` : null
+    const held = await this.reputationRefusal({ origin: row.source, sender: row.fromAddress, ref })
+    if (held) {
+      await this.deps.log.updateMessage(row.id, { status: 'failed', error: held })
+      await this.deps.log.addEvent(row.id, 'failed', { error: held, reputation: true })
       return
     }
     await this.deps.log.updateMessage(row.id, { status: 'queued' })
@@ -610,6 +643,8 @@ export function owleryService(): OwleryService {
         return owlerySealKey(master)
       },
       managed: configuredManagedMail,
+      // Lazy: the platform builds its ReputationService over this very service.
+      reputation: async () => (await import('../platform/service')).emailPlatform().reputation,
       ...(transport === 'fake' ? { ses: fakeStoreSes(defaultFakeMailStore()), sns: fakeSns } : {}),
     })
   }

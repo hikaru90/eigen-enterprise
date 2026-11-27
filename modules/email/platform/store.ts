@@ -1,6 +1,7 @@
 import type { MailHeader } from '../owlery/ses'
+import type { LedgerKind, LedgerRow } from './reputation'
 import type { MessageStatus } from './status'
-import { and, asc, count, desc, eq, ilike, inArray, lt, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, inArray, lt, notInArray, or, sql } from 'drizzle-orm'
 import type { DbHandle } from '$lib/kernel/db-stores'
 import type { AppDatabase } from '$lib/server/db/context'
 import {
@@ -9,6 +10,9 @@ import {
   mailLayouts,
   mailMessageEvents,
   mailMessages,
+  mailReputationChecks,
+  mailReputationLedger,
+  mailReputationResets,
   mailSenders,
   mailSuppressions,
   mailTemplates,
@@ -32,6 +36,10 @@ export type SuppressionRow = typeof mailSuppressions.$inferSelect
 export type JobRow = typeof mailJobs.$inferSelect
 export type LayoutRow = typeof mailLayouts.$inferSelect
 export type TemplateRow = typeof mailTemplates.$inferSelect
+export type ReputationCheckRow = typeof mailReputationChecks.$inferSelect
+export type ReputationResetRow = typeof mailReputationResets.$inferSelect
+
+export type NewLedgerEntry = LedgerRow & { eventKey: string; occurredAt: Date }
 
 export type NewMessage = {
   source: MailSource
@@ -327,6 +335,74 @@ export class EmailStore {
       .limit(500)
   }
 
+  // ─── sender reputation (plan/mail-reputation.md) ───────────────────────────
+
+  /** One Send / hard bounce / complaint; a repeated event key (SNS redelivery) is a no-op. */
+  async recordReputation(e: NewLedgerEntry): Promise<void> {
+    await (await this.db())
+      .insert(mailReputationLedger)
+      .values({
+        eventKey: e.eventKey,
+        sesMessageId: e.sesMessageId,
+        kind: e.kind,
+        recipients: e.recipients,
+        origin: e.origin,
+        sender: e.sender,
+        ref: e.ref,
+        occurredAt: e.occurredAt,
+      })
+      .onConflictDoNothing({ target: mailReputationLedger.eventKey })
+  }
+
+  /**
+   * The representative volume (R1): the latest `mails` Sends since `since`, and the hard bounces and
+   * complaints of exactly those mails (whenever they arrived; SNS keeps no order).
+   */
+  async reputationWindow(since: Date, mails: number): Promise<LedgerRow[]> {
+    const db = await this.db()
+    const cols = {
+      sesMessageId: mailReputationLedger.sesMessageId,
+      kind: mailReputationLedger.kind,
+      recipients: mailReputationLedger.recipients,
+      origin: mailReputationLedger.origin,
+      sender: mailReputationLedger.sender,
+      ref: mailReputationLedger.ref,
+    }
+    const sends = await db
+      .select(cols)
+      .from(mailReputationLedger)
+      .where(and(eq(mailReputationLedger.kind, 'send'), gte(mailReputationLedger.occurredAt, since)))
+      .orderBy(desc(mailReputationLedger.occurredAt))
+      .limit(mails)
+    if (sends.length === 0) return []
+    const ids = sends.map((r) => r.sesMessageId)
+    const events = await db
+      .select(cols)
+      .from(mailReputationLedger)
+      .where(and(inArray(mailReputationLedger.kind, ['hard_bounce', 'complaint']), inArray(mailReputationLedger.sesMessageId, ids)))
+    return [...sends, ...events].map((r) => ({ ...r, kind: r.kind as LedgerKind }))
+  }
+
+  async insertReputationCheck(values: typeof mailReputationChecks.$inferInsert): Promise<ReputationCheckRow> {
+    const [row] = await (await this.db()).insert(mailReputationChecks).values(values).returning()
+    if (!row) throw new Error('mail_reputation_checks insert returned no row')
+    return row
+  }
+
+  async listReputationChecks(limit: number): Promise<ReputationCheckRow[]> {
+    return (await this.db()).select().from(mailReputationChecks).orderBy(desc(mailReputationChecks.checkedAt)).limit(limit)
+  }
+
+  async insertReputationReset(values: typeof mailReputationResets.$inferInsert): Promise<ReputationResetRow> {
+    const [row] = await (await this.db()).insert(mailReputationResets).values(values).returning()
+    if (!row) throw new Error('mail_reputation_resets insert returned no row')
+    return row
+  }
+
+  async listReputationResets(limit: number): Promise<ReputationResetRow[]> {
+    return (await this.db()).select().from(mailReputationResets).orderBy(desc(mailReputationResets.createdAt)).limit(limit)
+  }
+
   // ─── templates & layouts ───────────────────────────────────────────────────
 
   async listLayouts(): Promise<LayoutRow[]> {
@@ -463,6 +539,9 @@ export const EMAIL_PLATFORM_TABLES = [
   mailJobs,
   mailTemplates,
   mailLayouts,
+  mailReputationLedger,
+  mailReputationChecks,
+  mailReputationResets,
 ] as const
 
 export function defaultEmailStore(): EmailStore {

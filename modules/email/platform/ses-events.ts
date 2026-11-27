@@ -1,3 +1,4 @@
+import type { LedgerKind } from './reputation'
 import type { MessageStatus } from './status'
 import { z } from 'zod'
 import type { SuppressionReason } from '$lib/server/db/email.schema'
@@ -18,6 +19,7 @@ export const sesEvent = z
       .object({
         messageId: z.string(),
         timestamp: z.string().optional(),
+        destination: z.array(z.string()).optional(),
         tags: z.record(z.string(), z.array(z.string())).optional(),
       })
       .passthrough(),
@@ -26,6 +28,7 @@ export const sesEvent = z
         bounceType: z.string().optional(),
         bounceSubType: z.string().optional(),
         bouncedRecipients: z.array(recipient).optional(),
+        feedbackId: z.string().optional(),
         timestamp: z.string().optional(),
       })
       .passthrough()
@@ -34,6 +37,7 @@ export const sesEvent = z
       .object({
         complainedRecipients: z.array(recipient).optional(),
         complaintFeedbackType: z.string().optional(),
+        feedbackId: z.string().optional(),
         timestamp: z.string().optional(),
       })
       .passthrough()
@@ -74,7 +78,16 @@ export type ParsedSesEvent = {
   /** What the timeline shows for this event (no message content). */
   detail: Record<string, unknown>
   suppress: { email: string; reason: SuppressionReason }[]
+  /**
+   * What this event adds to the reputation ledger (plan/mail-reputation.md R1): a Send with its
+   * recipient count, a hard bounce or a complaint with the number of recipients it names; null for
+   * every other event. `eventKey` makes an SNS redelivery a no-op. No addresses.
+   */
+  reputation: { kind: LedgerKind; recipients: number; eventKey: string } | null
 }
+
+/** Bounces SES makes itself for an address on a suppression list: not a bounce Amazon's rate counts. */
+const SUPPRESSION_BOUNCES = new Set(['OnAccountSuppressionList', 'OnSuppressionList'])
 
 const STATUS: Record<string, MessageStatus> = {
   Send: 'sent',
@@ -104,13 +117,26 @@ export function parseSesEvent(raw: unknown): ParsedSesEvent | null {
   if (!status) return null
   const logId = e.mail.tags?.[LOG_ID_TAG]?.[0] ?? null
   const webmail = e.mail.tags?.[WEBMAIL_TAG]?.[0] === '1'
-  const base = { status, sesMessageId: e.mail.messageId, logId, webmail }
+  const id = e.mail.messageId
+  const base = { status, sesMessageId: id, logId, webmail, reputation: null }
   switch (status) {
+    case 'sent':
+      return {
+        ...base,
+        occurredAt: at(e.mail.timestamp),
+        detail: {},
+        suppress: [],
+        reputation: { kind: 'send', recipients: Math.max(1, e.mail.destination?.length ?? 1), eventKey: `${id}:send` },
+      }
     case 'bounced': {
       const permanent = e.bounce?.bounceType === 'Permanent'
       const recipients = e.bounce?.bouncedRecipients ?? []
+      const counted = permanent && !SUPPRESSION_BOUNCES.has(e.bounce?.bounceSubType ?? '') && recipients.length > 0
       return {
         ...base,
+        reputation: counted
+          ? { kind: 'hard_bounce', recipients: recipients.length, eventKey: `${id}:hard_bounce:${e.bounce?.feedbackId ?? e.bounce?.timestamp ?? ''}` }
+          : null,
         occurredAt: at(e.bounce?.timestamp, e.mail.timestamp),
         detail: {
           bounceType: e.bounce?.bounceType ?? 'Undetermined',
@@ -120,13 +146,20 @@ export function parseSesEvent(raw: unknown): ParsedSesEvent | null {
         suppress: permanent ? recipients.map((r) => ({ email: r.emailAddress, reason: 'HARD_BOUNCE' as const })) : [],
       }
     }
-    case 'complained':
+    case 'complained': {
+      const complainers = e.complaint?.complainedRecipients ?? []
       return {
         ...base,
+        reputation: {
+          kind: 'complaint',
+          recipients: Math.max(1, complainers.length),
+          eventKey: `${id}:complaint:${e.complaint?.feedbackId ?? e.complaint?.timestamp ?? ''}`,
+        },
         occurredAt: at(e.complaint?.timestamp, e.mail.timestamp),
         detail: { feedbackType: e.complaint?.complaintFeedbackType ?? null },
-        suppress: (e.complaint?.complainedRecipients ?? []).map((r) => ({ email: r.emailAddress, reason: 'COMPLAINT' as const })),
+        suppress: complainers.map((r) => ({ email: r.emailAddress, reason: 'COMPLAINT' as const })),
       }
+    }
     case 'delivered':
       return { ...base, occurredAt: at(e.delivery?.timestamp, e.mail.timestamp), detail: {}, suppress: [] }
     case 'opened':

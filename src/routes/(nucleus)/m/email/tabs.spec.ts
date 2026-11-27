@@ -25,6 +25,7 @@ describe('Email area tabs (the three kinds of mail first, setup behind one tab)'
       'Layouts',
       'Logs',
       'Suppression',
+      'Reputation',
       'API',
     ])
   })
@@ -114,6 +115,7 @@ describe('Email area tabs (the three kinds of mail first, setup behind one tab)'
     ['/m/email/layouts', 'setup'],
     ['/m/email/logs/1', 'setup'],
     ['/m/email/suppression', 'setup'],
+    ['/m/email/reputation', 'setup'],
     ['/m/email/api', 'setup'],
   ] as const)('%s → %s', (path, id) => {
     expect(currentAreaTab(EMAIL_TABS, path)).toBe(id)

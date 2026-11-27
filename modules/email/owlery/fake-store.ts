@@ -68,6 +68,7 @@ export function fakeStoreSes(store: FakeMailStore): SesFactory {
       getIdentity: (id) => store.getIdentity(id),
       createIdentity: (id) => store.createIdentity(id),
       isSandbox: async () => false,
+      accountReputation: async () => ({ enforcement: 'HEALTHY', sendingEnabled: true }),
       send: async (input) => ({ messageId: (await store.capture(input)).messageId }),
       sendRaw: async (input) => ({ messageId: (await store.capture(capturedRaw(input, await rawSubject(input.raw)))).messageId }),
       createDomainIdentity: (input) => store.createIdentity(input.domain),

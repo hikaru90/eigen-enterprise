@@ -168,6 +168,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/m/email/setup ?/events': tool('email.setup_events'),
   '/(nucleus)/m/email/setup ?/receiving': tool('email.setup_receiving'),
   '/(nucleus)/m/email/setup ?/test': tool('email.send_mail'),
+  '/(nucleus)/m/email/reputation ?/check': tool('email.reputation_check'),
+  '/(nucleus)/m/email/reputation ?/resume': tool('email.reputation_resume'),
   '/(nucleus)/m/email/suppression ?/add': tool('email.suppression_add'),
   '/(nucleus)/m/email/suppression ?/remove': tool('email.suppression_remove'),
   '/(nucleus)/m/email/templates ?/create': tool('email.template_create'),

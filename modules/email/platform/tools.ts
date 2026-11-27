@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { EMAIL_MODULE_ID } from '../manifest'
 import { createEmailManageTools } from './manage-tools'
+import { reputationOut } from './reputation-service'
 import { MESSAGE_STATUSES } from './status'
 
 /**
@@ -302,6 +303,59 @@ export function createEmailPlatformTools(deps: EmailPlatformToolDeps = {}): Tool
           inProgress: f.active,
           completed: f.completed,
         })),
+    },
+    {
+      name: 'email.reputation_get',
+      module: EMAIL_MODULE_ID,
+      summary:
+        "The company's sender reputation against Amazon SES's criteria (bounce rate: below 2% healthy, review from 5%, pause from 10%; complaint rate: review from 0.1%, pause from 0.5%): band (unjudged | healthy | watch | held | paused), whether sending is held, rates over the last 2,000 mails of 30 days, Amazon's own verdict, the flagged slices (kind of mail, sender, flow, API key), the check history and the resumes.",
+      auditClass: 'read',
+      inputSchema: z.object({}).strict(),
+      permission: ROLES,
+      handler: async () => {
+        const p = await platform()
+        const [view, history] = await Promise.all([p.reputation.view(), p.reputation.history(48)])
+        return {
+          ...reputationOut(view),
+          history: history.checks.map((c) => ({
+            at: c.checkedAt.toISOString(),
+            band: c.band,
+            recipients: c.recipients,
+            bounceRate: c.bounceRate,
+            complaintRate: c.complaintRate,
+            amazon: c.awsStatus,
+            amazonError: c.awsError,
+          })),
+          resumes: history.resets.map((r) => ({ at: r.createdAt.toISOString(), by: r.resetBy, reason: r.reason, band: r.band, bounceRate: r.bounceRate, complaintRate: r.complaintRate })),
+        }
+      },
+    },
+    {
+      name: 'email.reputation_check',
+      module: EMAIL_MODULE_ID,
+      summary: "Ask Amazon SES for its reputation verdict now (account enforcement status, or the company's tenant status) and record a check.",
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => 'Checked the sender reputation',
+      inputSchema: z.object({}).strict(),
+      permission: ROLES,
+      handler: async () => reputationOut(await (await platform()).reputation.check()),
+    },
+    {
+      name: 'email.reputation_resume',
+      module: EMAIL_MODULE_ID,
+      summary:
+        'Resume sending after a reputation hold, once the cause is fixed (say what was fixed). The rates then count from now; refused while Amazon itself holds the account. Admins only: the assistant cannot lift a hold.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: () => 'Resumed sending after a reputation hold',
+      inputSchema: z.object({ reason: z.string().trim().min(1).max(500) }).strict(),
+      permission: { roles: ['admin'] },
+      handler: async (ctx, input) => {
+        const { reason } = z.object({ reason: z.string().trim().min(1).max(500) }).strict().parse(input)
+        const out = await (await platform()).reputation.resume(ctx.principal.id, reason)
+        return reputationOut(out.view)
+      },
     },
     {
       name: 'email.suppression_add',
