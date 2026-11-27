@@ -93,9 +93,9 @@ describe('load', () => {
   })
 
   it('the live pool offers only chat models, each with its family', async () => {
-    const { poolFor } = await import('$lib/server/llm/model-pool')
+    const { chatModels } = await import('$lib/server/llm/model-pool')
     const { chatModelOption } = await import('$lib/coworkers/model-family')
-    const live = poolFor('chat').map(chatModelOption)
+    const live = chatModels().map(chatModelOption)
     expect(live.length).toBeGreaterThan(3)
     expect(new Set(live.map((m) => m.family)).size).toBeGreaterThan(3)
   })

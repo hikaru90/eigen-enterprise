@@ -133,13 +133,22 @@
                 onchange={submitOnChange}
                 class="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 -ring disabled:cursor-not-allowed disabled:opacity-60"
               >
+                {#if !slot.available}
+                  <option value={slot.model} disabled>{slot.model} (not available)</option>
+                {/if}
                 {#each slot.options as option (option.id)}
                   <option value={option.id}
                     >{option.id}{option.recommended ? ' (recommended)' : ''}</option
                   >
                 {/each}
               </select>
-              {#if current}
+              {#if !slot.available}
+                <ErrorNotice
+                  testid="slot-unavailable-{slot.slot}"
+                  error={`${slot.model} is not available on ${data.ai.providerLabel}, so these calls fail. ${data.canManageAi ? 'Pick another model.' : 'An owner or admin picks another model.'}`}
+                  attempted={`Running the ${meta?.label ?? slot.slot} role on ${slot.model} (Settings → AI provider)`}
+                />
+              {:else if current}
                 <p class="text-xs text-muted-foreground">{current.note}</p>
               {/if}
             </div>
@@ -168,7 +177,11 @@
     {/if}
   </section>
 
-  <SpeechStatus dictation={data.speech.dictation} models={data.speech.models} />
+  <SpeechStatus
+    dictation={data.speech.dictation}
+    models={data.speech.models}
+    providerLabel={data.speech.providerLabel}
+  />
 
   <MemberAiCap usage={data.memberAiCap.usage} canManage={data.canManageAi} message={form?.capMessage} />
 

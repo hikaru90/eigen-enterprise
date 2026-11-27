@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
-import { modelMaxTools, poolFor } from '$lib/server/llm/model-pool'
+import { chatModels, modelMaxTools } from '$lib/server/llm/model-pool'
 import {
   createAssistantMessageEventStream,
   createModels,
@@ -544,7 +544,7 @@ export function createGatewayModelCatalog(deps: GatewayModelDeps): Models {
       id: GATEWAY_PROVIDER_ID,
       name: 'eigenEnterprise LLM gateway',
       auth: { apiKey: { name: 'EE gateway', resolve: async () => ({ auth: {} }) } },
-      models: [gatewayModelDescriptor(), ...poolFor('chat').map((m) => gatewayModelDescriptor(m.id))],
+      models: [gatewayModelDescriptor(), ...chatModels().map((m) => gatewayModelDescriptor(m.id))],
       api: createGatewayProviderApi(deps),
     }),
   )

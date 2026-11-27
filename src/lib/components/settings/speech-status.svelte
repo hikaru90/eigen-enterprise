@@ -8,12 +8,17 @@
   } from '$lib/voice/dictation-readiness'
 
   /**
-   * Settings → AI provider, "Speech": dictation and the assistant's voice always run on
-   * OpenRouter, whatever chat provider is active. Shows whether dictation can work (and what is
-   * missing), and each speech model's live endpoints on OpenRouter — a model with none fails
-   * every call, so that is shown as an alert, and a failed check never reads as fine.
+   * Settings → AI provider, "Speech": dictation and the assistant's voice run on the company's
+   * speech provider (OpenRouter, or Opper when eigenInference runs there), whatever chat
+   * provider is active. Shows whether dictation can work (and what is missing), and on
+   * OpenRouter each speech model's live endpoints — a model with none fails every call, so that
+   * is shown as an alert, and a failed check never reads as fine.
    */
-  let { dictation, models }: { dictation: SpeechReadiness; models: SpeechModelStatus[] } = $props()
+  let {
+    dictation,
+    models,
+    providerLabel,
+  }: { dictation: SpeechReadiness; models: SpeechModelStatus[]; providerLabel: string } = $props()
 
   const FEATURE_LABEL: Record<SpeechFeature, string> = {
     dictation: 'Dictation (speech to text)',
@@ -30,7 +35,7 @@
   <div>
     <h3 class="text-sm font-semibold">Speech</h3>
     <p class="mt-1 text-sm text-muted-foreground">
-      Dictation and the assistant’s voice always run on OpenRouter, whichever provider does the
+      Dictation and the assistant’s voice run on {providerLabel}, whichever provider does the
       chat.
     </p>
   </div>

@@ -57,7 +57,14 @@ async function read(): Promise<SettingsView> {
       company: { name: identity.name, hasLogo: identity.logo !== null },
       ai: {
         eigenInference: companyAi.useEigenInference,
-        slots: companyAi.slots.map(({ slot, model, pick }) => ({ slot, model, pick })),
+        modelProvider: companyAi.provider,
+        slots: companyAi.slots.map(({ slot, model, pick, available, options }) => ({
+          slot,
+          model,
+          pick,
+          available,
+          options: options.map((o) => o.id),
+        })),
         embeddingModel: companyAi.embeddingModel,
         // The same default the gateway applies when no row exists (llm-client resolveActiveProviderLlmConfig).
         activeProvider: active?.provider ?? 'eurouter',

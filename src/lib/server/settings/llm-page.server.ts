@@ -93,9 +93,12 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
   )
 
   const slotModel = (slot: 'stt' | 'tts') => ai.slots.find((s) => s.slot === slot)!.model
+  // The endpoint check is OpenRouter's public catalog: Opper's speech models are not in it.
   const [dictation, speechModelStatus] = await Promise.all([
     speechToTextReadiness(userId),
-    checkSpeechModelEndpoints({ models: speechModels({ stt: slotModel('stt'), tts: slotModel('tts') }) }),
+    ai.provider === 'openrouter'
+      ? checkSpeechModelEndpoints({ models: speechModels({ stt: slotModel('stt'), tts: slotModel('tts') }) })
+      : Promise.resolve([]),
   ])
 
   return {
@@ -110,8 +113,8 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
     activeProvider,
     /** Daily AI cap per member (DC3): the cap and the person's own usage today (settings.my_ai_usage). */
     memberAiCap,
-    /** Speech always runs on OpenRouter: whether dictation can work, and each speech model's endpoints. */
-    speech: { dictation, models: speechModelStatus },
+    /** Speech runs on the company's provider: whether dictation can work, and (OpenRouter) each speech model's endpoints. */
+    speech: { dictation, models: speechModelStatus, providerLabel: ai.providerLabel },
     providers: {
       eurouter: {
         configured: isProviderConfigured(eurouterRow),

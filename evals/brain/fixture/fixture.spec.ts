@@ -74,8 +74,8 @@ describe('north-star fixture validity', () => {
   })
 
   it('the co-workers’ models are chat models of the curated pool', async () => {
-    const { poolFor } = await import('$lib/server/llm/model-pool')
-    const chat = new Set(poolFor('chat').map((m) => m.id))
+    const { chatModels } = await import('$lib/server/llm/model-pool')
+    const chat = new Set(chatModels().map((m) => m.id))
     for (const c of COMPANY.coworkers) expect(chat.has(c.modelId), c.modelId).toBe(true)
   })
 

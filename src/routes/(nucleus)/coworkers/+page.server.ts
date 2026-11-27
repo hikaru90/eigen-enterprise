@@ -7,7 +7,7 @@ import type { PersonRunner } from '$lib/server/org/person-run'
 import { redirect } from '@sveltejs/kit'
 import { chatModelOption } from '$lib/coworkers/model-family'
 import { requireCapability } from '$lib/server/auth/require-capability'
-import { poolFor } from '$lib/server/llm/model-pool'
+import { chatModels } from '$lib/server/llm/model-pool'
 import { cardInput, seatInput } from '$lib/server/org/form-input'
 import { loadOrgPeople } from '$lib/server/org/org-people'
 import { field, runAction } from '$lib/server/org/page-actions'
@@ -24,7 +24,7 @@ export const _coworkersPageDeps: {
 } = {
   run: personRun,
   role: async (userId) => (await import('$lib/server/auth/user-role')).getUserRole(userId),
-  chatModels: () => poolFor('chat').map(chatModelOption),
+  chatModels: () => chatModels().map(chatModelOption),
   timeZone: async (userId) => {
     const [{ withDbUser }, { getUserPreferredTimezone }] = await Promise.all([
       import('$lib/server/db'),
