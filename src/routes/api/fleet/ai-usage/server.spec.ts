@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { aiUsageDayV1 } from '../../../../../ee/src/fleet/protocol'
 import { aiUsageHandler, type FleetAiUsageDay } from '$lib/server/fleet/ai-usage'
+import { aiUsageDayV1 } from '../../../../../ee/src/fleet/protocol'
 
 const TOKEN = 'a'.repeat(43)
 const req = (query: string, auth: string | null = `Bearer ${TOKEN}`) =>

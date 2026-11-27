@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types'
 import { env } from '$env/dynamic/private'
-import { aiUsageHandler } from '$lib/server/fleet/ai-usage'
 import { liveFleetAiUsage } from '$lib/server/ai-usage/store'
+import { aiUsageHandler } from '$lib/server/fleet/ai-usage'
 
 /** Loopback only in practice: ee calls it on OS_INTERNAL_PORT with the per-box token (managed mode). */
 export const GET: RequestHandler = ({ request }) =>

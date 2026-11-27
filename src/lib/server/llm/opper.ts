@@ -1,5 +1,5 @@
-import { LlmNotConfiguredError } from './errors'
 import type { ResolvedLlmConfig } from './types'
+import { LlmNotConfiguredError } from './errors'
 
 /**
  * Opper's call shapes for eigenInference on Opper (platform-ai.ts; contract checked live

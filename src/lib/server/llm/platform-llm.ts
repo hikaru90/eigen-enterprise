@@ -1,4 +1,3 @@
-import type { ResolvedLlmConfig } from '$lib/server/llm/types'
 import { env } from '$lib/server/env/private-env'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 import {
@@ -6,6 +5,7 @@ import {
   readPlatformAiConfig,
   type PlatformAiConfig,
 } from '$lib/server/llm/platform-ai'
+import type { ResolvedLlmConfig } from '$lib/server/llm/types'
 
 /** This process's platform AI from hosting (PLATFORM_LLM_*), or null. Throws on a partial set. */
 export function platformAiFromEnv(): PlatformAiConfig | null {
