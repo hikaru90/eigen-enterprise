@@ -8,8 +8,8 @@ import { emit, OS_INTERNAL_PORT } from '../reconcile.ts'
 import { mustRun } from '../system.ts'
 import { PATHS } from '../paths.ts'
 import { FLEET_AUTHOR, UPGRADE_UNIT, type FleetHost } from './agent.ts'
-import { writeClaims } from './claims.ts'
 import { aiUsageRowsFromOs } from './ai-usage.ts'
+import { writeClaims } from './claims.ts'
 import { readHostedAddress, writeHostedAddress } from './hosted-address.ts'
 
 /** GET on os's loopback port with the fleet bearer token; rejects on a connection error or timeout. */
