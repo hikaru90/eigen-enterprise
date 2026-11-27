@@ -6,6 +6,7 @@ import { KernelError } from './errors'
 import { moduleSwitchedOff, type ActivationStore, type ModuleManifest, type ModuleRegistry } from './modules'
 import { KERNEL_NOTIFICATION_TOOL_NAMES } from './notification-tools'
 import { isDirectHuman } from './principals'
+import { KERNEL_AI_USAGE_TOOL_NAMES } from './ai-usage-tools'
 import { KERNEL_DECISION_TOOL_NAMES } from './decision-tools'
 import { KERNEL_EXPORT_TOOL_NAMES } from './export-tools'
 import { KERNEL_OPERATIONS_TOOL_NAMES } from './operations-tools'
@@ -57,6 +58,7 @@ export const kernelManifest: ModuleManifest = {
     ...KERNEL_NOTIFICATION_TOOL_NAMES,
     ...KERNEL_OPERATIONS_TOOL_NAMES,
     ...KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
+    ...KERNEL_AI_USAGE_TOOL_NAMES,
     ...KERNEL_EXPORT_TOOL_NAMES,
     ...KERNEL_DECISION_TOOL_NAMES,
   ],

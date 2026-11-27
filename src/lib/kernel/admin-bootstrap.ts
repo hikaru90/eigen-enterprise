@@ -11,6 +11,7 @@ import {
   KERNEL_ADMIN_TOOL_NAMES,
   KERNEL_MODULE_ID,
 } from './admin-tools'
+import { createAiUsageTools, KERNEL_AI_USAGE_TOOL_NAMES, type AiUsagePort } from './ai-usage-tools'
 import { createDecisionTools, KERNEL_DECISION_TOOL_NAMES, type DecisionsPort } from './decision-tools'
 import { createExportTools, KERNEL_EXPORT_TOOL_NAMES, type ExportPort } from './export-tools'
 import {
@@ -48,6 +49,8 @@ export type RegisterAdminToolsOptions = {
   operations?: OperationsPort
   /** Overrides the live daily-AI-cap-per-member port (tests inject fakes). */
   memberAiCap?: MemberAiCapPort
+  /** Overrides the live AI-usage read behind the company overview (tests inject fakes). */
+  aiUsage?: AiUsagePort
   /** Overrides the live company-export port (tests inject fakes). */
   exports?: ExportPort
   /** Overrides the live decision-log port (tests inject fakes). */
@@ -78,6 +81,7 @@ export async function registerAdminTools(
       ...KERNEL_NOTIFICATION_TOOL_NAMES,
       ...KERNEL_OPERATIONS_TOOL_NAMES,
       ...KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
+      ...KERNEL_AI_USAGE_TOOL_NAMES,
       ...KERNEL_EXPORT_TOOL_NAMES,
       ...KERNEL_DECISION_TOOL_NAMES,
     ].every(
@@ -102,6 +106,7 @@ export async function registerAdminTools(
     ...createNotificationTools({ port: options.notifications ?? liveNotificationsPort() }),
     ...createOperationsTools({ port: options.operations ?? liveOperationsPort() }),
     ...createMemberAiCapTools({ port: options.memberAiCap ?? liveMemberAiCapPort() }),
+    ...createAiUsageTools({ port: options.aiUsage ?? liveAiUsagePort() }),
     ...createExportTools({ port: options.exports ?? liveExportPort() }),
     ...createDecisionTools({ port: options.decisions ?? liveDecisionsPort() }),
   )
@@ -140,6 +145,12 @@ function liveMemberAiCapPort(): MemberAiCapPort {
     usageToday: async (userId) => (await cap()).memberAiUsageToday(userId),
     replyCost: async (userId, messageId) => (await store()).replyCost(userId, messageId),
   }
+}
+
+/** The live AI-usage read, loaded on first use (registering the tools touches no server module). */
+function liveAiUsagePort(): AiUsagePort {
+  const live = async () => (await import('$lib/server/ai-usage/store')).liveAiUsagePort
+  return { rows: async (period) => (await live()).rows(period) }
 }
 
 /** The live company-operations port (logo, backup now, release install and rollback), loaded on first use. */

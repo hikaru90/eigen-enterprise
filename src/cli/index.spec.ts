@@ -224,6 +224,7 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'settings.member_ai_cap_get',
           'settings.member_ai_cap_set',
           'settings.my_ai_usage',
+          'settings.ai_usage_overview',
           'kernel.export_company',
           'kernel.export_status',
           'kernel.export_list',
