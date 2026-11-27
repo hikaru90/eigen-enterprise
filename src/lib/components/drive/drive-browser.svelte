@@ -65,6 +65,8 @@
   } from '$lib/drive/upload'
   import type { ShownError } from '$lib/errors/agent-report'
   import { m } from '$lib/paraglide/messages.js'
+  import type { CompanyPresence } from '$lib/presence/company-presence.svelte'
+  import PresenceStack from '$lib/presence/presence-stack.svelte'
   import { nextSort, sortRows, type SortState } from '$lib/table/sort'
   import SortableHead from '$lib/table/sortable-head.svelte'
   import DriveItemActions from './drive-item-actions.svelte'
@@ -92,9 +94,13 @@
    * the drop's own element), so a folder created in this view takes drops at
    * once. The server checks every act again; the buttons only hide what the
    * person can't do anyway.
+   * Who has a file or folder open right now sits at the end of its row or
+   * card (plan/phase-multiplayer-presence.md, in the view); the page passes
+   * the presence feed, null while it is off (the rows are then as before).
    */
   let {
     folderId,
+    company,
     path = [],
     items,
     canEdit,
@@ -110,6 +116,8 @@
     root = { label: 'My drive', href: '/drive' },
   }: {
     folderId: string | null
+    /** The live presence feed (the nucleus layout's); null while it is off or for a view nobody can have open (Trash). */
+    company: CompanyPresence | null
     path?: Array<{ id: string; name: string }>
     items: Listed[]
     canEdit: boolean
@@ -129,6 +137,10 @@
     /** Where the path starts: "My drive", "Shared with me" or "Messages" (from the server). */
     root?: { label: string; href: string }
   } = $props()
+
+  /** The others who have this file or folder open now. */
+  const hereOn = (item: Listed) =>
+    company ? company.peopleOnItem(item.type === 'folder' ? 'drive_folder' : 'drive_file', item.id) : []
 
   const VIEW_KEY = 'drive-view'
   /** Large source folders stay responsive: render one page, not thousands of rows. */
@@ -1258,6 +1270,7 @@
               {@const thumb = hasThumbnail(item) && !trashView}
               {@const desc = descOf(item)}
               {@const picked = selection.keys.has(selKey(item))}
+              {@const here = hereOn(item)}
               <tr
                 class="group border-b border-border/60 last:border-0 hover:bg-muted/50 {dropFolder?.id ===
                 item.id
@@ -1349,6 +1362,17 @@
                         <ArchiveIcon class="size-3" aria-hidden="true" /> Archived
                       </span>
                     {/if}
+                    {#if here.length > 0}
+                      <PresenceStack
+                        people={here}
+                        title="Open now"
+                        onItem
+                        ring="background"
+                        side="bottom"
+                        class="ml-auto"
+                        testid="drive-row-presence"
+                      />
+                    {/if}
                   </span>
                 </td>
                 <td class="hidden px-3 py-2 @5xl:table-cell">
@@ -1404,6 +1428,7 @@
           {@const textPreview = trashView ? null : textPreviewOf(item)}
           {@const desc = descOf(item)}
           {@const picked = selection.keys.has(selKey(item))}
+          {@const here = hereOn(item)}
           <li
             class="group relative flex flex-col overflow-hidden rounded-lg border bg-card transition-shadow hover:shadow-md {dropFolder?.id ===
               item.id || picked
@@ -1481,6 +1506,18 @@
                   class="size-3.5 shrink-0 text-muted-foreground"
                   aria-label="Archived"
                   data-testid="drive-archived-badge"
+                />
+              {/if}
+              {#if here.length > 0}
+                <PresenceStack
+                  people={here}
+                  title="Open now"
+                  onItem
+                  max={2}
+                  ring="card"
+                  side="bottom"
+                  class="ml-auto"
+                  testid="drive-row-presence"
                 />
               {/if}
             </div>

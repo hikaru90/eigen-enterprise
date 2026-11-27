@@ -73,7 +73,7 @@ describe('drive selection: checkboxes, header state, ranges, keyboard', () => {
   })
 
   it('a checkbox per row; the header checkbox goes none → some (indeterminate) → all, and selects the page', async () => {
-    render(DriveBrowser, { props: { folderId: null, items: [a, b, c], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b, c], canEdit: true } })
     await expect.element(box('alpha.txt')).not.toBeChecked()
     expect(page.getByTestId('drive-selection-bar').elements()).toHaveLength(0)
     await box('bravo.txt').click()
@@ -89,14 +89,14 @@ describe('drive selection: checkboxes, header state, ranges, keyboard', () => {
   })
 
   it('shift-click selects the range from the last clicked row, in the order shown', async () => {
-    render(DriveBrowser, { props: { folderId: null, items: [a, b, c, d], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b, c, d], canEdit: true } })
     await box('alpha.txt').click()
     await box('charlie.txt').click({ modifiers: ['Shift'] })
     expect(selectedNames()).toEqual(['alpha.txt', 'bravo.txt', 'charlie.txt'])
   })
 
   it('Space on a focused row toggles it; Escape clears the selection', async () => {
-    render(DriveBrowser, { props: { folderId: null, items: [a, b], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b], canEdit: true } })
     page.getByRole('link', { name: 'bravo.txt', exact: true }).element().focus()
     await userEvent.keyboard(' ')
     expect(selectedNames()).toEqual(['bravo.txt'])
@@ -107,7 +107,7 @@ describe('drive selection: checkboxes, header state, ranges, keyboard', () => {
 
   it('the selection survives sorting and paging', async () => {
     const many = Array.from({ length: 250 }, (_, i) => item(`m${i}`, `file-${String(i).padStart(3, '0')}.txt`))
-    render(DriveBrowser, { props: { folderId: null, items: many, canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: many, canEdit: true } })
     await box('file-001.txt').click()
     await page.getByRole('button', { name: 'Name', exact: true }).click()
     await page.getByRole('button', { name: 'Name', exact: true }).click()
@@ -121,7 +121,7 @@ describe('drive selection: checkboxes, header state, ranges, keyboard', () => {
 
   it('the grid has a checkbox per card too', async () => {
     localStorage.setItem('drive-view', 'grid')
-    render(DriveBrowser, { props: { folderId: null, items: [a, b], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b], canEdit: true } })
     await box('alpha.txt').click()
     await expect.element(page.getByTestId('drive-selection-count')).toHaveTextContent('1 selected')
   })
@@ -134,7 +134,7 @@ describe('drive selection bar: only the acts valid for every selected item, per 
   })
 
   it('My drive / a folder: Move, Share, Archive, Trash when all may be managed; Share leaves with an edit-only item', async () => {
-    render(DriveBrowser, { props: { folderId: null, items: [a, editOnly, viewOnly], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, editOnly, viewOnly], canEdit: true } })
     await box('alpha.txt').click()
     expect(actionIds()).toEqual(['move', 'share', 'archive', 'trash'])
     await box('edit-only.txt').click()
@@ -146,7 +146,7 @@ describe('drive selection bar: only the acts valid for every selected item, per 
 
   it('Shared with me (view-only items): nothing to do on them', async () => {
     render(DriveBrowser, {
-      props: { folderId: null, root: { label: 'Shared with me', href: '/drive/shared' }, items: [viewOnly], canEdit: false, showToolbar: false },
+      props: { company: null, folderId: null, root: { label: 'Shared with me', href: '/drive/shared' }, items: [viewOnly], canEdit: false, showToolbar: false },
     })
     await box('view-only.txt').click()
     expect(actionIds()).toEqual([])
@@ -155,7 +155,7 @@ describe('drive selection bar: only the acts valid for every selected item, per 
   it('the Overview (mixed folders and files): a folder and a file select together', async () => {
     const folder: Row = { ...a, type: 'folder', id: 'f1', name: 'Projects', origin: 'mine' }
     const shared: Row = { ...b, origin: 'shared' }
-    render(DriveBrowser, { props: { folderId: null, root: { label: 'Overview', href: '/drive' }, items: [folder, shared], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, root: { label: 'Overview', href: '/drive' }, items: [folder, shared], canEdit: true } })
     await pageBox().click()
     await expect.element(page.getByTestId('drive-selection-count')).toHaveTextContent('2 selected')
     expect(actionIds()).toEqual(['move', 'share', 'archive', 'trash'])
@@ -163,7 +163,7 @@ describe('drive selection bar: only the acts valid for every selected item, per 
 
   it('Trash: Restore, and Delete forever only when every item may be managed', async () => {
     const trashed = (r: Row) => ({ ...r, trashedAt: at })
-    render(DriveBrowser, { props: { folderId: null, items: [trashed(a), trashed(editOnly)], canEdit: false, showToolbar: false, trashView: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [trashed(a), trashed(editOnly)], canEdit: false, showToolbar: false, trashView: true } })
     await box('alpha.txt').click()
     expect(actionIds()).toEqual(['restore', 'delete_forever'])
     await box('edit-only.txt').click()
@@ -179,7 +179,7 @@ describe('drive selection bar: bulk acts and their per-item outcome', () => {
 
   it('Move to trash sends the selection once and names every item that failed; those stay selected', async () => {
     api.trashMany.mockResolvedValue({ trashed: [a, b, c], errors: [{ type: 'file', id: 'd', error: 'Someone is editing it.' }] })
-    render(DriveBrowser, { props: { folderId: null, items: [a, b, c, d], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b, c, d], canEdit: true } })
     await pageBox().click()
     await page.getByTestId('drive-bulk-trash').click()
     expect(api.trashMany).toHaveBeenCalledWith([
@@ -196,7 +196,7 @@ describe('drive selection bar: bulk acts and their per-item outcome', () => {
 
   it('everything done: a plain notice and nothing left selected', async () => {
     api.archiveMany.mockResolvedValue({ archived: [a, b], errors: [] })
-    render(DriveBrowser, { props: { folderId: null, items: [a, b], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b], canEdit: true } })
     await pageBox().click()
     await page.getByTestId('drive-bulk-archive').click()
     await expect.element(page.getByTestId('drive-notice')).toHaveTextContent('2 archived')
@@ -206,7 +206,7 @@ describe('drive selection bar: bulk acts and their per-item outcome', () => {
 
   it('a call that fails as a whole is shown, never swallowed', async () => {
     api.trashMany.mockRejectedValue(new Error('Drive is not reachable.'))
-    render(DriveBrowser, { props: { folderId: null, items: [a, b], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b], canEdit: true } })
     await pageBox().click()
     await page.getByTestId('drive-bulk-trash').click()
     await expect.element(page.getByTestId('drive-bulk-stopped')).toHaveTextContent('Stopped: Drive is not reachable. 2 not tried.')
@@ -217,7 +217,7 @@ describe('drive selection bar: bulk acts and their per-item outcome', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     api.deleteForeverMany.mockResolvedValue({ deleted: [{ type: 'file', id: 'a', name: 'alpha.txt' }, { type: 'file', id: 'b', name: 'bravo.txt' }], errors: [] })
     const trashed = (r: Row) => ({ ...r, trashedAt: at })
-    render(DriveBrowser, { props: { folderId: null, items: [trashed(a), trashed(b)], canEdit: false, showToolbar: false, trashView: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [trashed(a), trashed(b)], canEdit: false, showToolbar: false, trashView: true } })
     await pageBox().click()
     await page.getByTestId('drive-bulk-delete_forever').click()
     expect(confirmSpy).toHaveBeenLastCalledWith('Delete 2 items forever? This can’t be undone.')
@@ -231,7 +231,7 @@ describe('drive selection bar: bulk acts and their per-item outcome', () => {
   it('Move to… picks a folder for all selected items at once', async () => {
     api.listFolder.mockResolvedValue({ folder: null, path: [], items: [{ ...a, type: 'folder', id: 'dest', name: 'Dest' }], canEdit: true })
     api.moveMany.mockResolvedValue({ moved: [a, b], errors: [] })
-    render(DriveBrowser, { props: { folderId: null, items: [a, b], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [a, b], canEdit: true } })
     await pageBox().click()
     await page.getByTestId('drive-bulk-move').click()
     await expect.element(page.getByText('Move 2 items')).toBeInTheDocument()

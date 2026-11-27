@@ -6,10 +6,13 @@
   import DriveBrowser from '$lib/components/drive/drive-browser.svelte'
   import { Button } from '$lib/components/ui/button'
   import { GITHUB_SOURCE, githubButtonLabel } from '$lib/drive/sections'
+  import { getCompanyPresence } from '$lib/presence/company-presence.svelte'
   import { declarePresenceFocus } from '$lib/presence/focus.svelte'
   import { docTitle } from '$lib/shell/title'
 
   let { data }: { data: PageData } = $props()
+  /** Who has which row open (plan/phase-multiplayer-presence.md); null while the presence feed is off. */
+  const company = getCompanyPresence()
   // Where I am (plan/phase-multiplayer-presence.md): this folder is the page's open item.
   declarePresenceFocus(() => (data.listing.folder ? { kind: 'drive_folder', id: data.listing.folder.id } : null))
   /** In the GitHub folder's tree, for those who may connect repos: the way to the settings (Drive → GitHub). */
@@ -41,6 +44,7 @@
     <AppPreview folderId={data.listing.folder.id} canRun={data.shell?.capabilities['drive.run_apps'] ?? false} />
   {/if}
   <DriveBrowser
+    {company}
     folderId={data.listing.folder?.id ?? null}
     path={data.listing.path}
     root={data.listing.root}

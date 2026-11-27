@@ -1,6 +1,6 @@
 import { getContext, setContext } from 'svelte'
 import type { PresenceStatus, PresenceView } from '$lib/messages/presence'
-import type { WhereReport, WhereView } from './where'
+import type { WhereItemKind, WhereReport, WhereView } from './where'
 
 /**
  * Where everyone is working (plan/phase-multiplayer-presence.md): ONE
@@ -122,6 +122,15 @@ export class CompanyPresence {
   /** The people in one sidebar entry's area (`dashboard` for the dashboard). */
   peopleIn(area: string): PresencePerson[] {
     return this.#people.filter((p) => p.where.area === area)
+  }
+
+  /**
+   * The people who have one item open right now (a conversation row, a Drive
+   * row). The server only sends an item to a viewer who may open it, so a
+   * row I can see matches only places I may see.
+   */
+  peopleOnItem(kind: WhereItemKind, id: string): PresencePerson[] {
+    return this.#people.filter((p) => p.where.item?.kind === kind && p.where.item.id === id)
   }
 
   /** The people on the same item as me — or, when neither of us has one open, on the same page. */

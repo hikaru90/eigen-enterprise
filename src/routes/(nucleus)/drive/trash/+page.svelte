@@ -8,8 +8,10 @@
 
 <svelte:head><title>{docTitle('Trash', 'Drive')}</title></svelte:head>
 
+<!-- Nobody works on a trashed item: no one-has-this-open avatars here. -->
 <DriveBrowser
   folderId={null}
+  company={null}
   items={data.items}
   describe={data.describe}
   canEdit={false}
