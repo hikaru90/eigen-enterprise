@@ -29,10 +29,12 @@ describe('renderUnit', () => {
   it('gives a chromium workload back only the syscalls the browser needs, after the deny list', () => {
     // Seen on the box 2026-11-23: chrome-headless-shell dies with SIGSYS under the hardening
     // without these (Landlock self-sandboxing, dropping capabilities, lowering its own priority).
+    // Seen on ee-one (x86_64) 2026-11-27: V8 allocates memory protection keys there (syscall 330,
+    // pkey_alloc; systemd's @pkey set is not in @system-service), which arm64 never calls.
     expect(unit).not.toContain('landlock_create_ruleset')
     const lines = renderUnit({ workload, contract: { ...contract, capabilities: ['chromium'] }, slot: 'a', port: 4100, releaseDir: '/r' }).split('\n')
     const deny = lines.indexOf('SystemCallFilter=~@privileged @resources')
-    const allow = lines.indexOf('SystemCallFilter=landlock_create_ruleset capset setpriority')
+    const allow = lines.indexOf('SystemCallFilter=landlock_create_ruleset capset setpriority pkey_alloc pkey_free pkey_mprotect')
     expect(deny).toBeGreaterThan(-1)
     expect(allow).toBeGreaterThan(deny)
     for (const line of HARDENING) expect(lines).toContain(line)

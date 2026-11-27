@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-27 — Brand URL capture on x86_64: chromium gets the pkey syscalls back (bug: "/api/brand/extract/start failed (500): browser.newPage: Target page, context or browser has been closed" on ee-one)
+
+- **Found (ee-one kernel log, 15:25:42Z):** seccomp killed chrome-headless-shell (`sig=31`, `arch=c000003e`, `syscall=330` = `pkey_alloc`). V8 allocates memory protection keys on x86_64, and systemd's `@pkey` set is not in `@system-service`. The 11-23 allow list (`ef710636`) was found on the arm64 box, where V8 never calls them, so every x64 install failed URL capture.
+- **Fixed:** the `chromium` capability adds `pkey_alloc pkey_free pkey_mprotect` to its unit allow line (`ee/src/capabilities.ts`, spec in `ee/src/units.spec.ts`).
+- **Hardening (decision):** pkeys only restrict the process's own memory access, so this doesn't loosen anything across the sandbox. Nothing else in HARDENING changed.
+- **Next:** ee-one gets it with the next release (ee re-renders the unit on reconcile). The 500 was not in the os journal on ee-one, only in the kernel audit log.
+
 ## 2026-11-27 — eigenInference usage: boxes report it, Cloud shows + invoices it in EUR, end users see € in Settings → AI usage (owner: "a visibility dashboard for us in EE cloud … visibility to the end user in their settings to see AI usage … which feature used how many tokens and dollars or euros")
 
 - **Shipped (branch `ai-usage-box`, merged `79d4bc52`):** protocol feature `aiUsage` (`7742dd12`): report rows per UTC day × task × model (calls, tokens, provider-reported USD before markup), desired `aiUsage` {from, markup, EUR, usdToEur, rateDay}, `platformAi.usageTag`. os serves `GET /api/fleet/ai-usage?from=` on the loopback fleet API (eigenInference rows only, `base_cost_usd`); the ee agent reports it, writes `PLATFORM_LLM_USAGE_TAG` and `EE_AI_BILLING_*` (all or none). Opper chat + embeddings send `X-Opper-Tags: ee_box:<tag>` (audio/decisions take no tags). Settings → AI usage, `settings.ai_usage_overview` and `settings.my_ai_usage` show € invoiced = provider USD × markup × rate (rate + day stated), provider USD beside it; self-hosted unchanged.

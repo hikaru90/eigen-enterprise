@@ -19,9 +19,12 @@ export const CAPABILITIES = {
      * Syscalls the unit hardening denies that chrome-headless-shell needs (SIGSYS without them,
      * found on the box 2026-11-23): Landlock self-sandboxing, dropping capabilities (capset; the
      * bounding set is empty, so nothing can be gained) and lowering its own thread priority
-     * (setpriority; raising it needs CAP_SYS_NICE). Nothing else is loosened.
+     * (setpriority; raising it needs CAP_SYS_NICE). On x86_64 V8 also allocates memory protection
+     * keys for its JIT pages (pkey_alloc/pkey_free/pkey_mprotect, systemd's @pkey set, not in
+     * @system-service; SIGSYS on ee-one 2026-11-27, arm64 never calls them). They only restrict
+     * the process's own memory. Nothing else is loosened.
      */
-    syscalls: ['landlock_create_ruleset', 'capset', 'setpriority'],
+    syscalls: ['landlock_create_ruleset', 'capset', 'setpriority', 'pkey_alloc', 'pkey_free', 'pkey_mprotect'],
   },
 } as const satisfies Record<string, { env: string; path: string; syscalls: readonly string[] }>
 
