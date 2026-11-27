@@ -71,7 +71,7 @@ export async function synthesizeGroundingNarrative(input: {
     userId: input.userId,
     messages,
     temperature: 0,
-    logContext: 'grounding_narrative_synthesis',
+    task: 'brain.grounding_narrative',
   })
 
   return parseNarrativeJson(extractChatContent(response))

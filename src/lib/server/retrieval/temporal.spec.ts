@@ -134,7 +134,7 @@ describe('filterTemporalEvents', () => {
       query: 'events in May 2026',
     })
 
-    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'events in May 2026')
+    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'events in May 2026', 'brain.retrieval_embedding')
     expect(rows[0]?.eventId).toBe('ev1')
     expect(rows[0]?.graphNodeId).toBeNull()
   })
@@ -371,7 +371,7 @@ describe('fetchTemporalEventSeedsForHints', () => {
       limit: 24,
     })
 
-    expect(createThoughtEmbeddingsMock).toHaveBeenCalledWith('u1', ['Airbnb in San Francisco'])
+    expect(createThoughtEmbeddingsMock).toHaveBeenCalledWith('u1', ['Airbnb in San Francisco'], 'brain.retrieval_embedding')
     expect(result.seeds.map((s) => s.thoughtId)).toContain('t-airbnb')
     expect(result.candidatesByHint).toHaveLength(1)
   })

@@ -537,7 +537,7 @@ export async function composeAnswer(input: ComposeAnswerInput): Promise<Composed
     hasGroundingProfile,
   })
   await input.onProgress?.('embedding')
-  const queryEmbedding = await createThoughtEmbedding(input.userId, retrievalQuery)
+  const queryEmbedding = await createThoughtEmbedding(input.userId, retrievalQuery, 'brain.retrieval_embedding')
   console.info('[composeAnswer] phase=embedding done', {
     durationMs: Date.now() - phaseStart,
     embeddingCount: 1,
@@ -741,7 +741,7 @@ export async function composeAnswer(input: ComposeAnswerInput): Promise<Composed
       userId: input.userId,
       messages,
       temperature: 0,
-      logContext: 'compose_answer',
+      task: 'brain.compose_answer',
     })
     console.info('[composeAnswer] phase=composing done', { durationMs: Date.now() - phaseStart })
     answer = extractAnswerText(response)

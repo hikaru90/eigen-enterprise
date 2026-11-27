@@ -107,6 +107,7 @@ async function refreshUserOntologyProfileFromRecentThoughts(input: {
   ]
 
   const response = await llmChatCompletion({
+    task: 'memory.ontology_evaluate',
     contentOrigin: 'memory',
     userId,
     messages,

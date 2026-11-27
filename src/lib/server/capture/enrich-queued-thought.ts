@@ -98,7 +98,7 @@ async function prefetchEnrichExtractions(input: {
   if (isGraphScaleQuiet()) {
     console.info('[graph-scale] enrich prefetch: embedding')
   }
-  const embedding = await createThoughtEmbedding(userId, normalizedText)
+  const embedding = await createThoughtEmbedding(userId, normalizedText, 'memory.capture_embedding')
 
   let entityEnrichmentContext: EntityGraphEnrichmentContext | undefined
   if (ontologyEntityKinds.length > 0) {

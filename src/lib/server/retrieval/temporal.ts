@@ -65,7 +65,7 @@ export async function filterTemporalEvents(input: {
   const limit = Math.max(1, Math.min(input.limit ?? 24, 100))
   const db = getDb()
   const queryEmbedding =
-    input.queryEmbedding ?? (await createThoughtEmbedding(input.userId, input.query))
+    input.queryEmbedding ?? (await createThoughtEmbedding(input.userId, input.query, 'brain.retrieval_embedding'))
   const vectorLiteral = toVectorLiteral(queryEmbedding)
   const distance = sql<number>`${temporalEvent.embedding} <=> ${vectorLiteral}::vector`
 
@@ -261,7 +261,7 @@ export async function fetchTemporalEventSeedsForHints(input: {
     byEventId.set(row.id, row)
   }
 
-  const hintEmbeddings = hints.length > 0 ? await createThoughtEmbeddings(input.userId, hints) : []
+  const hintEmbeddings = hints.length > 0 ? await createThoughtEmbeddings(input.userId, hints, 'brain.retrieval_embedding') : []
 
   for (let i = 0; i < hints.length; i++) {
     const hintEmbedding = hintEmbeddings[i]!

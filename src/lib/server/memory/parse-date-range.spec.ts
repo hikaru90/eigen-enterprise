@@ -94,7 +94,7 @@ describe('parseDateRangePhrase', () => {
     const call = llmChatCompletionMock.mock.calls[0]?.[0]
     expect(call?.responseFormat).toBe('json_object')
     expect(call?.userId).toBe('u1')
-    expect(call?.logContext).toBe('timeline_parse_date_range')
+    expect(call?.task).toBe('memory.parse_date_range')
     expect(call?.maxTokens).toBe(256)
     // Same shared client as every other tool — no provider/model override.
     expect(call?.routingRuleId).toBeUndefined()

@@ -1296,6 +1296,13 @@
       "when": 1795200000187,
       "tag": "0187_activity_call_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1795200000189,
+      "tag": "0189_activity_call_task_model",
+      "breakpoints": true
     }
   ]
 }

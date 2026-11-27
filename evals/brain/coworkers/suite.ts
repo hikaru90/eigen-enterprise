@@ -276,7 +276,7 @@ async function runDifferent(company: EvalCompany, f: CompanyFixture, embedAs: st
     if (!reply) throw new Error(`Different: ${c.key} posted no answer in its DM`)
     answers.push({ coworker: c.key, model: c.modelId, text: reply.body })
   }
-  const vectors = extractEmbeddings(await llmCreateEmbeddings({ userId: embedAs, input: answers.map((a) => a.text) }))
+  const vectors = extractEmbeddings(await llmCreateEmbeddings({ userId: embedAs, input: answers.map((a) => a.text), task: 'setup.eval' }))
   if (vectors.length !== answers.length) throw new Error(`Different: ${vectors.length} embeddings for ${answers.length} answers`)
   const pairwiseCosine: DifferentResult['pairwiseCosine'] = []
   for (let i = 0; i < answers.length; i++) {

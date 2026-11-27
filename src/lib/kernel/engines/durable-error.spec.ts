@@ -100,7 +100,7 @@ describe('DurableRunError', () => {
     }
     const engine = new DurableLoopEngine({ harness, instructions: 'You are a test agent.' })
     const ctx = {
-      agent: { id: 'cw-test' },
+      agent: { id: 'cw-test', task: 'coworkers.turn' },
       instructions: { kind: 'own', text: 'Run test.' },
       llmUserId: 'cw-test',
       listTools: () => [],

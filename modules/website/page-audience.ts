@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { WebsiteContentKind, WebsiteVisibility } from './store'
 import { z } from 'zod'
 import type { DecideOptions, DecisionResult } from '$lib/server/decisions/decide'
@@ -18,7 +19,6 @@ import { websitePageAudience } from './decision-kinds'
  * against the schema. A failure fails loud — never a guessed verdict.
  */
 
-export const AUDIENCE_LOG_CONTEXT = 'website_page_audience'
 export const AUDIENCE_MAX_ATTEMPTS = 3
 /** The body the judge reads is bounded (a page can be long; the start says what it is). */
 export const AUDIENCE_MAX_BODY_CHARS = 12_000
@@ -40,7 +40,7 @@ export type AudienceChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -131,7 +131,7 @@ export function createPageAudienceClassifier(deps: { chat: AudienceChat }): Page
           userId,
           messages,
           temperature: 0,
-          logContext: AUDIENCE_LOG_CONTEXT,
+          task: 'website.page_audience',
           responseFormat: 'json_object',
         })
       } catch (err) {

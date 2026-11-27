@@ -139,7 +139,7 @@ describe('suggestContract: one gateway call, validated against the catalog', () 
     expect(chat.calls[0]).toMatchObject({
       userId: 'u1',
       responseFormat: 'json_object',
-      logContext: 'website_app_suggest',
+      task: 'website.app_suggest',
     })
     const fileReads = ee.calls.filter((c) => c.verb === 'sourceFile').map((c) => c.input)
     expect(fileReads).toEqual([

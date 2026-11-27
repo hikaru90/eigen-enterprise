@@ -78,6 +78,7 @@ Text may be in any language (e.g. German "nächsten Mittwoch" = next Wednesday).
 If no temporal content exists, return [].`
 
   const response = await llmChatCompletion({
+    task: 'memory.temporal_extraction',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

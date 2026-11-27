@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { z } from 'zod'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
@@ -17,7 +18,6 @@ import { CONTRIBUTION_AREAS, CONTRIBUTION_KINDS, type ContributionArea, type Con
 
 export const JUDGE_MAX_ATTEMPTS = 3
 export const JUDGE_FAILED_MESSAGE = "Couldn't check your proposal — try again"
-export const JUDGE_LOG_CONTEXT = 'contribute_judge'
 
 export type JudgeCandidate = {
   id: string
@@ -37,7 +37,7 @@ export type JudgeChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -113,7 +113,7 @@ export async function judgeProposal(
   let lastError = ''
   for (let attempt = 1; attempt <= JUDGE_MAX_ATTEMPTS; attempt++) {
     // The gateway retries transport failures itself; its errors (no provider, no credits) are final.
-    const response = await chat({ userId: input.userId, messages, temperature: 0, logContext: JUDGE_LOG_CONTEXT, responseFormat: 'json_object' })
+    const response = await chat({ userId: input.userId, messages, temperature: 0, task: 'contribute.judge', responseFormat: 'json_object' })
     try {
       return parseJudgeOutput(response, ids)
     } catch (err) {

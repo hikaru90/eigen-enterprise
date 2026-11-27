@@ -77,6 +77,7 @@ export async function detectProjectFromThought(
   input: ProjectDetectionInput,
 ): Promise<ProjectDetectionResult> {
   const response = await llmChatCompletion({
+    task: 'memory.project_detect',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

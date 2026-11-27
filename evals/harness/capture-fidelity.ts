@@ -112,6 +112,7 @@ export async function judgeCaptureFidelity(input: {
   ]
   const callLlm = () =>
     llmChatCompletion({
+      task: 'setup.eval',
       userId: EVAL_JUDGE_USER_ID,
       messages,
       temperature: 0,
@@ -215,6 +216,7 @@ export async function judgeCaptureFidelityBatch(input: {
 
   const callLlm = () =>
     llmChatCompletion({
+      task: 'setup.eval',
       userId: EVAL_JUDGE_USER_ID,
       messages,
       temperature: 0,

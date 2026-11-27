@@ -127,7 +127,7 @@ describe('extractEnrichThoughtBundle', () => {
     })
     expect(result.category.key).toBe('task')
     expect(llmChatCompletionMock).toHaveBeenCalledTimes(2)
-    expect(llmChatCompletionMock.mock.calls[1]?.[0]?.logContext).toBe('enrich_thought_bundle_category_retry')
+    expect(llmChatCompletionMock.mock.calls[1]?.[0]?.task).toBe('memory.enrich_category_retry')
   })
 })
 

@@ -86,6 +86,8 @@ export async function testLlmProviderConnection(
       await logActivityCall(db, userId, {
         provider: activityProvider,
         gatewayHost,
+        task: 'setup.provider_test',
+        model: routing.model,
         operation: 'llm.chat.provider-test.error',
         baseCostUsd: 0,
         context: 'provider connection test',
@@ -98,6 +100,8 @@ export async function testLlmProviderConnection(
     await logActivityCall(db, userId, {
       provider: activityProvider,
       gatewayHost,
+      task: 'setup.provider_test',
+      model: routing.model,
       operation: 'llm.chat.provider-test.success',
       baseCostUsd: gatewayReportedCostUsdForLog(json),
       context: 'provider connection test',

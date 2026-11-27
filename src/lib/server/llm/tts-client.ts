@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { env } from '$lib/server/env/private-env'
 import { llmCreateSpeech } from './llm-client'
 
@@ -31,11 +32,12 @@ function ttsVoice(): string {
 export async function synthesizeSpeech(input: {
   userId: string
   text: string
+  task: AiTaskId
 }): Promise<Uint8Array> {
   const text = input.text.trim()
   if (!text) throw new Error('TTS refused: empty text')
   if (text.length > TTS_MAX_TEXT_CHARS) {
     throw new Error(`TTS refused: text exceeds ${TTS_MAX_TEXT_CHARS} chars`)
   }
-  return llmCreateSpeech({ userId: input.userId, voice: ttsVoice(), text })
+  return llmCreateSpeech({ userId: input.userId, voice: ttsVoice(), text, task: input.task })
 }

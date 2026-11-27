@@ -1,8 +1,9 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { describe, expect, it } from 'vitest'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { InMemoryBrandStore } from '../store'
-import { MATERIAL_NO_PROVIDER_MESSAGE, MATERIAL_TEXT_LOG_CONTEXT, suggestMaterialTexts, type MaterialChat } from './texts'
+import { MATERIAL_NO_PROVIDER_MESSAGE, suggestMaterialTexts, type MaterialChat } from './texts'
 import { MATERIAL_COPY_LIMITS } from './types'
 
 function reply(payload: unknown) {
@@ -34,7 +35,7 @@ describe('suggestMaterialTexts', () => {
   it('asks the gateway once for three headline / text / button variants, in the active brand voice', async () => {
     const brand = new InMemoryBrandStore()
     await activeVoice(brand)
-    const calls: Array<{ messages: ChatMessage[]; logContext?: string; responseFormat?: string; userId: string }> = []
+    const calls: Array<{ messages: ChatMessage[]; task: AiTaskId; responseFormat?: string; userId: string }> = []
     const chat: MaterialChat = async (input) => {
       calls.push(input)
       return reply({ variants: pieces })
@@ -42,7 +43,7 @@ describe('suggestMaterialTexts', () => {
     const out = await suggestMaterialTexts({ brand, chat }, { formatId: 'poster-a1', brief: 'Messe Halle 3, Stand 12', userId: 'ana' })
     expect(out).toEqual({ formatId: 'poster-a1', locale: 'de', voice: true, variants: pieces })
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ userId: 'ana', logContext: MATERIAL_TEXT_LOG_CONTEXT, responseFormat: 'json_object' })
+    expect(calls[0]).toMatchObject({ userId: 'ana', task: 'branding.material_texts', responseFormat: 'json_object' })
     const prompt = calls[0].messages.map((m) => m.content).join('\n')
     for (const text of ['A1 poster', '594 × 841 mm', 'Messe Halle 3, Stand 12', 'Wir zeigen, wie es geht.', 'disruptiv', 'Nucleus', 'candid without hype', `${MATERIAL_COPY_LIMITS.headline}`]) {
       expect(prompt).toContain(text)

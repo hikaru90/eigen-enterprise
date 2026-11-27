@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { BundleStorage } from './bundles'
 import type { HubModuleVersion, ModuleHubStore } from './store'
 import type { ModuleSummaryDto } from './types'
@@ -22,7 +23,6 @@ import { bundleEntries } from './service'
 
 export const SUMMARY_SOURCE_BUDGET = 60 * 1024
 export const SUMMARY_MAX_ATTEMPTS = 3
-export const SUMMARY_LOG_CONTEXT = 'module_hub_summary'
 const FIELD_MAX = 600
 
 const outputSchema = z.strictObject({
@@ -35,7 +35,7 @@ export type SummaryChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -123,7 +123,7 @@ export async function summarizeVersion(deps: SummarizeDeps, bundleSha256: string
   const summary = await deps.runAsOwner(async (userId) => {
     let lastError = ''
     for (let attempt = 1; attempt <= SUMMARY_MAX_ATTEMPTS; attempt++) {
-      const response = await deps.chat({ userId, messages, temperature: 0, logContext: SUMMARY_LOG_CONTEXT, responseFormat: 'json_object' })
+      const response = await deps.chat({ userId, messages, temperature: 0, task: 'contribute.module_summary', responseFormat: 'json_object' })
       try {
         return parseSummaryOutput(response)
       } catch (err) {

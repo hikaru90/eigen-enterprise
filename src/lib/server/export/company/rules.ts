@@ -138,7 +138,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   llm_active_provider: full,
   activity_call_log: meta(
     always,
-    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host'],
+    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host', 'task', 'model'],
     ['context'],
   ),
   // CB2 (0175): Jev's decisions next to the current judge's and people's answers. The owner

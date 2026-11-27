@@ -328,7 +328,7 @@ export async function resolveOrCreateCanonicalEntity(input: {
   }
 
   const embedding =
-    input.precomputedEmbedding ?? (await createThoughtEmbedding(input.userId, input.surface))
+    input.precomputedEmbedding ?? (await createThoughtEmbedding(input.userId, input.surface, 'brain.entity_embedding'))
 
   if (graphPick.kind === 'ambiguous') {
     const [created] = await getDb()

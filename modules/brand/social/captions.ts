@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { SocialPostStore } from './store'
 import { z } from 'zod'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
@@ -18,7 +19,6 @@ import { NETWORK_CAPTION_LIMITS, SOCIAL_NETWORK_LABELS, SocialPostError, socialF
  * and edits a variant.
  */
 
-export const CAPTION_LOG_CONTEXT = 'brand_social_captions'
 export const CAPTION_MAX_ATTEMPTS = 3
 export const CAPTION_VARIANTS = 3
 
@@ -31,7 +31,7 @@ export type CaptionChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -145,7 +145,7 @@ export async function suggestCaptions(
   for (let attempt = 1; attempt <= CAPTION_MAX_ATTEMPTS; attempt++) {
     let response: unknown
     try {
-      response = await deps.chat({ userId: input.userId, messages, temperature: 0.7, logContext: CAPTION_LOG_CONTEXT, responseFormat: 'json_object' })
+      response = await deps.chat({ userId: input.userId, messages, temperature: 0.7, task: 'branding.social_captions', responseFormat: 'json_object' })
     } catch (err) {
       throw gatewayError(err)
     }

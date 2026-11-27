@@ -100,7 +100,7 @@ export async function generateRelevanceQuestion(
     userId,
     messages,
     temperature: 0,
-    logContext: 'relevance_checkin_next_question',
+    task: 'brain.relevance_checkin',
   })
 
   const content = (response as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]

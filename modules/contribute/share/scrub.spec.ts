@@ -1,7 +1,8 @@
 import type { JudgeChat } from '../judge'
+import { aiTaskOperation } from '$lib/ai-usage/tasks'
 import { describe, expect, it } from 'vitest'
 import { judged } from '../test-fixtures'
-import { buildScrubMessages, parseScrubOutput, SCRUB_LOG_CONTEXT, SCRUB_MAX_ATTEMPTS, ScrubFailedError, scrubTitle } from './scrub'
+import { buildScrubMessages, parseScrubOutput, SCRUB_MAX_ATTEMPTS, ScrubFailedError, scrubTitle } from './scrub'
 
 const TITLE = 'Ana sagt: der Upload in https://kindred.example/drive bricht bei großen Dateien ab, nervt total'
 
@@ -42,8 +43,8 @@ describe('contribute scrub', () => {
     )
     expect(out.summary).toBe('Drive upload fails for large files.')
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ userId: 'owner', temperature: 0, logContext: SCRUB_LOG_CONTEXT, responseFormat: 'json_object' })
-    expect(SCRUB_LOG_CONTEXT).toBe('contribute_scrub')
+    expect(calls[0]).toMatchObject({ userId: 'owner', temperature: 0, task: 'contribute.scrub', responseFormat: 'json_object' })
+    expect(aiTaskOperation('contribute.scrub')).toBe('contribute_scrub')
   })
 
   it('tries exactly 3 times, then fails loud — never returns the raw title', async () => {

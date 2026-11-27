@@ -53,7 +53,7 @@ describe('classifyRetrievalScope', () => {
     expect(llmChatCompletionMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'u1',
-        logContext: 'query_intent_classifier',
+        task: 'brain.query_intent',
       }),
     )
   })

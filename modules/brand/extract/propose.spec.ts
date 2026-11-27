@@ -38,7 +38,7 @@ describe('proposeCandidates', () => {
       expect('modelOverride' in call[0]).toBe(false)
       expect(call[0].responseFormat).toBe('json_object')
       expect(call[0].userId).toBe('owner-1')
-      expect(call[0].logContext).toBe('brand_extract')
+      expect(call[0].task).toBe('branding.extract')
       expect(call[0].aiSessionId).toBeUndefined()
     }
   })
@@ -145,7 +145,7 @@ describe('proposeCandidatesFromGuide', () => {
       const input = call[0]
       expect('modelOverride' in input).toBe(false)
       expect(input.responseFormat).toBe('json_object')
-      expect(input.logContext).toBe('brand_extract_guide')
+      expect(input.task).toBe('branding.extract_guide')
       expect(input.aiSessionId).toBe('s-1')
       const [system, user] = input.messages
       expect(system.content).toContain('brand guide')

@@ -203,7 +203,7 @@ describe('retrieveEvidence', () => {
 
     await retrieveEvidence({ userId: 'u1', query: 'fresh query' })
 
-    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'fresh query')
+    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'fresh query', 'brain.retrieval_embedding')
   })
 
   it('drops hydrated candidates missing from the thought table', async () => {

@@ -179,7 +179,7 @@ export async function resolveThoughtCategory(input: {
     userId: input.userId,
     messages,
     temperature: 0,
-    logContext: 'thought_category',
+    task: 'memory.thought_category',
   })
   logOntology('[capture.ontology] LLM returned for category', { llmMs: Date.now() - tLlm })
 

@@ -70,6 +70,7 @@ function coworker(id: string, principal: ToolPrincipal, prompt: (input: string) 
     instructions: (turn) => prompt(turn.input),
     modelId,
     actsAs: { kind: 'self', principalFor: () => principal, dailySpendCapUsd: 5 },
+    task: 'coworkers.turn',
     enabled: true,
   }
 }
@@ -208,6 +209,7 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
       verificationPolicy: 'none',
       instructions: 'engine-default',
       actsAs: 'person',
+      task: 'assistant.turn',
       enabled: true,
     })
     fx.runtime.registerAgent(coworker('coworker-marketing', marketing, () => 'ROLE: Marketing Manager.', 'google/gemini-3.8-flash'))

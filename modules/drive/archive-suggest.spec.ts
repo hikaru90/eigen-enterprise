@@ -6,7 +6,6 @@ import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import {
   buildSuggestMessages,
   parseSuggestOutput,
-  SUGGEST_LOG_CONTEXT,
   SUGGEST_MAX_ATTEMPTS,
   suggestArchive,
   type SuggestChat,
@@ -96,7 +95,7 @@ describe('suggestArchive', () => {
     const chat = vi.fn<SuggestChat>(async () => answer({ suggestions: [{ file_id: draft.id, reason: 'A first draft of a pitch that later versions replaced.' }] }))
     const out = await suggestArchive({ drive, chat, now: () => today }, { actor: alice, olderThanDays: 180 })
     expect(chat).toHaveBeenCalledTimes(1)
-    expect(chat.mock.calls[0]![0]).toMatchObject({ userId: 'alice', temperature: 0, responseFormat: 'json_object', logContext: SUGGEST_LOG_CONTEXT })
+    expect(chat.mock.calls[0]![0]).toMatchObject({ userId: 'alice', temperature: 0, responseFormat: 'json_object', task: 'drive.archive_suggest' })
     expect(out).toMatchObject({ olderThanDays: 180, considered: 2, more: false })
     expect(out.suggestions).toEqual([
       expect.objectContaining({

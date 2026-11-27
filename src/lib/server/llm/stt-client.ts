@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { LlmContentOrigin } from './types'
 import { llmCreateTranscription } from './llm-client'
 
@@ -50,12 +51,14 @@ export function parseSttTranscript(body: unknown): string {
 export async function transcribeAudio(input: {
   userId: string
   audio: SttAudioInput
+  task: AiTaskId
   /** `'memory'` for a voice note to Memory: the transcript is never logged. */
   contentOrigin?: LlmContentOrigin
 }): Promise<string> {
   const body = await llmCreateTranscription({
     userId: input.userId,
     audio: input.audio,
+    task: input.task,
     contentOrigin: input.contentOrigin,
   })
   return parseSttTranscript(body)

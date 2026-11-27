@@ -5,6 +5,7 @@
  * the harness hands work to; the orchestrator itself is one AgentConfig.
  */
 
+import type { AiTaskId } from '../ai-usage/tasks'
 import type { ToolPrincipal } from './types'
 
 /** Identifier of a registered loop engine (e.g. 'durable'). */
@@ -90,6 +91,8 @@ export type AgentConfig = {
   modelId?: string
   /** Who a run acts as (see AgentActsAs). */
   actsAs: AgentActsAs
+  /** What this agent's model calls are for (the AI task catalog): its cost counts there. */
+  task: AiTaskId
   /**
    * Cumulative USD spend cap on the runtime's in-memory accumulator; undefined = uncapped.
    * Only for `actsAs: 'person'` — a self-acting agent's cap is `actsAs.dailySpendCapUsd` on

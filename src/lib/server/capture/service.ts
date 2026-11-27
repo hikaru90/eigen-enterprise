@@ -405,7 +405,7 @@ async function editStoredThoughtUnsealed(
     const lexicalText = computeLexicalText(normalized)
     await emitProgress(onProgress, 'embedding')
     const embedding = await timer.time('embedding', async () =>
-      createThoughtEmbedding(userId, normalized),
+      createThoughtEmbedding(userId, normalized, 'memory.capture_embedding'),
     )
     const [rawTextEncrypted, normalizedTextEncrypted, metadataEncrypted] = await timer.time(
       'encrypt_columns',

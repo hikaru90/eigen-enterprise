@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { brainAnswerMessages, brainRecapMessages, type CallBrain } from './brain'
 
 /**
@@ -28,7 +29,7 @@ export type LiveBrainDeps = {
   /** The asker's Memory answer to the question (composeAnswer), as text. */
   memoryAnswer: (userId: string, question: string) => Promise<string>
   /** The gateway's chat completion (llmChatCompletion). */
-  complete: (input: { userId: string; messages: ChatMessage[]; temperature: number; logContext: string; contentOrigin: 'memory' }) => Promise<unknown>
+  complete: (input: { userId: string; messages: ChatMessage[]; temperature: number; task: AiTaskId; contentOrigin: 'memory' }) => Promise<unknown>
 }
 
 function replyText(response: unknown, what: string): string {
@@ -48,7 +49,7 @@ export function createLiveBrain(d: LiveBrainDeps): CallBrain {
           userId: input.askerId,
           messages: brainAnswerMessages({ ...input, memory }),
           temperature: 0,
-          logContext: 'call_brain_answer',
+          task: 'calls.brain_answer',
           contentOrigin: 'memory',
         })
         return replyText(response, 'answer')
@@ -59,7 +60,7 @@ export function createLiveBrain(d: LiveBrainDeps): CallBrain {
           userId: input.userId,
           messages: brainRecapMessages(input),
           temperature: 0,
-          logContext: 'call_brain_recap',
+          task: 'calls.brain_recap',
           contentOrigin: 'memory',
         })
         return replyText(response, 'recap')

@@ -1,3 +1,4 @@
+import { aiTaskOperation, type AiTaskId } from '$lib/ai-usage/tasks'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
@@ -703,8 +704,10 @@ export async function llmChatCompletion(input: {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
-  /** Dev/server observability only; appears in logs to disambiguate parallel chat uses. */
-  logContext?: string
+  /** What the call is for: the cost row's task, and the name in the server logs. */
+  task: AiTaskId
+  /** A finer name for the cost row's `operation` than the task's own (an agent loop's step). */
+  operationLabel?: string
   /** Override chat routing rule (e.g. LLM_RULE_ROUTER for the agent router judge). */
   routingRuleId?: string
   /**
@@ -743,7 +746,8 @@ async function llmChatCompletionInner(input: {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
-  logContext?: string
+  task: AiTaskId
+  operationLabel?: string
   routingRuleId?: string
   modelOverride?: string
   responseFormat?: 'json_object'
@@ -760,7 +764,8 @@ async function llmChatCompletionInner(input: {
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
   const url = `${config.baseUrl}/chat/completions`
   const routing = await chatRoutingConfig(target, input.routingRuleId, input.modelOverride)
-  const logCtx = (input.logContext?.trim() || 'chat').replace(/\s+/g, '_')
+  const { task } = input
+  const operation = input.operationLabel ?? aiTaskOperation(task)
   // sanitizeChatMessages spreads each message, so tool calls and attachments pass through it.
   const messages = sanitizeChatMessages(input.messages) as ChatMessage[]
   const origin = input.contentOrigin
@@ -782,16 +787,16 @@ async function llmChatCompletionInner(input: {
     const db = getDb()
     try {
       if (!isGraphScaleQuiet()) {
-        console.info(`[llm.chat:${logCtx}] attempt ${attempt}/${maxAttempts}`, {
+        console.info(`[llm.chat:${task}] attempt ${attempt}/${maxAttempts}`, {
           model: routing.model,
           ruleId: routing.ruleId ?? null,
           messageCount: messages.length,
           totalChars: messages.reduce((n, m) => n + m.content.length, 0),
         })
       } else {
-        console.info(`[graph-scale] llm ${logCtx} attempt ${attempt}/${maxAttempts}`)
+        console.info(`[graph-scale] llm ${task} attempt ${attempt}/${maxAttempts}`)
       }
-      logLlmChatRequest(logCtx, attempt, messages, origin)
+      logLlmChatRequest(task, attempt, messages, origin)
       await waitForLlmRateLimit(input.userId)
       const fetchStart = Date.now()
       const timeoutMs = requestTimeoutMs()
@@ -839,7 +844,7 @@ async function llmChatCompletionInner(input: {
       }
 
       if (!res.ok) {
-        console.error(`[llm.chat:${logCtx}] DIAG 4xx`, {
+        console.error(`[llm.chat:${task}] DIAG 4xx`, {
           status: res.status,
           model: routing.model,
           ruleId: routing.ruleId ?? null,
@@ -861,7 +866,7 @@ async function llmChatCompletionInner(input: {
       const usage = extractUsage(json)
       const baseCost = gatewayReportedCostUsdForLog(json)
       if (!isGraphScaleQuiet()) {
-        console.info(`[llm.chat:${logCtx}] gateway response ok`, {
+        console.info(`[llm.chat:${task}] gateway response ok`, {
           attempt,
           httpStatus: res.status,
           attemptMs,
@@ -873,7 +878,7 @@ async function llmChatCompletionInner(input: {
           cache_write_tokens: usage?.prompt_tokens_details?.cache_write_tokens,
         })
       }
-      logLlmChatResponse(logCtx, attempt, json, origin)
+      logLlmChatResponse(task, attempt, json, origin)
       // The trace (e.g. one assistant reply) counts the tokens its calls reported.
       addTraceTokens(reportedTokenCount(usage))
       const cutShort = cutShortBelowBudget(json, usage, maxTokens)
@@ -881,7 +886,9 @@ async function llmChatCompletionInner(input: {
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
-        operation: `llm.chat.${logCtx}.${cutShort ? 'cut_short' : 'success'}(attempt=${attempt})`,
+        task,
+        model: routing.model,
+        operation: `llm.chat.${operation}.${cutShort ? 'cut_short' : 'success'}(attempt=${attempt})`,
         baseCostUsd: baseCost,
         context: chatActivityPreview(input.messages, origin),
         durationMs: attemptMs,
@@ -919,7 +926,7 @@ async function llmChatCompletionInner(input: {
     } catch (err) {
       lastError = err
       const msg = err instanceof Error ? err.message : String(err)
-      console.warn(`[llm.chat:${logCtx}] attempt ${attempt} failed`, {
+      console.warn(`[llm.chat:${task}] attempt ${attempt} failed`, {
         afterMs: Date.now() - attemptStart,
         message: msg.slice(0, 500),
       })
@@ -928,7 +935,9 @@ async function llmChatCompletionInner(input: {
         await logActivityCall(db, input.userId, {
           provider: activityProvider,
           gatewayHost,
-          operation: `llm.chat.${logCtx}.error(attempt=${attempt})`,
+          task,
+          model: routing.model,
+          operation: `llm.chat.${operation}.error(attempt=${attempt})`,
           baseCostUsd: 0,
           context: chatActivityPreview(input.messages, origin),
           errorMessage: msg,
@@ -969,6 +978,8 @@ async function llmChatCompletionInner(input: {
 export async function llmCreateEmbeddings(input: {
   userId: string
   input: string | string[]
+  /** What the vectors are for. */
+  task: AiTaskId
   /** `'memory'` when the texts are a person's Memory: they are never logged. */
   contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
@@ -981,6 +992,7 @@ export async function llmCreateEmbeddings(input: {
 async function llmCreateEmbeddingsInner(input: {
   userId: string
   input: string | string[]
+  task: AiTaskId
   contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
   const target = await resolveSlot('embedding', input.userId)
@@ -1052,6 +1064,8 @@ async function llmCreateEmbeddingsInner(input: {
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
+        task: input.task,
+        model: routing.model,
         operation: `llm.embedding.success(attempt=${attempt})`,
         baseCostUsd: baseCost,
         context: embeddingActivityPreview(input.input, input.contentOrigin),
@@ -1066,6 +1080,8 @@ async function llmCreateEmbeddingsInner(input: {
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
+        task: input.task,
+        model: routing.model,
         operation: `llm.embedding.error(attempt=${attempt})`,
         baseCostUsd: 0,
         context: embeddingActivityPreview(input.input, input.contentOrigin),
@@ -1135,6 +1151,7 @@ function slotModel(target: SlotTarget): string {
 export async function llmCreateTranscription(input: {
   userId: string
   audio: LlmTranscriptionAudio
+  task: AiTaskId
   /** `'memory'` for a voice note to Memory: its transcript is never logged. */
   contentOrigin?: LlmContentOrigin
 }): Promise<unknown> {
@@ -1149,6 +1166,7 @@ async function llmCreateTranscriptionDedicated(
     userId: string
     model: string
     audio: LlmTranscriptionAudio
+    task: AiTaskId
     contentOrigin?: LlmContentOrigin
   },
   config: ResolvedLlmConfig,
@@ -1218,6 +1236,8 @@ async function llmCreateTranscriptionDedicated(
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
+        task: input.task,
+        model: input.model,
         operation: `llm.stt.success(attempt=${attempt},model=${input.model})`,
         baseCostUsd: sttCost,
         context:
@@ -1233,6 +1253,8 @@ async function llmCreateTranscriptionDedicated(
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
+        task: input.task,
+        model: input.model,
         operation: `llm.stt.error(attempt=${attempt},model=${input.model})`,
         baseCostUsd: 0,
         context: `format=${input.audio.format}`,
@@ -1259,6 +1281,7 @@ export async function llmCreateSpeech(input: {
   userId: string
   voice: string
   text: string
+  task: AiTaskId
 }): Promise<Uint8Array> {
   await assertGatewayCallWithinMemberDailyCap(input.userId)
   const target = await resolveSlot('tts', input.userId)
@@ -1267,7 +1290,7 @@ export async function llmCreateSpeech(input: {
 }
 
 async function llmCreateSpeechDedicated(
-  input: { userId: string; model: string; voice: string; text: string },
+  input: { userId: string; model: string; voice: string; text: string; task: AiTaskId },
   config: ResolvedLlmConfig,
 ): Promise<Uint8Array> {
   const activityProvider = activityProviderForLlmConfig(config.provider)
@@ -1333,6 +1356,8 @@ async function llmCreateSpeechDedicated(
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
+        task: input.task,
+        model: input.model,
         operation: `llm.tts.success(attempt=${attempt},model=${input.model})`,
         baseCostUsd: 0,
         context: `tts:${input.model} (usage cost not reported for /audio/speech)`,
@@ -1345,6 +1370,8 @@ async function llmCreateSpeechDedicated(
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
+        task: input.task,
+        model: input.model,
         operation: `llm.tts.error(attempt=${attempt},model=${input.model})`,
         baseCostUsd: 0,
         context: `tts:${input.model}`,

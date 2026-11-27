@@ -56,7 +56,7 @@ const liveSpeech: CallSpeech = async ({ userId, audio }) => {
   const { isLlmNotConfiguredError } = await import('$lib/server/llm/errors')
   const { transcribeAudio } = await import('$lib/server/llm/stt-client')
   try {
-    return await onCompanyProvider(() => transcribeAudio({ userId, audio, contentOrigin: 'memory' }))
+    return await onCompanyProvider(() => transcribeAudio({ userId, audio, task: 'speech.stt', contentOrigin: 'memory' }))
   } catch (err) {
     if (isLlmNotConfiguredError(err)) throw new CallsError('unavailable', err instanceof Error ? err.message : String(err))
     throw new Error(`speech to text failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err })

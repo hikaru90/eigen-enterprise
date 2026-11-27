@@ -107,7 +107,7 @@ describe.skipIf(!url)('decision log (Postgres) + llmDecide against the mock deci
   it('llmDecide: one cost row on the acting user, provider-reported cost, no state in the context', async () => {
     await inRolledBackTx(async (tx) => {
       const out = await llmDecide(
-        { userId: anna, state: 'PRIVATE mail text', questions: { decision: { instructions: 'Mine?', criteria: shadow.criteria } }, logContext: kindId },
+        { userId: anna, state: 'PRIVATE mail text', questions: { decision: { instructions: 'Mine?', criteria: shadow.criteria } }, task: 'decisions.judge', kindId },
         gateway(),
       )
       expect(out.answers.decision).toMatchObject({ choice: 'yes', confidence: 1 })

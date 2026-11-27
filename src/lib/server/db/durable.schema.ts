@@ -21,6 +21,8 @@ export const durableConversations = pgTable('durable_conversations', {
   conversationKey: text('conversation_key').notNull().unique(),
   agentId: text('agent_id').notNull(),
   llmUserId: text('llm_user_id').notNull(),
+  /** What this conversation's model calls are for (AiTaskId, 0189); written by every dispatch. */
+  task: text('task'),
   piConversationId: text('pi_conversation_id').notNull(),
   providerSessionId: text('provider_session_id').notNull().unique(),
   /**

@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { createHash } from 'node:crypto'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { modelMaxTools, poolFor } from '$lib/server/llm/model-pool'
@@ -47,7 +48,8 @@ export type GatewayCompleteFn = (input: {
   maxTokens?: number
   /** The durable conversation's provider session id — PostHog session grouping. */
   aiSessionId?: string
-  logContext?: string
+  /** What the conversation's calls are for (declared by whoever dispatched it). */
+  task: AiTaskId
   /**
    * A pool chat model for this call (the conversation's own model); absent = the company's
    * chat slot. The gateway refuses a model outside the pool (llm-client chatModelOverride).
@@ -58,14 +60,13 @@ export type GatewayCompleteFn = (input: {
 export type GatewayModelDeps = {
   complete: GatewayCompleteFn
   /**
-   * provider-session-id → gateway billing identity. A missing mapping throws
-   * loud: the durable agent must never make an anonymous model call.
+   * provider-session-id → gateway billing identity and task. A missing mapping throws
+   * loud: the durable agent must never make an anonymous or unnamed model call.
    */
-  resolveUserId: (providerSessionId: string) => Promise<string>
+  resolveCall: (providerSessionId: string) => Promise<{ userId: string; task: AiTaskId }>
 }
 
 const GATEWAY_TEMPERATURE = 0
-const GATEWAY_LOG_CONTEXT = 'durable_agent'
 const VALID_WIRE_TOOL_NAME = /^[a-zA-Z0-9_-]{1,64}$/
 const MAX_WIRE_TOOL_NAME_LEN = 64
 
@@ -461,7 +462,7 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
         if (!providerSessionId) {
           throw new Error('durable gateway model call has no provider sessionId — cannot attribute billing')
         }
-        const userId = await deps.resolveUserId(providerSessionId)
+        const { userId, task } = await deps.resolveCall(providerSessionId)
         const currentTools = getCurrentTools(context.messages)
         const codec = buildToolNameCodec(collectContextToolNames(context))
         const { tools: selectedTools, truncated } = capToolsForModel(currentTools, modelMaxTools(model.id))
@@ -481,7 +482,7 @@ export function createGatewayProviderApi(deps: GatewayModelDeps): ProviderStream
           temperature: GATEWAY_TEMPERATURE,
           maxTokens: model.maxTokens,
           aiSessionId: providerSessionId,
-          logContext: GATEWAY_LOG_CONTEXT,
+          task,
           ...(model.id === GATEWAY_MODEL_ID ? {} : { modelOverride: model.id }),
         })
         if (ended) return

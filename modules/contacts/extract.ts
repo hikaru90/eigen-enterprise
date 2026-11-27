@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { z } from 'zod'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
@@ -19,13 +20,12 @@ import { CHANNEL_TYPES, CONTACT_LIMITS, DESCRIBE_TEXT_MAX, type ContactDraft, ty
  */
 
 export const EXTRACT_MAX_ATTEMPTS = 3
-export const EXTRACT_LOG_CONTEXT = 'contacts_extract'
 
 export type ExtractChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -216,10 +216,10 @@ function gatewayError(err: unknown, noProvider: string): unknown {
 }
 
 /** One Contacts AI call: its cost context and its plain sentences on failure. */
-export type ContactsAiCall = { logContext: string; noProvider: string; unreadable: (tries: number, error: string) => string }
+export type ContactsAiCall = { task: AiTaskId; noProvider: string; unreadable: (tries: number, error: string) => string }
 
 const EXTRACT_CALL: ContactsAiCall = {
-  logContext: EXTRACT_LOG_CONTEXT,
+  task: 'contacts.extract',
   noProvider: NO_PROVIDER_MESSAGE,
   unreadable: (tries, error) => `The AI’s answer couldn’t be read (${tries} tries: ${error}). Try again, or fill in the form yourself.`,
 }
@@ -240,7 +240,7 @@ export async function askContactsAi<T>(
   for (let attempt = 1; attempt <= EXTRACT_MAX_ATTEMPTS; attempt++) {
     let response: unknown
     try {
-      response = await chat({ userId, messages, temperature: 0, logContext: call.logContext, responseFormat: 'json_object' })
+      response = await chat({ userId, messages, temperature: 0, task: call.task, responseFormat: 'json_object' })
     } catch (err) {
       throw gatewayError(err, call.noProvider)
     }
@@ -248,7 +248,7 @@ export async function askContactsAi<T>(
       return parse(response)
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
-      console.warn(`[${call.logContext}] attempt failed`, { attempt, error: lastError.slice(0, 200) })
+      console.warn(`[${call.task}] attempt failed`, { attempt, error: lastError.slice(0, 200) })
     }
   }
   throw new ContactsError('upstream', call.unreadable(EXTRACT_MAX_ATTEMPTS, lastError))

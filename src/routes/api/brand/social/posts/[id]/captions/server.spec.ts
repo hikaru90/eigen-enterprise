@@ -75,7 +75,7 @@ describe('POST /api/brand/social/posts/[id]/captions', () => {
     expect(gateway).toHaveBeenCalledTimes(1)
     expect(gateway.mock.calls[0][0]).toMatchObject({
       userId: 'ana',
-      logContext: 'brand_social_captions',
+      task: 'branding.social_captions',
       responseFormat: 'json_object',
     })
   })

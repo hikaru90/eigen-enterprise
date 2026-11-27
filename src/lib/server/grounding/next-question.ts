@@ -102,7 +102,7 @@ export async function generateGroundingQuestion(userId: string): Promise<Groundi
     userId,
     messages,
     temperature: 0,
-    logContext: 'grounding_next_question',
+    task: 'brain.grounding_next_question',
   })
 
   const content = (response as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]

@@ -23,7 +23,7 @@ describe('the gateway provider stream', () => {
   it('an aborted request (the conversation was stopped) ends at once as aborted, without waiting for the gateway', async () => {
     const api = createGatewayProviderApi({
       complete: () => new Promise(() => {}), // the gateway never answers
-      resolveUserId: async () => 'alice',
+      resolveCall: async () => ({ userId: 'alice', task: 'assistant.turn' }),
     })
     const ac = new AbortController()
     const events = api.stream(model, { messages: [] } as never, { sessionId: 's', signal: ac.signal } as never)
@@ -35,7 +35,7 @@ describe('the gateway provider stream', () => {
   it('encodes dotted tool names on the wire and decodes tool calls back to original kernel names', async () => {
     let seenTools: string[] = []
     const api = createGatewayProviderApi({
-      resolveUserId: async () => 'alice',
+      resolveCall: async () => ({ userId: 'alice', task: 'assistant.turn' }),
       complete: async (input) => {
         seenTools = (input.tools ?? []).map((t) => (t as { function: { name: string } }).function.name)
         return {
@@ -117,7 +117,7 @@ describe('the gateway provider stream', () => {
     let deepseekSystem = ''
 
     const api = createGatewayProviderApi({
-      resolveUserId: async () => 'alice',
+      resolveCall: async () => ({ userId: 'alice', task: 'assistant.turn' }),
       complete: async (input) => {
         const names = (input.tools ?? []).map((t) => (t as { function: { name: string } }).function.name)
         const sys = input.messages.find((m) => m.role === 'system')?.content ?? ''

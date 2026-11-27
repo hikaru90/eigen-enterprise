@@ -64,6 +64,7 @@ describe.skipIf(!DATABASE_URL)('the brain runs registry tools through ee as the 
     verificationPolicy: 'none',
     instructions: 'engine-default',
     actsAs: 'person',
+    task: 'assistant.turn',
     enabled: true,
   })
   const brainOf = async (id: string, run: (ctx: EngineContext) => Promise<unknown>) => {

@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { getDb } from '$lib/server/db'
@@ -76,7 +77,7 @@ export type LlmDecideDeps = {
   fetch: typeof fetch
   logCall: (
     userId: string,
-    entry: { provider: string; gatewayHost: string; operation: string; baseCostUsd: number; context: string; errorMessage?: string; durationMs: number },
+    entry: { provider: string; gatewayHost: string; operation: string; task: AiTaskId; model: string; baseCostUsd: number; context: string; errorMessage?: string; durationMs: number },
   ) => Promise<void>
   now: () => number
 }
@@ -176,8 +177,9 @@ export async function llmDecide(
     /** What Jev reads: the one text every question is asked about. */
     state: string
     questions: Record<string, DecisionQuestion>
-    /** Names the caller in the cost row (a decision kind id); never content. */
-    logContext: string
+    task: AiTaskId
+    /** Names the decision kind in the cost row's context; never content. */
+    kindId: string
   },
   deps: LlmDecideDeps = liveLlmDecideDeps,
 ): Promise<LlmDecideResult> {
@@ -189,7 +191,7 @@ export async function llmDecide(
   const url = decisionsUrl(target.config.baseUrl)
   const provider = activityProviderForLlmConfig(target.config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(target.config.baseUrl)
-  const context = `decide:${input.logContext} questions=${Object.keys(input.questions).length}`
+  const context = `decide:${input.kindId} questions=${Object.keys(input.questions).length}`
   const body = JSON.stringify({
     model,
     state: input.state,
@@ -234,6 +236,8 @@ export async function llmDecide(
       await deps.logCall(input.userId, {
         provider,
         gatewayHost,
+        task: input.task,
+        model,
         operation: `llm.decide.success(attempt=${attempt},model=${model})`,
         baseCostUsd: costUsd,
         context: costUsd === 0 ? `${context} (usage cost missing from gateway)` : context,
@@ -245,6 +249,8 @@ export async function llmDecide(
       await deps.logCall(input.userId, {
         provider,
         gatewayHost,
+        task: input.task,
+        model,
         operation: `llm.decide.error(attempt=${attempt},model=${model})`,
         baseCostUsd: 0,
         context,

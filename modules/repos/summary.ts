@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { HighlightKind, PullSnap, RepoSnapshot, RepoSummary } from './snapshot-types'
 import { z } from 'zod'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
@@ -20,7 +21,6 @@ import { HIGHLIGHT_KINDS } from './snapshot-types'
  * answers `no_model` — the pages still sync.
  */
 
-export const SUMMARY_LOG_CONTEXT = 'repos_summary'
 export const SUMMARY_MAX_ATTEMPTS = 3
 export const SUMMARY_MAX_CHARS = 1200
 export const HIGHLIGHTS_MAX = 8
@@ -212,7 +212,7 @@ export type SummaryChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -242,7 +242,7 @@ export function createSummarizer(deps: { chat: SummaryChat; account: () => Promi
     for (let attempt = 1; attempt <= SUMMARY_MAX_ATTEMPTS; attempt++) {
       let response: unknown
       try {
-        response = await deps.chat({ userId, messages, temperature: 0, logContext: SUMMARY_LOG_CONTEXT, responseFormat: 'json_object' })
+        response = await deps.chat({ userId, messages, temperature: 0, task: 'repos.summary', responseFormat: 'json_object' })
       } catch (err) {
         if (isLlmNotConfiguredError(err)) return { status: 'no_model', message: NO_MODEL_MESSAGE }
         throw err

@@ -62,6 +62,7 @@ describe('POST /api/voice/transcribe', () => {
     expect(m.onCompanyProvider).toHaveBeenCalledTimes(1)
     expect(m.transcribeAudio).toHaveBeenCalledWith({
       userId: 'u1',
+      task: 'speech.stt',
       audio: expect.objectContaining({
         format: 'webm',
         prompt: 'Dictation in the workspace of Acme. Names that may come up: Ony.',

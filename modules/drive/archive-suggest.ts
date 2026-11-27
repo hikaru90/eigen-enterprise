@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { z } from 'zod'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
@@ -19,7 +20,6 @@ import { DriveError, formatBytes, type Actor, type ArchiveCandidate, type Crumb,
 
 export const SUGGEST_MAX_CANDIDATES = 60
 export const SUGGEST_MAX_ATTEMPTS = 3
-export const SUGGEST_LOG_CONTEXT = 'drive_archive_suggest'
 export const SUGGEST_MIN_DAYS = 30
 export const SUGGEST_MAX_DAYS = 3650
 /** What the UI and the agent tool start from: half a year without a change. */
@@ -29,7 +29,7 @@ export type SuggestChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -141,7 +141,7 @@ export async function suggestArchive(
   for (let attempt = 1; attempt <= SUGGEST_MAX_ATTEMPTS; attempt++) {
     let response: unknown
     try {
-      response = await deps.chat({ userId, messages, temperature: 0, logContext: SUGGEST_LOG_CONTEXT, responseFormat: 'json_object' })
+      response = await deps.chat({ userId, messages, temperature: 0, task: 'drive.archive_suggest', responseFormat: 'json_object' })
     } catch (err) {
       throw gatewayError(err)
     }

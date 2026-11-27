@@ -82,7 +82,8 @@ describe('decide — shadow', () => {
       userId: 'u1',
       state: 'From anna@acme.test: Invoice #44\nWrong VAT, private details',
       questions: { decision: { instructions: kind.instructions, criteria: kind.criteria } },
-      logContext: 'demo.mail_mine',
+      task: 'decisions.judge',
+      kindId: 'demo.mail_mine',
     })
   })
 
@@ -250,7 +251,8 @@ describe('decideMany — one Jev call, many questions about one state', () => {
         q0: { instructions: 'Should this co-worker act on the mail?\n\nThe co-worker: Finance', criteria: kind.criteria },
         q1: { instructions: 'Should this co-worker act on the mail?\n\nThe co-worker: Operations', criteria: kind.criteria },
       },
-      logContext: 'demo.mail_routed',
+      task: 'decisions.judge',
+      kindId: 'demo.mail_routed',
     })
   })
 

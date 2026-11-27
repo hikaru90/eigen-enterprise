@@ -14,7 +14,6 @@ import { extractChatContent } from '$lib/server/ontology/llm-json'
  */
 
 export const SCRUB_MAX_ATTEMPTS = 3
-export const SCRUB_LOG_CONTEXT = 'contribute_scrub'
 export const SCRUB_SUMMARY_MAX = 500
 
 export const SCRUB_REMOVED_KINDS = ['person', 'contact', 'company', 'location', 'credential', 'url', 'other'] as const
@@ -77,7 +76,7 @@ export async function scrubTitle(chat: JudgeChat, input: { userId: string; title
   const messages = buildScrubMessages(input.title)
   let lastError = ''
   for (let attempt = 1; attempt <= SCRUB_MAX_ATTEMPTS; attempt++) {
-    const response = await chat({ userId: input.userId, messages, temperature: 0, logContext: SCRUB_LOG_CONTEXT, responseFormat: 'json_object' })
+    const response = await chat({ userId: input.userId, messages, temperature: 0, task: 'contribute.scrub', responseFormat: 'json_object' })
     try {
       return parseScrubOutput(response)
     } catch (err) {

@@ -231,7 +231,7 @@ async function callBindingLlm(params: {
     userId: params.userId,
     messages,
     temperature: 0,
-    logContext: 'temporal_hint_bindings',
+    task: 'brain.temporal_hints',
   })
 
   const content =

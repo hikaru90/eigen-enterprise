@@ -30,8 +30,6 @@ import { memoryHandoverStatus, type HandoverStatusInput } from './decision-kinds
  * as is, and Jev is not asked. Only the owner's side drafts on their handover.
  */
 
-export const HANDOVER_SENTENCE_LOG_CONTEXT = 'handover_sentence'
-
 export type SentenceInput = { ownerId: string; handoverTitle: string; topic: string; source: string; previous: string | null }
 
 export type DraftDeps = {
@@ -155,7 +153,7 @@ export async function liveDraftDeps(): Promise<DraftDeps> {
             userId: input.ownerId,
             messages: handoverSentenceMessages(input),
             temperature: 0,
-            logContext: HANDOVER_SENTENCE_LOG_CONTEXT,
+            task: 'handover.sentence',
             responseFormat: 'json_object',
             // The source may be the owner's private Memory: never logged or analysed.
             contentOrigin: 'memory',

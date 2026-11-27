@@ -83,6 +83,7 @@ export async function judgeAnswerAcceptance(input: {
   ]
   const callLlm = () =>
     llmChatCompletion({
+      task: 'setup.eval',
       userId: EVAL_JUDGE_USER_ID,
       messages,
       temperature: 0,

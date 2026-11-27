@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { z } from 'zod'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
@@ -34,13 +35,12 @@ export const WRITING_SAMPLE_LIMIT = 6
 export const WRITING_SAMPLE_MAX_CHARS = 160
 /** Exactly 3 attempts, then a visible failure — the text is never passed through unjudged. */
 export const STT_JUDGE_ATTEMPTS = 3
-export const STT_JUDGE_LOG_CONTEXT = 'stt_judge'
 
 export type SttJudgeChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -102,7 +102,7 @@ export async function judgeTranscript(
       userId: input.userId,
       messages,
       temperature: 0,
-      logContext: STT_JUDGE_LOG_CONTEXT,
+      task: 'speech.stt_judge',
       responseFormat: 'json_object',
     })
     try {

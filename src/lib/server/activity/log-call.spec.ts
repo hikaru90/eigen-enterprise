@@ -24,6 +24,8 @@ describe('logActivityCall', () => {
     await logActivityCall(db, 'u1', {
       provider: 'llm',
       operation: 'embedding',
+      task: 'brain.retrieval_embedding',
+      model: 'openai/text-embedding-3-small',
       baseCostUsd: 1,
     })
 
@@ -33,6 +35,8 @@ describe('logActivityCall', () => {
       provider: 'llm',
       gatewayHost: null,
       operation: 'embedding',
+      task: 'brain.retrieval_embedding',
+      model: 'openai/text-embedding-3-small',
       context: null,
       baseCostUsd: '1.000000',
       markupUsd: '0.200000',

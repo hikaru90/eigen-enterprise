@@ -174,6 +174,7 @@ describe('llm client retries', () => {
     )
 
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
     })
@@ -192,7 +193,7 @@ describe('llm client retries', () => {
   it('never sends session_id to a provider outside the OpenRouter namespace', async () => {
     const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }], aiSessionId: 'conv-42' })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }], aiSessionId: 'conv-42' })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
     expect(body).not.toHaveProperty('session_id')
   })
@@ -209,6 +210,7 @@ describe('llm client retries', () => {
     )
 
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
     })
@@ -236,6 +238,7 @@ describe('llm client retries', () => {
     )
 
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello observability' }],
       aiSessionId: 'session-1',
@@ -270,6 +273,7 @@ describe('llm client retries', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
       temperature: 0.7,
@@ -290,6 +294,7 @@ describe('llm client retries', () => {
     )
     await expect(
       llmChatCompletion({
+        task: 'memory.split_capture',
         userId: 'u1',
         messages: [{ role: 'user', content: 'hello' }],
       }),
@@ -316,6 +321,7 @@ describe('llm client retries', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const out = await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'summarize' }],
       maxTokens: 8192,
@@ -347,7 +353,7 @@ describe('llm client retries', () => {
       ),
     )
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'x' }], maxTokens: 8192 }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'x' }], maxTokens: 8192 }),
     ).rejects.toThrow(/cut the reply short at 1639 of 8192 tokens/)
     expect(fetch).toHaveBeenCalledTimes(3)
   })
@@ -358,7 +364,7 @@ describe('llm client retries', () => {
       choices: [{ finish_reason: 'length', message: { content: 'long' } }],
     }
     vi.stubGlobal('fetch', vi.fn(async () => response(true, 200, full)))
-    const out = await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'x' }] })
+    const out = await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'x' }] })
     expect(out).toEqual(full)
     expect(fetch).toHaveBeenCalledTimes(1)
   })
@@ -371,6 +377,7 @@ describe('llm client retries', () => {
 
     await expect(
       llmChatCompletion({
+        task: 'memory.split_capture',
         userId: 'u1',
         messages: [{ role: 'user', content: 'hello' }],
         aiSessionId: 'session-error',
@@ -398,10 +405,10 @@ describe('llm client retries', () => {
   it('fails when chat api key is missing', async () => {
     mockEnv.LLM_API_KEY = ''
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
     ).rejects.toBeInstanceOf(LlmNotConfiguredError)
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
     ).rejects.toThrow(/LLM_API_KEY/)
   })
 
@@ -411,7 +418,7 @@ describe('llm client retries', () => {
       'fetch',
       vi.fn(async () => response(true, 200, { choices: [{ message: { content: 'ok' } }] })),
     )
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
@@ -422,14 +429,14 @@ describe('llm client retries', () => {
   it('rejects invalid LLM_REQUEST_TIMEOUT_MS', async () => {
     mockEnv.LLM_REQUEST_TIMEOUT_MS = '0'
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
     ).rejects.toThrow(/LLM_REQUEST_TIMEOUT_MS/)
   })
 
   it('rejects invalid LLM_MIN_REQUEST_INTERVAL_MS', async () => {
     mockEnv.LLM_MIN_REQUEST_INTERVAL_MS = 'not-a-number'
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
     ).rejects.toThrow(/LLM_MIN_REQUEST_INTERVAL_MS/)
   })
 
@@ -439,7 +446,7 @@ describe('llm client retries', () => {
       'fetch',
       vi.fn(async () => response(true, 200, { choices: [] })),
     )
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
@@ -454,7 +461,7 @@ describe('llm client retries', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    const out = (await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })) as {
+    const out = (await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })) as {
       data: { embedding: number[] }[]
     }
     const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
@@ -470,7 +477,7 @@ describe('llm client retries', () => {
       .mockResolvedValueOnce(response(true, 200, { usage: { total_tokens: 100 }, data: [] }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -492,7 +499,7 @@ describe('llm client retries', () => {
 
   it('fails when required env is missing', async () => {
     mockEnv.LLM_API_KEY = ''
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /LLM_API_KEY/,
     )
   })
@@ -501,14 +508,14 @@ describe('llm client retries', () => {
     mockEnv.LLM_MODEL_CHAT = ''
     mockEnv.LLM_RULE_CHAT = ''
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
     ).rejects.toThrow(/LLM_RULE_CHAT/)
   })
 
   it('fails when embedding model and rule are both missing', async () => {
     mockEnv.LLM_MODEL_EMBEDDING = ''
     mockEnv.LLM_RULE_EMBEDDING = ''
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /LLM_RULE_EMBEDDING/,
     )
   })
@@ -522,7 +529,7 @@ describe('llm client retries', () => {
       }),
     )
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
       model: string
       rule_id?: string
@@ -542,7 +549,7 @@ describe('llm client retries', () => {
       )
       .mockResolvedValueOnce(response(true, 200, { usage: { total_tokens: 5 }, data: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })
     const body = JSON.parse(fetchMockInit(fetchMock, 1).body as string) as {
       model: string
       provider?: Record<string, unknown>
@@ -553,10 +560,10 @@ describe('llm client retries', () => {
 
   it('fails when base url is missing', async () => {
     mockEnv.LLM_BASE_URL = ''
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toBeInstanceOf(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toBeInstanceOf(
       LlmNotConfiguredError,
     )
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /LLM_BASE_URL/,
     )
   })
@@ -573,7 +580,7 @@ describe('llm client retries', () => {
           }) as unknown as Response,
       ),
     )
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /LLM HTTP 404/,
     )
   })
@@ -591,7 +598,7 @@ describe('llm client retries', () => {
       ),
     )
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
     ).rejects.toThrow(/LLM HTTP 500/)
   })
 
@@ -601,7 +608,7 @@ describe('llm client retries', () => {
       vi.fn(async () => Promise.reject('boom')),
     )
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] }),
     ).rejects.toThrow(/failed after 3 attempts/)
   })
 
@@ -610,7 +617,7 @@ describe('llm client retries', () => {
       'fetch',
       vi.fn(async () => Promise.reject('boom')),
     )
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /failed after 3 attempts/,
     )
   })
@@ -621,7 +628,7 @@ describe('llm client retries', () => {
       'fetch',
       vi.fn(async () => response(true, 200, { usage: { total_tokens: 5 }, data: [] })),
     )
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /LLM_MIN_REQUEST_INTERVAL_MS must be a non-negative number/,
     )
   })
@@ -641,9 +648,9 @@ describe('llm client retries', () => {
         ),
       )
       const { llmChatCompletion: chat } = await import('./llm-client')
-      const first = chat({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+      const first = chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
       await vi.advanceTimersByTimeAsync(0)
-      const second = chat({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+      const second = chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
       await vi.advanceTimersByTimeAsync(50)
       await first
       await second
@@ -673,16 +680,16 @@ describe('llm client retries', () => {
         choices: [{ message: { content: 'ok' } }],
       }
 
-      const first = chat({ userId: 'u1', messages: [{ role: 'user', content: '1' }] })
+      const first = chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: '1' }] })
       await vi.advanceTimersByTimeAsync(0)
       expect(fetchMock).toHaveBeenCalledTimes(1)
 
-      const second = chat({ userId: 'u1', messages: [{ role: 'user', content: '2' }] })
+      const second = chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: '2' }] })
       await vi.advanceTimersByTimeAsync(1000)
       expect(fetchMock).toHaveBeenCalledTimes(2)
       expect(pendingResolvers).toHaveLength(2)
 
-      const third = chat({ userId: 'u1', messages: [{ role: 'user', content: '3' }] })
+      const third = chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: '3' }] })
       await vi.advanceTimersByTimeAsync(1000)
       expect(fetchMock).toHaveBeenCalledTimes(3)
       expect(pendingResolvers).toHaveLength(3)
@@ -717,11 +724,11 @@ describe('llm client retries', () => {
         choices: [{ message: { content: 'ok' } }],
       }
 
-      const first = chat({ userId: 'u1', messages: [{ role: 'user', content: '1' }] })
+      const first = chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: '1' }] })
       await vi.advanceTimersByTimeAsync(0)
       expect(fetchMock).toHaveBeenCalledTimes(1)
 
-      const second = chat({ userId: 'u1', messages: [{ role: 'user', content: '2' }] })
+      const second = chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: '2' }] })
       await vi.advanceTimersByTimeAsync(1000)
       expect(fetchMock).toHaveBeenCalledTimes(1)
 
@@ -751,7 +758,7 @@ describe('llm client retries', () => {
       )
     vi.stubGlobal('fetch', fetchMock)
     const { llmChatCompletion: chat } = await import('./llm-client')
-    await chat({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     const body = JSON.parse(fetchMockInit(fetchMock, 1).body as string) as {
       model: string
       rule_id?: string
@@ -780,7 +787,7 @@ describe('llm client retries', () => {
       }),
     )
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
       model: string
       rule_id?: string
@@ -795,7 +802,7 @@ describe('llm client retries', () => {
       response(true, 200, { usage: { total_tokens: 1 }, data: [] }),
     )
     vi.stubGlobal('fetch', fetchMock)
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as {
       model: string
       rule_id?: string
@@ -877,6 +884,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
     vi.mocked(isByokBilling).mockResolvedValue(false)
     const fetchMock = okFetch()
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'coworker-1',
       messages: [{ role: 'user', content: 'hi' }],
       modelOverride: 'google/gemini-3.8-flash',
@@ -894,8 +902,8 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
     const { isByokBilling } = await import('$lib/server/llm/preferences')
     vi.mocked(isByokBilling).mockResolvedValue(false)
     const fetchMock = okFetch()
-    await llmChatCompletion({ userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }], aiSessionId: 'conv-42' })
-    await llmChatCompletion({ userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }], aiSessionId: 'conv-42' })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }] })
     const withSession = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as Record<string, unknown>
     const without = JSON.parse(fetchMockInit(fetchMock, 1).body as string) as Record<string, unknown>
     expect(withSession.session_id).toBe('conv-42')
@@ -920,7 +928,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
         }),
       ),
     )
-    await llmChatCompletion({ userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'coworker-1', messages: [{ role: 'user', content: 'hi' }] })
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'coworker-1',
@@ -935,6 +943,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
     vi.mocked(isByokBilling).mockResolvedValue(false)
     const fetchMock = okFetch()
     const call = llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'coworker-1',
       messages: [{ role: 'user', content: 'hi' }],
       modelOverride: 'vendor/unvetted-model',
@@ -948,7 +957,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
   it('a pool model of another slot is no chat override either', async () => {
     const fetchMock = okFetch()
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'qwen/qwen3-asr-1.7b' }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'qwen/qwen3-asr-1.7b' }),
     ).rejects.toBeInstanceOf(ModelNotInPoolError)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -956,10 +965,10 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
   it('the same check holds on a bring-your-own-key provider outside the pool namespace (EUrouter)', async () => {
     const fetchMock = okFetch()
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'vendor/unvetted-model' }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'vendor/unvetted-model' }),
     ).rejects.toBeInstanceOf(ModelNotInPoolError)
     expect(fetchMock).not.toHaveBeenCalled()
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'qwen/qwen3.8-flash' })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: 'qwen/qwen3.8-flash' })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }
     expect(body.model).toBe('qwen/qwen3.8-flash')
   })
@@ -967,7 +976,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
   it('a blank override is refused, never read as "no override"', async () => {
     const fetchMock = okFetch()
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: '  ' }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }], modelOverride: '  ' }),
     ).rejects.toBeInstanceOf(ModelNotInPoolError)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -975,6 +984,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
   it('openai/gpt-5-mini omits temperature even when caller passes temperature: 0', async () => {
     const fetchMock = okFetch()
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hi' }],
       modelOverride: 'openai/gpt-5-mini',
@@ -992,6 +1002,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
     companyPicks.chat = 'openai/gpt-5-mini'
     const fetchMock = okFetch()
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hi' }],
       temperature: 0,
@@ -1004,6 +1015,7 @@ describe('llmChatCompletion model override (AI Co-workers C2: only vetted pool m
   it('DeepSeek keeps temperature: 0 when passed', async () => {
     const fetchMock = okFetch()
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hi' }],
       modelOverride: '~deepseek/deepseek-flash-latest',
@@ -1040,6 +1052,7 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
   it('sends a user message with attachments as OpenAI content parts: text, image_url, file', async () => {
     const fetchMock = okFetch()
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [
         { role: 'system', content: 'You read brand guides.' },
@@ -1073,7 +1086,7 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
 
   it('leaves messages without attachments exactly as before (string content)', async () => {
     const fetchMock = okFetch()
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { messages: unknown[] }
     expect(body.messages).toEqual([{ role: 'user', content: 'hello' }])
   })
@@ -1081,6 +1094,7 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
   it('never sends the file bytes to analytics or the activity log — only what was attached', async () => {
     okFetch()
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [
         {
@@ -1113,6 +1127,7 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
     const fetchMock = okFetch()
     await expect(
       llmChatCompletion({
+        task: 'memory.split_capture',
         userId: 'u1',
         messages: [
           {
@@ -1179,6 +1194,7 @@ describe('llmCreateTranscription', () => {
       }),
     })
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1197,6 +1213,7 @@ describe('llmCreateTranscription', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1213,6 +1230,7 @@ describe('llmCreateTranscription', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1229,6 +1247,7 @@ describe('llmCreateTranscription', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     const out = await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1, 2, 3]), format: 'webm', language: 'en' },
     })
@@ -1250,6 +1269,7 @@ describe('llmCreateTranscription', () => {
     const fetchMock = vi.fn(async () => response(true, 200, { text: 'hallo', usage: { cost: 0.001 } }))
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm', prompt: 'Names that may come up: Ony.' },
     })
@@ -1263,6 +1283,7 @@ describe('llmCreateTranscription', () => {
     const fetchMock = vi.fn(async () => response(true, 200, { text: 'x', usage: { cost: 0.001 } }))
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1276,6 +1297,7 @@ describe('llmCreateTranscription', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1, 2, 3]), format: 'webm' },
     })
@@ -1298,6 +1320,7 @@ describe('llmCreateTranscription', () => {
       .mockResolvedValueOnce(response(true, 200, { text: 'retry ok', usage: { cost: 0.001 } }))
     vi.stubGlobal('fetch', fetchMock)
     const out = await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1317,6 +1340,7 @@ describe('llmCreateTranscription', () => {
     )
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1338,6 +1362,7 @@ describe('llmCreateTranscription', () => {
     )
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1351,6 +1376,7 @@ describe('llmCreateTranscription', () => {
     )
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1366,6 +1392,7 @@ describe('llmCreateTranscription', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1387,6 +1414,7 @@ describe('llmCreateTranscription', () => {
       ),
     )
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1403,6 +1431,7 @@ describe('llmCreateTranscription', () => {
       vi.fn(async () => response(true, 200, { usage: {} })),
     )
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1421,6 +1450,7 @@ describe('llmCreateTranscription', () => {
     mockEnv.OPENROUTER_BASE_URL = ''
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1433,6 +1463,7 @@ describe('llmCreateTranscription', () => {
     mockEnv.OPENROUTER_API_KEY = ''
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1449,6 +1480,7 @@ describe('llmCreateTranscription', () => {
     mockEnv.SERVICE_API_KEY_OPENROUTER = 'service-openrouter-key'
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1460,6 +1492,7 @@ describe('llmCreateTranscription', () => {
     vi.stubGlobal('fetch', fetchThatWaitsForAbort())
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1486,18 +1519,18 @@ describe('llm client: no self-hosted service account (removed in CB1)', () => {
   it('eigenInference without PLATFORM_LLM_* fails loud, telling the owner what to do, and sends nothing', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    const chat = llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    const chat = llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     await expect(chat).rejects.toBeInstanceOf(LlmNotConfiguredError)
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
     ).rejects.toThrow(/eigenInference is not connected on this server/)
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'x' })).rejects.toThrow(/eigenInference is not connected/)
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'x' })).rejects.toThrow(/eigenInference is not connected/)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('the message never names the removed env pairs ("Platform EUrouter not configured" is gone by design)', async () => {
     mockSequentialDbLimitResults([{ provider: 'openrouter' }])
-    const err = await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }).catch((e: unknown) => e)
+    const err = await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }).catch((e: unknown) => e)
     expect(String(err)).not.toMatch(/SERVICE_API_KEY|LLM_BASE_URL|OPENROUTER_BASE_URL|Platform EUrouter/)
   })
 })
@@ -1543,7 +1576,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
       response(true, 200, { usage: { prompt_tokens: 1, cost: 0.0042 }, choices: [] }),
     )
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/chat/completions')
     const init = fetchMockInit(fetchMock, 0)
     expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer sk-platform')
@@ -1566,7 +1599,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     mockSequentialDbLimitResults([{ provider: 'openrouter' }])
     const fetchMock = vi.fn(async () => response(true, 200, { usage: { cost: 0.001 }, choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/chat/completions')
     expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe(
       'Bearer sk-platform',
@@ -1578,7 +1611,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
       response(true, 200, { data: [{ embedding: [0.1, 0.2] }], usage: { cost: 0.0001 } }),
     )
     vi.stubGlobal('fetch', fetchMock)
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })
     expect(fetchMockUrl(fetchMock, 0)).toBe('https://platform-llm.example/api/v1/embeddings')
     const body = JSON.parse(String(fetchMockInit(fetchMock, 0)?.body)) as { model?: string }
     expect(body.model).toBe('openai/text-embedding-3-small')
@@ -1602,7 +1635,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     mockEnv.LLM_MODEL_CHAT = 'byok-model'
     const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     expect(fetchMockUrl(fetchMock, 0)).toBe('https://byok-gw.example/v1/chat/completions')
     expect((fetchMockInit(fetchMock, 0)?.headers as Record<string, string>).Authorization).toBe(
       'Bearer byok-key',
@@ -1614,6 +1647,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     const fetchMock = vi.fn(async () => response(true, 200, { text: 'hallo', usage: { cost: 0.00007 } }))
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1634,6 +1668,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     const fetchMock = vi.fn(async () => response(true, 200, { text: 'x', usage: { cost: 0.001 } }))
     vi.stubGlobal('fetch', fetchMock)
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -1648,6 +1683,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     vi.stubGlobal('fetch', vi.fn())
     await expect(
       llmCreateTranscription({
+        task: 'speech.stt',
         userId: 'u1',
         audio: { bytes: new Uint8Array([1]), format: 'webm' },
       }),
@@ -1661,7 +1697,7 @@ describe('llm client platform AI from hosting (PLATFORM_LLM_*)', () => {
     mockEnv.SERVICE_API_KEY_EUROUTER = 'service-eurouter-key'
     vi.stubGlobal('fetch', vi.fn())
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
     ).rejects.toThrow(/PLATFORM_LLM_MODEL_CHAT is not set/)
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -1699,7 +1735,7 @@ describe('llm client BYOK DB credentials', () => {
       response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
     )
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     expect(decryptTenantValueMock).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'u1', ciphertext: 'enc-blob' }),
     )
@@ -1734,7 +1770,7 @@ describe('llm client BYOK DB credentials', () => {
       response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }),
     )
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     expect(String(fetchMockUrl(fetchMock, 0))).toBe(
       'https://env-gateway.example/v1/chat/completions',
     )
@@ -1759,7 +1795,7 @@ describe('llm client BYOK DB credentials', () => {
       ],
     )
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
     ).rejects.toThrow(/Docker placeholder/)
   })
 })
@@ -1800,7 +1836,7 @@ describe('llm client OpenRouter routing (an OpenRouter key runs the company slot
     mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow({ modelChat: 'openrouter/chat-model' })])
     const fetchMock = vi.fn(async () => response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string; rule_id?: string }
     expect(body.model).toBe('~deepseek/deepseek-flash-latest')
     expect(body.rule_id).toBeUndefined()
@@ -1816,7 +1852,7 @@ describe('llm client OpenRouter routing (an OpenRouter key runs the company slot
     mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow()])
     const fetchMock = vi.fn(async () => response(true, 200, { choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     expect((JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }).model).toBe('openai/gpt-5-mini')
   })
 
@@ -1824,7 +1860,7 @@ describe('llm client OpenRouter routing (an OpenRouter key runs the company slot
     companyPicks.chat = 'vendor/retired-model'
     mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow()])
     await expect(
-      llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
+      llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] }),
     ).rejects.toThrow(/not in the model pool for the chat slot/)
   })
 
@@ -1835,7 +1871,7 @@ describe('llm client OpenRouter routing (an OpenRouter key runs the company slot
     )
     const fetchMock = vi.fn(async () => response(true, 200, { usage: { total_tokens: 1 }, data: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })
     const body = JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }
     expect(body.model).toBe('openai/text-embedding-3-small')
   })
@@ -1844,7 +1880,7 @@ describe('llm client OpenRouter routing (an OpenRouter key runs the company slot
     mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow()])
     const fetchMock = vi.fn(async () => response(true, 200, { usage: { total_tokens: 1 }, data: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })
     expect((JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }).model).toBe(
       'qwen/qwen3-embedding-8b',
     )
@@ -1858,7 +1894,7 @@ describe('llm client OpenRouter routing (an OpenRouter key runs the company slot
     )
     const fetchMock = vi.fn(async () => response(true, 200, { usage: { total_tokens: 1 }, data: [] }))
     vi.stubGlobal('fetch', fetchMock)
-    await llmCreateEmbeddings({ userId: 'u1', input: 'hello' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })
     expect((JSON.parse(fetchMockInit(fetchMock, 0).body as string) as { model: string }).model).toBe(
       'qwen/qwen3-embedding-8b',
     )
@@ -1866,7 +1902,7 @@ describe('llm client OpenRouter routing (an OpenRouter key runs the company slot
 
   it('an embedding model outside the pool fails loud on the first resolution (no silent re-embedding)', async () => {
     mockSequentialDbLimitResults([{ provider: 'openrouter' }], [openRouterRow({ modelEmbedding: 'openrouter/embed-model' })])
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /not in the model pool for the embedding slot/,
     )
   })
@@ -1891,6 +1927,7 @@ describe('llm client response parsing and options', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
       maxTokens: 256,
@@ -1907,6 +1944,7 @@ describe('llm client response parsing and options', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
     })
@@ -1931,9 +1969,9 @@ describe('llm client response parsing and options', () => {
     await llmChatCompletion({
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
-      logContext: 'non-text',
+      task: 'memory.split_capture',
     })
-    expect(logSpy).toHaveBeenCalledWith('[llm.chat:non-text] response attempt 1:\n')
+    expect(logSpy).toHaveBeenCalledWith('[llm.chat:memory.split_capture] response attempt 1:\n')
     logSpy.mockRestore()
   })
 
@@ -1957,10 +1995,10 @@ describe('llm client response parsing and options', () => {
     await llmChatCompletion({
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
-      logContext: 'parse test',
+      task: 'memory.split_capture',
     })
     expect(logSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[llm.chat:parse_test] response attempt 1:\npart-onepart-two'),
+      expect.stringContaining('[llm.chat:memory.split_capture] response attempt 1:\npart-onepart-two'),
     )
     logSpy.mockRestore()
   })
@@ -1976,7 +2014,7 @@ describe('llm client response parsing and options', () => {
         }),
       )
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -1991,6 +2029,7 @@ describe('llm client response parsing and options', () => {
       vi.fn(async () => response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] })),
     )
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'system', content: 'system only' }],
     })
@@ -2008,6 +2047,7 @@ describe('llm client response parsing and options', () => {
       vi.fn(async () => response(true, 200, { usage: { total_tokens: 2 }, data: [] })),
     )
     await llmCreateEmbeddings({
+      task: 'memory.capture_embedding',
       userId: 'u1',
       input: ['short', 'x'.repeat(200)],
     })
@@ -2033,8 +2073,8 @@ describe('llm client response parsing and options', () => {
       .mockResolvedValueOnce(response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
     const { llmChatCompletion: chat } = await import('./llm-client')
-    await chat({ userId: 'u1', messages: [{ role: 'user', content: 'one' }] })
-    await chat({ userId: 'u1', messages: [{ role: 'user', content: 'two' }] })
+    await chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'one' }] })
+    await chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'two' }] })
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(String(fetchMockUrl(fetchMock, 0))).toContain('/routing-rules/rule-chat')
   })
@@ -2048,6 +2088,7 @@ describe('llm client response parsing and options', () => {
     vi.stubGlobal('fetch', fetchMock)
     await expect(
       llmChatCompletion({
+        task: 'memory.split_capture',
         userId: 'u1',
         messages: [{ role: 'assistant', content: 'prior answer' }],
       }),
@@ -2064,7 +2105,7 @@ describe('llm client response parsing and options', () => {
       'fetch',
       vi.fn(async () => response(false, 500, { error: 'down' })),
     )
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: ['alpha', 'beta'] })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: ['alpha', 'beta'] })).rejects.toThrow(
       /LLM HTTP 500/,
     )
     expect(logActivityCallMock).toHaveBeenCalledWith(
@@ -2088,7 +2129,7 @@ describe('llm client response parsing and options', () => {
       .mockResolvedValueOnce(response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] }))
     vi.stubGlobal('fetch', fetchMock)
     const { llmChatCompletion: chat } = await import('./llm-client')
-    await chat({ userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
+    await chat({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hi' }] })
     const body = JSON.parse(fetchMockInit(fetchMock, 1).body as string) as {
       model: string
       provider?: Record<string, unknown>
@@ -2113,6 +2154,7 @@ describe('llm client timeout and rate limit defaults', () => {
     vi.stubGlobal('fetch', fetchThatWaitsForAbort())
     await expect(
       llmChatCompletion({
+        task: 'memory.split_capture',
         userId: 'u1',
         messages: [{ role: 'user', content: 'hello' }],
       }),
@@ -2126,7 +2168,7 @@ describe('llm client timeout and rate limit defaults', () => {
     mockEnv.LLM_MODEL_EMBEDDING = 'text-embedding-3-small'
     mockEnv.LLM_RULE_EMBEDDING = 'rule-embed'
     vi.stubGlobal('fetch', fetchThatWaitsForAbort())
-    await expect(llmCreateEmbeddings({ userId: 'u1', input: 'hello' })).rejects.toThrow(
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'hello' })).rejects.toThrow(
       /LLM embedding request timed out after 1ms/,
     )
     expect(fetch).toHaveBeenCalledTimes(3)
@@ -2138,7 +2180,7 @@ describe('llm client timeout and rate limit defaults', () => {
       'fetch',
       vi.fn(async () => response(true, 200, { usage: { total_tokens: 2 }, data: [] })),
     )
-    await llmCreateEmbeddings({ userId: 'u1', input: 'x'.repeat(120) })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: 'x'.repeat(120) })
     expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/\[llm\.embedding\] input: x+\.\.\./))
     logSpy.mockRestore()
   })
@@ -2150,6 +2192,7 @@ describe('llm client timeout and rate limit defaults', () => {
       vi.fn(async () => response(true, 200, null)),
     )
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
     })
@@ -2168,9 +2211,9 @@ describe('llm client timeout and rate limit defaults', () => {
         vi.fn(async () => response(true, 200, { usage: { prompt_tokens: 1 }, choices: [] })),
       )
       const { llmChatCompletion: chat } = await import('./llm-client')
-      const first = chat({ userId: 'u-rate', messages: [{ role: 'user', content: 'a' }] })
+      const first = chat({ task: 'memory.split_capture', userId: 'u-rate', messages: [{ role: 'user', content: 'a' }] })
       await vi.advanceTimersByTimeAsync(0)
-      const second = chat({ userId: 'u-rate', messages: [{ role: 'user', content: 'b' }] })
+      const second = chat({ task: 'memory.split_capture', userId: 'u-rate', messages: [{ role: 'user', content: 'b' }] })
       await vi.advanceTimersByTimeAsync(1000)
       await first
       await second
@@ -2210,6 +2253,7 @@ describe('llm client tool-calling passthrough', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
       tools: chatTools,
@@ -2231,6 +2275,7 @@ describe('llm client tool-calling passthrough', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [{ role: 'user', content: 'hello' }],
     })
@@ -2272,7 +2317,7 @@ describe('llm client tool-calling passthrough', () => {
       userId: 'u1',
       messages: [{ role: 'user', content: 'find brand notes' }],
       tools: chatTools,
-      logContext: 'durable-agent',
+      task: 'assistant.turn',
     })
 
     expect(raw).toEqual(toolCallsBody)
@@ -2280,7 +2325,7 @@ describe('llm client tool-calling passthrough', () => {
       expect.anything(),
       'u1',
       expect.objectContaining({
-        operation: 'llm.chat.durable-agent.success(attempt=1)',
+        operation: 'llm.chat.durable_agent.success(attempt=1)',
         gatewayHost: 'example.test',
       }),
     )
@@ -2293,6 +2338,7 @@ describe('llm client tool-calling passthrough', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await llmChatCompletion({
+      task: 'memory.split_capture',
       userId: 'u1',
       messages: [
         { role: 'system', content: 'system prompt' },
@@ -2389,7 +2435,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
         { role: 'system', content: 'Summarise the thought.' },
         { role: 'user', content: WORRY },
       ],
-      logContext: 'enrich',
+      task: 'memory.enrich_thought_bundle',
       contentOrigin: 'memory',
     })
 
@@ -2402,7 +2448,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
       expect.anything(),
       'u1',
       expect.objectContaining({
-        operation: 'llm.chat.enrich.success(attempt=1)',
+        operation: 'llm.chat.enrich_thought_bundle.success(attempt=1)',
         baseCostUsd: 0.002,
         context: undefined,
       }),
@@ -2430,6 +2476,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
 
     await expect(
       llmChatCompletion({
+        task: 'memory.split_capture',
         userId: 'u1',
         messages: [{ role: 'user', content: WORRY }],
         contentOrigin: 'memory',
@@ -2462,7 +2509,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
         }),
       ),
     )
-    await llmChatCompletion({ userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
@@ -2485,7 +2532,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
       ),
     )
 
-    await llmCreateEmbeddings({ userId: 'u1', input: [WORRY, 'second'], contentOrigin: 'memory' })
+    await llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: [WORRY, 'second'], contentOrigin: 'memory' })
 
     expect(logged()).not.toContain(WORRY)
     expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
@@ -2506,7 +2553,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
       vi.fn(async () => response(false, 500, { error: 'down' })),
     )
     await expect(
-      llmCreateEmbeddings({ userId: 'u1', input: WORRY, contentOrigin: 'memory' }),
+      llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'u1', input: WORRY, contentOrigin: 'memory' }),
     ).rejects.toThrow()
     expect(logged()).not.toContain(WORRY)
     expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
@@ -2521,6 +2568,7 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
     )
 
     await llmCreateTranscription({
+      task: 'speech.stt',
       userId: 'u1',
       audio: { bytes: new Uint8Array([1]), format: 'webm' },
       contentOrigin: 'memory',
@@ -2611,7 +2659,7 @@ describe('llm client: per-person daily AI cap (members)', () => {
     capStore.spent = { mia: 0.5 }
     const fetchMock = ok()
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'mia', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'mia', messages: [{ role: 'user', content: 'hi' }] })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -2619,18 +2667,18 @@ describe('llm client: per-person daily AI cap (members)', () => {
     capStore.spent = { mia: 1.2 }
     const fetchMock = ok()
     vi.stubGlobal('fetch', fetchMock)
-    const err = await llmChatCompletion({ userId: 'mia', messages: [{ role: 'user', content: 'hi' }] }).catch(
+    const err = await llmChatCompletion({ task: 'memory.split_capture', userId: 'mia', messages: [{ role: 'user', content: 'hi' }] }).catch(
       (e: unknown) => e,
     )
     expect(err).toBeInstanceOf(LlmDailyCapError)
     expect((err as Error).message).toBe(
       "You've used today's AI allowance for this company. It resets at midnight UTC.",
     )
-    await expect(llmCreateEmbeddings({ userId: 'mia', input: 'x' })).rejects.toBeInstanceOf(LlmDailyCapError)
+    await expect(llmCreateEmbeddings({ task: 'memory.capture_embedding', userId: 'mia', input: 'x' })).rejects.toBeInstanceOf(LlmDailyCapError)
     await expect(
-      llmCreateTranscription({ userId: 'mia', audio: { bytes: new Uint8Array([1]), format: 'wav' } }),
+      llmCreateTranscription({ task: 'speech.stt', userId: 'mia', audio: { bytes: new Uint8Array([1]), format: 'wav' } }),
     ).rejects.toBeInstanceOf(LlmDailyCapError)
-    await expect(llmCreateSpeech({ userId: 'mia', voice: 'alloy', text: 'hi' })).rejects.toBeInstanceOf(
+    await expect(llmCreateSpeech({ task: 'speech.tts', userId: 'mia', voice: 'alloy', text: 'hi' })).rejects.toBeInstanceOf(
       LlmDailyCapError,
     )
     expect(fetchMock).not.toHaveBeenCalled()
@@ -2641,8 +2689,8 @@ describe('llm client: per-person daily AI cap (members)', () => {
     capStore.spent = { ada: 40, ali: 40 }
     const fetchMock = ok()
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'ada', messages: [{ role: 'user', content: 'hi' }] })
-    await llmChatCompletion({ userId: 'ali', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'ada', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'ali', messages: [{ role: 'user', content: 'hi' }] })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
@@ -2651,7 +2699,7 @@ describe('llm client: per-person daily AI cap (members)', () => {
     capStore.spent = { mia: 40 }
     const fetchMock = ok()
     vi.stubGlobal('fetch', fetchMock)
-    await llmChatCompletion({ userId: 'mia', messages: [{ role: 'user', content: 'hi' }] })
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'mia', messages: [{ role: 'user', content: 'hi' }] })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -2664,7 +2712,7 @@ describe('llm client: per-person daily AI cap (members)', () => {
     const { tenantUserAsyncLocal } = await import('$lib/server/db/tenant-context')
     const fresh = await import('./llm-client')
     const err = await tenantUserAsyncLocal
-      .run('mia', () => fresh.llmChatCompletion({ userId: 'ada', messages: [{ role: 'user', content: 'hi' }] }))
+      .run('mia', () => fresh.llmChatCompletion({ task: 'memory.split_capture', userId: 'ada', messages: [{ role: 'user', content: 'hi' }] }))
       .catch((e: unknown) => e)
     expect((err as Error).name).toBe('LlmDailyCapError')
     expect(fetchMock).not.toHaveBeenCalled()

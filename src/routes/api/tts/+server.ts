@@ -17,7 +17,7 @@ export const POST: RequestHandler = async (event) => {
   if (text.length > 4000) error(400, 'text exceeds 4000 chars')
 
   try {
-    const audio = await synthesizeSpeech({ userId: user.id, text })
+    const audio = await synthesizeSpeech({ userId: user.id, text, task: 'speech.tts' })
     return new Response(audio as unknown as BodyInit, {
       headers: {
         'content-type': 'audio/mpeg',

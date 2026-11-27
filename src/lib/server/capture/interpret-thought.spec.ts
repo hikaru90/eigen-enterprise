@@ -235,8 +235,8 @@ describe('interpretThoughtPreview', () => {
     expect(out.category.key).toBe('task')
     expect(out.deviatesFromVerbatim).toBe(false)
     expect(llmChatCompletionMock).toHaveBeenCalledTimes(2)
-    expect(llmChatCompletionMock.mock.calls[1]?.[0]?.logContext).toBe(
-      'interpret_thought_preview_category_retry',
+    expect(llmChatCompletionMock.mock.calls[1]?.[0]?.task).toBe(
+      'memory.interpret_preview_category_retry',
     )
     const retryUser = (
       llmChatCompletionMock.mock.calls[1][0].messages as Array<{ role: string; content: string }>

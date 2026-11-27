@@ -104,7 +104,7 @@ describe('resolveDeleteTargets', () => {
     ).resolves.toEqual([expect.objectContaining({ thoughtId: 't-salmon' })])
 
     expect(llmChatCompletionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ logContext: 'delete_target_resolver' }),
+      expect.objectContaining({ task: 'brain.delete_target' }),
     )
   })
 
