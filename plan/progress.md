@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-27 — Settings → AI: the Models section only on the company's own key (owner: "the models section has to be deleted … its only relevant on byok")
+
+- **Shipped (`15361d61`, merge `1d605416`):** with "Use eigenInference" on, Settings → AI shows no Models section (role dropdowns + fixed search model). eigenInference always runs on the pool's picks for its provider (Opper: DeepSeek V4.1 Flash, Voxtral, clef-flash); a company's stored picks apply only to its own key (`slots.ts` resolveSlot, `company-ai-settings.ts` view). Picks are checked against OpenRouter's pool (the bring-your-own-key pool), whatever eigenInference runs on.
+- **Announced change:** hosted companies can no longer pick eigenInference's models (they could; a pick Opper didn't serve failed loud). Old picks stay stored and come back if the company switches to its own key. `settings.update` still sets picks (CLI parity), now as bring-your-own-key picks.
+- Tests: slots + company-ai-settings units, AI page component spec (13/13).
+
 ## 2026-11-27 — Faster gates, all merged: per-change test cache + parallel e2e (owner: "stop leaving everything in unfinished branches, merge the things, fix it, add the cache")
 
 - **Merged `305ca3c5`:** `t3/e2e-parallel-workers` + `test-cache` on top of the step cache. Gate on main green twice (`main-ci-8`, `main-ci-9` on `62807883`).
