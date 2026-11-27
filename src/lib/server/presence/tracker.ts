@@ -12,7 +12,15 @@
  *   online   — a tab/device sent an active heartbeat within the window
  *   away     — connected, but every tab is hidden or idle
  *   offline  — no heartbeat within the window
+ *
+ * Where (plan/phase-multiplayer-presence.md): each tab says where it is with
+ * every heartbeat; a person is where their most recently active tab is (else
+ * their most recent tab), nowhere while offline. Kept in memory like the
+ * status. Whether they share it is their stored switch (user_preference.
+ * share_where), told to the tracker at start, on every refresh and on every
+ * change; until it is first told, nobody shares (fails closed).
  */
+import type { WhereReport } from '$lib/presence/where'
 
 /** No heartbeat for this long = offline (hidden tabs are throttled to about one timer a minute). */
 export const OFFLINE_AFTER_MS = 90_000
@@ -34,13 +42,20 @@ export type Presence = {
   doNotDisturb: boolean
   /** The latest heartbeat this process heard (null: none since it started). */
   lastSeenAt: string | null
+  /** Where they are working (unfiltered — Messages filters it per viewer); null while offline. */
+  where: WhereReport | null
+  /** Their "Share where I am" switch (stored; on by default). */
+  shareWhere: boolean
 }
 
-type Client = { at: number; active: boolean }
+type Client = { at: number; active: boolean; where: WhereReport | null }
 type Person = { clients: Map<string, Client>; lastSeenAt: number | null; doNotDisturb: boolean }
 
-const keyOf = (p: Presence) => `${p.status}|${p.doNotDisturb}`
-const OFFLINE_KEY = 'offline|false'
+const whereKey = (w: WhereReport | null) => (w ? JSON.stringify([w.area, w.path, w.item?.kind ?? null, w.item?.id ?? null]) : '')
+const keyOf = (p: Pick<Presence, 'status' | 'doNotDisturb' | 'shareWhere' | 'where'>) =>
+  `${p.status}|${p.doNotDisturb}|${p.shareWhere}|${whereKey(p.where)}`
+/** What subscribers assume of someone they were never told about. */
+const OFFLINE_KEY = keyOf({ status: 'offline', doNotDisturb: false, shareWhere: true, where: null })
 
 export class PresenceTracker {
   readonly #people = new Map<string, Person>()
@@ -48,17 +63,27 @@ export class PresenceTracker {
   /** What subscribers were last told per person (absent = offline, no DND). */
   readonly #told = new Map<string, string>()
   readonly #listeners = new Set<(changed: Presence[]) => void>()
+  /** Who switched "Share where I am" off, as last read from the store; null until first read. */
+  #whereOff: Set<string> | null = null
+  /** Switches set here since (revision, value): a store read started earlier must not undo them. */
+  readonly #whereSet = new Map<string, { on: boolean; revision: number }>()
+  #shareWhereRevision = 0
 
   constructor(private readonly now: () => Date) {}
 
-  heartbeat(userId: string, clientId: string, state: HeartbeatState): void {
+  /** Bumped by every setShareWhere; pass the value read before a store read to setShareWhereOff. */
+  get shareWhereRevision(): number {
+    return this.#shareWhereRevision
+  }
+
+  heartbeat(userId: string, clientId: string, state: HeartbeatState, where: WhereReport | null): void {
     const at = this.now().getTime()
     const person = this.#person(userId)
     person.lastSeenAt = at
     if (state === 'gone') person.clients.delete(clientId)
     else {
       person.clients.delete(clientId) // re-insert: Map order = heartbeat order
-      person.clients.set(clientId, { at, active: state === 'active' })
+      person.clients.set(clientId, { at, active: state === 'active', where })
       while (person.clients.size > MAX_CLIENTS_PER_PERSON) person.clients.delete(person.clients.keys().next().value!)
     }
     this.#announce([userId])
@@ -68,6 +93,26 @@ export class PresenceTracker {
     this.#person(userId).doNotDisturb = on
     this.#announce([userId])
     return this.get(userId)
+  }
+
+  /** The person's own switch (already stored by the caller). */
+  setShareWhere(userId: string, on: boolean): Presence {
+    this.#whereSet.set(userId, { on, revision: ++this.#shareWhereRevision })
+    this.#announce([userId])
+    return this.get(userId)
+  }
+
+  /**
+   * Everyone whose stored switch is off (replaces what it knew; absent =
+   * sharing). `readAt`: shareWhereRevision when the store read began — a
+   * switch set here after that is newer than the read and stays.
+   */
+  setShareWhereOff(userIds: Iterable<string>, readAt = this.#shareWhereRevision): void {
+    const next = new Set(userIds)
+    for (const [id, s] of this.#whereSet) if (s.revision <= readAt) this.#whereSet.delete(id)
+    const touched = [...new Set([...(this.#whereOff ?? []), ...next, ...this.#people.keys(), ...this.#told.keys()])]
+    this.#whereOff = next
+    this.#announce(touched)
   }
 
   /** Everyone in the room of a live call right now (replaces the previous set). */
@@ -83,7 +128,10 @@ export class PresenceTracker {
     const lastSeenAt = person?.lastSeenAt != null ? new Date(person.lastSeenAt).toISOString() : null
     const doNotDisturb = person?.doNotDisturb ?? false
     const status = this.#status(userId, person, doNotDisturb)
-    return { userId, status, doNotDisturb, lastSeenAt }
+    const where = person ? this.#where(person) : null
+    const set = this.#whereSet.get(userId)
+    const shareWhere = set ? set.on : this.#whereOff !== null && !this.#whereOff.has(userId)
+    return { userId, status, doNotDisturb, lastSeenAt, where, shareWhere }
   }
 
   list(userIds: readonly string[]): Presence[] {
@@ -118,6 +166,12 @@ export class PresenceTracker {
     if (person.clients.size === 0) return 'offline'
     if (doNotDisturb) return 'dnd'
     return [...person.clients.values()].some((c) => c.active) ? 'online' : 'away'
+  }
+
+  /** The most recently active tab's place, else the most recent tab's (clients are in heartbeat order; #status pruned the stale). */
+  #where(person: Person): WhereReport | null {
+    const placed = [...person.clients.values()].filter((c) => c.where !== null).reverse()
+    return (placed.find((c) => c.active) ?? placed[0])?.where ?? null
   }
 
   #announce(userIds: readonly string[]): void {

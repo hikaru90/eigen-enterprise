@@ -247,6 +247,20 @@ export async function unreadFor(d: MessagesDeps, userId: string, conversationId:
   return d.store.countUnread(conversationId, userId, await d.store.lastReadAt(conversationId, userId))
 }
 
+/** A conversation's name as `userId` sees it: the channel's name, or the DM's other participants. */
+export async function conversationTitle(
+  d: MessagesDeps,
+  userId: string,
+  c: Conversation,
+  people?: Map<string, Person>,
+  memberIds?: string[],
+): Promise<string> {
+  if (c.kind !== 'dm') return c.name ?? ''
+  const map = people ?? (await peopleById(d))
+  const others = (memberIds ?? (await d.store.memberIds(c.id))).filter((u) => u !== userId)
+  return others.length === 0 ? 'Just you' : others.map((u) => displayName(map.get(u))).join(', ')
+}
+
 export async function summarize(
   d: MessagesDeps,
   userId: string,
@@ -254,16 +268,10 @@ export async function summarize(
   people?: Map<string, Person>,
 ): Promise<ConversationSummary> {
   const memberIds = c.kind === 'dm' ? await d.store.memberIds(c.id) : []
-  let title = c.name ?? ''
-  if (c.kind === 'dm') {
-    const map = people ?? (await peopleById(d))
-    const others = memberIds.filter((u) => u !== userId)
-    title = others.length === 0 ? 'Just you' : others.map((u) => displayName(map.get(u))).join(', ')
-  }
   return {
     id: c.id,
     kind: c.kind,
-    title,
+    title: await conversationTitle(d, userId, c, people, memberIds),
     topic: c.topic,
     private: c.private,
     unread: await unreadFor(d, userId, c.id),

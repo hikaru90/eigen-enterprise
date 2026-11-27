@@ -4,7 +4,7 @@ import { reportPresence, setDoNotDisturb } from '../../../../../modules/messages
 
 const tracker = async () => (await import('$lib/server/presence')).presence()
 
-/** Heartbeat { clientId, state: active | idle | gone } from one of the person's tabs; answers their presence. */
+/** Heartbeat { clientId, state: active | idle | gone, where } from one of the person's tabs; answers their presence. */
 export const POST: RequestHandler = ({ locals, request }) =>
   messagesRoute(locals.user, 'Sending a presence heartbeat (/api/messages)', async (userId, d) => ({
     presence: await reportPresence(d, await tracker(), userId, await readJson(request)),

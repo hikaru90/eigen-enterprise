@@ -482,9 +482,11 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'messages.members',
   'messages.open_dm',
   'messages.post',
+  'messages.presence',
   'messages.react',
   'messages.read',
   'messages.set_do_not_disturb',
+  'messages.set_share_where',
   'messages.thread',
   'messages.upload_attachments',
   // U2: the company's own modules — what they are, where they stand, their code (read).

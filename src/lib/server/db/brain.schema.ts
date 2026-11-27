@@ -620,6 +620,8 @@ export const userPreference = pgTable(
     displayName: text('display_name'),
     /** Dashboard tiles this person closed with their × (src/lib/dashboard/tiles.ts). Empty = all shown. */
     dashboardHiddenTiles: jsonb('dashboard_hidden_tiles').$type<string[]>().notNull().default([]),
+    /** "Share where I am" (plan/phase-multiplayer-presence.md): off = others see the status, never the place. */
+    shareWhere: boolean('share_where').notNull().default(true),
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .$onUpdate(() => new Date())

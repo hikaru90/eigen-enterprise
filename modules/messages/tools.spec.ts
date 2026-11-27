@@ -68,16 +68,21 @@ type Msg = { id: string; body: string; authorId: string; reactions: Array<{ emoj
 async function writeSetup() {
   const f = depthFixture()
   const tracker = new PresenceTracker(() => new Date(Date.UTC(2026, 10, 12, 9, 0, 0)))
+  tracker.setShareWhereOff([])
   const pushed: string[] = []
+  const stored = new Map<string, boolean>()
   const tools = Object.fromEntries(
     createMessagesTools({
       deps: async () => f.deps,
       presence: async () => tracker,
+      shareWhere: async () => ({ set: async (userId, on) => void stored.set(userId, on) }),
+      whereDrive: async () => ({ itemName: async (viewerId, _kind, id) => (id === 'f1' && viewerId === 'owner' ? 'Budget.xlsx' : null) }),
+      coworkerPresence: async () => ({ statuses: async () => new Map([['cw-mkt', 'available' as const]]), subscribe: () => () => {} }),
       push: (_d, _c, m) => pushed.push(m.id),
     }).map((t) => [t.name, t]),
   )
   const run = (name: string, who: string, input: unknown) => tools[name].handler(ctx(who, 'human'), input)
-  return { ...f, tools, tracker, pushed, run }
+  return { ...f, tools, tracker, pushed, run, stored }
 }
 
 describe('messages.* write tools (the person acts with their own access)', () => {
@@ -150,6 +155,32 @@ describe('messages.* write tools (the person acts with their own access)', () =>
     expect(await run('messages.set_do_not_disturb', 'bea', { do_not_disturb: true })).toMatchObject({ presence: { doNotDisturb: true } })
     expect(await run('messages.set_do_not_disturb', 'bea', { do_not_disturb: false })).toMatchObject({ presence: { doNotDisturb: false } })
   })
+
+  it('"Share where I am" off and on: stored, and the live presence follows', async () => {
+    const { run, stored, tracker } = await writeSetup()
+    expect(await run('messages.set_share_where', 'bea', { share_where: false })).toMatchObject({ presence: { userId: 'bea', shareWhere: false } })
+    expect(stored.get('bea')).toBe(false)
+    expect(tracker.get('bea').shareWhere).toBe(false)
+    expect(await run('messages.set_share_where', 'bea', { share_where: true })).toMatchObject({ presence: { shareWhere: true } })
+  })
+
+  it('messages.presence: everyone’s status and where, as the caller may see it', async () => {
+    const { run, tracker } = await writeSetup()
+    tracker.heartbeat('carl', 'carl-tab-0001', 'active', { area: 'drive', path: '/drive/file/f1', item: { kind: 'drive_file', id: 'f1' } })
+    const forBea = (await run('messages.presence', 'bea', {})) as { people: Array<{ userId: string; status: string; where: unknown }> }
+    expect(forBea.people.find((p) => p.userId === 'carl')).toMatchObject({ status: 'online', where: { area: 'drive', path: null, item: null } })
+    const forOwner = (await run('messages.presence', 'owner', { user_id: 'carl' })) as { people: Array<{ userId: string; where: unknown }> }
+    expect(forOwner.people).toEqual([
+      expect.objectContaining({ userId: 'carl', where: { area: 'drive', path: '/drive/file/f1', item: { kind: 'drive_file', id: 'f1', title: 'Budget.xlsx' } } }),
+    ])
+    await expect(run('messages.presence', 'bea', { user_id: 'nobody' })).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('messages.presence is a read a person makes (the agent principal does not track people)', () => {
+    const t = createMessagesTools().find((x) => x.name === 'messages.presence')!
+    expect(t.auditClass).toBe('read')
+    expect(t.permission.roles).not.toContain('agent')
+  })
 })
 
 describe('messages.* for an AI co-worker (plan/phase-ai-coworkers.md C3: a member with its own access)', () => {
@@ -191,6 +222,8 @@ describe('messages.* for an AI co-worker (plan/phase-ai-coworkers.md C3: a membe
     await expect(as('messages.edit', { message_id: root.id, body: 'x' })).rejects.toMatchObject({ code: 'forbidden' })
     await expect(as('messages.delete', { message_id: root.id })).rejects.toMatchObject({ code: 'forbidden' })
     await expect(as('messages.set_do_not_disturb', { do_not_disturb: true })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(as('messages.set_share_where', { share_where: false })).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(as('messages.presence', {})).rejects.toMatchObject({ code: 'forbidden' })
   })
 
   it('posts and replies in a thread as itself, where it may post; push fan-out as for a person', async () => {

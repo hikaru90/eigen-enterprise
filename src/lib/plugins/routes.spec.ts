@@ -133,6 +133,7 @@ describe('plugin route map', () => {
     ['/api/drive/upload', 'drive', 'api'],
     ['/messages', 'messages', 'page'],
     ['/api/messages/stream', 'messages', 'api'],
+    ['/api/messages/presence/stream', 'messages', 'api'],
     ['/calls/abc', 'calls', 'page'],
     ['/api/calls/abc/token', 'calls', 'api'],
     ['/m/email/domains', 'email', 'page'],

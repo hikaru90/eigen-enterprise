@@ -1,6 +1,6 @@
 import type { PresenceFrame, PresenceStream } from './presence'
-import type { TypingFrame, TypingStream } from './typing'
 import type { MessageEvent } from './store'
+import type { TypingFrame, TypingStream } from './typing'
 import {
   canUse,
   messageDtos,
@@ -130,6 +130,9 @@ export function encodePresenceFrame(f: PresenceFrame): string {
   return `event: presence\ndata: ${JSON.stringify(f)}\n\n`
 }
 
+/** Said on a feed whose presence could not start (never a silent empty feed). */
+const PRESENCE_ERROR = `event: presence-error\ndata: ${JSON.stringify({ error: 'Status is unavailable right now; reload to try again.' })}\n\n`
+
 /** "Is typing…" is not in the event log either. */
 export function encodeTypingFrame(f: TypingFrame): string {
   return `event: typing\ndata: ${JSON.stringify(f)}\n\n`
@@ -189,7 +192,7 @@ export function messagesStreamResponse(
           else stopPresence = stop
         } catch (err) {
           console.error('[messages] stream presence failed', { userId, err })
-          write(`event: presence-error\ndata: ${JSON.stringify({ error: 'Status is unavailable right now; reload to try again.' })}\n\n`)
+          write(PRESENCE_ERROR)
         }
       }
       if (typing) {
@@ -218,6 +221,55 @@ export function messagesStreamResponse(
     },
   })
 
+  return new Response(body, {
+    headers: {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache, no-transform',
+      'x-accel-buffering': 'no',
+    },
+  })
+}
+
+/**
+ * The presence-only feed (GET /api/messages/presence/stream,
+ * plan/phase-multiplayer-presence.md): what every page's shell opens to show
+ * where everyone is. `event: presence` frames exactly as on the Messages
+ * feed — the company snapshot on every (re)connect, then changes — with
+ * keepalive comments; no message events, so no ids and no catch-up.
+ */
+export function presenceStreamResponse(presence: PresenceStream, userId: string, signal: AbortSignal): Response {
+  const encoder = new TextEncoder()
+  let closed = false
+  let stopPresence = () => {}
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  const close = () => {
+    if (closed) return
+    closed = true
+    stopPresence()
+    if (heartbeat) clearInterval(heartbeat)
+  }
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const write = (text: string) => {
+        if (!closed) controller.enqueue(encoder.encode(text))
+      }
+      if (signal.aborted) return close()
+      signal.addEventListener('abort', close, { once: true })
+      write(': connected\n\n')
+      try {
+        const stop = await presence.start((f) => write(encodePresenceFrame(f)))
+        if (closed) stop()
+        else stopPresence = stop
+      } catch (err) {
+        console.error('[messages] presence feed failed', { userId, err })
+        write(PRESENCE_ERROR)
+      }
+      heartbeat = setInterval(() => write(': keepalive\n\n'), HEARTBEAT_MS)
+    },
+    cancel() {
+      close()
+    },
+  })
   return new Response(body, {
     headers: {
       'content-type': 'text/event-stream',

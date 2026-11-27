@@ -1,3 +1,4 @@
+import type { WhereDrivePort } from './presence'
 import type { AttachmentPort, DriveFileInfo, MessageDto, MessagesAudit, MessagesDeps } from './service'
 import type { Conversation, Directory } from './store'
 import { liveAccessPort } from './access-port'
@@ -89,6 +90,33 @@ async function liveAttachmentPort(): Promise<AttachmentPort> {
       }
     },
   }
+}
+
+/**
+ * Drive items for presence (plan/phase-multiplayer-presence.md): may this
+ * viewer open the file/folder someone has open, and its name — Drive's own
+ * access check as the viewer, through its public seam. Runs outside any
+ * request's DB scope: a feed's lookups happen long after (or inside another
+ * person's) request, whose reserved connection is gone by then.
+ */
+let whereDrive: WhereDrivePort | null = null
+export async function liveWhereDrive(): Promise<WhereDrivePort> {
+  if (whereDrive) return whereDrive
+  const [{ driveService, DriveError }, { appDbAsyncLocal }] = await Promise.all([import('$lib/server/drive'), import('$lib/server/db')])
+  const drive = await driveService()
+  whereDrive = {
+    itemName: (viewerId, kind, id) =>
+      appDbAsyncLocal.exit(async () => {
+        const actor = { kind: 'user', userId: viewerId } as const
+        try {
+          return kind === 'drive_file' ? (await drive.fileInfo(actor, id)).file.name : (await drive.folderInfo(actor, id)).name
+        } catch (err) {
+          if (err instanceof DriveError && (err.code === 'not_found' || err.code === 'forbidden')) return null
+          throw err
+        }
+      }),
+  }
+  return whereDrive
 }
 
 export function messagesDeps(): Promise<MessagesDeps> {
