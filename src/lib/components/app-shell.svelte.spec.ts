@@ -522,6 +522,7 @@ describe('where everyone is working (plan/phase-multiplayer-presence.md)', () =>
     const company = new CompanyPresence({
       me: 'alex',
       open: () => new Source(),
+      win: () => new EventTarget(),
       fetch: async () => Response.json(directory),
       areaName: (id) => nav.items.find((i) => i.id === id)?.name ?? (id === 'dashboard' ? 'Dashboard' : null),
     })
@@ -622,6 +623,7 @@ describe('where everyone is working (plan/phase-multiplayer-presence.md)', () =>
     const broken = new CompanyPresence({
       me: 'alex',
       open: () => new Source(),
+      win: () => new EventTarget(),
       fetch: async () => Response.json({ error: 'messages store down' }, { status: 500 }),
       areaName: () => null,
     })
