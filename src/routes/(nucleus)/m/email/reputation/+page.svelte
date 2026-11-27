@@ -193,7 +193,7 @@
                   <span class="min-w-0 flex-1 truncate text-sm font-medium">
                     {#if s.flowId}<a
                         class="underline underline-offset-4"
-                        href={resolve('/m/email/marketing/flows/[id]', { id: s.flowId })}
+                        href={resolve(`/m/email/marketing/flows/${s.flowId}`)}
                         >{s.label}</a
                       >{:else if s.apiKey}<a
                         class="underline underline-offset-4"
