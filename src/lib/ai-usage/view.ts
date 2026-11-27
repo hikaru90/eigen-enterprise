@@ -7,12 +7,18 @@ import { formatAiUsd } from './usage'
 /** Pure view state of Settings → AI usage: the period switch and the daily bars. */
 
 export const AI_USAGE_PERIODS = [
-  { id: '7', label: '7 days', days: 7 },
-  { id: '30', label: '30 days', days: 30 },
-  { id: '90', label: '90 days', days: 90 },
-  { id: 'all', label: 'All', days: null },
+  { id: '7', label: 'Last 7 days', days: 7 },
+  { id: '30', label: 'Last 30 days', days: 30 },
+  { id: '90', label: 'Last 90 days', days: 90 },
+  { id: 'all', label: 'All time', days: null },
 ] as const
 export type AiUsagePeriod = (typeof AI_USAGE_PERIODS)[number]['id']
+
+/** The pill's text: the period it spans (Contribute f3d03bd0), and on the hosted plan that it is the invoiced window (Contribute cfc2df03). */
+export function periodLabel(period: AiUsagePeriod, billing: AiBilling | null): string {
+  const label = AI_USAGE_PERIODS.find((p) => p.id === period)!.label
+  return billing === null ? label : `${label} (invoiced)`
+}
 
 /** The period the page's address names (30 days when it names none); null: not a period. */
 export function periodOf(raw: string | null): AiUsagePeriod | null {

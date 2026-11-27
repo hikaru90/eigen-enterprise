@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { foldAiUsage, type AiUsageRow } from './overview'
-import { dailyBars, formatShown, periodOf, periodRange, providerUsdOf, shownAmount, usedProducts } from './view'
+import { AI_USAGE_PERIODS, dailyBars, formatShown, periodLabel, periodOf, periodRange, providerUsdOf, shownAmount, usedProducts } from './view'
 
 const row = (day: string, task: string | null, costUsd: number, eigenInferenceUsd = 0): AiUsageRow => ({
   userId: 'u', name: 'Mia', kind: 'person', task, model: 'm', day, costUsd, calls: 1, promptTokens: 0, completionTokens: 0, cachedTokens: 0, eigenInferenceUsd,
@@ -13,6 +13,17 @@ describe('AI usage periods', () => {
     expect(periodOf('7')).toBe('7')
     expect(periodOf('all')).toBe('all')
     expect(periodOf('12')).toBeNull()
+  })
+
+  it('the pills say what they span (Contribute f3d03bd0): last N days, all time', () => {
+    expect(AI_USAGE_PERIODS.map((p) => p.label)).toEqual(['Last 7 days', 'Last 30 days', 'Last 90 days', 'All time'])
+  })
+
+  it('on the hosted plan the pill names the period as invoiced (Contribute cfc2df03); self-hosted stays plain', () => {
+    const billing = { currency: 'EUR' as const, markup: 1.2, usdToEur: 0.95, rateDay: '2026-11-27' }
+    expect(periodLabel('7', null)).toBe('Last 7 days')
+    expect(periodLabel('7', billing)).toBe('Last 7 days (invoiced)')
+    expect(periodLabel('all', billing)).toBe('All time (invoiced)')
   })
 
   it('counts whole UTC days, today included', () => {

@@ -40,8 +40,30 @@ describe('ai-usage-overview.svelte', () => {
     await expect.element(page.getByTestId('ai-usage-calls')).toHaveTextContent('5')
     await expect.element(page.getByTestId('ai-usage-tokens')).toHaveTextContent('2.4k tokens')
     expect(page.getByTestId('ai-usage-day').elements()).toHaveLength(3)
-    await expect.element(page.getByRole('link', { name: '7 days' })).toHaveAttribute('aria-current', 'page')
-    await expect.element(page.getByRole('link', { name: '90 days' })).toHaveAttribute('href', '/settings/ai-usage?period=90')
+    await expect.element(page.getByRole('link', { name: 'Last 7 days' })).toHaveAttribute('aria-current', 'page')
+    await expect.element(page.getByRole('link', { name: 'Last 90 days' })).toHaveAttribute('href', '/settings/ai-usage?period=90')
+  })
+
+  it('the period pills say what they span (Contribute f3d03bd0) and, on the hosted plan, that it is invoiced (Contribute cfc2df03)', async () => {
+    render(AiUsageOverview, { overview, period: '30' })
+    const nav = page.getByRole('navigation', { name: 'Period' })
+    await expect.element(nav.getByRole('link', { name: 'Last 30 days', exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect.element(nav.getByRole('link', { name: 'All time' })).toBeVisible()
+    const billing = { currency: 'EUR' as const, markup: 1.2, usdToEur: 0.95, rateDay: '2026-11-27' }
+    const hosted = foldAiUsage([], { from: '2026-11-25', to: '2026-11-27' }, billing)
+    render(AiUsageOverview, { overview: hosted, period: '7' })
+    const hostedNav = page.getByRole('navigation', { name: 'Period' })
+    await expect.element(hostedNav.getByRole('link', { name: 'Last 7 days (invoiced)' })).toHaveAttribute('aria-current', 'page')
+    await expect.element(hostedNav.getByRole('link', { name: 'All time (invoiced)' })).toBeVisible()
+  })
+
+  it('the active period pill is the royal blue, the inactive ones muted (Contribute 5e9d1936)', async () => {
+    render(AiUsageOverview, { overview, period: '7' })
+    const nav = page.getByRole('navigation', { name: 'Period' })
+    const active = nav.getByRole('link', { name: 'Last 7 days' })
+    await expect.element(active).toHaveClass('bg-(--tone-blue)')
+    const inactive = nav.getByRole('link', { name: 'Last 30 days' })
+    await expect.element(inactive).not.toHaveClass('bg-(--tone-blue)')
   })
 
   it('lists every product, also at zero, and opens a product into its tasks', async () => {

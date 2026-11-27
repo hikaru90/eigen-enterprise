@@ -3,7 +3,7 @@
   import { billingLine } from '$lib/ai-usage/billing'
   import type { AiAmounts, AiUsageOverview, AiUsageProductId } from '$lib/ai-usage/overview'
   import { formatAiUsd, formatTokens } from '$lib/ai-usage/usage'
-  import { AI_USAGE_PERIODS, dailyBars, formatShown, providerUsdOf, shownAmount, usedProducts, type AiUsagePeriod } from '$lib/ai-usage/view'
+  import { AI_USAGE_PERIODS, dailyBars, formatShown, periodLabel, providerUsdOf, shownAmount, usedProducts, type AiUsagePeriod } from '$lib/ai-usage/view'
   import SectionHeader from '$lib/components/page/section-header.svelte'
 
   /**
@@ -84,9 +84,9 @@
           <a
             href={resolve(`/settings/ai-usage?period=${option.id}`)}
             aria-current={period === option.id ? 'page' : undefined}
-            class={['rounded-full px-3 py-1 text-sm', period === option.id ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted']}
+            class={['rounded-full px-3 py-1 text-sm', period === option.id ? 'bg-(--tone-blue) text-white' : 'text-muted-foreground hover:bg-muted']}
           >
-            {option.label}
+            {periodLabel(option.id, billing)}
           </a>
         {/each}
       </nav>
