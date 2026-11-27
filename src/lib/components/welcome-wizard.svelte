@@ -25,6 +25,8 @@
     needsMail = false,
     domainSetup = null,
     domainPollMs = 5000,
+    bootMs = 1600,
+    helloMs = 2200,
     byokUiEnabled = true,
     displayName = null,
     returnedFromProvider = false,
@@ -46,6 +48,10 @@
     } | null
     /** How often the bought domain's progress is read (tests shorten it). */
     domainPollMs?: number
+    /** How long the boot light holds before the greeting (tests shorten it). */
+    bootMs?: number
+    /** How long the greeting holds before the tour goes on (tests shorten it). */
+    helloMs?: number
     byokUiEnabled?: boolean
     displayName?: string | null
     /** Back from the provider's sign-in redirect: the tour already ran up to the mind. */
@@ -181,7 +187,7 @@
     if (next === 'domain' && canBuy && !bought) void resumePurchase()
     // The opening breathes on its own; the timer starts when the act appears,
     // so it can never fire early.
-    if (next === 'hello') later(() => act === 'hello' && enterFromHello(), 2200)
+    if (next === 'hello') later(() => act === 'hello' && enterFromHello(), helloMs)
     if (play && isSoundEnabled()) playActPulse()
     // The voice speaks the act as it appears (the Her layer); sound and voice
     // are independent toggles.
@@ -452,7 +458,7 @@
     // The opening breathes on its own — every callback is guarded to its own act.
     later(() => {
       if (act === 'boot') advanceTo('hello')
-    }, 1600)
+    }, bootMs)
 
     return () => {
       for (const t of timers) clearTimeout(t)
