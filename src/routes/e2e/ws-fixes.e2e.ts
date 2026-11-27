@@ -265,7 +265,14 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   await b.getByTestId('shell-nav-messages').click()
   await expect(b).toHaveURL(/\/messages/)
   expect(await rawText(b, planId)).toContain('typed and left')
-  // A brand-new document, typed into and left right away (the lock is still being taken).
+  // A brand-new document, typed into and left right away, while the page is still asking who
+  // edits it (the open-time lock check answers late, as on a slow connection; the release gate
+  // lost these keystrokes when it raced, 2026-11-27).
+  const lockCheck = '**/api/drive/files/*/lock'
+  await b.route(lockCheck, async (route) => {
+    if (route.request().method() === 'GET') await new Promise((r) => setTimeout(r, 800))
+    await route.continue()
+  })
   await b.goto('/drive')
   await newItem(b, 'document', `quick-${suffix}`)
   await expect(b).toHaveURL(/\/drive\/file\//)
@@ -274,6 +281,8 @@ test('workspace fixes: name, invite landing, sidebar, read-first editing, paths,
   await b.keyboard.type('Remember the milk')
   await b.getByTestId('shell-nav-drive').click()
   await expect(b).toHaveURL(/\/drive$/)
+  // A held-back lock check can still be in flight as the page leaves; it is not under test.
+  await b.unroute(lockCheck, { behavior: 'ignoreErrors' })
   expect(await rawText(b, quickId)).toContain('Remember the milk')
   // 6. The list shows the saved size, not "0 B".
   const quickRow = b.locator('tr', { hasText: `quick-${suffix}.md` })

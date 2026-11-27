@@ -87,7 +87,7 @@
   let lastSeen = untrack(() => content)
   /** The text as last loaded from / saved to the server (what a read view shows). */
   let base = untrack(() => content)
-  /** Keystrokes made while the lock is being taken. */
+  /** Keystrokes made while the page is still asking who edits (opening) or while the lock is being taken. */
   let early: string | null = null
   let idleTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -114,7 +114,7 @@
 
   onMount(() => {
     revs = revisions
-    void openForReading()
+    opening = openForReading().finally(() => (opening = null))
     const beat = setInterval(() => void heartbeat(), heartbeatMs)
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (autosave.unsaved() === null || mode.kind !== 'editing') return
@@ -156,7 +156,7 @@
   beforeNavigate((nav) => {
     if (leaving) return
     catchUp()
-    const startingUp = mode.kind === 'starting'
+    const startingUp = mode.kind === 'starting' || (mode.kind === 'opening' && early !== null)
     if (!startingUp && mode.kind !== 'editing') return
     if (!startingUp && autosave.unsaved() === null && save.status !== 'saving') return
     if (save.status === 'error') {
@@ -175,7 +175,8 @@
     }
     nav.cancel()
     leaving = true
-    void (starting ?? Promise.resolve())
+    void (opening ?? Promise.resolve())
+      .then(() => starting ?? Promise.resolve())
       .then(() => autosave.flush())
       .then(async () => {
         try {
@@ -194,19 +195,28 @@
       })
   })
 
-  /** On open: read-only while someone else edits, else the read view (editing starts on the first change). */
+  /** The open-time lock check while it runs (navigation waits for it, then for the lock and the save). */
+  let opening: Promise<void> | null = null
+  /**
+   * On open: read-only while someone else edits, else the read view (editing starts on the first change).
+   * The editor takes keystrokes while this check runs (a brand-new document is typed into at once);
+   * they are held in `early` and start editing as soon as the answer is in. If someone else holds the
+   * lock, taking it fails and the typed text is kept as a draft to copy (takeLock).
+   */
   async function openForReading() {
     lockError = null
     try {
       const lock = await driveApi.lockStatus(fileId)
       if (lock.state === 'locked' && lock.holder.sessionId !== session) {
         mode = { kind: 'watching', holder: lock.holder }
-        editor?.setEditable(false)
+        if (early === null) editor?.setEditable(false)
       } else {
         mode = { kind: 'reading' }
         editor?.setEditable(true)
       }
+      if (early !== null) void startEditing(false)
     } catch (err) {
+      editor?.setEditable(false)
       lockError = driveShownError(err)
     }
   }
@@ -371,7 +381,7 @@
     if (mode.kind === 'editing') {
       autosave.change(text)
       touchIdle()
-    } else if (mode.kind === 'reading' || mode.kind === 'starting') {
+    } else if (mode.kind === 'opening' || mode.kind === 'reading' || mode.kind === 'starting') {
       early = text
       if (mode.kind === 'reading') void startEditing(false)
     }
@@ -516,9 +526,9 @@
         {/if}
       </div>
       {#if kind === 'markdown'}
-        <MarkdownEditor bind:this={editor} {content} editable={false} {onchange} />
+        <MarkdownEditor bind:this={editor} {content} editable={true} {onchange} />
       {:else}
-        <CsvEditor bind:this={editor} {content} editable={false} {onchange} />
+        <CsvEditor bind:this={editor} {content} editable={true} {onchange} />
       {/if}
     </div>
   </div>

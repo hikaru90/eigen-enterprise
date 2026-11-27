@@ -28,6 +28,12 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - The release gate (`tag-gate.sh`) has not yet run end-to-end on main; e2e was proven on the branch.
   - Not pushed.
 
+## 2026-11-27 — Drive: keystrokes typed while a document is still opening are kept (v0.5.46 release gate failed on it)
+
+- **Found:** `ws-fixes.e2e.ts` ("a brand-new document, typed into and left right away") lost "Remember the milk" in the v0.5.46 gate. The editor stayed read-only until the open-time lock check answered (mode `opening`), and `onchange` ignored that mode, so what someone typed in that moment vanished (on a slow connection too, not only in the test).
+- **Fixed (`src/lib/components/drive/doc-editor.svelte`):** the editor takes keystrokes from the start. Text typed while opening is held like text typed while the lock is being taken, and editing starts as soon as the check answers. If someone else holds the lock, the existing lost-draft flow keeps the text to copy. In-app navigation waits for the check, the lock, then the save. If the check fails, the editor goes read-only and the error is shown, as before.
+- **Test:** the e2e step now holds the GET lock check back 800 ms, so it fails without the fix every time (it used to depend on timing).
+
 ## 2026-11-27 — Brand URL capture on x86_64: chromium gets the pkey syscalls back (bug: "/api/brand/extract/start failed (500): browser.newPage: Target page, context or browser has been closed" on ee-one)
 
 - **Found (ee-one kernel log, 15:25:42Z):** seccomp killed chrome-headless-shell (`sig=31`, `arch=c000003e`, `syscall=330` = `pkey_alloc`). V8 allocates memory protection keys on x86_64, and systemd's `@pkey` set is not in `@system-service`. The 11-23 allow list (`ef710636`) was found on the arm64 box, where V8 never calls them, so every x64 install failed URL capture.
