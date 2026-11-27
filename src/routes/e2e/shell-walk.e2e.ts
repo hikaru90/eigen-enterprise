@@ -117,6 +117,7 @@ test('every navigation entry and settings section renders inside the one shell',
   const sections: Array<[string, RegExp, string]> = [
     ['members', /\/settings\/members$/, 'Members & invites'],
     ['llm', /\/settings\/llm$/, 'AI provider'],
+    ['ai-usage', /\/settings\/ai-usage$/, 'AI usage'],
     ['passkeys', /\/settings\/passkeys$/, 'Passkeys & sessions'],
     ['api-keys', /\/settings\/api-keys$/, 'API keys'],
     ['approvals', /\/settings\/approvals$/, 'Approval mode'],

@@ -27,6 +27,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   // AI co-workers: create from a template, model, lens, caps, on/off — owner and admins.
   { id: 'coworkers', name: 'Co-workers', href: '/settings/coworkers' },
   { id: 'llm', name: 'AI provider', href: '/settings/llm' },
+  // Where the company's AI money goes: by product, person and co-worker, model — owner and admins.
+  { id: 'ai-usage', name: 'AI usage', href: '/settings/ai-usage' },
   { id: 'passkeys', name: 'Passkeys & sessions', href: '/settings/passkeys' },
   { id: 'api-keys', name: 'API keys', href: '/settings/api-keys' },
   { id: 'approvals', name: 'Approval mode', href: '/settings/approvals' },

@@ -19,6 +19,7 @@ describe('settings sub-navigation', () => {
       'Org chart',
       'Co-workers',
       'AI provider',
+      'AI usage',
       'Passkeys & sessions',
       'API keys',
       'Approval mode',
