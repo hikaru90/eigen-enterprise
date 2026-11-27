@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { buildDocx, p, r, sectPr } from '../../lib/office/docx/test-utils/builder'
 import { makePdf } from '../../lib/office/pdf/fixtures'

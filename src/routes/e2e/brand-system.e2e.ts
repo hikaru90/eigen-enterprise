@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { registerUser } from './test-helpers'
 

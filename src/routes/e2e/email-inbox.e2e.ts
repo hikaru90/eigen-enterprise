@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './e2e-test'
 import { registerUser, waitForHydration } from './test-helpers'
 
 /**

@@ -26,8 +26,16 @@
   )
 
   let copied = $state(false)
+  let copyError = $state<string | null>(null)
   async function copyInvite(url: string) {
-    await navigator.clipboard.writeText(url)
+    copyError = null
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch (err) {
+      // The browser refused (no permission, the tab not focused): say so, the link is in the field.
+      copyError = `The link could not be copied (${err instanceof Error ? err.message : String(err)}). Select it in the field and copy it.`
+      return
+    }
     copied = true
     setTimeout(() => (copied = false), 2000)
   }
@@ -194,6 +202,9 @@
             data-testid="invite-link-copy">{copied ? 'Copied' : 'Copy link'}</button
           >
         </div>
+        {#if copyError}
+          <p class="mt-1 text-xs text-destructive" role="alert" data-testid="invite-link-copy-error">{copyError}</p>
+        {/if}
       </div>
     {:else if feedback('invite')?.error}
       {@const f = feedback('invite')}

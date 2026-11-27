@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './e2e-test'
 import { computeSpendTrend } from '$lib/e2e/graph-scale-spend-trend'
 import {
   buildSpendPicnicProbeTexts,

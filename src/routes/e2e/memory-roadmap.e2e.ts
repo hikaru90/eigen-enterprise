@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { registerUser, waitForHydration } from './test-helpers'
 

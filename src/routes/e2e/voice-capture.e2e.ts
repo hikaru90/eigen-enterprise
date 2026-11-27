@@ -1,4 +1,4 @@
-import { test } from '@playwright/test'
+import { test } from './e2e-test'
 import { completeOnboardingOverlay } from './release-helpers'
 import { registerUser } from './test-helpers'
 import { assertVoiceTranscribeApi } from './voice-capture-helpers'

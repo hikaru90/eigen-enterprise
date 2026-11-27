@@ -26,6 +26,9 @@ export default mergeConfig(
         '**/longmemeval-scoring.spec.ts',
       ],
       globalTeardown: ['./vitest.global-teardown.ts'],
+      // Test cache: when the gate records (scripts/test-cache/README.md), note what each spec
+      // reads, lists or runs beyond its imports.
+      setupFiles: process.env.EE_TEST_DEPS_DIR ? ['./scripts/test-cache/vitest-record.ts'] : [],
     },
   }),
 )

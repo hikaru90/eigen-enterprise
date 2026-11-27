@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { HUB_CONTRIBUTION_KEYS, HUB_PATHS, hubContributionV1 } from '../../../modules/contribute/share/contract'
 import { registerUser } from './test-helpers'

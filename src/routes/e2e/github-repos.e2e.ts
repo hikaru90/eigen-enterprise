@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { MOCK_GITHUB_LOGIN, MOCK_GITHUB_TOKEN } from '../../../scripts/mock-github-core'
 import { completeProfileViaApi, gotoHydrated, profileNames, registerUser } from './test-helpers'

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './e2e-test'
 import { captureThought, registerUser } from './test-helpers'
 
 test.describe('Tenant isolation (AC-018)', () => {

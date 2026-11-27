@@ -11,6 +11,9 @@ import { assertVoiceTranscribeApi } from './voice-capture-helpers'
 
 // Playwright workers may not inherit .env from the parent shell; load explicitly for preflight.
 dotenv.config({ path: path.resolve(process.cwd(), '.env'), quiet: true, override: true })
+// ...but .env must not move a worker off its shard (playwright.config.ts): its database,
+// mock ports and dirs win over .env, or this worker's later specs would read the shared DB.
+Object.assign(process.env, JSON.parse(process.env.E2E_SHARD_ENV ?? '{}') as Record<string, string>)
 
 export { registerUser, loginUser, TEST_PASSWORD }
 

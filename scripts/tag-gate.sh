@@ -40,7 +40,9 @@ echo "tag-gate: upgrade rehearsal on $head …"
 "$gate_step" release upgrade-rehearsal --cache --cache-extra "$release_tags" -- node scripts/upgrade-rehearsal.mjs
 echo "tag-gate: e2e on $head …"
 # e2e.sh times its own phases; --outer only adds a row when the whole suite is a cache hit.
-EE_GATE=release "$gate_step" release e2e --cache --outer -- npm run test:e2e
+# On a miss the test cache (scripts/test-cache/README.md) runs only the e2e files whose recorded
+# code changed since the last green release gate; EE_GATE_FULL=1 runs all of them.
+EE_GATE=release "$gate_step" release e2e --cache --outer -- node scripts/test-cache/e2e.mjs
 
 if [ "$(git rev-parse HEAD)" != "$head" ]; then
   echo "tag-gate: HEAD moved while the gate ran ($head → $(git rev-parse HEAD)); not stamping. Run it again." >&2

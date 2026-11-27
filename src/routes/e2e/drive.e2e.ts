@@ -1,5 +1,5 @@
 import { deflateSync } from 'node:zlib'
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { completeProfileViaApi, gotoHydrated, profileNames, registerUser } from './test-helpers'
 

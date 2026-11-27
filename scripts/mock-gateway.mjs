@@ -11,10 +11,12 @@
  *    OAUTH_GITHUB_BASE_URL / OAUTH_GITHUB_API_BASE_URL overrides.
  * 4. The decision model's endpoint (/alpha/decisions, OpenRouter's Decisions API:
  *    Jev, CB2) — see scripts/mock-gateway-decisions.mjs.
+ * 5. Embeddings (/v1/embeddings): deterministic vectors — see scripts/mock-gateway-embeddings.mjs.
  */
 import http from 'node:http'
 import { mockChatCompletion } from './mock-gateway-chat.mjs'
 import { mockDecision } from './mock-gateway-decisions.mjs'
+import { mockEmbeddings } from './mock-gateway-embeddings.mjs'
 
 const port = Number(process.env.MOCK_GATEWAY_PORT ?? 5199)
 
@@ -168,6 +170,22 @@ const server = http.createServer((req, res) => {
         return
       }
       const { status, body: answer } = mockDecision(body)
+      send(status, answer)
+    })
+    return
+  }
+  if (req.method === 'POST' && url.endsWith('/embeddings')) {
+    let raw = ''
+    req.on('data', (chunk) => (raw += chunk))
+    req.on('end', () => {
+      let body
+      try {
+        body = JSON.parse(raw)
+      } catch {
+        send(400, { error: { message: 'mock gateway: request body is not JSON' } })
+        return
+      }
+      const { status, body: answer } = mockEmbeddings(body)
       send(status, answer)
     })
     return
