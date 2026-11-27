@@ -108,7 +108,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
       'preferred_ui_locale', 'preferred_timezone', 'event_notifications_enabled', 'event_reminder_lead_minutes',
       'event_reminder_kinds', 'daily_work_minutes', 'daily_summary_enabled', 'daily_summary_minutes_local',
       'last_daily_summary_local_date', 'preferred_timezone_offset_minutes', 'last_daily_summary_dispatch_error',
-      'display_name', 'dashboard_hidden_tiles',
+      'display_name', 'dashboard_hidden_tiles', 'share_where',
     ],
   ),
 
