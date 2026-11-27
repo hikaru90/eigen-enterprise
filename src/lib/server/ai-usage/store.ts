@@ -1,7 +1,8 @@
 import type postgres from 'postgres'
 import type { AiUsageRow } from '$lib/ai-usage/overview'
 import type { AiUsagePort } from '$lib/kernel/ai-usage-tools'
-import { ACTIVITY_PAGE_LLM_PROVIDERS } from '$lib/server/activity/gateway-providers'
+import { ACTIVITY_PAGE_LLM_PROVIDERS, PLATFORM_AI_ACTIVITY_PROVIDER } from '$lib/server/activity/gateway-providers'
+import type { FleetAiUsageDay } from '$lib/server/fleet/ai-usage'
 import { createAdminSql } from '$lib/server/job-queue/admin-db'
 
 /**
@@ -38,17 +39,21 @@ function dayAfter(date: string): string {
   return next.toISOString().slice(0, 10)
 }
 
+/** A connection that row-level security still filters would show one person's rows as the company's. */
+async function assertReadsEveryRow(sql: postgres.Sql | postgres.TransactionSql, reader: string): Promise<void> {
+  const [security] = await sql<{ active: boolean }[]>`SELECT row_security_active('activity_call_log') AS active`
+  if (security?.active !== false) {
+    throw new Error(
+      `${reader} needs a database connection that reads every row of activity_call_log (DATABASE_ADMIN_URL); this one is limited by row-level security.`,
+    )
+  }
+}
+
 export async function readAiUsageRows(
   sql: postgres.Sql | postgres.TransactionSql,
   period: { from: string | null; to: string | null },
 ): Promise<AiUsageRow[]> {
-  // A connection that row-level security still filters would show one person's rows as the company's.
-  const [security] = await sql<{ active: boolean }[]>`SELECT row_security_active('activity_call_log') AS active`
-  if (security?.active !== false) {
-    throw new Error(
-      'The AI usage overview needs a database connection that reads every row of activity_call_log (DATABASE_ADMIN_URL); this one is limited by row-level security.',
-    )
-  }
+  await assertReadsEveryRow(sql, 'The AI usage overview')
   const since = period.from === null ? sql`` : sql`AND a.created_at >= ${period.from}::timestamp`
   const before = period.to === null ? sql`` : sql`AND a.created_at < ${dayAfter(period.to)}::timestamp`
   const groups = await sql<Group[]>`
@@ -96,4 +101,61 @@ export const liveAiUsagePort: AiUsagePort = {
       await sql.end()
     }
   },
+}
+
+type FleetGroup = {
+  day: string
+  task: string | null
+  model: string | null
+  calls: number
+  promptTokens: string
+  completionTokens: string
+  cachedTokens: string
+  costUsd: string
+}
+
+/**
+ * The company's eigenInference usage for the hosting (fleet feature `aiUsage`, GET
+ * /api/fleet/ai-usage): calls on provider `platform` only — what the hosting pays the provider
+ * for; a company's own key (BYOK) is not the hosting's — grouped by UTC day × task × model from
+ * `from` through today. Cost is the provider-reported `base_cost_usd`: the hosting applies its
+ * own markup, so the box's `markup_usd` / `total_cost_usd` never reach the invoice.
+ */
+export async function readFleetAiUsage(sql: postgres.Sql | postgres.TransactionSql, from: string): Promise<FleetAiUsageDay[]> {
+  await assertReadsEveryRow(sql, 'The fleet AI usage report')
+  const groups = await sql<FleetGroup[]>`
+    SELECT
+      to_char(a.created_at, 'YYYY-MM-DD') AS day,
+      a.task,
+      a.model,
+      COUNT(*)::int AS calls,
+      COALESCE(SUM(a.prompt_tokens), 0)::text AS "promptTokens",
+      COALESCE(SUM(a.completion_tokens), 0)::text AS "completionTokens",
+      COALESCE(SUM(a.cached_tokens), 0)::text AS "cachedTokens",
+      COALESCE(SUM(a.base_cost_usd::numeric), 0)::text AS "costUsd"
+    FROM activity_call_log a
+    WHERE a.provider = ${PLATFORM_AI_ACTIVITY_PROVIDER}
+      AND a.created_at >= ${from}::timestamp
+    GROUP BY to_char(a.created_at, 'YYYY-MM-DD'), a.task, a.model
+    ORDER BY day, a.task NULLS LAST, a.model NULLS LAST
+  `
+  return groups.map((g) => ({
+    day: g.day,
+    task: g.task,
+    model: g.model,
+    calls: g.calls,
+    promptTokens: amount(g.promptTokens, 'prompt tokens'),
+    completionTokens: amount(g.completionTokens, 'completion tokens'),
+    cachedTokens: amount(g.cachedTokens, 'cached tokens'),
+    costUsd: amount(g.costUsd, 'base cost'),
+  }))
+}
+
+export async function liveFleetAiUsage(from: string): Promise<FleetAiUsageDay[]> {
+  const sql = createAdminSql(1)
+  try {
+    return await readFleetAiUsage(sql, from)
+  } finally {
+    await sql.end()
+  }
 }
