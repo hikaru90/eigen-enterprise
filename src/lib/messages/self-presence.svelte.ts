@@ -1,4 +1,4 @@
-import type { HeartbeatState, PresenceView } from './presence'
+import type { HeartbeatBody, PresenceView } from './presence'
 import { getContext, setContext } from 'svelte'
 import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
 
@@ -9,7 +9,14 @@ import { shownErrorOf, type ShownError } from '$lib/errors/agent-report'
  * /api/messages/presence) answers my presence — by my own Do not disturb
  * switch (PUT), and by the Messages feed while Messages is open. Created by
  * the nucleus layout only while Messages (which owns presence) is on.
+ *
+ * Share where I am (plan/phase-multiplayer-presence.md): my own switch for
+ * whether others see where I work (PUT /api/messages/presence/where); the
+ * beat's answer and every save carry it.
  */
+
+/** My presence as the presence routes answer it: with my Share where I am switch. */
+export type MyPresenceView = PresenceView & { shareWhere?: boolean }
 
 export type SelfPresenceFetch = (input: string, init: RequestInit) => Promise<Response>
 
@@ -31,6 +38,7 @@ export class SelfPresence {
   #view = $state<PresenceView | null>(null)
   #error = $state<ShownError | null>(null)
   #saving = $state(false)
+  #shareWhere = $state<boolean | null>(null)
 
   constructor(private readonly env: { fetch: SelfPresenceFetch }) {}
 
@@ -48,14 +56,24 @@ export class SelfPresence {
     return this.#saving
   }
 
-  /** My presence as the server just told it (a beat's answer, a save, the Messages feed). */
-  receive(view: PresenceView): void {
-    this.#view = view
+  /** Share where I am, or null until the server has said (the first beat's answer). */
+  get shareWhere(): boolean | null {
+    return this.#shareWhere
+  }
+
+  /**
+   * My presence as the server just told it (a beat's answer, a save, the
+   * Messages feed). The Messages feed carries no share switch: it is kept.
+   */
+  receive(view: MyPresenceView): void {
+    const { shareWhere, ...presence } = view
+    this.#view = presence
+    if (typeof shareWhere === 'boolean') this.#shareWhere = shareWhere
     this.#error = null
   }
 
   /** The heartbeat's `post` (PresenceHeartbeat): sends one beat and takes the answer as my status. */
-  readonly beat = (body: { clientId: string; state: HeartbeatState }): void => {
+  readonly beat = (body: HeartbeatBody): void => {
     void this.env
       .fetch(ROUTE, {
         method: 'POST',
@@ -65,7 +83,7 @@ export class SelfPresence {
       })
       .then(async (res) => {
         if (res.ok) {
-          this.receive(((await res.json()) as { presence: PresenceView }).presence)
+          this.receive(((await res.json()) as { presence: MyPresenceView }).presence)
           return
         }
         this.#error = await refusal(res)
@@ -90,9 +108,30 @@ export class SelfPresence {
         this.#error = await refusal(res)
         return
       }
-      this.receive(((await res.json()) as { presence: PresenceView }).presence)
+      this.receive(((await res.json()) as { presence: MyPresenceView }).presence)
     } catch (err) {
       this.#error = { error: `Status could not be saved: ${reason(err)}`, agent: null }
+    } finally {
+      this.#saving = false
+    }
+  }
+
+  /** My own Share where I am switch (on by default on the server). */
+  async setShareWhere(on: boolean): Promise<void> {
+    this.#saving = true
+    try {
+      const res = await this.env.fetch(`${ROUTE}/where`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ shareWhere: on }),
+      })
+      if (!res.ok) {
+        this.#error = await refusal(res)
+        return
+      }
+      this.receive(((await res.json()) as { presence: MyPresenceView }).presence)
+    } catch (err) {
+      this.#error = { error: `Sharing where you are could not be saved: ${reason(err)}`, agent: null }
     } finally {
       this.#saving = false
     }

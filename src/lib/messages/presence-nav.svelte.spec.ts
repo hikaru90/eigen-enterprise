@@ -106,4 +106,44 @@ describe('presence-nav.svelte (my status at the foot of the main nav — Contrib
       .toBeInTheDocument()
     err.mockRestore()
   })
+
+  it('Share where I am sits under Do not disturb, says what others see, and saves', async () => {
+    const fetch = vi.fn<SelfPresenceFetch>(async () => answer({ presence: { ...view(), shareWhere: false } }))
+    const self = keeper(null, fetch)
+    self.receive({ ...view(), shareWhere: true })
+    render(PresenceNav, props(self))
+    await page.getByTestId('shell-presence-trigger').click()
+    const share = page.getByRole('switch', { name: 'Share where I am' })
+    await expect.element(share).toHaveAttribute('aria-checked', 'true')
+    await expect
+      .element(share)
+      .toHaveAccessibleDescription('Others see which page you’re on; files and chats only if they can open them.')
+    await share.click()
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/messages/presence/where',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ shareWhere: false }) }),
+    )
+    await expect.element(share).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('a Share where I am that cannot be saved is shown, the switch stays as it was', async () => {
+    const fetch = vi.fn<SelfPresenceFetch>(async () =>
+      new Response(JSON.stringify({ error: 'tracker down' }), { status: 500, headers: { 'content-type': 'application/json' } }),
+    )
+    const self = keeper(null, fetch)
+    self.receive({ ...view(), shareWhere: true })
+    render(PresenceNav, props(self))
+    await page.getByTestId('shell-presence-trigger').click()
+    const share = page.getByRole('switch', { name: 'Share where I am' })
+    await share.click()
+    await expect.element(page.getByRole('alert')).toHaveTextContent('tracker down')
+    await expect.element(share).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('before the server has said how Share where I am is set, there is no made-up switch', async () => {
+    render(PresenceNav, props(keeper(view())))
+    await page.getByTestId('shell-presence-trigger').click()
+    await expect.element(page.getByRole('switch', { name: 'Do not disturb' })).toBeInTheDocument()
+    await expect.element(page.getByTestId('presence-share-where')).not.toBeInTheDocument()
+  })
 })

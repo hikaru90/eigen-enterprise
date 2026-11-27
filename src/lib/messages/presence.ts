@@ -1,3 +1,5 @@
+import { sameWhere, type WhereReport } from '$lib/presence/where'
+
 /**
  * Presence in the Messages page (plan/contribute-round-3.md W5): the views
  * of everyone's status from the live feed (`event: presence` on
@@ -72,10 +74,15 @@ export type HeartbeatState = 'active' | 'idle' | 'gone'
 
 type Events = { addEventListener(t: string, fn: () => void, o?: AddEventListenerOptions): void; removeEventListener(t: string, fn: () => void): void }
 
+/** One beat (POST /api/messages/presence): `where` is null only with `gone`. */
+export type HeartbeatBody = { clientId: string; state: HeartbeatState; where: WhereReport | null }
+
 export type HeartbeatEnv = {
   /** This tab's random id (crypto.randomUUID()). */
   clientId: string
-  post: (body: { clientId: string; state: HeartbeatState }) => void
+  post: (body: HeartbeatBody) => void
+  /** Where this tab is right now (plan/phase-multiplayer-presence.md): sidebar entry, path, open item. */
+  where: () => WhereReport
   doc: Events & { readonly visibilityState: DocumentVisibilityState }
   win: Events
   now: () => number
@@ -86,12 +93,15 @@ const INPUT_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchst
 /**
  * Active while the tab is visible and someone used it in the last few
  * minutes; idle otherwise; gone when the tab closes. Beats every
- * HEARTBEAT_MS and right away on every change. Started and stopped by the
- * page (onMount / onDestroy) — explicit events, no effects.
+ * HEARTBEAT_MS and right away on every change — of state, and of place
+ * (moved(): the layout calls it after every navigation and whenever the page
+ * declares another open item). Started and stopped by the page (onMount /
+ * onDestroy) — explicit events, no effects.
  */
 export class PresenceHeartbeat {
   #lastInput = 0
   #sent: HeartbeatState | null = null
+  #sentWhere: WhereReport | null = null
   #timer: ReturnType<typeof setInterval> | undefined
 
   constructor(private readonly env: HeartbeatEnv) {}
@@ -125,9 +135,18 @@ export class PresenceHeartbeat {
     doc.removeEventListener('visibilitychange', this.#report)
   }
 
-  readonly #send = (state: HeartbeatState) => {
+  /** The tab moved (navigation, another open item): beat right away, unless nothing changed. */
+  moved(): void {
+    if (!this.#timer) return
+    const where = this.env.where()
+    if (this.#sent === this.state && sameWhere(this.#sentWhere, where)) return
+    this.#send(this.state, where)
+  }
+
+  readonly #send = (state: HeartbeatState, where: WhereReport | null = state === 'gone' ? null : this.env.where()) => {
     this.#sent = state
-    this.env.post({ clientId: this.env.clientId, state })
+    this.#sentWhere = where
+    this.env.post({ clientId: this.env.clientId, state, where })
   }
 
   readonly #report = () => this.#send(this.state)

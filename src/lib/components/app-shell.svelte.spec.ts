@@ -1,9 +1,11 @@
 import { createRawSnippet } from 'svelte'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { CAPABILITIES, type Capabilities } from '$lib/access/capabilities'
 import { SelfPresence } from '$lib/messages/self-presence.svelte'
+import { CompanyPresence } from '$lib/presence/company-presence.svelte'
+import type { WhereReport } from '$lib/presence/where'
 import { buildShellNav } from '$lib/shell/nav'
 import { SIDEBAR_COLLAPSED_KEY } from '$lib/shell/sidebar-pref'
 import AppShell from './app-shell.svelte'
@@ -497,5 +499,145 @@ describe('navigating keeps the assistant (board de821eda)', () => {
     await expect
       .element(panel().getByRole('link', { name: 'the docs' }))
       .toHaveAttribute('target', '_blank')
+  })
+})
+
+describe('where everyone is working (plan/phase-multiplayer-presence.md)', () => {
+  const at = (area: string | null, path: string | null, item: { kind: 'drive_file' | 'conversation' | 'drive_folder'; id: string; title: string } | null = null) => ({ area, path, item })
+  const directory = {
+    people: [
+      { id: 'alex', name: 'Alex', email: 'alex@k.test', image: null, kind: 'human' },
+      { id: 'anna', name: 'Anna Müller', email: 'anna@k.test', image: null, kind: 'human' },
+      { id: 'ben', name: 'Ben Ode', email: 'ben@k.test', image: null, kind: 'human' },
+    ],
+    groups: [],
+  }
+  class Source {
+    readyState = 1
+    addEventListener() {}
+    close() {}
+  }
+
+  async function feed(people: Array<{ userId: string; status?: 'online' | 'away'; where: ReturnType<typeof at> | null }>) {
+    const company = new CompanyPresence({
+      me: 'alex',
+      open: () => new Source(),
+      fetch: async () => Response.json(directory),
+      areaName: (id) => nav.items.find((i) => i.id === id)?.name ?? (id === 'dashboard' ? 'Dashboard' : null),
+    })
+    company.connect()
+    await new Promise((r) => setTimeout(r, 0))
+    company.apply({
+      replace: true,
+      people: people.map((p) => ({ status: 'online', doNotDisturb: false, lastSeenAt: null, shareWhere: true, ...p })),
+    })
+    return company
+  }
+
+  function renderWith(company: CompanyPresence | null, pathname = '/m/website', where: WhereReport | null = { area: 'website', path: '/m/website', item: null }) {
+    return render(AppShell, {
+      shell: { companyName: 'Kindred Digital Labs', companyLogo: null, capabilities, nav, assistant: false },
+      pathname,
+      user: { name: 'Alex', email: 'alex@k.test' },
+      presence: null,
+      company,
+      where,
+      children,
+    })
+  }
+
+  beforeEach(() => {
+    localStorage.removeItem(SIDEBAR_COLLAPSED_KEY)
+  })
+
+  it('each sidebar entry shows the avatars of the people working there; hover says who and what they have open', async () => {
+    const company = await feed([
+      { userId: 'anna', where: at('email', null, null) },
+      { userId: 'ben', status: 'away', where: at('email', '/m/email', null) },
+    ])
+    renderWith(company)
+    const sidebar = page.getByTestId('shell-sidebar')
+    const stack = sidebar.getByTestId('shell-nav-presence-email')
+    await expect.element(stack).toHaveAccessibleName('In Email: Anna Müller · Email, Ben Ode · Email (Away)')
+    expect(stack.getByTestId('shell-nav-presence-email-avatar').all()).toHaveLength(2)
+    await expect.element(stack.getByTestId('shell-nav-presence-email-dot')).toHaveAttribute('data-status', 'away')
+    await expect.element(sidebar.getByTestId('shell-nav-presence-website')).not.toBeInTheDocument()
+    // The stack sits beside the link, never inside it (no button in a link).
+    expect(sidebar.getByTestId('shell-nav-email').element().contains(stack.element())).toBe(false)
+    await userEvent.hover(stack)
+    await expect.element(page.getByTestId('shell-nav-presence-email-list')).toHaveTextContent('Anna Müller')
+  })
+
+  it('the company badge carries the people on the dashboard', async () => {
+    const company = await feed([{ userId: 'anna', where: at('dashboard', '/') }])
+    renderWith(company)
+    await expect
+      .element(page.getByTestId('shell-sidebar').getByTestId('shell-nav-presence-dashboard'))
+      .toHaveAccessibleName('On the dashboard: Anna Müller · Dashboard')
+  })
+
+  it('"Here with you" in the top bar: the people on my page or item; hidden when nobody is', async () => {
+    const company = await feed([
+      { userId: 'anna', where: at('website', '/m/website') },
+      { userId: 'ben', where: at('email', '/m/email') },
+    ])
+    renderWith(company)
+    const here = page.getByTestId('shell-topbar').getByTestId('shell-here-with-you')
+    await expect.element(here).toHaveAccessibleName('Here with you: Anna Müller · Website')
+    company.apply({ replace: false, people: [{ userId: 'anna', status: 'online', doNotDisturb: false, lastSeenAt: null, shareWhere: true, where: at('email', '/m/email') }] })
+    await expect.element(page.getByTestId('shell-here-with-you')).not.toBeInTheDocument()
+  })
+
+  it('on the same file, the person is here with me', async () => {
+    const company = await feed([{ userId: 'anna', where: at('drive', '/drive/file/f1', { kind: 'drive_file', id: 'f1', title: 'Q4 plan.xlsx' }) }])
+    renderWith(company, '/drive/file/f1', { area: 'drive', path: '/drive/file/f1', item: { kind: 'drive_file', id: 'f1' } })
+    await expect.element(page.getByTestId('shell-here-with-you')).toHaveAccessibleName('Here with you: Anna Müller · Q4 plan.xlsx')
+  })
+
+  it('collapsed, the sidebar toggle says how many are at work', async () => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, '1')
+    const company = await feed([
+      { userId: 'anna', where: at('email', null) },
+      { userId: 'ben', where: at('dashboard', '/') },
+    ])
+    renderWith(company)
+    const toggle = page.getByTestId('shell-sidebar-toggle')
+    await expect.element(toggle).toHaveAccessibleName('Expand sidebar — 2 people at work in the app')
+    await expect.element(toggle.getByTestId('shell-sidebar-presence')).toHaveTextContent('2')
+  })
+
+  it('the phone drawer shows the same avatars as the sidebar', async () => {
+    const company = await feed([{ userId: 'anna', where: at('email', null) }])
+    renderWith(company)
+    await page.getByTestId('shell-menu-toggle').click({ force: true })
+    await expect
+      .element(page.getByTestId('shell-drawer').getByTestId('shell-nav-presence-email'))
+      .toHaveAccessibleName('In Email: Anna Müller · Email')
+  })
+
+  it('a feed that fails is said in the top bar, never hidden', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const company = await feed([])
+    company.close()
+    const broken = new CompanyPresence({
+      me: 'alex',
+      open: () => new Source(),
+      fetch: async () => Response.json({ error: 'messages store down' }, { status: 500 }),
+      areaName: () => null,
+    })
+    broken.connect()
+    await new Promise((r) => setTimeout(r, 0))
+    renderWith(broken)
+    await page.getByTestId('shell-presence-error').click()
+    await expect.element(page.getByRole('alert')).toHaveTextContent('The people list could not be loaded: messages store down')
+    err.mockRestore()
+  })
+
+  it('with Messages off there is no presence anywhere (off means off)', async () => {
+    renderWith(null)
+    await expect.element(page.getByTestId('shell-company').first()).toBeInTheDocument()
+    expect(page.getByTestId(/^shell-nav-presence-/).all()).toHaveLength(0)
+    await expect.element(page.getByTestId('shell-here-with-you')).not.toBeInTheDocument()
+    await expect.element(page.getByTestId('shell-presence-error')).not.toBeInTheDocument()
   })
 })

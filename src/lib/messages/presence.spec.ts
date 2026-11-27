@@ -9,6 +9,7 @@ import {
   type HeartbeatState,
   type PresenceView,
 } from './presence'
+import type { WhereReport } from '$lib/presence/where'
 
 const NOW = new Date('2026-11-12T12:00:00.000Z')
 const view = (over: Partial<PresenceView> = {}): PresenceView => ({
@@ -57,6 +58,8 @@ describe('PresenceHeartbeat (one tab’s heartbeat)', () => {
   let doc: FakeDoc
   let win: EventTarget
   let sent: HeartbeatState[]
+  let wheres: (WhereReport | null)[]
+  let here: WhereReport
   let beat: PresenceHeartbeat
 
   beforeEach(() => {
@@ -64,15 +67,19 @@ describe('PresenceHeartbeat (one tab’s heartbeat)', () => {
     doc = new FakeDoc()
     win = new EventTarget()
     sent = []
+    wheres = []
+    here = { area: 'drive', path: '/drive', item: null }
     beat = new PresenceHeartbeat({
       clientId: 'tab-0123456789',
       post: (body) => {
         expect(body.clientId).toBe('tab-0123456789')
         sent.push(body.state)
+        wheres.push(body.where)
       },
       doc,
       win,
       now: () => Date.now(),
+      where: () => here,
     })
   })
   afterEach(() => {
@@ -121,5 +128,51 @@ describe('PresenceHeartbeat (one tab’s heartbeat)', () => {
     vi.advanceTimersByTime(HEARTBEAT_MS * 3)
     doc.dispatchEvent(new Event('visibilitychange'))
     expect(sent.length).toBe(count)
+  })
+
+  it('every beat says where the tab is; closing the tab says gone with no place', () => {
+    beat.start()
+    expect(wheres).toEqual([{ area: 'drive', path: '/drive', item: null }])
+    here = { area: 'messages', path: '/messages', item: { kind: 'conversation', id: 'c1' } }
+    vi.advanceTimersByTime(HEARTBEAT_MS)
+    expect(wheres.at(-1)).toEqual(here)
+    win.dispatchEvent(new Event('pagehide'))
+    expect(sent.at(-1)).toBe('gone')
+    expect(wheres.at(-1)).toBeNull()
+  })
+
+  it('moved() beats right away with the new place (a navigation or a focus change)', () => {
+    beat.start()
+    here = { area: 'drive', path: '/drive/file/f1', item: { kind: 'drive_file', id: 'f1' } }
+    beat.moved()
+    expect(sent).toEqual(['active', 'active'])
+    expect(wheres.at(-1)).toEqual(here)
+  })
+
+  it('moved() to the same place is not another request', () => {
+    beat.start()
+    here = { ...here }
+    beat.moved()
+    expect(sent).toEqual(['active'])
+  })
+
+  it('moved() in a hidden tab says idle with the new place', () => {
+    beat.start()
+    doc.visibilityState = 'hidden'
+    doc.dispatchEvent(new Event('visibilitychange'))
+    here = { area: 'calendar', path: '/calendar', item: null }
+    beat.moved()
+    expect(sent.at(-1)).toBe('idle')
+    expect(wheres.at(-1)).toEqual(here)
+  })
+
+  it('moved() before start() or after stop() sends nothing', () => {
+    beat.moved()
+    expect(sent).toEqual([])
+    beat.start()
+    beat.stop()
+    here = { area: 'calendar', path: '/calendar', item: null }
+    beat.moved()
+    expect(sent).toEqual(['active'])
   })
 })

@@ -3,8 +3,14 @@ import { render } from 'vitest-browser-svelte'
 import { page, userEvent } from 'vitest/browser'
 import FilePage from './+page.svelte'
 
-const { gotoMock, invalidateAllMock } = vi.hoisted(() => ({ gotoMock: vi.fn(), invalidateAllMock: vi.fn() }))
+const { gotoMock, invalidateAllMock, declareFocusMock } = vi.hoisted(() => ({
+  gotoMock: vi.fn(),
+  invalidateAllMock: vi.fn(),
+  declareFocusMock: vi.fn(),
+}))
 vi.mock('$app/navigation', () => ({ goto: gotoMock, invalidateAll: invalidateAllMock }))
+// The nucleus layout owns the focus keeper; here the page only has to declare its file.
+vi.mock('$lib/presence/focus.svelte', () => ({ declarePresenceFocus: declareFocusMock }))
 vi.mock('$app/paths', () => ({ base: '', resolve: (path: string) => path }))
 // The editors (CSV grid, Markdown) pull CommonJS bundles this runner doesn't pre-bundle; not under test here.
 vi.mock('$lib/components/drive/doc-editor.svelte', () => ({ default: () => undefined }))
@@ -327,5 +333,15 @@ describe('drive file page: full view', () => {
     await page.getByTestId('drive-file-full-view').click()
     await expect.element(page.getByTestId('drive-file')).toHaveAttribute('data-full-view', 'off')
     await expect.element(page.getByTestId('drive-file-side')).not.toBeVisible()
+  })
+})
+
+describe('drive file page: where I am (plan/phase-multiplayer-presence.md)', () => {
+  it('declares the open file as the page’s item', () => {
+    vi.clearAllMocks()
+    render(FilePage, props(data()))
+    expect(declareFocusMock).toHaveBeenCalledTimes(1)
+    const read = declareFocusMock.mock.calls[0][0] as () => unknown
+    expect(read()).toEqual({ kind: 'drive_file', id: 'p1' })
   })
 })
