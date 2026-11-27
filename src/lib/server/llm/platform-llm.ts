@@ -30,6 +30,7 @@ export function loadEigenInferenceConfig(): ResolvedLlmConfig {
   return {
     provider: PLATFORM_AI_PROVIDER,
     eigenInferenceProvider: platformAi.provider,
+    ...(platformAi.usageTag ? { eigenInferenceUsageTag: platformAi.usageTag } : {}),
     baseUrl: platformAi.baseUrl,
     apiKey: platformAi.apiKey,
     ruleChat: null,

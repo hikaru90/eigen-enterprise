@@ -1852,6 +1852,54 @@ describe('eigenInference on Opper (PLATFORM_LLM_PROVIDER=opper)', () => {
     await expect(llmCreateSpeech({ userId: 'u1', task: 'speech.tts', voice: 'x', text: 'Hallo' })).rejects.toThrow(/no audio/)
   })
 
+  describe('the box usage tag (PLATFORM_LLM_USAGE_TAG, fleet platformAi.usageTag)', () => {
+    const headersOf = (fetchMock: ReturnType<typeof vi.fn>, i = 0) => fetchMockInit(fetchMock, i)?.headers as Record<string, string>
+    afterEach(() => {
+      delete env.PLATFORM_LLM_USAGE_TAG
+    })
+
+    it('chat and embeddings carry X-Opper-Tags: ee_box:<tag>', async () => {
+      env.PLATFORM_LLM_USAGE_TAG = 'box-7'
+      const chat = vi.fn(async () => json({ usage: { cost: 0.0002 }, choices: [] }))
+      vi.stubGlobal('fetch', chat)
+      await llmChatCompletion({ userId: 'u1', task: 'assistant.turn', messages: [{ role: 'user', content: 'hi' }] })
+      expect(headersOf(chat)['X-Opper-Tags']).toBe('ee_box:box-7')
+      const emb = vi.fn(async () => json({ data: [{ embedding: Array.from({ length: 1536 }, () => 0.1) }] }, { 'x-opper-cost': '0.0000123' }))
+      vi.stubGlobal('fetch', emb)
+      await llmCreateEmbeddings({ userId: 'u1', task: 'brain.retrieval_embedding', input: 'hello' })
+      expect(headersOf(emb)['X-Opper-Tags']).toBe('ee_box:box-7')
+    })
+
+    it('speech to text and text to speech take no tags (Opper documents none there)', async () => {
+      env.PLATFORM_LLM_USAGE_TAG = 'box-7'
+      const stt = vi.fn(async () => json({ text: 'Hallo', usage: { cost: 0.00004 } }))
+      vi.stubGlobal('fetch', stt)
+      await llmCreateTranscription({ userId: 'u1', task: 'speech.stt', audio: { bytes: new Uint8Array([1]), format: 'webm' } })
+      expect(headersOf(stt)['X-Opper-Tags']).toBeUndefined()
+      const tts = vi.fn(async () => json({ audio: { b64_json: Buffer.from([1]).toString('base64') }, usage: { cost: 0.0003 } }))
+      vi.stubGlobal('fetch', tts)
+      await llmCreateSpeech({ userId: 'u1', task: 'speech.tts', voice: 'x', text: 'Hallo' })
+      expect(headersOf(tts)['X-Opper-Tags']).toBeUndefined()
+    })
+
+    it('no tag set: no X-Opper-Tags header', async () => {
+      const chat = vi.fn(async () => json({ usage: { cost: 0.0002 }, choices: [] }))
+      vi.stubGlobal('fetch', chat)
+      await llmChatCompletion({ userId: 'u1', task: 'assistant.turn', messages: [{ role: 'user', content: 'hi' }] })
+      expect(headersOf(chat)['X-Opper-Tags']).toBeUndefined()
+    })
+
+    it('eigenInference on OpenRouter never sends the Opper header, tag or not', async () => {
+      env.PLATFORM_LLM_USAGE_TAG = 'box-7'
+      env.PLATFORM_LLM_PROVIDER = 'openrouter'
+      env.PLATFORM_LLM_BASE_URL = 'https://openrouter.ai/api/v1'
+      const chat = vi.fn(async () => json({ usage: { cost: 0.0002 }, choices: [] }))
+      vi.stubGlobal('fetch', chat)
+      await llmChatCompletion({ userId: 'u1', task: 'assistant.turn', messages: [{ role: 'user', content: 'hi' }] })
+      expect(headersOf(chat)['X-Opper-Tags']).toBeUndefined()
+    })
+  })
+
   it('a base that is not Opper\'s …/compat API fails speech loud instead of guessing the audio path', async () => {
     env.PLATFORM_LLM_BASE_URL = 'https://api.opper.ai/v3'
     vi.stubGlobal('fetch', vi.fn())

@@ -55,7 +55,33 @@ type PlatformAiSecrets = {
   modelEmbedding: string
 }
 
-export type PlatformAiConfig = PlatformAiSecrets & { provider: PlatformAiProviderName }
+export type PlatformAiConfig = PlatformAiSecrets & {
+  provider: PlatformAiProviderName
+  /** The box's attribution tag at the provider ({@link PLATFORM_AI_USAGE_TAG_ENV}); null = none. */
+  usageTag: string | null
+}
+
+/**
+ * The os secret holding the box's usage tag (fleet `platformAi.usageTag`, feature `aiUsage`).
+ * On Opper, chat and embeddings carry it as `X-Opper-Tags: ee_box:<tag>` so the hosting can
+ * cross-check a box's usage report against Opper's own numbers. Optional; set and removed by ee
+ * together with the other PLATFORM_LLM_* secrets.
+ */
+export const PLATFORM_AI_USAGE_TAG_ENV = 'PLATFORM_LLM_USAGE_TAG' as const
+
+/** The fleet protocol's usageTag shape (ee/src/fleet/protocol.ts platformAiV1): one Opper tag value. */
+const USAGE_TAG = /^[a-zA-Z0-9_.-]{1,64}$/
+
+function readUsageTag(raw: string | undefined): string | null {
+  const value = raw?.trim() ?? ''
+  if (value === '') return null
+  if (!USAGE_TAG.test(value)) {
+    throw new Error(
+      `${PLATFORM_AI_USAGE_TAG_ENV} is not a usage tag (1–64 of a–z, A–Z, 0–9, _ . -); the provider would refuse every call carrying it.`,
+    )
+  }
+  return value
+}
 
 function isPlatformAiProvider(value: string): value is PlatformAiProviderName {
   return (PLATFORM_AI_PROVIDERS as readonly string[]).includes(value)
@@ -91,5 +117,10 @@ export function readPlatformAiConfig(env: Record<string, string | undefined>): P
     )
   }
   const config = Object.fromEntries(values.map(([k, , v]) => [k, v])) as PlatformAiSecrets
-  return { ...config, baseUrl: config.baseUrl.replace(/\/$/, ''), provider: readProvider(env[PLATFORM_AI_PROVIDER_ENV]) }
+  return {
+    ...config,
+    baseUrl: config.baseUrl.replace(/\/$/, ''),
+    provider: readProvider(env[PLATFORM_AI_PROVIDER_ENV]),
+    usageTag: readUsageTag(env[PLATFORM_AI_USAGE_TAG_ENV]),
+  }
 }

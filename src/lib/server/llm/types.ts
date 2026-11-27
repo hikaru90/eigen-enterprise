@@ -14,6 +14,8 @@ export type ResolvedLlmConfig = {
    * platform-ai.ts). It decides the model ids, speech, decision and cost endpoints.
    */
   eigenInferenceProvider?: PlatformAiProviderName
+  /** eigenInference only: the box's attribution tag at the provider (PLATFORM_LLM_USAGE_TAG, platform-ai.ts). */
+  eigenInferenceUsageTag?: string
   baseUrl: string
   apiKey: string
   ruleChat: string | null

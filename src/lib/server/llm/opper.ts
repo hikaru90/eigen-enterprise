@@ -1,4 +1,5 @@
 import { LlmNotConfiguredError } from './errors'
+import type { ResolvedLlmConfig } from './types'
 
 /**
  * Opper's call shapes for eigenInference on Opper (platform-ai.ts; contract checked live
@@ -59,4 +60,20 @@ export function opperSpeechAudio(body: unknown): Uint8Array {
   const b64 = (body as { audio?: { b64_json?: unknown } } | null)?.audio?.b64_json
   if (typeof b64 !== 'string' || b64 === '') throw new Error('Text to speech on Opper answered with no audio.')
   return new Uint8Array(Buffer.from(b64, 'base64'))
+}
+
+/** Opper's request tags: comma-separated key:value pairs (at most 8; a malformed one is a 400). */
+export const OPPER_TAGS_HEADER = 'X-Opper-Tags'
+
+/**
+ * The box's usage tag on an eigenInference call served by Opper (`ee_box:<tag>`, the fleet's
+ * platformAi.usageTag), so the hosting can hold a box's usage report against Opper's numbers.
+ * Only the endpoints Opper documents tags for take it: chat completions and embeddings (not
+ * speech, not decisions). Nothing for any other provider or without a tag.
+ */
+export function opperUsageTagHeaders(
+  config: Pick<ResolvedLlmConfig, 'eigenInferenceProvider' | 'eigenInferenceUsageTag'>,
+): Record<string, string> {
+  if (config.eigenInferenceProvider !== 'opper' || !config.eigenInferenceUsageTag) return {}
+  return { [OPPER_TAGS_HEADER]: `ee_box:${config.eigenInferenceUsageTag}` }
 }
