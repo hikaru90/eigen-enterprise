@@ -1,3 +1,21 @@
+<script lang="ts" module>
+  /** The ring around each avatar: the colour of what the stack sits on, so the avatars read as cut out of it. */
+  export type StackRing = 'sidebar' | 'background' | 'card' | 'primary'
+  const RING: Record<StackRing, string> = {
+    sidebar: 'ring-sidebar',
+    background: 'ring-background',
+    card: 'ring-card',
+    primary: 'ring-primary',
+  }
+
+  /** How wide a stack of `n` people is (px) at most `max` avatars: room a row leaves for it. */
+  export const stackWidth = (n: number, max = 3) => 20 + (Math.min(n, max) - 1) * 14 + (n > max ? 14 : 0)
+
+  /** "Anna", "Anna and Ben", "Anna, Ben and Cara". */
+  const joined = (names: string[]) =>
+    names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+</script>
+
 <script lang="ts">
   import { Tooltip } from 'bits-ui'
   import UserAvatar from '$lib/components/user-avatar.svelte'
@@ -11,11 +29,17 @@
    * status is worth telling (online is everyone here). Hover or keyboard
    * focus lists every name with what they have open; a tap opens it too. The
    * button's name says the same for screen readers.
+   *
+   * `onItem`: the stack sits on the one thing they all have open (a
+   * conversation row, a Drive row) — the name says "Anna Müller has this
+   * open" and the list leaves the item out instead of repeating it per name.
    */
   let {
     people,
     title,
     max = 3,
+    onItem = false,
+    ring = 'sidebar',
     side = 'right',
     class: className = '',
     testid = 'presence-stack',
@@ -24,6 +48,9 @@
     /** What the list is ("In Drive", "Here with you"): the list's heading and the start of the name. */
     title: string
     max?: number
+    /** Everyone shown has the item the stack sits on open. */
+    onItem?: boolean
+    ring?: StackRing
     side?: 'top' | 'right' | 'bottom' | 'left'
     class?: string
     testid?: string
@@ -34,9 +61,13 @@
   const shown = $derived(people.slice(0, max))
   const more = $derived(people.length - shown.length)
   const told = (p: PresencePerson) => p.presence.status !== 'online'
+  const named = (p: PresencePerson, label: string) => (told(p) ? `${label} (${presenceLabel(p.presence, now)})` : label)
   const name = $derived(
-    `${title}: ${people.map((p) => (told(p) ? `${p.label} (${presenceLabel(p.presence, now)})` : p.label)).join(', ')}`,
+    onItem
+      ? `${joined(people.map((p) => named(p, p.name)))} ${people.length === 1 ? 'has' : 'have'} this open`
+      : `${title}: ${people.map((p) => named(p, p.label)).join(', ')}`,
   )
+  const placeOf = (p: PresencePerson) => (onItem ? null : p.place)
 </script>
 
 <Tooltip.Provider delayDuration={150}>
@@ -56,7 +87,7 @@
         >
           {#each shown as p, i (p.userId)}
             <span
-              class={['relative shrink-0 rounded-full ring-2 ring-sidebar', i > 0 && '-ml-1.5']}
+              class={['relative shrink-0 rounded-full ring-2', RING[ring], i > 0 && '-ml-1.5']}
               data-testid="{testid}-avatar"
             >
               <UserAvatar name={p.name} image={p.image} size="xs" round testid="{testid}-picture" />
@@ -73,7 +104,10 @@
           {/each}
           {#if more > 0}
             <span
-              class="-ml-1.5 inline-grid h-5 min-w-5 place-items-center rounded-full bg-muted px-1 font-mono text-xs text-foreground ring-2 ring-sidebar"
+              class={[
+                '-ml-1.5 inline-grid h-5 min-w-5 place-items-center rounded-full bg-muted px-1 font-mono text-xs text-foreground ring-2',
+                RING[ring],
+              ]}
               data-testid="{testid}-more">+{more}</span
             >
           {/if}
@@ -95,9 +129,9 @@
                 <UserAvatar name={p.name} image={p.image} size="xs" round testid="{testid}-list-picture" />
                 <span class="min-w-0">
                   <span class="block truncate font-medium">{p.name}</span>
-                  {#if p.place || told(p)}
+                  {#if placeOf(p) || told(p)}
                     <span class="block truncate text-xs text-muted-foreground"
-                      >{[p.place, told(p) ? presenceLabel(p.presence, now) : null].filter(Boolean).join(' · ')}</span
+                      >{[placeOf(p), told(p) ? presenceLabel(p.presence, now) : null].filter(Boolean).join(' · ')}</span
                     >
                   {/if}
                 </span>

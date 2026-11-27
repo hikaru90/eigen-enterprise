@@ -57,3 +57,36 @@ describe('presence-stack.svelte (who is here — small round avatars)', () => {
     await expect.element(page.getByTestId('stack-list')).toBeVisible()
   })
 })
+
+describe('presence-stack.svelte on one item (a conversation or Drive row)', () => {
+  const two = [person('anna', 'Anna Müller', 'general'), person('ben', 'Ben Ode', 'general', 'away')]
+
+  it('names who has this open, without repeating the item on every name', async () => {
+    render(PresenceStack, { people: two.slice(0, 1), title: 'Open now', onItem: true, testid: 'stack' })
+    await expect.element(page.getByTestId('stack')).toHaveAccessibleName('Anna Müller has this open')
+  })
+
+  it('several people: "and", with the status that is worth telling', async () => {
+    render(PresenceStack, { people: [...two, person('cara', 'Cara Lin', 'general')], title: 'Open now', onItem: true, testid: 'stack' })
+    await expect.element(page.getByTestId('stack')).toHaveAccessibleName(
+      'Anna Müller, Ben Ode (Away) and Cara Lin have this open',
+    )
+  })
+
+  it('the list says who, and a status only where it is worth telling — not the item again', async () => {
+    render(PresenceStack, { people: two, title: 'Open now', onItem: true, testid: 'stack' })
+    await userEvent.hover(page.getByTestId('stack'))
+    const list = page.getByTestId('stack-list')
+    await expect.element(list).toBeVisible()
+    await expect.element(list).toHaveTextContent('Open now')
+    await expect.element(list).toHaveTextContent('Anna Müller')
+    await expect.element(list).toHaveTextContent('Away')
+    await expect.element(list).not.toHaveTextContent('general')
+  })
+
+  it('max caps the avatars on narrow rows', async () => {
+    render(PresenceStack, { people: four, title: 'Open now', onItem: true, max: 2, testid: 'stack' })
+    expect(page.getByTestId('stack').getByTestId('stack-avatar').all()).toHaveLength(2)
+    await expect.element(page.getByTestId('stack-more')).toHaveTextContent('+2')
+  })
+})

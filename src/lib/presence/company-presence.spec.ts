@@ -153,6 +153,40 @@ describe('CompanyPresence (where everyone is working — the live presence feed)
     expect(company.hereWithMe(null)).toEqual([])
   })
 
+  it('peopleOnItem: others who have that one item open — not me, not offline, not co-workers, not a hidden place', async () => {
+    const { company, sources } = setup()
+    company.connect()
+    await settle()
+    const onF1 = { area: 'drive', path: '/drive/file/f1', item: { kind: 'drive_file' as const, id: 'f1', title: 'Q4 plan.xlsx' } }
+    sources[0].emit('presence', {
+      replace: true,
+      people: [
+        entry({ userId: 'me', where: onF1 }),
+        entry({ userId: 'anna', where: onF1 }),
+        entry({ userId: 'ben', status: 'away', where: onF1 }),
+        entry({ userId: 'cara', status: 'offline', where: onF1 }),
+        entry({ userId: 'nova', where: onF1 }),
+        entry({ userId: 'dan', where: { area: 'drive', path: null, item: null } }),
+      ],
+    })
+    expect(company.peopleOnItem('drive_file', 'f1').map((p) => p.userId)).toEqual(['anna', 'ben'])
+    expect(company.peopleOnItem('drive_file', 'f2')).toEqual([])
+    // The same id under another kind is another thing.
+    expect(company.peopleOnItem('drive_folder', 'f1')).toEqual([])
+    expect(company.peopleOnItem('conversation', 'f1')).toEqual([])
+  })
+
+  it('peopleOnItem follows the feed: someone who moves on leaves the item', async () => {
+    const { company, sources } = setup()
+    company.connect()
+    await settle()
+    const general = { area: 'messages', path: '/messages', item: { kind: 'conversation' as const, id: 'c1', title: 'general' } }
+    sources[0].emit('presence', { replace: true, people: [entry({ userId: 'anna', where: general })] })
+    expect(company.peopleOnItem('conversation', 'c1').map((p) => p.name)).toEqual(['Anna Müller'])
+    sources[0].emit('presence', { replace: false, people: [entry({ userId: 'anna', where: { area: 'drive', path: '/drive', item: null } })] })
+    expect(company.peopleOnItem('conversation', 'c1')).toEqual([])
+  })
+
   it('a label with no known place is the name alone', async () => {
     const { company, sources } = setup()
     company.connect()

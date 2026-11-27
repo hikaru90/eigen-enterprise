@@ -80,7 +80,7 @@ describe('drive-browser: the full-width listing', () => {
 
   it('lists items with owner initials and name, size, and a sharing badge where the viewer may know', async () => {
     render(DriveBrowser, {
-      props: { folderId: null, items: [folder, image], canEdit: true, describe: describe_ },
+      props: { company: null, folderId: null, items: [folder, image], canEdit: true, describe: describe_ },
     })
     const rows = page.getByTestId('drive-row')
     await expect.element(rows.first()).toHaveAttribute('data-name', 'Projects')
@@ -102,6 +102,7 @@ describe('drive-browser: the full-width listing', () => {
     }))
     render(DriveBrowser, {
       props: {
+        company: null,
         folderId: 'source-root',
         root: { label: 'GitHub', href: '/drive/folder/source-root' },
         items: files,
@@ -129,7 +130,7 @@ describe('drive-browser: the full-width listing', () => {
     const many = (prefix: string, n: number) =>
       Array.from({ length: n }, (_, i) => ({ ...image, id: `${prefix}-${i}`, name: `${prefix}-${String(i).padStart(4, '0')}.txt`, mime: 'text/plain' }))
     const base = { folderId: 'source-root', root: { label: 'GitHub', href: '/drive/folder/source-root' }, items: [], canEdit: false }
-    const { rerender } = render(DriveBrowser, { props: { ...base, query: 'a', results: many('a', 450) } })
+    const { rerender } = render(DriveBrowser, { props: { company: null, ...base, query: 'a', results: many('a', 450) } })
     await page.getByTestId('drive-page-next').click()
     await page.getByTestId('drive-page-next').click()
     await expect.element(page.getByTestId('drive-page-summary')).toHaveTextContent('401–450 of 450')
@@ -141,7 +142,7 @@ describe('drive-browser: the full-width listing', () => {
   it('shows the month and year each file is from, and what kind of date it is', async () => {
     const photo = { ...image, id: 'i2', name: 'harbour.jpg', dated: { at: '2019-03-14T09:30:00.000Z', kind: 'taken' as const } }
     const upload = { ...image, id: 'i3', name: 'notes.png', dated: { at: '2026-11-04T10:00:00.000Z', kind: 'uploaded' as const } }
-    render(DriveBrowser, { props: { folderId: null, items: [folder, photo, upload], canEdit: true, describe: {} } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [folder, photo, upload], canEdit: true, describe: {} } })
     const dated = page.getByTestId('drive-dated')
     await expect.element(dated.nth(0)).toHaveTextContent('Mar 2019')
     await expect.element(dated.nth(0)).toHaveTextContent('taken')
@@ -154,7 +155,7 @@ describe('drive-browser: the full-width listing', () => {
 
   it('the grid says when a file is from too', async () => {
     const photo = { ...image, id: 'i2', name: 'harbour.jpg', dated: { at: '2019-03-14T09:30:00.000Z', kind: 'taken' as const } }
-    render(DriveBrowser, { props: { folderId: null, items: [photo], canEdit: true, describe: {} } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [photo], canEdit: true, describe: {} } })
     await page.getByTestId('drive-view-grid').click()
     await expect.element(page.getByTestId('drive-dated')).toHaveTextContent('Mar 2019')
   })
@@ -175,6 +176,7 @@ describe('drive-browser: the full-width listing', () => {
     }
     render(DriveBrowser, {
       props: {
+        company: null,
         folderId: 'root',
         items: [overview],
         canEdit: false,
@@ -190,7 +192,7 @@ describe('drive-browser: the full-width listing', () => {
   })
 
   it('previews images in the list view too, in place of the kind icon', async () => {
-    render(DriveBrowser, { props: { folderId: null, items: [folder, image], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [folder, image], canEdit: true } })
     await expect.element(page.getByTestId('drive-row').nth(1)).toBeInTheDocument()
     const thumbs = page.getByTestId('drive-list-thumb')
     expect(thumbs.elements()).toHaveLength(1)
@@ -198,7 +200,7 @@ describe('drive-browser: the full-width listing', () => {
   })
 
   it('switches to a grid with image previews, and remembers the choice in this browser', async () => {
-    render(DriveBrowser, { props: { folderId: null, items: [folder, image], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [folder, image], canEdit: true } })
     await page.getByTestId('drive-view-grid').click()
     await expect.element(page.getByTestId('drive-grid')).toBeInTheDocument()
     await expect
@@ -219,7 +221,7 @@ describe('drive-browser: the full-width listing', () => {
       id === 'n1' ? { content: '# Plan\nShip the drive previews.' } : { content: 'item,cost\npaper,12\n' },
     )
     localStorage.setItem('drive-view', 'grid')
-    render(DriveBrowser, { props: { folderId: null, items: [notes, budget], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [notes, budget], canEdit: true } })
     const previews = page.getByTestId('drive-text-preview')
     await expect.element(previews.nth(0)).toHaveAttribute('data-state', 'ready')
     await expect.element(previews.nth(0)).toHaveTextContent('Ship the drive previews.')
@@ -233,19 +235,19 @@ describe('drive-browser: the full-width listing', () => {
     const notes = { type: 'file' as const, id: 'n2', name: 'notes.md', parentId: null, ownerId: 'u1', updatedAt: at, trashedAt: null, size: 64, canEdit: true, canManage: true }
     api.readText.mockRejectedValue(new Error('gone'))
     localStorage.setItem('drive-view', 'grid')
-    render(DriveBrowser, { props: { folderId: null, items: [notes], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [notes], canEdit: true } })
     await expect.element(page.getByTestId('drive-text-preview')).toHaveAttribute('data-state', 'failed')
   })
 
   it('opens in the view this browser last used', async () => {
     localStorage.setItem('drive-view', 'grid')
-    render(DriveBrowser, { props: { folderId: null, items: [folder], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [folder], canEdit: true } })
     await expect.element(page.getByTestId('drive-grid')).toBeInTheDocument()
   })
 
   it('an empty folder offers New folder and Upload; a read-only one only says it is empty', async () => {
     const editable = render(DriveBrowser, {
-      props: { folderId: 'f1', items: [], canEdit: true, emptyText: 'This folder is empty.' },
+      props: { company: null, folderId: 'f1', items: [], canEdit: true, emptyText: 'This folder is empty.' },
     })
     await expect.element(page.getByTestId('drive-empty')).toHaveTextContent('This folder is empty.')
     await expect.element(page.getByTestId('drive-empty-new-folder')).toBeInTheDocument()
@@ -254,6 +256,7 @@ describe('drive-browser: the full-width listing', () => {
 
     render(DriveBrowser, {
       props: {
+        company: null,
         folderId: 'f1',
         items: [],
         canEdit: false,
@@ -267,7 +270,7 @@ describe('drive-browser: the full-width listing', () => {
 
   it('dragging files over the pane shows where they will upload', async () => {
     render(DriveBrowser, {
-      props: { folderId: 'f1', path: [{ id: 'f1', name: 'Projects' }], items: [], canEdit: true },
+      props: { company: null, folderId: 'f1', path: [{ id: 'f1', name: 'Projects' }], items: [], canEdit: true },
     })
     const pane = page.getByTestId('drive-browser').element()
     const files = new DataTransfer()
@@ -286,7 +289,7 @@ describe('drive-browser: the full-width listing', () => {
 
   it('Archive is offered on what you may edit; it hides the item from this view and says where to find it', async () => {
     api.archive.mockResolvedValue({ ...folder, archivedAt: at })
-    render(DriveBrowser, { props: { folderId: null, items: [folder, image], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [folder, image], canEdit: true } })
     // The image is view-only: no Archive for it.
     expect(page.getByTestId('drive-archive').elements()).toHaveLength(1)
     await page.getByRole('button', { name: 'Archive Projects' }).click()
@@ -298,7 +301,7 @@ describe('drive-browser: the full-width listing', () => {
   it('search results mark archived items and offer Unarchive instead of Archive', async () => {
     const archivedFolder = { ...folder, archivedAt: at, inArchive: true }
     render(DriveBrowser, {
-      props: { folderId: null, items: [], results: [archivedFolder, { ...image, inArchive: false }], query: 'p', canEdit: true },
+      props: { company: null, folderId: null, items: [], results: [archivedFolder, { ...image, inArchive: false }], query: 'p', canEdit: true },
     })
     expect(page.getByTestId('drive-archived-badge').elements()).toHaveLength(1)
     await expect.element(page.getByRole('button', { name: 'Unarchive Projects' })).toBeInTheDocument()
@@ -308,7 +311,7 @@ describe('drive-browser: the full-width listing', () => {
   it('a folder created in this view takes files dropped from the desktop at once (no reload)', async () => {
     api.createFolder.mockResolvedValue(newFolder)
     api.upload.mockResolvedValue({ uploaded: [image], errors: [] })
-    const view = render(DriveBrowser, { props: { folderId: null, items: [image], canEdit: true } })
+    const view = render(DriveBrowser, { props: { company: null, folderId: null, items: [image], canEdit: true } })
     // invalidateAll brings the new listing, as the page's load would.
     invalidateAllMock.mockImplementation(async () => {
       view.rerender({ folderId: null, items: [newFolder, image], canEdit: true })
@@ -333,7 +336,7 @@ describe('drive-browser: the full-width listing', () => {
 
   it('New → Spreadsheet (.xlsx) creates an empty workbook here (drive.create_document kind xlsx) and opens it', async () => {
     api.createDocument.mockResolvedValue({ ...image, id: 'x1', name: 'Forecast.xlsx' })
-    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [image], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [image], canEdit: true } })
     await page.getByTestId('drive-new').click()
     await expect.element(page.getByTestId('drive-new-spreadsheet')).toHaveTextContent('Spreadsheet (.xlsx)')
     await page.getByTestId('drive-new-spreadsheet').click()
@@ -347,7 +350,7 @@ describe('drive-browser: the full-width listing', () => {
 
   it('files dropped on the pane but not on a folder still upload here', async () => {
     api.upload.mockResolvedValue({ uploaded: [image], errors: [] })
-    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [folder, image], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [folder, image], canEdit: true } })
     const files = desktopFiles('b.txt')
     fire(rowNamed('mood.png'), 'dragenter', files)
     fire(rowNamed('mood.png'), 'dragover', files)
@@ -360,7 +363,7 @@ describe('drive-browser: the full-width listing', () => {
   it('a Drive item dragged onto a folder (also one created in this view) moves into it', async () => {
     api.move.mockResolvedValue({ ...image, parentId: 'f-new' })
     const editableImage = { ...image, canEdit: true }
-    const view = render(DriveBrowser, { props: { folderId: null, items: [editableImage], canEdit: true } })
+    const view = render(DriveBrowser, { props: { company: null, folderId: null, items: [editableImage], canEdit: true } })
     view.rerender({ folderId: null, items: [newFolder, editableImage], canEdit: true })
     await expect.element(page.getByTestId('drive-row').first()).toHaveAttribute('data-name', 'Fresh')
     const source = rowNamed('mood.png')
@@ -381,7 +384,7 @@ describe('drive-browser: the full-width listing', () => {
 
   it('what the viewer may not edit cannot be dragged, nor dropped onto', async () => {
     const viewOnlyFolder = { ...folder, id: 'f9', name: 'Theirs', canEdit: false }
-    render(DriveBrowser, { props: { folderId: null, items: [viewOnlyFolder, image], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: null, items: [viewOnlyFolder, image], canEdit: true } })
     expect(rowNamed('mood.png').getAttribute('draggable')).not.toBe('true')
     const files = desktopFiles('c.txt')
     fire(rowNamed('Theirs'), 'dragenter', files)
@@ -399,7 +402,7 @@ describe('drive-browser: the full-width listing', () => {
       if (files[0]!.name === 'b.txt') await held
       return { uploaded: files.map((f) => ({ ...image, name: f.name, outcome: 'created' })), errors: [], conflicts: [] }
     })
-    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [], canEdit: true } })
     await expect.element(page.getByTestId('drive-upload-folder')).toBeInTheDocument()
     const input = page.getByTestId('drive-upload-folder-input').element() as HTMLInputElement
     expect(input.webkitdirectory).toBe(true)
@@ -459,7 +462,7 @@ describe('drive-browser: the full-width listing', () => {
       return tree as unknown as FileSystemEntry
     }
     try {
-      render(DriveBrowser, { props: { folderId: null, items: [folder], canEdit: true } })
+      render(DriveBrowser, { props: { company: null, folderId: null, items: [folder], canEdit: true } })
       const data = desktopFiles('Photos')
       fire(rowNamed('Projects'), 'dragenter', data)
       fire(rowNamed('Projects'), 'dragover', data)
@@ -491,7 +494,7 @@ describe('drive-browser: the full-width listing', () => {
         }
       return { uploaded: [{ ...image, name: f.name, outcome: onConflict === 'replace' ? 'replaced' : 'created' }], errors: [], conflicts: [] }
     })
-    render(DriveBrowser, { props: { folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [], canEdit: true } })
+    render(DriveBrowser, { props: { company: null, folderId: 'f0', path: [{ id: 'f0', name: 'Top' }], items: [], canEdit: true } })
     const input = page.getByTestId('drive-upload-input').element() as HTMLInputElement
     Object.defineProperty(input, 'files', { value: ['mood.png', 'new.txt', 'plan.md'].map((n) => new File(['x'], n)), configurable: true })
     input.dispatchEvent(new Event('change', { bubbles: true }))
@@ -588,6 +591,7 @@ describe('drive-browser: unified overview origins and filter pills', () => {
   it('renders filter pills, color-coded origin badges in list and grid, and updates visible count', async () => {
     render(DriveBrowser, {
       props: {
+        company: null,
         folderId: null,
         root: { label: 'Overview', href: '/drive' },
         items: overviewItems,
@@ -651,6 +655,7 @@ describe('drive-browser: unified overview origins and filter pills', () => {
     const sharedOnly = [overviewItems[2]!]
     const view = render(DriveBrowser, {
       props: {
+        company: null,
         folderId: null,
         root: { label: 'Overview', href: '/drive' },
         items: sharedOnly,
@@ -681,6 +686,7 @@ describe('drive-browser: unified overview origins and filter pills', () => {
     api.createFolder.mockResolvedValue({ ...folder, id: 'f-inbox', name: 'Inbox' })
     render(DriveBrowser, {
       props: {
+        company: null,
         folderId: null,
         root: { label: 'Overview', href: '/drive' },
         items: overviewItems,
@@ -701,7 +707,7 @@ describe('drive-browser: unified overview origins and filter pills', () => {
 
   it('keeps filter bar and origin badges hidden on non-overview listings', async () => {
     render(DriveBrowser, {
-      props: { folderId: null, items: [folder, image], canEdit: true, describe: describe_ },
+      props: { company: null, folderId: null, items: [folder, image], canEdit: true, describe: describe_ },
     })
     expect(page.getByTestId('drive-filter-bar').elements()).toHaveLength(0)
     expect(page.getByTestId('drive-origin-badge').elements()).toHaveLength(0)
