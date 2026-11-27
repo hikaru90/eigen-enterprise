@@ -16,6 +16,7 @@ describe('capabilitiesFor (one set, from the role)', () => {
       'company.manage': true,
       'members.manage': true,
       'coworkers.manage': true,
+      'ai_usage.view': true,
       'approvals.manage': true,
       'backups.manage': false,
       'export.manage': false,

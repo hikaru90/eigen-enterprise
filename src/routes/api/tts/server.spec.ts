@@ -45,11 +45,11 @@ describe('POST /api/tts', () => {
 
   it('returns the gateway audio bytes as mp3', async () => {
     synthesizeSpeechMock.mockResolvedValue(new Uint8Array([1, 2, 3, 4]))
-    const res = await POST(jsonRequest({ text: 'You talk. It builds.' }) as never)
+    const res = await POST(jsonRequest({ text: 'You talk. It builds.', task: 'speech.tts' }) as never)
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('audio/mpeg')
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4]))
-    expect(synthesizeSpeechMock).toHaveBeenCalledWith({ userId: 'u1', text: 'You talk. It builds.' })
+    expect(synthesizeSpeechMock).toHaveBeenCalledWith({ userId: 'u1', text: 'You talk. It builds.', task: 'speech.tts' })
   })
 
   it('maps gateway failures to a 500 with the provider message', async () => {

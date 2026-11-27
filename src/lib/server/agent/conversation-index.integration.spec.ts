@@ -30,6 +30,7 @@ describe.skipIf(!hasDb)('DbDurableConversationIndex.setUserTitle', () => {
     const row = await index.recordConversation({
       conversationKey: key,
       agentId: 'orchestrator',
+      task: 'assistant.turn',
       llmUserId: 'rename-owner',
       piConversationId: `pi-${key}`,
       providerSessionId: `prov-${key}`,

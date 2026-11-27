@@ -352,6 +352,7 @@ export function orchestratorAgentConfig(options: { spendCapUsd?: number } = {}):
     // boot); it runs on the company's chat slot and always acts as the person it works for (CB3).
     instructions: 'engine-default',
     actsAs: 'person',
+    task: 'assistant.turn',
     ...(options.spendCapUsd === undefined ? {} : { spendCapUsd: options.spendCapUsd }),
     enabled: true,
   }

@@ -15,6 +15,8 @@ const RULES: Record<Capability, (role: MemberRole | null) => boolean> = {
   'members.manage': isAdminRole,
   // AI co-workers are managed by the people who manage members (coworkers.* writes are admin-only).
   'coworkers.manage': isAdminRole,
+  // Everyone's AI usage: owner and admins (a member reads their own, settings.my_ai_usage).
+  'ai_usage.view': isAdminRole,
   'approvals.manage': isAdminRole,
   // The recovery code unlocks every backup: the owner's alone (D11).
   'backups.manage': (role) => role === 'owner',

@@ -61,7 +61,7 @@ function scriptedGateway(scripts: Record<string, Turn[]>) {
 
 function engineCtx(principalId: string, llmUserId: string, executed: string[]): EngineContext {
   return {
-    agent: { id: 'orchestrator' },
+    agent: { id: 'orchestrator', task: 'assistant.turn' },
     instructions: { kind: 'engine-default' },
     llmUserId,
     listTools: () => [
@@ -279,7 +279,7 @@ describe('durable engine over real pi-durable', () => {
     })
     const principal = { id: 'orchestrator', kind: 'agent' as const, roles: ['admin', 'agent'] }
     const ctx = {
-      agent: { id: 'orchestrator' },
+      agent: { id: 'orchestrator', task: 'assistant.turn' },
       instructions: { kind: 'engine-default' },
       llmUserId: 'alice',
       listTools: () =>
@@ -534,6 +534,7 @@ describe('background runs (software-factory S0)', () => {
     const handle = await box.engineHarness.startBackgroundRun({
       conversationKey: 'factory:item-1',
       agentId: 'factory',
+      task: 'assistant.turn',
       personId: 'bill',
       instructions: 'You are the factory.',
       prompt: 'build item 1',
@@ -548,6 +549,7 @@ describe('background runs (software-factory S0)', () => {
     expect(JSON.stringify(seen[0]?.messages)).toContain('build item 1')
     expect(await index.resolveByConversationKey('factory:item-1')).toMatchObject({
       agentId: 'factory',
+      task: 'assistant.turn',
       llmUserId: 'bill',
       runPrincipalId: 'bill',
       piConversationId: handle.conversationId,
@@ -561,6 +563,7 @@ describe('background runs (software-factory S0)', () => {
     const input = {
       conversationKey: 'factory:dup',
       agentId: 'factory',
+      task: 'assistant.turn',
       personId: 'bill',
       instructions: 'You are the factory.',
       prompt: 'go',
@@ -590,6 +593,7 @@ describe('background runs (software-factory S0)', () => {
     const handle = await box.engineHarness.startBackgroundRun({
       conversationKey: 'factory:orphan',
       agentId: 'factory',
+      task: 'assistant.turn',
       personId: 'gone',
       instructions: 'You are the factory.',
       prompt: 'go',

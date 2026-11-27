@@ -74,7 +74,7 @@ export async function parseDateRangePhrase(input: {
     temperature: 0,
     maxTokens: 256,
     responseFormat: 'json_object',
-    logContext: 'timeline_parse_date_range',
+    task: 'memory.parse_date_range',
   })
 
   const content = extractChatContent(response)

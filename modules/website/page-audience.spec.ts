@@ -6,7 +6,6 @@ import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { websitePageAudience } from './decision-kinds'
 import {
   AUDIENCE_JSON_SCHEMA,
-  AUDIENCE_LOG_CONTEXT,
   AUDIENCE_MAX_ATTEMPTS,
   buildAudienceMessages,
   createPageAudienceClassifier,
@@ -97,7 +96,7 @@ describe('createPageAudienceClassifier', () => {
       userId: 'u1',
       messages: buildAudienceMessages(pitchDeck),
       temperature: 0,
-      logContext: AUDIENCE_LOG_CONTEXT,
+      task: 'website.page_audience',
       responseFormat: 'json_object',
     })
   })
@@ -144,7 +143,7 @@ describe('liveAudienceChat', () => {
         userId: 'u1',
         messages: buildAudienceMessages(pitchDeck),
         temperature: 0,
-        logContext: AUDIENCE_LOG_CONTEXT,
+        task: 'website.page_audience',
         responseFormat: 'json_object' as const,
       }
       await expect(liveAudienceChat(input)).resolves.toEqual(answer({ audience: 'public_website', reason: 'ok' }))
@@ -174,7 +173,7 @@ describe('shadowedAudienceClassifier (CB2: website.page_audience in shadow)', ()
     await expect(classify({ userId: 'u1', page: pitchDeck })).resolves.toEqual({ audience: 'internal_document', reason: 'Investor terms.' })
     expect(judge).toHaveBeenCalledWith({ userId: 'u1', page: pitchDeck })
     expect(ask).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'u1', logContext: 'website.page_audience', state: websitePageAudience.state(pitchDeck) }),
+      expect.objectContaining({ userId: 'u1', task: 'decisions.judge', kindId: 'website.page_audience', state: websitePageAudience.state(pitchDeck) }),
     )
     expect(store.rows()[0]).toMatchObject({
       kind: 'website.page_audience',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildJudgeMessages, JUDGE_LOG_CONTEXT, JUDGE_MAX_ATTEMPTS, judgeProposal, parseJudgeOutput } from './judge'
+import { buildJudgeMessages, JUDGE_MAX_ATTEMPTS, judgeProposal, parseJudgeOutput } from './judge'
 import { judged } from './test-fixtures'
 
 const candidate = { id: 'c1', title: 'Dark mode', kind: 'idea' as const, area: 'everywhere' as const, status: 'requested' as const }
@@ -41,7 +41,7 @@ describe('contribute judge', () => {
       { userId: 'ana', companyName: null, title: 'Bigger icons', candidates: [] },
     )
     expect(decision).toEqual({ kind: 'polish', area: 'drive', duplicateOfId: null })
-    expect(calls).toEqual([expect.objectContaining({ userId: 'ana', temperature: 0, responseFormat: 'json_object', logContext: JUDGE_LOG_CONTEXT })])
+    expect(calls).toEqual([expect.objectContaining({ userId: 'ana', temperature: 0, responseFormat: 'json_object', task: 'contribute.judge' })])
   })
 
   it('retries a bad answer, then fails loud (502) — no fallback kind', async () => {

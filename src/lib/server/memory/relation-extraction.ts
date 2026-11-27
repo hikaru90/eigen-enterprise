@@ -185,6 +185,7 @@ export async function extractRelations(input: {
   ]
 
   const response = await llmChatCompletion({
+    task: 'brain.relation_extraction',
     contentOrigin: 'memory',
     userId: input.userId,
     messages,

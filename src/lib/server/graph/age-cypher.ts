@@ -161,6 +161,7 @@ async function logGraphActivityCall(
     await logActivityCall(getDb(), userId, {
       provider: 'apache_age',
       operation: input.operation,
+      task: null,
       baseCostUsd: 0,
       context: input.context,
       durationMs: input.durationMs,

@@ -103,7 +103,7 @@ export async function syncTemporalEventsFromThought(input: {
   if (mentions.length === 0) return
 
   const embedding =
-    input.thoughtEmbedding ?? (await createThoughtEmbedding(input.userId, input.normalizedText))
+    input.thoughtEmbedding ?? (await createThoughtEmbedding(input.userId, input.normalizedText, 'memory.temporal_embedding'))
 
   const insertedJobIds: string[] = []
   const insertedBySurface = new Map<string, string>()

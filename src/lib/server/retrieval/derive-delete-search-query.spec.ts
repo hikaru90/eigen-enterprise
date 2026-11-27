@@ -56,7 +56,7 @@ describe('deriveDeleteSearchQueries', () => {
     ).resolves.toEqual(['recipes cooking dishes meals', 'food ingredients preparation'])
 
     expect(llmChatCompletionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ logContext: 'delete_search_query' }),
+      expect.objectContaining({ task: 'brain.delete_search_query' }),
     )
   })
 })

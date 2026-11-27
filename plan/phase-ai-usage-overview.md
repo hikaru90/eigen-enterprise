@@ -25,7 +25,7 @@ company and I have absolutely no visibility where those dollars went."
 
 ```
 call site ──task: AiTaskId──▶ llm-client / llm-decide ──▶ logActivityCall ──▶ activity_call_log
-                                                     (task, model columns, 0189)
+                                                     (task, model columns, 0190)
 settings.ai_usage_overview (kernel read tool, owner+admin)  ◀── Settings → AI usage (client)
                                                            ◀── ee CLI / MCP / the agent
 ```
@@ -42,7 +42,7 @@ settings.ai_usage_overview (kernel read tool, owner+admin)  ◀── Settings �
    `llmCreateSpeech`, `llm-decide` and the provider test take one too. The agent loop takes
    the task from its caller (assistant turn, co-worker turn, durable agent). A call without a
    task does not compile. Console log lines use the task id.
-3. **Migration 0189** (0188 is taken by presence): `activity_call_log.task text`,
+3. **Migration 0190** (0188 presence, 0189 mail reputation): `activity_call_log.task text`,
    `activity_call_log.model text` (both nullable: legacy rows), index on `created_at`.
    Backfill `task` for existing rows by exact match of the legacy `logContext` segment against
    a fixed table in the migration (the $10 already spent becomes visible). Rows that cannot be

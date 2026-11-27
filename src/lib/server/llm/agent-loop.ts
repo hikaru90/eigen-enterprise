@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { ChatStreamEvent } from '$lib/chat/chat-stream-types'
 import { isUnpresentableFinalAnswer } from '$lib/chat/chat-stream-types'
 import { AGENT_TOOL_ACTIVITY_PROVIDER } from '$lib/server/activity/gateway-providers'
@@ -242,6 +243,7 @@ export type AgentChatResult = {
 
 type ToolExecutionContext = {
   userId: string
+  task: AiTaskId
   ctx: McpToolContext
   onEvent?: (event: ChatStreamEvent) => void
   db?: ReturnType<typeof getDb>
@@ -302,6 +304,7 @@ async function executeAgentToolCall(input: {
     await logActivityCall(exec.db ?? getDb(), exec.userId, {
       provider: AGENT_TOOL_ACTIVITY_PROVIDER,
       operation: `tool_call.${tool}`,
+      task: exec.task,
       baseCostUsd: 0,
       context: `args: ${Object.keys(args).join(', ')}`,
       durationMs: Date.now() - toolStart,
@@ -341,6 +344,7 @@ async function executeAgentToolCall(input: {
     await logActivityCall(exec.db ?? getDb(), exec.userId, {
       provider: AGENT_TOOL_ACTIVITY_PROVIDER,
       operation: `tool_error.${tool}`,
+      task: exec.task,
       baseCostUsd: 0,
       context: `args: ${Object.keys(args).join(', ')}`,
       errorMessage,
@@ -368,6 +372,8 @@ async function executeAgentToolCall(input: {
 
 export async function agentChat(input: {
   userId: string
+  /** What this loop works for: its model calls and tool rows carry it. */
+  task: AiTaskId
   messages: ChatMessage[]
   onEvent?: (event: ChatStreamEvent) => void
   db?: ReturnType<typeof getDb>
@@ -389,6 +395,7 @@ export async function agentChat(input: {
 
   const exec: ToolExecutionContext = {
     userId: input.userId,
+    task: input.task,
     ctx,
     onEvent: input.onEvent,
     db: input.db,
@@ -424,7 +431,8 @@ export async function agentChat(input: {
       userId: input.userId,
       messages,
       temperature: 0,
-      logContext: `agent_iter_${iteration}`,
+      task: input.task,
+      operationLabel: `agent_iter_${iteration}`,
       aiSessionId: input.aiSessionId,
       aiTraceId,
     })

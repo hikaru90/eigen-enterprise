@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 /**
  * Exactly one strict forced-choice LLM retry when category validation rejects every candidate.
  * Shared by interpret preview and enrich bundle — same contract, no synonym remapping.
@@ -17,7 +18,7 @@ export async function runStrictCategoryRetry(input: {
   normalizedText: string
   allowedKeys: readonly string[]
   ontology: LoadedUserOntology
-  logContext: string
+  task: AiTaskId
 }): Promise<ResolvedThoughtCategory> {
   const messages: ChatMessage[] = [
     {
@@ -38,7 +39,7 @@ export async function runStrictCategoryRetry(input: {
     userId: input.userId,
     messages,
     temperature: 0,
-    logContext: input.logContext,
+    task: input.task,
     responseFormat: 'json_object',
   })
   const parsed = JSON.parse(stripMarkdownJsonFences(extractChatContent(response))) as unknown

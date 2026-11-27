@@ -91,6 +91,7 @@ export async function extractProjectOrder(input: {
   ].join('\n')
 
   const response = await llmChatCompletion({
+    task: 'memory.project_order',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

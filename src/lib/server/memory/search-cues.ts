@@ -58,7 +58,7 @@ export async function extractSearchCues(input: {
     ],
     temperature: 0,
     responseFormat: 'json_object',
-    logContext: 'search_cues',
+    task: 'memory.search_cues',
   })
 
   const choices = (response as { choices?: unknown }).choices

@@ -1,4 +1,5 @@
 import type { GuideMime } from './guide'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { ChatAttachment, ChatMessage } from '$lib/server/llm/llm-client'
 import { expandSeeds } from '../style-format/expand'
 import { brandSeedsSchema, SEED_SHAPE_DESCRIPTION, type BrandSeeds } from '../style-format/seeds'
@@ -26,7 +27,7 @@ export type ChatCompletionFn = (input: {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
   aiSessionId?: string
 }) => Promise<unknown>
@@ -127,7 +128,7 @@ async function runLensRound(args: {
   chatCompletion: ChatCompletionFn
   userId: string
   aiSessionId?: string
-  logContext: string
+  task: AiTaskId
   messagesFor: (lens: string) => ChatMessage[]
 }): Promise<ProposedCandidate[]> {
   const results = await Promise.all(
@@ -138,7 +139,7 @@ async function runLensRound(args: {
           messages: args.messagesFor(LENSES[label]),
           temperature: TEMPERATURES[i],
           maxTokens: 2048,
-          logContext: args.logContext,
+          task: args.task,
           responseFormat: 'json_object',
           ...(args.aiSessionId === undefined ? {} : { aiSessionId: args.aiSessionId }),
         })
@@ -173,7 +174,7 @@ export async function proposeCandidates(
     chatCompletion: deps.chatCompletion ?? defaultChatCompletion,
     userId: args.userId,
     ...(args.aiSessionId === undefined ? {} : { aiSessionId: args.aiSessionId }),
-    logContext: 'brand_extract',
+    task: 'branding.extract',
     messagesFor: (lens) => [
       { role: 'system', content: systemPrompt() },
       { role: 'user', content: userPrompt(lens, args.digest, feedback) },
@@ -229,7 +230,7 @@ export async function proposeCandidatesFromGuide(
     chatCompletion: deps.chatCompletion ?? defaultChatCompletion,
     userId: args.userId,
     ...(args.aiSessionId === undefined ? {} : { aiSessionId: args.aiSessionId }),
-    logContext: 'brand_extract_guide',
+    task: 'branding.extract_guide',
     messagesFor: (lens) => [
       { role: 'system', content: guideSystemPrompt() },
       {

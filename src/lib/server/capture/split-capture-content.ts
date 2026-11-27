@@ -123,6 +123,7 @@ async function resolveCaptureContentSplitOnce(
     .join('\n')
 
   const response = await llmChatCompletion({
+    task: 'memory.split_capture',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

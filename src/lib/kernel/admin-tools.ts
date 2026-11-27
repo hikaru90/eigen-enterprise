@@ -2,14 +2,15 @@ import type { ApprovalRequest, ApprovalStatus, ApprovalStore } from './approvals
 import type { ToolDescriptor } from './types'
 import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
+import { KERNEL_AI_USAGE_TOOL_NAMES } from './ai-usage-tools'
+import { KERNEL_DECISION_TOOL_NAMES } from './decision-tools'
 import { KernelError } from './errors'
+import { KERNEL_EXPORT_TOOL_NAMES } from './export-tools'
+import { KERNEL_MEMBER_AI_CAP_TOOL_NAMES } from './member-ai-cap-tools'
 import { moduleSwitchedOff, type ActivationStore, type ModuleManifest, type ModuleRegistry } from './modules'
 import { KERNEL_NOTIFICATION_TOOL_NAMES } from './notification-tools'
-import { isDirectHuman } from './principals'
-import { KERNEL_DECISION_TOOL_NAMES } from './decision-tools'
-import { KERNEL_EXPORT_TOOL_NAMES } from './export-tools'
 import { KERNEL_OPERATIONS_TOOL_NAMES } from './operations-tools'
-import { KERNEL_MEMBER_AI_CAP_TOOL_NAMES } from './member-ai-cap-tools'
+import { isDirectHuman } from './principals'
 import { KERNEL_SETTINGS_TOOL_NAMES } from './settings-tools'
 
 /**
@@ -57,6 +58,7 @@ export const kernelManifest: ModuleManifest = {
     ...KERNEL_NOTIFICATION_TOOL_NAMES,
     ...KERNEL_OPERATIONS_TOOL_NAMES,
     ...KERNEL_MEMBER_AI_CAP_TOOL_NAMES,
+    ...KERNEL_AI_USAGE_TOOL_NAMES,
     ...KERNEL_EXPORT_TOOL_NAMES,
     ...KERNEL_DECISION_TOOL_NAMES,
   ],

@@ -1,8 +1,9 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { isUuidV4 } from '$lib/random-uuid'
-import type { CallTokens } from '$lib/server/llm/gateway-cost'
 import type { AppDatabase } from '$lib/server/db/context'
 import { activityCallLog } from '$lib/server/db/schema'
 import { resolveTenantUserId } from '$lib/server/db/tenant-context'
+import type { CallTokens } from '$lib/server/llm/gateway-cost'
 import { priceCall } from '$lib/server/pricing'
 import { getCurrentTraceGroupId } from './trace-context'
 
@@ -19,6 +20,10 @@ export async function logActivityCall(
   input: {
     provider: string
     operation: string
+    /** What the call was for (the task catalog); null for rows that are no model call. */
+    task: AiTaskId | null
+    /** The model the call was routed to; absent for rows that are no model call. */
+    model?: string
     baseCostUsd: number
     /** Hostname derived from the gateway base URL (billable LLM calls only). */
     gatewayHost?: string | null
@@ -51,6 +56,8 @@ export async function logActivityCall(
     provider: input.provider,
     gatewayHost: input.gatewayHost?.trim() ? input.gatewayHost.trim().toLowerCase() : null,
     operation: input.operation,
+    task: input.task,
+    model: input.model ?? null,
     context,
     baseCostUsd: priced.baseCostUsd,
     markupUsd: priced.markupUsd,

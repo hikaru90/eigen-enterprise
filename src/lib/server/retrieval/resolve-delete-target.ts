@@ -148,7 +148,7 @@ export async function resolveDeleteTargets(params: {
     userId: params.userId,
     messages,
     temperature: 0,
-    logContext: 'delete_target_resolver',
+    task: 'brain.delete_target',
   })
 
   const content =

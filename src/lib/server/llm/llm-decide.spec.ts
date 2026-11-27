@@ -1,9 +1,9 @@
+import type { SlotTarget } from './slots'
 import { describe, expect, it, vi } from 'vitest'
 import { mockDecision } from '../../../../scripts/mock-gateway-decisions.mjs'
 import { LlmHttpError, LlmNotConfiguredError } from './errors'
 import { DecisionOutOfSetError, decisionsUrl, llmDecide, type LlmDecideDeps } from './llm-decide'
 import { ModelNotInPoolError } from './model-pool'
-import type { SlotTarget } from './slots'
 
 const target = (over: Partial<SlotTarget> = {}): SlotTarget => ({
   slot: 'decision',
@@ -70,7 +70,8 @@ describe('llmDecide', () => {
         userId: 'user-7',
         state: 'Invoice #44 has the wrong VAT [mock-decide:urgency=high@0.8]',
         questions: { ...questions, urgency: { instructions: 'How urgent?', criteria: { low: 'No deadline', high: 'This week' } } },
-        logContext: 'coworkers.event_mine',
+        task: 'decisions.judge',
+        kindId: 'coworkers.event_mine',
       },
       d,
     )
@@ -98,7 +99,7 @@ describe('llmDecide', () => {
 
   it('never logs the state (it may be a private mail) or the key: the cost row names the kind and the count only', async () => {
     const d = deps()
-    await llmDecide({ userId: 'u', state: 'PRIVATE BODY', questions, logContext: 'k.id' }, d)
+    await llmDecide({ userId: 'u', state: 'PRIVATE BODY', questions, task: 'decisions.judge', kindId: 'k.id' }, d)
     const row = JSON.stringify(d.logged)
     expect(row).not.toContain('PRIVATE BODY')
     expect(row).not.toContain('sk-secret-key')
@@ -107,7 +108,7 @@ describe('llmDecide', () => {
 
   it('fails loud when Jev answers outside the closed set (no repair, no remap) and logs the call', async () => {
     const d = deps()
-    const err = await llmDecide({ userId: 'u', state: '[mock-decide:mine=perhaps@0.9]', questions, logContext: 'k' }, d).catch((e) => e)
+    const err = await llmDecide({ userId: 'u', state: '[mock-decide:mine=perhaps@0.9]', questions, task: 'decisions.judge', kindId: 'k' }, d).catch((e) => e)
     expect(err).toBeInstanceOf(DecisionOutOfSetError)
     expect(err.message).toContain('perhaps')
     expect(d.fetch).toHaveBeenCalledTimes(1)
@@ -116,29 +117,29 @@ describe('llmDecide', () => {
 
   it('fails loud without a decision model (a provider outside the pool namespace)', async () => {
     const d = deps({ resolve: async () => target({ model: null }) })
-    await expect(llmDecide({ userId: 'u', state: 's', questions, logContext: 'k' }, d)).rejects.toBeInstanceOf(LlmNotConfiguredError)
+    await expect(llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, d)).rejects.toBeInstanceOf(LlmNotConfiguredError)
     expect(d.fetch).not.toHaveBeenCalled()
   })
 
   it('passes slot errors through (no key: LlmNotConfiguredError; a stored model outside the pool)', async () => {
     const none = deps({ resolve: async () => Promise.reject(new LlmNotConfiguredError('no key')) })
-    await expect(llmDecide({ userId: 'u', state: 's', questions, logContext: 'k' }, none)).rejects.toBeInstanceOf(LlmNotConfiguredError)
+    await expect(llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, none)).rejects.toBeInstanceOf(LlmNotConfiguredError)
     const off = deps({ resolve: async () => Promise.reject(new ModelNotInPoolError('decision', 'x/y')) })
-    await expect(llmDecide({ userId: 'u', state: 's', questions, logContext: 'k' }, off)).rejects.toBeInstanceOf(ModelNotInPoolError)
+    await expect(llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, off)).rejects.toBeInstanceOf(ModelNotInPoolError)
   })
 
   it('refuses a question with fewer than two choices, and a call with no question, before any request', async () => {
     const d = deps()
     await expect(
-      llmDecide({ userId: 'u', state: 's', questions: { q: { instructions: 'x', criteria: { only: 'o' } } }, logContext: 'k' }, d),
+      llmDecide({ userId: 'u', state: 's', questions: { q: { instructions: 'x', criteria: { only: 'o' } } }, task: 'decisions.judge', kindId: 'k' }, d),
     ).rejects.toThrow(/at least two choices/)
-    await expect(llmDecide({ userId: 'u', state: 's', questions: {}, logContext: 'k' }, d)).rejects.toThrow(/at least one question/)
+    await expect(llmDecide({ userId: 'u', state: 's', questions: {}, task: 'decisions.judge', kindId: 'k' }, d)).rejects.toThrow(/at least one question/)
     expect(d.fetch).not.toHaveBeenCalled()
   })
 
   it('checks the daily cap before the call', async () => {
     const d = deps({ capCheck: async () => Promise.reject(new Error('over the cap')) })
-    await expect(llmDecide({ userId: 'u', state: 's', questions, logContext: 'k' }, d)).rejects.toThrow('over the cap')
+    await expect(llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, d)).rejects.toThrow('over the cap')
     expect(d.fetch).not.toHaveBeenCalled()
   })
 
@@ -146,7 +147,7 @@ describe('llmDecide', () => {
     const refused = deps({
       fetch: vi.fn(async () => new Response(JSON.stringify({ error: { message: 'bad question' } }), { status: 400 })) as unknown as typeof fetch,
     })
-    const err = await llmDecide({ userId: 'u', state: 's', questions, logContext: 'k' }, refused).catch((e) => e)
+    const err = await llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, refused).catch((e) => e)
     expect(err).toBeInstanceOf(LlmHttpError)
     expect(err.status).toBe(400)
     expect(refused.fetch).toHaveBeenCalledTimes(1)
@@ -154,7 +155,7 @@ describe('llmDecide', () => {
     const down = deps({
       fetch: vi.fn(async () => new Response('upstream', { status: 502 })) as unknown as typeof fetch,
     })
-    await expect(llmDecide({ userId: 'u', state: 's', questions, logContext: 'k' }, down)).rejects.toBeInstanceOf(LlmHttpError)
+    await expect(llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, down)).rejects.toBeInstanceOf(LlmHttpError)
     expect(down.fetch).toHaveBeenCalledTimes(3)
     expect(down.logged).toHaveLength(3)
   })

@@ -257,6 +257,7 @@ export async function extractProjectReview(input: {
     .join('\n')
 
   const response = await llmChatCompletion({
+    task: 'memory.project_review',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

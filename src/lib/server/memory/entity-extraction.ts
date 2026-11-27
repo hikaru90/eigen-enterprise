@@ -288,6 +288,7 @@ async function extractEntityMentionsOnce(
   ]
 
   const response = await llmChatCompletion({
+    task: 'brain.entity_extraction',
     contentOrigin: 'memory',
     userId: input.userId,
     messages,
@@ -370,6 +371,7 @@ export async function extractEntityTriples(input: {
   ]
 
   const response = await llmChatCompletion({
+    task: 'brain.entity_extraction',
     contentOrigin: 'memory',
     userId: input.userId,
     messages,
@@ -463,6 +465,7 @@ async function extractEntityGraphOnce(
   ]
 
   const response = await llmChatCompletion({
+    task: 'brain.entity_extraction',
     contentOrigin: 'memory',
     userId: input.userId,
     messages,

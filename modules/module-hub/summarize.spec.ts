@@ -44,7 +44,7 @@ describe('module summary (plan/phase-upgrades-u2.md §7)', () => {
     )
     expect(summary).toEqual({ does: 'Greets a person by name.', touches: 'Reads the member list.', sendsOut: 'Nothing leaves the company.' })
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ userId: 'owner-1', logContext: 'module_hub_summary', responseFormat: 'json_object' })
+    expect(calls[0]).toMatchObject({ userId: 'owner-1', task: 'contribute.module_summary', responseFormat: 'json_object' })
     expect(calls[0]!.messages[1]!.content).toContain('--- index.mjs')
     const stored = await f.moduleStore.getVersion(b.sha256)
     expect(stored?.summary).toEqual(summary)

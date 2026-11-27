@@ -32,6 +32,7 @@ if (mode === 'background') {
   await box.engineHarness.startBackgroundRun({
     conversationKey: 'factory:ticket-7',
     agentId: 'factory',
+    task: 'assistant.turn',
     // The person the run acts as (CB3) — they pay for it too.
     personId: 'factory-person',
     instructions: 'You are the factory.',
@@ -54,7 +55,7 @@ if (mode === 'background') {
     instructions: 'You are a test agent.',
   })
   await engine.run('s1', 'crash me', {
-    agent: { id: 'orchestrator' },
+    agent: { id: 'orchestrator', task: 'assistant.turn' },
     instructions: { kind: 'engine-default' },
     llmUserId: 'alice',
     listTools: () =>

@@ -56,6 +56,7 @@ export const POST: RequestHandler = async (event) => {
       const samples = loadWritingSamples(user.id)
       samples.catch(() => {}) // awaited below; a rejection is never left unhandled meanwhile
       const heard = await transcribeAudio({
+        task: 'speech.stt',
         userId: user.id,
         audio: { bytes: audio.bytes, format, ...(prompt ? { prompt } : {}) },
       })

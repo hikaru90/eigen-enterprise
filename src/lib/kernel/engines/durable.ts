@@ -1,3 +1,4 @@
+import type { AiTaskId } from '../../ai-usage/tasks'
 import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
 import type { KernelRegistry } from '../registry'
 import { randomUUID } from 'node:crypto'
@@ -80,6 +81,8 @@ export type BackgroundRunInput = {
   /** Unique conversation key (e.g. `factory:<itemId>`); a key already indexed fails loud. */
   conversationKey: string
   agentId: string
+  /** What the run's model calls are for. */
+  task: AiTaskId
   /** The member id of the person every tool call of this run acts as (recorded, survives restarts); they pay for its model calls. */
   personId: string
   /** The run's system prompt (persona + discipline). */
@@ -162,6 +165,8 @@ export type DurableEngineHarness = {
     agentId: string
     /** Gateway billing identity this conversation's model calls resolve to. */
     llmUserId: string
+    /** What the conversation's model calls are for (the agent's declared task). */
+    task: AiTaskId
     /** The run's system prompt and how it is applied (see DurableInstructions). */
     instructions: DurableInstructions
     /** The run's chat model (see DurableModelChoice). */
@@ -397,6 +402,7 @@ export class DurableLoopEngine implements LoopEngine {
       agentId: ctx.agent.id,
       // The principal the run acts as pays for it (the person, or the self-acting agent).
       llmUserId: ctx.llmUserId,
+      task: ctx.agent.task,
       instructions: this.runInstructions(ctx),
       model: ctx.agent.modelId === undefined ? { kind: 'chat-slot' } : { kind: 'pool', modelId: ctx.agent.modelId },
       tools,

@@ -361,6 +361,7 @@ export async function resolveProjectIdentity(
   })
 
   const response = await llmChatCompletion({
+    task: 'memory.project_identity',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

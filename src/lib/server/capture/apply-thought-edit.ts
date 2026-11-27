@@ -180,7 +180,7 @@ export async function applyThoughtEditRequest(input: {
     userId: input.userId,
     messages,
     temperature: 0,
-    logContext: 'apply_thought_edit',
+    task: 'memory.apply_thought_edit',
   })
 
   const content = extractChatContent(response)

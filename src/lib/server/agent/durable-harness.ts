@@ -1,6 +1,7 @@
 import type { DurableConversationIndex } from './conversation-index'
 import { mkdirSync, openSync, readFileSync, unlinkSync, writeSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type {
   BackgroundRunHandle,
   BackgroundRunInput,
@@ -245,14 +246,19 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
   const index = deps.index
   const models = createGatewayModelCatalog({
     complete: deps.complete ?? dbScopedGatewayComplete,
-    resolveUserId: async (providerSessionId) => {
+    resolveCall: async (providerSessionId) => {
       const row = await index.resolveByProviderSession(providerSessionId)
       if (!row) {
         throw new Error(
           `no durable conversation is indexed for provider session ${providerSessionId} — refusing an anonymous model call (the conversation index is the billing attribution source)`,
         )
       }
-      return row.llmUserId
+      if (!row.task) {
+        throw new Error(
+          `durable conversation ${row.conversationKey} has no AI task recorded — refusing an unnamed model call (its next dispatch records one)`,
+        )
+      }
+      return { userId: row.llmUserId, task: row.task }
     },
   })
 
@@ -404,6 +410,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     conversationKey: string
     agentId: string
     llmUserId: string
+    task: AiTaskId
     instructions: DurableInstructions
     model: DurableModelChoice
     tools: DurableBridgeToolSpec[]
@@ -426,6 +433,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
           `durable conversation ${input.conversationKey} belongs to another person — a dispatch as ${input.llmUserId} cannot continue it`,
         )
       }
+      if (existing.task !== input.task) await index.setTask(existing.id, input.task)
       const conversation = await harness.conversation(
         asConversationId(existing.piConversationId),
         BACKGROUND_CONTEXT,
@@ -455,6 +463,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       conversationKey: input.conversationKey,
       agentId: input.agentId,
       llmUserId: input.llmUserId,
+      task: input.task,
       instructions: input.instructions.text,
       model,
       registrations,
@@ -478,6 +487,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
     conversationKey: string
     agentId: string
     llmUserId: string
+    task: AiTaskId
     instructions: string
     model: { provider: string; modelId: string }
     registrations: ToolRegistration[]
@@ -507,6 +517,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       conversationKey: input.conversationKey,
       agentId: input.agentId,
       llmUserId: input.llmUserId,
+      task: input.task,
       piConversationId: String(conversation.id),
       providerSessionId,
       ...(input.background
@@ -542,6 +553,7 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
       agentId: input.agentId,
       // The person the run acts as pays for it (CB3: the run's one identity).
       llmUserId: input.personId,
+      task: input.task,
       instructions: input.instructions,
       model: modelRef({ kind: 'chat-slot' }),
       registrations,

@@ -41,6 +41,7 @@ export async function extractCues(input: {
   ].join('\n')
 
   const response = await llmChatCompletion({
+    task: 'memory.extract_cues',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

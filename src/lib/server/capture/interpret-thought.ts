@@ -150,7 +150,7 @@ export async function interpretThoughtPreview(input: {
     userId: input.userId,
     messages,
     temperature: 0,
-    logContext: 'interpret_thought_preview',
+    task: 'memory.interpret_preview',
     responseFormat: 'json_object',
   })
 
@@ -183,7 +183,7 @@ export async function interpretThoughtPreview(input: {
           : rawText,
       allowedKeys: [...allowedCategoryKeys],
       ontology,
-      logContext: 'interpret_thought_preview_category_retry',
+      task: 'memory.interpret_preview_category_retry',
     })
     try {
       return parsePreviewBundle(parsed, ontology, allowedEntityKeys, forcedCategory)

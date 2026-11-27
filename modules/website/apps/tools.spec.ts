@@ -1160,7 +1160,7 @@ describe('deploy progress and "Ask AI what went wrong"', () => {
     expect(seen[0]).toMatchObject({
       userId: 'u1',
       responseFormat: 'json_object',
-      logContext: 'app_deploy_diagnose',
+      task: 'website.app_diagnose',
     })
     const prompt = seen[0]!.messages.map((m) => m.content).join('\n')
     expect(prompt).toContain('Failed at stage: health')

@@ -1,8 +1,8 @@
+import type { ExtractChat } from './extract'
 import { describe, expect, it, vi } from 'vitest'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
-import type { ExtractChat } from './extract'
 import { memoryNextUpCache } from './memory-store'
-import { NEXT_UP_LOG_CONTEXT, NEXT_UP_NO_PROVIDER_MESSAGE, buildNextUpMessages, nextUp, parseNextUpOutput } from './next-up'
+import { NEXT_UP_NO_PROVIDER_MESSAGE, buildNextUpMessages, nextUp, parseNextUpOutput } from './next-up'
 import { createContact, logContact, pipeline, updateContact } from './service'
 import { fixture, user } from './test-fixtures'
 import { NEXT_UP_TTL_HOURS } from './types'
@@ -88,7 +88,7 @@ describe('next up: the pick', () => {
     ])
     expect(chat).toHaveBeenCalledTimes(1)
     const call = chat.mock.calls[0]![0]
-    expect(call).toMatchObject({ userId: 'ana', logContext: NEXT_UP_LOG_CONTEXT, responseFormat: 'json_object', temperature: 0 })
+    expect(call).toMatchObject({ userId: 'ana', task: 'contacts.next_up', responseFormat: 'json_object', temperature: 0 })
     const sent = String(call.messages[1]!.content)
     expect(sent).toContain(mara.id)
     expect(sent).not.toContain(priv.id)

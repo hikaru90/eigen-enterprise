@@ -104,6 +104,7 @@ export async function extractGtdAssignment(input: {
     .join('\n')
 
   const response = await llmChatCompletion({
+    task: 'memory.gtd_assignment',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

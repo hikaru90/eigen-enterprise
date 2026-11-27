@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import {
-  APPOINTMENT_LOG_CONTEXT,
   APPOINTMENT_MAX_ATTEMPTS,
   buildAppointmentMessages,
   extractAppointment,
@@ -123,7 +122,7 @@ describe('appointment reading: the call', () => {
     const out = await extractAppointment(chat, { userId: 'ana', ...ctx })
     expect(out?.title).toBe('Call with Mara Voss')
     expect(chat).toHaveBeenCalledTimes(1)
-    expect(chat.mock.calls[0]![0]).toMatchObject({ userId: 'ana', temperature: 0, responseFormat: 'json_object', logContext: APPOINTMENT_LOG_CONTEXT })
+    expect(chat.mock.calls[0]![0]).toMatchObject({ userId: 'ana', temperature: 0, responseFormat: 'json_object', task: 'calendar.mail_proposal' })
   })
 
   it('an unreadable answer is retried, then fails loud', async () => {

@@ -55,7 +55,7 @@ describe('createLiveBrain', () => {
     expect(await createLiveBrain(deps).answer(ask)).toBe('Morgen.')
     expect(log).toEqual(['company-provider', 'db-user:ben', 'memory:ben:ben:Wann geht das Angebot raus?', 'complete:ben:ben'])
     const c = completions[0]!
-    expect(c).toMatchObject({ userId: 'ben', contentOrigin: 'memory', temperature: 0, logContext: 'call_brain_answer' })
+    expect(c).toMatchObject({ userId: 'ben', contentOrigin: 'memory', temperature: 0, task: 'calls.brain_answer' })
     expect(c.messages[0]).toEqual({ role: 'system', content: BRAIN_CALL_SYSTEM_PROMPT })
     expect(c.messages[1]!.content).toContain('Offer to Müller planned for Friday.')
     expect(c.messages[1]!.content).toContain('[00:30] Ann Example: Das Angebot geht morgen raus.')
@@ -66,7 +66,7 @@ describe('createLiveBrain', () => {
     const out = await createLiveBrain(deps).recap({ userId: 'ann', callTitle: 'Sync', people: ask.people, heard: ask.heard })
     expect(out).toBe('- Decided: offer goes out tomorrow.')
     expect(log).toEqual(['company-provider', 'db-user:ann', 'complete:ann:ann'])
-    expect(completions[0]).toMatchObject({ userId: 'ann', contentOrigin: 'memory', logContext: 'call_brain_recap' })
+    expect(completions[0]).toMatchObject({ userId: 'ann', contentOrigin: 'memory', task: 'calls.brain_recap' })
     expect(completions[0]!.messages[0]).toEqual({ role: 'system', content: BRAIN_RECAP_SYSTEM_PROMPT })
   })
 

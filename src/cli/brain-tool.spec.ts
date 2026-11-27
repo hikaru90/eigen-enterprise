@@ -66,6 +66,7 @@ async function fixture(options: { approvalGated?: string[] } = {}) {
     verificationPolicy: 'none',
     instructions: 'engine-default',
     actsAs: 'person',
+    task: 'assistant.turn',
     enabled: true,
   }
   return { seen, activations, registry, isToolActive, ee, agent }

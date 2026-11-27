@@ -200,7 +200,7 @@ export async function syncEntityGraphFromThought(input: {
   const uniqueSurfaces = [...new Set(mentions.map((m) => m.surface.trim()).filter(Boolean))]
   const surfaceEmbStart = Date.now()
   const prefetchedEmbeddings =
-    uniqueSurfaces.length > 0 ? await createThoughtEmbeddings(input.userId, uniqueSurfaces) : []
+    uniqueSurfaces.length > 0 ? await createThoughtEmbeddings(input.userId, uniqueSurfaces, 'brain.entity_embedding') : []
   logStep(input.thoughtId, 'surface_embeddings', surfaceEmbStart)
   const embeddingBySurface = new Map(
     uniqueSurfaces.map((surface, index) => [surface, prefetchedEmbeddings[index]!]),

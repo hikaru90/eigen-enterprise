@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
@@ -18,7 +19,6 @@ import { MATERIAL_COPY_LIMITS, MaterialError, type MaterialCopy } from './types'
  * is saved: the person picks a variant and edits it before exporting.
  */
 
-export const MATERIAL_TEXT_LOG_CONTEXT = 'brand_material_texts'
 export const MATERIAL_TEXT_MAX_ATTEMPTS = 3
 export const MATERIAL_TEXT_VARIANTS = 3
 
@@ -29,7 +29,7 @@ export type MaterialChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -122,7 +122,7 @@ export async function suggestMaterialTexts(
   for (let attempt = 1; attempt <= MATERIAL_TEXT_MAX_ATTEMPTS; attempt++) {
     let response: unknown
     try {
-      response = await deps.chat({ userId: input.userId, messages, temperature: 0.7, logContext: MATERIAL_TEXT_LOG_CONTEXT, responseFormat: 'json_object' })
+      response = await deps.chat({ userId: input.userId, messages, temperature: 0.7, task: 'branding.material_texts', responseFormat: 'json_object' })
     } catch (err) {
       throw gatewayError(err)
     }

@@ -1,17 +1,17 @@
 import type { GatewayCompleteFn } from './gateway-model'
-import type { AgentConfig } from '$lib/kernel/agent'
-import type { ToolContext, ToolPrincipal } from '$lib/kernel/types'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import type { AgentConfig } from '$lib/kernel/agent'
 import { AgentRuntime } from '$lib/kernel/agent-runtime'
 import { InMemoryApprovalStore, StaticApprovalPolicy } from '$lib/kernel/approvals'
 import { DurableLoopEngine } from '$lib/kernel/engines/durable'
 import { InMemoryEventSink } from '$lib/kernel/events'
 import { InMemoryActivationStore, ModuleRegistry } from '$lib/kernel/modules'
 import { KernelRegistry } from '$lib/kernel/registry'
+import type { ToolContext, ToolPrincipal } from '$lib/kernel/types'
 import { ModelNotInPoolError } from '$lib/server/llm/model-pool'
 import { DEFAULT_MOCK_TOOL, MOCK_ANSWER, mockChatCompletion } from '../../../../scripts/mock-gateway-chat.mjs'
 import { InMemoryDurableConversationIndex } from './conversation-index'
@@ -70,6 +70,7 @@ function coworker(id: string, principal: ToolPrincipal, prompt: (input: string) 
     instructions: (turn) => prompt(turn.input),
     modelId,
     actsAs: { kind: 'self', principalFor: () => principal, dailySpendCapUsd: 5 },
+    task: 'coworkers.turn',
     enabled: true,
   }
 }
@@ -208,6 +209,7 @@ describe('two co-workers through the durable engine and the mock gateway', () =>
       verificationPolicy: 'none',
       instructions: 'engine-default',
       actsAs: 'person',
+      task: 'assistant.turn',
       enabled: true,
     })
     fx.runtime.registerAgent(coworker('coworker-marketing', marketing, () => 'ROLE: Marketing Manager.', 'google/gemini-3.8-flash'))

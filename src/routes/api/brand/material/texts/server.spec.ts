@@ -34,7 +34,7 @@ describe('POST /api/brand/material/texts', () => {
     const res = await call({ formatId: 'flyer-a5', brief: 'Open day on 3 May' })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ formatId: 'flyer-a5', locale: null, voice: false, variants })
-    expect(gateway.mock.calls[0][0]).toMatchObject({ userId: 'ana', logContext: 'brand_material_texts', responseFormat: 'json_object' })
+    expect(gateway.mock.calls[0][0]).toMatchObject({ userId: 'ana', task: 'branding.material_texts', responseFormat: 'json_object' })
   })
 
   it('no AI provider → 503 with the plain sentence and an agent report', async () => {

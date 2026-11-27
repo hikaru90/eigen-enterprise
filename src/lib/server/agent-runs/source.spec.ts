@@ -8,6 +8,7 @@ async function seeded() {
   await index.recordConversation({
     conversationKey: 'orchestrator:a',
     agentId: 'orchestrator',
+    task: 'assistant.turn',
     llmUserId: 'user-a',
     piConversationId: '41',
     providerSessionId: 'prov-secret-a',
@@ -15,6 +16,7 @@ async function seeded() {
   await index.recordConversation({
     conversationKey: 'orchestrator:b',
     agentId: 'orchestrator',
+    task: 'assistant.turn',
     llmUserId: 'user-b',
     piConversationId: '42',
     providerSessionId: 'prov-secret-b',

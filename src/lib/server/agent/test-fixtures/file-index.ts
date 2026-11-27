@@ -38,6 +38,13 @@ export class FileIndex implements DurableConversationIndex {
   async listConversations() {
     return this.rows()
   }
+  async setTask(id: number, task: DurableConversationRow['task']) {
+    const rows = this.rows()
+    const row = rows.find((r) => r.id === id)
+    if (!row) throw new Error(`unknown durable conversation row: ${id}`)
+    row.task = task
+    writeFileSync(this.path, JSON.stringify(rows))
+  }
   async touch() {}
   async setUserTitle(id: number, title: string) {
     const rows = this.rows()

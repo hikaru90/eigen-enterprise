@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { Catalog, EeClient, SourceFile, SourceTree } from '$lib/server/ee/client'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { AppUserError, commandProblem } from './contract'
@@ -169,7 +170,7 @@ export type SuggestChatFn = (input: {
   messages: ChatMessage[]
   temperature?: number
   maxTokens?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -264,7 +265,7 @@ export async function suggestContract(
     temperature: 0,
     // Reasons + warnings for a real repo run past 1200 tokens (owner's twodown did).
     maxTokens: 4000,
-    logContext: 'website_app_suggest',
+    task: 'website.app_suggest',
     responseFormat: 'json_object',
   })
   const a = parseAnswer(response)

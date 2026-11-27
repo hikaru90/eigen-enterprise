@@ -147,6 +147,7 @@ describe('bootApp — the brain reaches every tool of the person through ee', ()
         verificationPolicy: 'none',
         instructions: 'engine-default',
         actsAs: 'person',
+        task: 'assistant.turn',
         enabled: true,
       })
     }
@@ -691,6 +692,7 @@ const MEMBER_LOSES_VIA_BRAIN = [
   'roadmap.list_items',
   'roadmap.update_item',
   'settings.get',
+  'settings.ai_usage_overview',
   'settings.logo_recrop',
   'settings.logo_remove',
   'settings.logo_set',

@@ -173,7 +173,7 @@ export async function applyTemporalEventActionRequest(input: {
     userId: input.userId,
     messages,
     temperature: 0,
-    logContext: 'apply_temporal_event_action',
+    task: 'memory.temporal_event_action',
   })
 
   const content = extractChatContent(response)

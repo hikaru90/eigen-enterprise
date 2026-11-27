@@ -653,7 +653,7 @@ describe('composeAnswer', () => {
         queryEmbedding: expect.any(Array),
       }),
     )
-    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'what about graph weights?')
+    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'what about graph weights?', 'brain.retrieval_embedding')
   })
 
   it('uses default topK of 8 when not provided', async () => {
@@ -927,7 +927,7 @@ describe('composeAnswer', () => {
     )
     await composeAnswer({ userId: 'u1', question: 'Wer ist Clemi?' })
     expect(createThoughtEmbeddingMock).toHaveBeenCalledTimes(1)
-    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'Wer ist Clemi?')
+    expect(createThoughtEmbeddingMock).toHaveBeenCalledWith('u1', 'Wer ist Clemi?', 'brain.retrieval_embedding')
     expect(searchThoughtsMock).toHaveBeenCalledWith(
       expect.objectContaining({ query: 'Wer ist Clemi?', queryEmbedding: expect.any(Array) }),
     )

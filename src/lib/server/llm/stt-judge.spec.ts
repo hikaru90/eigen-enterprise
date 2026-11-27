@@ -4,7 +4,6 @@ import {
   judgeTranscript,
   parseTranscriptVerdict,
   STT_JUDGE_ATTEMPTS,
-  STT_JUDGE_LOG_CONTEXT,
   toWritingSamples,
   WRITING_SAMPLE_LIMIT,
   WRITING_SAMPLE_MAX_CHARS,
@@ -54,7 +53,7 @@ describe('judgeTranscript', () => {
     await expect(judgeTranscript(chat, { userId: 'u1', transcript: 'hello', writingSamples: [] })).resolves.toBe('dictation')
     expect(chat).toHaveBeenCalledTimes(1)
     expect(chat).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'u1', temperature: 0, responseFormat: 'json_object', logContext: STT_JUDGE_LOG_CONTEXT }),
+      expect.objectContaining({ userId: 'u1', temperature: 0, responseFormat: 'json_object', task: 'speech.stt_judge' }),
     )
   })
 

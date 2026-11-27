@@ -22,6 +22,7 @@ export function coworkerAgentConfig(view: CoworkerView, prompts: TurnPrompts): A
     verificationPolicy: 'none',
     instructions: (turn) => prompts.get(turn.sessionId),
     modelId: view.modelId,
+    task: 'coworkers.turn',
     actsAs: {
       kind: 'self',
       principalFor: () => coworkerPrincipal(view.id, view.agentId),

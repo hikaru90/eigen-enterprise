@@ -18,6 +18,7 @@ export const POST: RequestHandler = async (event) => {
   try {
     const prompt = await loadTranscriptionPrompt(user.id)
     const transcript = await transcribeAudio({
+      task: 'speech.stt',
       userId: user.id,
       audio: { bytes: audio.bytes, format, language: audio.language, ...(prompt ? { prompt } : {}) },
       // Voice notes to Memory: the transcript is never logged (LlmContentOrigin).

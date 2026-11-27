@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { AppContract, EeDeploy } from '$lib/server/ee/client'
 import { extractBatchChatContent } from '$lib/server/llm/batch-json'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
@@ -40,7 +41,7 @@ export type DiagnoseLlm = (input: {
   userId: string
   messages: ChatMessage[]
   responseFormat: 'json_object'
-  logContext: string
+  task: AiTaskId
   temperature: number
   maxTokens: number
 }) => Promise<unknown>
@@ -122,7 +123,7 @@ export async function diagnoseDeploy(
       userId,
       messages: diagnosisMessages(failure),
       responseFormat: 'json_object',
-      logContext: 'app_deploy_diagnose',
+      task: 'website.app_diagnose',
       temperature: 0,
       maxTokens: 4000,
     })

@@ -404,7 +404,7 @@ async function generateSummaryBatch(
     temperature: 0,
     maxTokens: 280 * communityIds.length,
     responseFormat: 'json_object',
-    logContext: 'community_summary_batch',
+    task: 'brain.community_summary',
   })
 
   const choices = (response as { choices?: unknown }).choices
@@ -420,7 +420,7 @@ async function generateSummaryBatch(
   const embeddingSources = reports.map((r) =>
     `${r.title.slice(0, 500)}. ${r.summary}`.slice(0, 2000),
   )
-  const embeddings = await createThoughtEmbeddings(userId, embeddingSources)
+  const embeddings = await createThoughtEmbeddings(userId, embeddingSources, 'brain.community_summary')
 
   const db = getDb()
   const ctxById = new Map(contexts.map((c) => [c.communityId, c]))

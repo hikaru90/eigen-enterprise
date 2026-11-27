@@ -14,6 +14,8 @@ export const CAPABILITIES = [
   'members.manage',
   /** Settings → Co-workers: creating, changing and removing AI co-workers (plan/phase-ai-coworkers.md C5). */
   'coworkers.manage',
+  /** Settings → AI usage: where the company's AI money goes (settings.ai_usage_overview). */
+  'ai_usage.view',
   /** Settings → Approval mode. */
   'approvals.manage',
   /** Settings → Backups (the owner's alone, D11). */
@@ -49,6 +51,7 @@ export const GUARDED_PAGES: readonly { prefix: string; capability: Capability }[
   { prefix: '/settings/domains', capability: 'company.manage' },
   { prefix: '/settings/members', capability: 'members.manage' },
   { prefix: '/settings/coworkers', capability: 'coworkers.manage' },
+  { prefix: '/settings/ai-usage', capability: 'ai_usage.view' },
   { prefix: '/settings/approvals', capability: 'approvals.manage' },
   { prefix: '/settings/backups', capability: 'backups.manage' },
   { prefix: '/settings/export', capability: 'export.manage' },

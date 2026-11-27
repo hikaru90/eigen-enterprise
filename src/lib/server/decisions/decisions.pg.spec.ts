@@ -1,11 +1,11 @@
-import http from 'node:http'
 import type { AddressInfo } from 'node:net'
+import http from 'node:http'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { mockDecision } from '../../../../scripts/mock-gateway-decisions.mjs'
 import { appDbAsyncLocal, type AppDatabase } from '$lib/server/db/context'
 import { liveLlmDecideDeps, llmDecide, type LlmDecideDeps } from '$lib/server/llm/llm-decide'
+import { mockDecision } from '../../../../scripts/mock-gateway-decisions.mjs'
 import { decide } from './decide'
 import { decisionKindCatalog, defineDecisionKind } from './kind'
 import { decisionsPort } from './service'
@@ -107,7 +107,7 @@ describe.skipIf(!url)('decision log (Postgres) + llmDecide against the mock deci
   it('llmDecide: one cost row on the acting user, provider-reported cost, no state in the context', async () => {
     await inRolledBackTx(async (tx) => {
       const out = await llmDecide(
-        { userId: anna, state: 'PRIVATE mail text', questions: { decision: { instructions: 'Mine?', criteria: shadow.criteria } }, logContext: kindId },
+        { userId: anna, state: 'PRIVATE mail text', questions: { decision: { instructions: 'Mine?', criteria: shadow.criteria } }, task: 'decisions.judge', kindId },
         gateway(),
       )
       expect(out.answers.decision).toMatchObject({ choice: 'yes', confidence: 1 })

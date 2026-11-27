@@ -1,5 +1,6 @@
 import type { ProposalGuest } from './proposal-store'
 import { z } from 'zod'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
@@ -18,7 +19,6 @@ import { CALENDAR_LIMITS } from './types'
  */
 
 export const APPOINTMENT_MAX_ATTEMPTS = 3
-export const APPOINTMENT_LOG_CONTEXT = 'calendar_mail_proposal'
 /** How much of a mail's body the model reads (the newest text comes first in a reply). */
 export const APPOINTMENT_BODY_CHARS = 20_000
 
@@ -26,7 +26,7 @@ export type AppointmentChat = (input: {
   userId: string
   messages: ChatMessage[]
   temperature?: number
-  logContext?: string
+  task: AiTaskId
   responseFormat?: 'json_object'
 }) => Promise<unknown>
 
@@ -173,7 +173,7 @@ export async function extractAppointment(chat: AppointmentChat, input: { userId:
   const messages = buildAppointmentMessages(input)
   let lastError = ''
   for (let attempt = 1; attempt <= APPOINTMENT_MAX_ATTEMPTS; attempt++) {
-    const response = await chat({ userId: input.userId, messages, temperature: 0, logContext: APPOINTMENT_LOG_CONTEXT, responseFormat: 'json_object' })
+    const response = await chat({ userId: input.userId, messages, temperature: 0, task: 'calendar.mail_proposal', responseFormat: 'json_object' })
     try {
       return parseAppointmentOutput(response, input)
     } catch (err) {

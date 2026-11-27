@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { ContactsError } from './errors'
 import {
-  EXTRACT_LOG_CONTEXT,
   EXTRACT_MAX_ATTEMPTS,
   buildContactExtractMessages,
   extractContactDraft,
@@ -137,7 +136,7 @@ describe('extractContactDraft', () => {
     expect(chat.mock.calls[0]![0]).toMatchObject({
       userId: 'ana',
       temperature: 0,
-      logContext: EXTRACT_LOG_CONTEXT,
+      task: 'contacts.extract',
       responseFormat: 'json_object',
     })
   })

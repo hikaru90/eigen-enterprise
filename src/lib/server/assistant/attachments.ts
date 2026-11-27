@@ -24,7 +24,6 @@ import { detectGuideMime } from '../../../../modules/brand/extract/guide'
 
 const MB = 1024 * 1024
 const MAX_FILENAME_LENGTH = 255
-const READ_LOG_CONTEXT = 'assistant_attachment_read'
 /** Enough room for maxTextChars of text (about 4 characters per token) plus slack. */
 const READ_MAX_TOKENS = 20_000
 
@@ -119,7 +118,7 @@ async function readWithModel(
       ],
       temperature: 0,
       maxTokens: READ_MAX_TOKENS,
-      logContext: READ_LOG_CONTEXT,
+      task: 'assistant.attachment_read',
     })
   } catch (err) {
     if (isLlmNotConfiguredError(err)) {

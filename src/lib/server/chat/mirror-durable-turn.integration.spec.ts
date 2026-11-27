@@ -50,6 +50,7 @@ describe.skipIf(!hasDb)(
     const turn = () => ({
       conversationKey: `orchestrator:${sessionId}`,
       agentId: 'orchestrator',
+      task: 'assistant.turn',
       llmUserId: userId,
       piConversationId: '42',
       answerKey: `42:${suffix}`,
@@ -91,6 +92,7 @@ describe.skipIf(!hasDb)(
       const row = await index.recordConversation({
         conversationKey: `factory:${suffix}`,
         agentId: 'factory',
+        task: 'assistant.turn',
         llmUserId: userId,
         piConversationId: `pi-${suffix}`,
         providerSessionId: `prov-${suffix}`,

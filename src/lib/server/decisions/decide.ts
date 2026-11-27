@@ -1,7 +1,7 @@
+import type { DecisionKind, DecisionStatus } from './kind'
 import { createHash } from 'node:crypto'
 import { llmDecide } from '$lib/server/llm/llm-decide'
 import { redactForLog } from '$lib/server/observability/redact-for-log'
-import type { DecisionKind, DecisionStatus } from './kind'
 import { liveDecisionStore, type DecisionStore, type NewDecision } from './store'
 
 /**
@@ -94,7 +94,8 @@ async function askJev<I, C extends string>(kind: DecisionKind<I, C>, input: I, r
       userId: requestedBy,
       state: kind.state(input),
       questions: { [QUESTION_ID]: { instructions: kind.instructions, criteria: kind.criteria } },
-      logContext: kind.id,
+      task: 'decisions.judge',
+      kindId: kind.id,
     })
     const answer = result.answers[QUESTION_ID]!
     // llmDecide already refuses an out-of-set answer; this narrows the type.
@@ -123,7 +124,8 @@ async function askJevMany<I, C extends string>(
       questions: Object.fromEntries(
         inputs.map((input, n) => [questionId(n), { instructions: `${kind.instructions}\n\n${batch.question(input)}`, criteria: kind.criteria }]),
       ),
-      logContext: kind.id,
+      task: 'decisions.judge',
+      kindId: kind.id,
     })
     const share = result.costUsd / inputs.length
     return inputs.map((_input, n) => {

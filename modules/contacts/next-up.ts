@@ -1,7 +1,7 @@
-import type { ChatMessage } from '$lib/server/llm/llm-client'
 import type { ContactsDeps } from './service'
 import type { NextUpCache } from './store'
 import { z } from 'zod'
+import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { askContactsAi, readJson, type ContactsAiCall, type ExtractChat } from './extract'
 import { pipeline } from './service'
 import {
@@ -33,13 +33,11 @@ import {
  * a list made up here.
  */
 
-export const NEXT_UP_LOG_CONTEXT = 'contacts_next_up'
-
 export const NEXT_UP_NO_PROVIDER_MESSAGE =
   'The company has no AI provider set up yet, so the assistant can’t suggest who to write to next. The owner sets one up under Settings → AI provider.'
 
 const CALL: ContactsAiCall = {
-  logContext: NEXT_UP_LOG_CONTEXT,
+  task: 'contacts.next_up',
   noProvider: NEXT_UP_NO_PROVIDER_MESSAGE,
   unreadable: (tries, error) => `The assistant’s suggestions couldn’t be read (${tries} tries: ${error}). Try “Suggest again”.`,
 }

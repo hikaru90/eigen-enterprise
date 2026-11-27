@@ -1,3 +1,4 @@
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { env } from '$lib/server/env/private-env'
 import {
   getCachedQueryEmbedding,
@@ -78,12 +79,13 @@ function compressForEmbedding(input: string): string {
   return compress(input, { intensity })
 }
 
-export async function createThoughtEmbedding(userId: string, input: string): Promise<number[]> {
+/** `task` is the feature that asked for the vector: its cost counts there. */
+export async function createThoughtEmbedding(userId: string, input: string, task: AiTaskId): Promise<number[]> {
   const cached = getCachedQueryEmbedding(userId, input)
   if (cached) return cached
 
   const payload = compressForEmbedding(input)
-  const response = await llmCreateEmbeddings({ userId, input: payload, contentOrigin: 'memory' })
+  const response = await llmCreateEmbeddings({ userId, input: payload, task, contentOrigin: 'memory' })
   const embedding = extractFirstEmbedding(response)
   setCachedQueryEmbedding(userId, input, embedding)
   return embedding
@@ -93,14 +95,15 @@ export async function createThoughtEmbedding(userId: string, input: string): Pro
 export async function createThoughtEmbeddings(
   userId: string,
   inputs: string[],
+  task: AiTaskId,
 ): Promise<number[][]> {
   if (inputs.length === 0) return []
   if (inputs.length === 1) {
-    return [await createThoughtEmbedding(userId, inputs[0]!)]
+    return [await createThoughtEmbedding(userId, inputs[0]!, task)]
   }
 
   const payloads = inputs.map((text) => compressForEmbedding(text))
-  const response = await llmCreateEmbeddings({ userId, input: payloads, contentOrigin: 'memory' })
+  const response = await llmCreateEmbeddings({ userId, input: payloads, task, contentOrigin: 'memory' })
   const embeddings = extractEmbeddings(response)
   if (embeddings.length !== inputs.length) {
     throw new Error(

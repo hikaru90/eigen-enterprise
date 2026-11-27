@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { LlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
 import { InMemoryBrandStore } from '../store'
-import { CAPTION_LOG_CONTEXT, NETWORK_CAPTION_LIMITS, NO_PROVIDER_MESSAGE, suggestCaptions, type CaptionChat } from './captions'
+import { NETWORK_CAPTION_LIMITS, NO_PROVIDER_MESSAGE, suggestCaptions, type CaptionChat } from './captions'
 import { InMemorySocialPostStore } from './store'
 
 const person = { kind: 'user' as const, userId: 'ana' }
@@ -52,7 +53,7 @@ describe('suggestCaptions', () => {
   it('asks the gateway once for three captions per network, in the active brand voice', async () => {
     const { posts, brand, post } = await setup()
     await activeVoice(brand)
-    const calls: Array<{ messages: ChatMessage[]; logContext?: string; responseFormat?: string; userId: string }> = []
+    const calls: Array<{ messages: ChatMessage[]; task: AiTaskId; responseFormat?: string; userId: string }> = []
     const chat: CaptionChat = async (input) => {
       calls.push(input)
       return reply({ captions: { instagram: three('IG'), x: three('X') } })
@@ -60,7 +61,7 @@ describe('suggestCaptions', () => {
     const out = await suggestCaptions({ posts, brand, chat }, { postId: post.id, userId: 'ana' })
     expect(out).toEqual({ postId: post.id, locale: 'de', voice: true, captions: { instagram: three('IG'), x: three('X') } })
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toMatchObject({ userId: 'ana', logContext: CAPTION_LOG_CONTEXT, responseFormat: 'json_object' })
+    expect(calls[0]).toMatchObject({ userId: 'ana', task: 'branding.social_captions', responseFormat: 'json_object' })
     const prompt = calls[0].messages.map((m) => m.content).join('\n')
     for (const text of ['Bald ist es da', 'Wir zeigen, wie es geht.', 'REVOLUTIONÄR!!!', 'disruptiv', 'Nucleus', 'candid without hype', '"x"', '280']) {
       expect(prompt).toContain(text)

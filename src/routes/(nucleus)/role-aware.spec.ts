@@ -60,6 +60,7 @@ import { load as brandEditor } from './brand/editor/[setId]/+page.server'
 import { load as brandExtract } from './brand/extract/+page.server'
 import { load as driveGithub } from './drive/github/+page.server'
 import { load as website } from './m/website/+page.server'
+import { _aiUsageDeps, load as aiUsage } from './settings/ai-usage/+page.server'
 import { load as approvals } from './settings/approvals/+page.server'
 import { _backupsDeps, load as backups } from './settings/backups/+page.server'
 import { load as company } from './settings/company/+page.server'
@@ -78,6 +79,7 @@ const LOADS: Record<string, { path: string; load: Load }> = {
   '/settings/domains': { path: '/settings/domains', load: domains as Load },
   '/settings/members': { path: '/settings/members', load: members as Load },
   '/settings/coworkers': { path: '/settings/coworkers', load: coworkers as Load },
+  '/settings/ai-usage': { path: '/settings/ai-usage', load: aiUsage as Load },
   '/settings/approvals': { path: '/settings/approvals', load: approvals as Load },
   '/settings/backups': { path: '/settings/backups', load: backups as Load },
   '/settings/export': { path: '/settings/export', load: exportPage as Load },
@@ -123,6 +125,7 @@ describe('role-aware UI: the capability set and the route guards agree', () => {
           throw new SubstrateUnavailableError('not on a box in this spec')
         },
       }) as never
+    _aiUsageDeps.run = (async () => ({})) as never
     _exportDeps.port = async () => ({ list: async () => [] }) as never
     // Settings → Co-workers reads coworkers.* / org.chart past its guard.
     _coworkersDeps.run = (async (_user: unknown, tool: string) =>
@@ -176,6 +179,7 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
     const hidden = ownerHrefs.filter((h) => !memberHrefs.has(h))
     expect(hidden.sort()).toEqual([
       '/m/website',
+      '/settings/ai-usage',
       '/settings/approvals',
       '/settings/backups',
       '/settings/company',

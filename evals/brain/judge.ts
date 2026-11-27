@@ -101,7 +101,8 @@ export function gatewayJudge(judgeUserId: string): Judge {
       temperature: 0,
       maxTokens: 200,
       responseFormat: 'json_object',
-      logContext: `eval_brain_judge_${kind}`,
+      task: 'setup.eval',
+      operationLabel: `eval_brain_judge_${kind}`,
     })
     return parseJudgeDecision(kind, extractBatchChatContent(response, `judge(${kind})`))
   }

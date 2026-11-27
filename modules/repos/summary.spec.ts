@@ -1,5 +1,6 @@
 import type { RepoSnapshot } from './snapshot-types'
 import { describe, expect, it, vi } from 'vitest'
+import { aiTaskOperation } from '$lib/ai-usage/tasks'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import { takeSnapshot } from './snapshot'
 import {
@@ -9,7 +10,6 @@ import {
   diffSnapshots,
   firstSentence,
   parseSummaryOutput,
-  SUMMARY_LOG_CONTEXT,
   SUMMARY_MAX_ATTEMPTS,
 } from './summary'
 import { setup } from './test-setup'
@@ -132,8 +132,8 @@ describe('the summarizer (one gateway call, cost attributed to repos)', () => {
     const summarize = createSummarizer({ chat, account: async () => 'owner-1' })
     expect(await summarize(await input())).toEqual({ status: 'written', ...GOOD })
     expect(chat).toHaveBeenCalledTimes(1)
-    expect(chat.mock.calls[0]![0]).toMatchObject({ userId: 'owner-1', logContext: SUMMARY_LOG_CONTEXT, responseFormat: 'json_object', temperature: 0 })
-    expect(SUMMARY_LOG_CONTEXT).toBe('repos_summary')
+    expect(chat.mock.calls[0]![0]).toMatchObject({ userId: 'owner-1', task: 'repos.summary', responseFormat: 'json_object', temperature: 0 })
+    expect(aiTaskOperation('repos.summary')).toBe('repos_summary')
   })
 
   it('no model selected (the gateway refuses before any request) → no_model, not an error', async () => {

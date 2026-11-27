@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { isAiTaskId, type AiTaskId } from '$lib/ai-usage/tasks'
 import type { AppDatabase } from '$lib/server/db'
 import { durableConversations, type DurableRunToolRecord } from '$lib/server/db/durable.schema'
 
@@ -18,6 +19,8 @@ export type DurableConversationRow = {
   conversationKey: string
   agentId: string
   llmUserId: string
+  /** What the conversation's model calls are for; null: a row from before tasks that no dispatch touched. */
+  task: AiTaskId | null
   piConversationId: string
   providerSessionId: string
   /** The principal a background run's tools execute as; null for chat conversations. */
@@ -35,6 +38,7 @@ export type RecordDurableConversationInput = {
   conversationKey: string
   agentId: string
   llmUserId: string
+  task: AiTaskId
   /** pi-durable conversation id (branded bigint), stored as text. */
   piConversationId: string
   /** The pi.provider doc's sessionId — unique, the attribution key. */
@@ -58,6 +62,8 @@ export type DurableConversationIndex = {
   resolveByProviderSession(providerSessionId: string): Promise<DurableConversationRow | undefined>
   resolveByPiConversationId(piConversationId: string): Promise<DurableConversationRow | undefined>
   listConversations(): Promise<DurableConversationRow[]>
+  /** Set what the conversation's model calls are for. Not activity: `updated_at` stays. */
+  setTask(id: number, task: AiTaskId): Promise<void>
   /** Stamp `updated_at` (activity). */
   touch(id: number): Promise<void>
   /** Set the member-chosen name. Not activity: `updated_at` stays. False when no such row. */
@@ -70,6 +76,8 @@ function rowOf(record: typeof durableConversations.$inferSelect): DurableConvers
     conversationKey: record.conversationKey,
     agentId: record.agentId,
     llmUserId: record.llmUserId,
+    // An id this release does not know (written by a newer one) is no task: the next dispatch sets it.
+    task: record.task !== null && isAiTaskId(record.task) ? record.task : null,
     piConversationId: record.piConversationId,
     providerSessionId: record.providerSessionId,
     runPrincipalId: record.runPrincipalId ?? null,
@@ -150,6 +158,11 @@ export class DbDurableConversationIndex implements DurableConversationIndex {
     return records.map(rowOf)
   }
 
+  async setTask(id: number, task: AiTaskId): Promise<void> {
+    const db = await this.db()
+    await db.update(durableConversations).set({ task }).where(eq(durableConversations.id, id))
+  }
+
   async touch(id: number): Promise<void> {
     const db = await this.db()
     await db
@@ -206,6 +219,12 @@ export class InMemoryDurableConversationIndex implements DurableConversationInde
 
   async listConversations(): Promise<DurableConversationRow[]> {
     return [...this.rows.values()].sort((a, b) => a.id - b.id)
+  }
+
+  async setTask(id: number, task: AiTaskId): Promise<void> {
+    const row = this.rows.get(id)
+    if (!row) throw new Error(`unknown durable conversation row: ${id}`)
+    row.task = task
   }
 
   async touch(id: number): Promise<void> {

@@ -138,7 +138,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   llm_active_provider: full,
   activity_call_log: meta(
     always,
-    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host'],
+    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host', 'task', 'model'],
     ['context'],
   ),
   // CB2 (0175): Jev's decisions next to the current judge's and people's answers. The owner
@@ -252,7 +252,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   ),
   durable_conversations: meta(
     always,
-    ['id', 'conversation_key', 'agent_id', 'llm_user_id', 'pi_conversation_id', 'provider_session_id', 'created_at', 'updated_at', 'run_principal_id', 'run_tools'],
+    ['id', 'conversation_key', 'agent_id', 'llm_user_id', 'pi_conversation_id', 'provider_session_id', 'created_at', 'updated_at', 'run_principal_id', 'run_tools', 'task'],
     ['user_title'],
   ),
   // Derived from the Memory tables above (rebuilt from them), or run logs.

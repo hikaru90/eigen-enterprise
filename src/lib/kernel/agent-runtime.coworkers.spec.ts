@@ -36,6 +36,7 @@ function coworker(id: string, principal: ToolPrincipal, overrides: Partial<Agent
     instructions: (turn) => `You are ${id}. You act as ${turn.principal.id}.`,
     modelId: 'google/gemini-3.8-flash',
     actsAs: selfActing(principal),
+    task: 'coworkers.turn',
     enabled: true,
     ...overrides,
   }
@@ -51,6 +52,7 @@ const brainConfig: AgentConfig = {
   verificationPolicy: 'none',
   instructions: 'engine-default',
   actsAs: 'person',
+  task: 'assistant.turn',
   enabled: true,
 }
 

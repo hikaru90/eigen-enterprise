@@ -290,7 +290,7 @@ export async function retrieveEvidence(params: {
 
   timer.mark('embed')
   const queryEmbedding =
-    params.queryEmbedding ?? (await createThoughtEmbedding(params.userId, params.query))
+    params.queryEmbedding ?? (await createThoughtEmbedding(params.userId, params.query, 'brain.retrieval_embedding'))
   const vectorLiteral = toVectorLiteral(queryEmbedding)
   const vectorDistance = sql<number>`${thought.embedding} <=> ${vectorLiteral}::vector`
 

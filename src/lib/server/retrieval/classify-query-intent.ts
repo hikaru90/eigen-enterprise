@@ -146,7 +146,7 @@ export async function classifyQueryIntent(params: {
     userId: params.userId,
     messages,
     temperature: 0,
-    logContext: 'query_intent_classifier',
+    task: 'brain.query_intent',
   })
 
   const content =

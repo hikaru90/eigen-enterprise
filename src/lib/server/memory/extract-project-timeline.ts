@@ -186,6 +186,7 @@ export async function extractProjectTimeline(input: {
     .join('\n')
 
   const response = await llmChatCompletion({
+    task: 'memory.project_timeline',
     contentOrigin: 'memory',
     userId: input.userId,
     messages: [

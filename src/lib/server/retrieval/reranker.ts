@@ -98,7 +98,7 @@ export async function rerankCandidates<T extends RerankCandidate>(
         { role: 'user', content: prompt },
       ],
       temperature: 0,
-      logContext: 'retrieval_rerank',
+      task: 'brain.retrieval_rerank',
     })
   } catch (err) {
     throw new RerankError(

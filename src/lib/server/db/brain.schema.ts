@@ -528,6 +528,10 @@ export const activityCallLog = pgTable(
     /** Hostname of the billable LLM gateway base URL (e.g. openrouter.ai); null for legacy rows. */
     gatewayHost: text('gateway_host'),
     operation: text('operation').notNull(),
+    /** What the call was for (AiTaskId, $lib/ai-usage/tasks); null for non-model rows and unmatched rows before 0190. */
+    task: text('task'),
+    /** The model a model call was routed to; null for non-model rows and rows before 0190. */
+    model: text('model'),
     /** Brief preview of the content being processed (e.g., first 50 chars of user message) */
     context: text('context'),
     baseCostUsd: text('base_cost_usd').notNull(),
@@ -545,7 +549,10 @@ export const activityCallLog = pgTable(
     cacheWriteTokens: integer('cache_write_tokens'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
-  (t) => [index('activity_call_log_user_idx').on(t.userId)],
+  (t) => [
+    index('activity_call_log_user_idx').on(t.userId),
+    index('activity_call_log_created_idx').on(t.createdAt),
+  ],
 )
 
 /**

@@ -64,7 +64,7 @@ export async function deriveDeleteSearchQueries(params: {
     userId: params.userId,
     messages,
     temperature: 0,
-    logContext: 'delete_search_query',
+    task: 'brain.delete_search_query',
   })
 
   const content =

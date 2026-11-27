@@ -26,6 +26,7 @@ function agentConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     verificationPolicy: 'none',
     instructions: 'engine-default',
     actsAs: 'person',
+    task: 'assistant.turn',
     enabled: true,
     ...overrides,
   }

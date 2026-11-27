@@ -234,7 +234,7 @@ export async function extractEnrichThoughtBundle(input: {
     userId: input.context.userId,
     messages,
     temperature: 0,
-    logContext: 'enrich_thought_bundle',
+    task: 'memory.enrich_thought_bundle',
     responseFormat: 'json_object',
   })
 
@@ -260,7 +260,7 @@ export async function extractEnrichThoughtBundle(input: {
       normalizedText: input.context.normalizedText,
       allowedKeys,
       ontology: input.context.ontology,
-      logContext: 'enrich_thought_bundle_category_retry',
+      task: 'memory.enrich_category_retry',
     })
     return parseEnrichThoughtBundleContent({
       content,
