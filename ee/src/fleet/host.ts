@@ -9,6 +9,7 @@ import { mustRun } from '../system.ts'
 import { PATHS } from '../paths.ts'
 import { FLEET_AUTHOR, UPGRADE_UNIT, type FleetHost } from './agent.ts'
 import { writeClaims } from './claims.ts'
+import { aiUsageRowsFromOs } from './ai-usage.ts'
 import { readHostedAddress, writeHostedAddress } from './hosted-address.ts'
 
 /** GET on os's loopback port with the fleet bearer token; rejects on a connection error or timeout. */
@@ -82,6 +83,10 @@ export function fleetHost(ee: Ee): FleetHost {
         domains.every((d) => d && typeof d === 'object' && typeof (d as { name?: unknown }).name === 'string' && typeof (d as { receive?: unknown }).receive === 'boolean')
       if (!ok) throw new Error('os answered /api/fleet/mail-domains without a domain list')
       return (domains as Array<{ name: string; receive: boolean }>).map((d) => ({ name: d.name, receive: d.receive }))
+    },
+    aiUsage: async (token, from) => {
+      const path = `/api/fleet/ai-usage?from=${encodeURIComponent(from)}`
+      return aiUsageRowsFromOs(osJson(await osGet(path, token), '/api/fleet/ai-usage'))
     },
     backupKey: async (token) => {
       let got: { status: number; raw: string }

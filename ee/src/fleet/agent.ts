@@ -16,6 +16,7 @@ import {
   POLL_SECONDS,
   reportV1,
   signFleetRequest,
+  type AiUsageDayV1,
   type DesiredV1,
   type DomainClaimV1,
   type FleetFeature,
@@ -47,6 +48,23 @@ export const LOCAL_TOKEN = 'EE_FLEET_LOCAL_TOKEN'
  * when the control plane sends none (protocol v1); set and removed together with the other four.
  */
 export const PLATFORM_AI_SECRETS = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING', 'PLATFORM_LLM_PROVIDER'] as const
+/**
+ * Feature `aiUsage`: the box's attribution tag at the provider (desired platformAi.usageTag; os sends it to Opper as
+ * `X-Opper-Tags: ee_box:<tag>`). Optional, so not one of the all-or-none four: set with them when the control plane
+ * sends a tag, brought to absent when it sends none, and removed with them.
+ */
+export const PLATFORM_AI_USAGE_TAG = 'PLATFORM_LLM_USAGE_TAG'
+/**
+ * Feature `aiUsage`: how the company is billed for eigenInference, for os's Settings → AI usage (€ = provider USD ×
+ * markup × usdToEur, at the rate of rateDay); all or none, from desired.aiUsage (currency is always EUR).
+ */
+export const AI_BILLING_SECRETS = ['EE_AI_BILLING_MARKUP', 'EE_AI_BILLING_USD_TO_EUR', 'EE_AI_BILLING_RATE_DAY'] as const
+/**
+ * The most usage rows one report carries (protocol reportV1.aiUsage). More than that is never cut: a cut report would
+ * look complete to the control plane and under-invoice. The report says null (os can't say) and the journal says why,
+ * once; the hosting then moves desired.aiUsage.from forward (or splits the backlog) and the next poll reports again.
+ */
+export const AI_USAGE_MAX_ROWS = 5000
 /**
  * Where an older ee put the platform AI: os's self-hosted BYOK names, so os mistook it for the owner's own key.
  * On a managed box these were always the fleet's (every platformAi poll overwrote or removed them); the platformAi step retires them.
@@ -94,6 +112,8 @@ export type FleetHost = {
   seats(token: string): Promise<number | null>
   /** GET os /api/fleet/mail-domains with the token; throws with the reason when os doesn't answer (e.g. an older os, or os without the token). */
   mailDomains(token: string): Promise<Array<{ name: string; receive: boolean }> | null>
+  /** GET os /api/fleet/ai-usage?from= with the token: eigenInference usage per UTC day × task × model; throws with the reason when os doesn't answer. */
+  aiUsage(token: string, from: string): Promise<AiUsageDayV1[] | null>
   /** GET os /api/fleet/backup-key with the token (base64); throws with os's reason. Never logged. */
   backupKey(token: string): Promise<string>
   backups: {
@@ -149,6 +169,12 @@ export class FleetAgent {
   private lastLogged: string | null = null
   /** Per loopback question, the last os failure journaled (each distinct one once). */
   private readonly osErrors = new Map<string, string>()
+  /**
+   * Feature `aiUsage`: the first day the report must cover, from the last desired state that named it (null: the
+   * control plane asks for no usage). Memory only: after an ee restart the first report goes out without usage, and
+   * every one after the first answer carries it again.
+   */
+  private aiUsageFrom: string | null = null
   /** The last release target an upgrade was started for, and when (a failed one is retried slowly). */
   private lastUpgrade: { release: string; at: number } | null = null
 
@@ -259,6 +285,8 @@ export class FleetAgent {
     const lastOk = b.runs.find((r) => r.status === 'succeeded')
     const backupError = b.health.state === 'failed' ? b.health.error : b.health.state === 'missing' ? b.health.message : null
     const mailDomains = token ? await this.askOs('mailDomains', () => this.host.mailDomains(token)) : null
+    const from = this.aiUsageFrom
+    const aiUsage = from === null ? undefined : token ? await this.askOs('aiUsage', () => this.usageSince(token, from)) : null
     return reportV1.parse({
       protocol: FLEET_PROTOCOL,
       eeVersion: EE_VERSION,
@@ -270,8 +298,19 @@ export class FleetAgent {
       disk: await this.host.disk(),
       backup: b.health.state === 'unconfigured' ? null : { lastOkAt: lastOk ? (lastOk.endedAt ?? lastOk.startedAt) : null, lastError: backupError?.slice(0, 2000) ?? null },
       ...(mailDomains ? { mail: { domains: mailDomains } } : {}),
+      ...(aiUsage !== undefined ? { aiUsage } : {}),
       ignoredFields: this.ignoredFields,
     })
+  }
+
+  private async usageSince(token: string, from: string): Promise<AiUsageDayV1[] | null> {
+    const rows = await this.host.aiUsage(token, from)
+    if (rows !== null && rows.length > AI_USAGE_MAX_ROWS) {
+      throw new Error(
+        `os has ${rows.length} AI usage rows since ${from}; a report carries at most ${AI_USAGE_MAX_ROWS} and usage is never cut short (the control plane must move aiUsage.from forward)`,
+      )
+    }
+    return rows
   }
 
   /** Apply each field independently; one failing never blocks the others. Returns the failures. */
@@ -290,6 +329,7 @@ export class FleetAgent {
     if (d.platformAi !== undefined) await step('platformAi', () => this.applyPlatformAi(d.platformAi!))
     if (d.mail !== undefined) await step('mail', () => this.applyMail(d.mail!))
     if (d.domains !== undefined) await step('domains', () => this.applyDomains(d.domains!))
+    if (d.aiUsage !== undefined) await step('aiUsage', () => this.applyAiUsage(d.aiUsage!))
     // Absent = a control plane that doesn't send claims: nothing to show, so nothing kept.
     await step('claims', () => this.host.saveClaims(d.claims ?? null))
     if (d.hostedAddress !== undefined) await step('hostedAddress', () => this.applyHostedAddress(d.hostedAddress!))
@@ -378,26 +418,48 @@ export class FleetAgent {
   }
 
   private async applyPlatformAi(ai: DesiredV1['platformAi']): Promise<void> {
-    const want: Record<(typeof PLATFORM_AI_SECRETS)[number], string> | null = ai
+    type Name = (typeof PLATFORM_AI_SECRETS)[number] | typeof PLATFORM_AI_USAGE_TAG
+    const tag = ai?.usageTag
+    const want: Partial<Record<Name, string>> | null = ai
       ? {
           PLATFORM_LLM_BASE_URL: ai.llmBaseUrl,
           PLATFORM_LLM_API_KEY: ai.llmApiKey,
           PLATFORM_LLM_MODEL_CHAT: ai.llmModelChat,
           PLATFORM_LLM_MODEL_EMBEDDING: ai.llmModelEmbedding,
           PLATFORM_LLM_PROVIDER: ai.provider ?? 'openrouter',
+          ...(tag ? { [PLATFORM_AI_USAGE_TAG]: tag } : {}),
         }
       : null
+    // The tag goes with the others; set only when sent, so a box never tags calls with a name the control plane dropped.
+    const names: Name[] = want && !tag ? [...PLATFORM_AI_SECRETS] : [...PLATFORM_AI_SECRETS, PLATFORM_AI_USAGE_TAG]
     await this.applyOsSecrets(
-      PLATFORM_AI_SECRETS,
-      want,
+      names,
+      want as Record<Name, string> | null,
       {
         set: 'managed: platform AI set for os',
         removed: 'managed: platform AI removed from os',
         type: 'fleet.platform_ai',
-        log: want ? `platform AI set for os (${want.PLATFORM_LLM_PROVIDER}, ${ai!.llmBaseUrl}, ${ai!.llmModelChat})` : 'platform AI removed from os',
+        log: want ? `platform AI set for os (${want.PLATFORM_LLM_PROVIDER}, ${ai!.llmBaseUrl}, ${ai!.llmModelChat}${tag ? `, usage tag ${tag}` : ''})` : 'platform AI removed from os',
       },
-      LEGACY_PLATFORM_AI_SECRETS,
+      { retired: LEGACY_PLATFORM_AI_SECRETS, absent: want && !tag ? [PLATFORM_AI_USAGE_TAG] : [] },
     )
+  }
+
+  /**
+   * Feature `aiUsage`: remember from which day to report (read by the next report), and give os the billing it shows
+   * in Settings → AI usage. A moving `from` is no os change; a new markup or rate is (os is redeployed, health-gated).
+   */
+  private async applyAiUsage(usage: DesiredV1['aiUsage']): Promise<void> {
+    this.aiUsageFrom = usage?.from ?? null
+    const want: Record<(typeof AI_BILLING_SECRETS)[number], string> | null = usage
+      ? { EE_AI_BILLING_MARKUP: String(usage.markup), EE_AI_BILLING_USD_TO_EUR: String(usage.usdToEur), EE_AI_BILLING_RATE_DAY: usage.rateDay }
+      : null
+    await this.applyOsSecrets(AI_BILLING_SECRETS, want, {
+      set: 'managed: AI billing set for os',
+      removed: 'managed: AI billing removed from os',
+      type: 'fleet.ai_billing',
+      log: usage ? `eigenInference billing set for os (markup ×${usage.markup}, 1 USD = ${usage.usdToEur} EUR on ${usage.rateDay})` : 'eigenInference billing removed from os',
+    })
   }
 
   private async applyMail(mail: DesiredV1['mail']): Promise<void> {
@@ -437,8 +499,16 @@ export class FleetAgent {
   /**
    * Level-triggered: a set of os secrets the fleet owns, all or none. Values never reach a log or commit message.
    * `retired`: names the fleet set on os in an older ee and no longer uses; always brought to absent in the same step.
+   * `absent`: optional names of this set the desired state leaves out; brought to absent in the same step too.
    */
-  private async applyOsSecrets<N extends string>(names: readonly N[], want: Record<N, string> | null, text: { set: string; removed: string; type: string; log: string }, retired: readonly string[] = []): Promise<void> {
+  private async applyOsSecrets<N extends string>(
+    names: readonly N[],
+    want: Record<N, string> | null,
+    text: { set: string; removed: string; type: string; log: string },
+    leftOut: { retired?: readonly string[]; absent?: readonly string[] } = {},
+  ): Promise<void> {
+    const legacy = leftOut.retired ?? []
+    const retired = [...legacy, ...(leftOut.absent ?? [])]
     const have = this.host.secrets.all()['os'] ?? {}
     const state = await this.host.read()
     const declared = state.workloads.find((w) => w.name === 'os')?.secrets ?? []
@@ -458,7 +528,7 @@ export class FleetAgent {
     }
     // Undeclared first, then forgotten: os never runs with a declared secret that has no value.
     for (const n of remove) await this.host.secrets.delete('os', n)
-    const retiredNow = retired.filter((n) => !gone(n))
+    const retiredNow = legacy.filter((n) => !gone(n))
     await this.host.log(text.type, retiredNow.length ? `${text.log}; retired ${retiredNow.join(', ')} (set by an older ee)` : text.log)
   }
 
