@@ -407,6 +407,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'handover.add_entry',
   'handover.assign_entry',
   'handover.create',
+  'handover.delete',
   'handover.draft_entry',
   'handover.get',
   'handover.list',
