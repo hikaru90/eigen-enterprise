@@ -287,14 +287,15 @@ describe('fleet: desired state (level-triggered)', () => {
     err.mockRestore()
   })
 
-  it('platformAi: sets + declares the four PLATFORM_LLM_* secrets on os, redeploys only on change, null removes them', async () => {
+  it('platformAi: sets + declares the PLATFORM_LLM_* secrets (provider included) on os, redeploys only on change, null removes them', async () => {
     const f = fakeHost({ managed: true })
     const agent = new FleetAgent(f.host)
     const ai = { llmBaseUrl: 'https://llm.example.com', llmApiKey: 'sk-PLATFORM', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
-    const names = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING']
+    const names = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING', 'PLATFORM_LLM_PROVIDER']
     f.setAnswer(desired({ platformAi: ai }))
     expect((await agent.poll()).ok).toBe(true)
-    expect(f.secrets['os']).toMatchObject({ PLATFORM_LLM_BASE_URL: ai.llmBaseUrl, PLATFORM_LLM_API_KEY: 'sk-PLATFORM', PLATFORM_LLM_MODEL_CHAT: 'chat-1', PLATFORM_LLM_MODEL_EMBEDDING: 'embed-1' })
+    // No provider in desired = protocol v1 = OpenRouter: os is told so explicitly.
+    expect(f.secrets['os']).toMatchObject({ PLATFORM_LLM_BASE_URL: ai.llmBaseUrl, PLATFORM_LLM_API_KEY: 'sk-PLATFORM', PLATFORM_LLM_MODEL_CHAT: 'chat-1', PLATFORM_LLM_MODEL_EMBEDDING: 'embed-1', PLATFORM_LLM_PROVIDER: 'openrouter' })
     expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining(names))
     // Never under the self-hosted BYOK names: os must not read the platform AI as the owner's own key.
     for (const legacy of LEGACY_PLATFORM_AI_SECRETS) {
@@ -316,6 +317,37 @@ describe('fleet: desired state (level-triggered)', () => {
       expect(f.state().workloads[0]!.secrets).not.toContain(name)
     }
     for (const l of f.logs) expect(l.message).not.toContain('sk-PLATFORM')
+  })
+
+  it('platformAi: the provider the control plane names reaches os, and a switch redeploys it', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const ai = { provider: 'opper' as const, llmBaseUrl: 'https://api.opper.ai/v3/compat', llmApiKey: 'sk-OPPER', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
+    f.setAnswer(desired({ platformAi: ai }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.secrets['os']!['PLATFORM_LLM_PROVIDER']).toBe('opper')
+    expect(f.state().workloads[0]!.secrets).toContain('PLATFORM_LLM_PROVIDER')
+    f.setAnswer(desired({ platformAi: { ...ai, provider: 'openrouter' } }))
+    await agent.poll()
+    expect(f.secrets['os']!['PLATFORM_LLM_PROVIDER']).toBe('openrouter')
+    expect(f.host.reconcile).toHaveBeenCalledTimes(1)
+    for (const l of f.logs) expect(l.message).not.toContain('sk-OPPER')
+  })
+
+  it('platformAi: a box set up before the provider existed gets PLATFORM_LLM_PROVIDER declared once, then stays still', async () => {
+    const f = fakeHost({ managed: true })
+    const ai = { llmBaseUrl: 'https://llm.example.com', llmApiKey: 'sk-PLATFORM', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
+    Object.assign(f.secrets['os']!, { PLATFORM_LLM_BASE_URL: ai.llmBaseUrl, PLATFORM_LLM_API_KEY: 'sk-PLATFORM', PLATFORM_LLM_MODEL_CHAT: 'chat-1', PLATFORM_LLM_MODEL_EMBEDDING: 'embed-1' })
+    f.state().workloads[0]!.secrets.push('PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING')
+    const agent = new FleetAgent(f.host)
+    f.setAnswer(desired({ platformAi: ai }))
+    const n = f.commits.length
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.commits).toHaveLength(n + 1)
+    expect(f.secrets['os']!['PLATFORM_LLM_PROVIDER']).toBe('openrouter')
+    expect(f.state().workloads[0]!.secrets).toContain('PLATFORM_LLM_PROVIDER')
+    await agent.poll()
+    expect(f.commits).toHaveLength(n + 1)
   })
 
   it('platformAi: a box an older ee configured has its fleet-set LLM_* retired in the same step (one commit), then stays still', async () => {

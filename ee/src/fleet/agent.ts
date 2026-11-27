@@ -43,8 +43,10 @@ export const LOCAL_TOKEN = 'EE_FLEET_LOCAL_TOKEN'
  * eigenInference credential, never as BYOK); all or none. One key per company covers every model slot: chat,
  * embeddings, speech to text, text to speech and decisions (os `src/lib/server/llm/platform-ai.ts` states the
  * contract). os pins `_MODEL_EMBEDDING` as the install's embedding model and no longer reads `_MODEL_CHAT`.
+ * `PLATFORM_LLM_PROVIDER` names who serves it (feature `platformAiProvider`): the desired provider, or 'openrouter'
+ * when the control plane sends none (protocol v1); set and removed together with the other four.
  */
-export const PLATFORM_AI_SECRETS = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING'] as const
+export const PLATFORM_AI_SECRETS = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_KEY', 'PLATFORM_LLM_MODEL_CHAT', 'PLATFORM_LLM_MODEL_EMBEDDING', 'PLATFORM_LLM_PROVIDER'] as const
 /**
  * Where an older ee put the platform AI: os's self-hosted BYOK names, so os mistook it for the owner's own key.
  * On a managed box these were always the fleet's (every platformAi poll overwrote or removed them); the platformAi step retires them.
@@ -377,7 +379,13 @@ export class FleetAgent {
 
   private async applyPlatformAi(ai: DesiredV1['platformAi']): Promise<void> {
     const want: Record<(typeof PLATFORM_AI_SECRETS)[number], string> | null = ai
-      ? { PLATFORM_LLM_BASE_URL: ai.llmBaseUrl, PLATFORM_LLM_API_KEY: ai.llmApiKey, PLATFORM_LLM_MODEL_CHAT: ai.llmModelChat, PLATFORM_LLM_MODEL_EMBEDDING: ai.llmModelEmbedding }
+      ? {
+          PLATFORM_LLM_BASE_URL: ai.llmBaseUrl,
+          PLATFORM_LLM_API_KEY: ai.llmApiKey,
+          PLATFORM_LLM_MODEL_CHAT: ai.llmModelChat,
+          PLATFORM_LLM_MODEL_EMBEDDING: ai.llmModelEmbedding,
+          PLATFORM_LLM_PROVIDER: ai.provider ?? 'openrouter',
+        }
       : null
     await this.applyOsSecrets(
       PLATFORM_AI_SECRETS,
@@ -386,7 +394,7 @@ export class FleetAgent {
         set: 'managed: platform AI set for os',
         removed: 'managed: platform AI removed from os',
         type: 'fleet.platform_ai',
-        log: want ? `platform AI set for os (${ai!.llmBaseUrl}, ${ai!.llmModelChat})` : 'platform AI removed from os',
+        log: want ? `platform AI set for os (${want.PLATFORM_LLM_PROVIDER}, ${ai!.llmBaseUrl}, ${ai!.llmModelChat})` : 'platform AI removed from os',
       },
       LEGACY_PLATFORM_AI_SECRETS,
     )
