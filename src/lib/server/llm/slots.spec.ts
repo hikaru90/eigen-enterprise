@@ -76,18 +76,14 @@ describe('resolveSlot: one resolution for every model call, for the company', ()
     }
   })
 
-  it('eigenInference on Opper: a stored pick Opper serves is kept, under its Opper id', async () => {
-    const d = deps({ eigenInference: async () => opper() }, settings({ picks: { chat: 'openai/gpt-5-mini', stt: null, tts: null, decision: null } }))
-    await expect(resolveSlot('chat', 'u', d)).resolves.toMatchObject({ model: 'openai/gpt-5-mini', route: 'azure/gpt-5-mini' })
-  })
-
-  it('eigenInference on Opper: a stored pick Opper does not serve fails loud, never swapped', async () => {
-    const d = deps(
-      { eigenInference: async () => opper() },
-      settings({ picks: { chat: null, stt: 'qwen/qwen3-asr-1.7b', tts: null, decision: 'typesafe/jev-1.13' } }),
-    )
-    await expect(resolveSlot('stt', 'u', d)).rejects.toBeInstanceOf(ModelNotServedError)
-    await expect(resolveSlot('decision', 'u', d)).rejects.toThrow(/not available on Opper.*Settings → AI/)
+  it('eigenInference ignores the company\'s stored picks: we choose its models (picks are for its own key)', async () => {
+    const picks = { chat: 'openai/gpt-5-mini', stt: 'qwen/qwen3-asr-1.7b', tts: null, decision: 'typesafe/jev-1.13' }
+    const d = deps({ eigenInference: async () => opper() }, settings({ picks }))
+    await expect(resolveSlot('chat', 'u', d)).resolves.toMatchObject({ model: '~deepseek/deepseek-flash-latest', route: 'mistral/deepseek-v4-1-flash-1017' })
+    await expect(resolveSlot('stt', 'u', d)).resolves.toMatchObject({ model: 'mistral/voxtral-mini-transcribe-3-0' })
+    await expect(resolveSlot('decision', 'u', d)).resolves.toMatchObject({ model: 'ovhcloud/clef-flash' })
+    const onOpenRouter = deps({}, settings({ picks }))
+    await expect(resolveSlot('chat', 'u', onOpenRouter)).resolves.toMatchObject({ source: 'eigeninference', model: '~deepseek/deepseek-flash-latest' })
   })
 
   it('eigenInference on Opper: the pinned embedding model maps to its Opper route; text-embedding-3-small fails loud', async () => {
@@ -151,13 +147,13 @@ describe('resolveSlot: one resolution for every model call, for the company', ()
     await expect(resolveSlot('chat', 'u', d)).resolves.toMatchObject({ model: null, pool: null, route: null, config: { provider: 'eurouter' } })
   })
 
-  it('a pick that is in the pool is used', async () => {
-    const d = deps({}, settings({ picks: { chat: 'openai/gpt-5-mini', stt: null, tts: null, decision: null } }))
+  it('on its own key, a pick that is in the pool is used', async () => {
+    const d = deps({}, settings({ useEigenInference: false, picks: { chat: 'openai/gpt-5-mini', stt: null, tts: null, decision: null } }))
     await expect(resolveSlot('chat', 'u', d)).resolves.toMatchObject({ model: 'openai/gpt-5-mini' })
   })
 
-  it('a stored pick outside the pool fails loud (no silent substitute)', async () => {
-    const d = deps({}, settings({ picks: { chat: 'vendor/unvetted', stt: null, tts: null, decision: null } }))
+  it('on its own key, a stored pick outside the pool fails loud (no silent substitute)', async () => {
+    const d = deps({}, settings({ useEigenInference: false, picks: { chat: 'vendor/unvetted', stt: null, tts: null, decision: null } }))
     await expect(resolveSlot('chat', 'u', d)).rejects.toBeInstanceOf(ModelNotInPoolError)
   })
 

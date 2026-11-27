@@ -99,83 +99,86 @@
     {/if}
   </section>
 
-  <section class="space-y-3" data-testid="model-slots">
-    <div>
-      <h3 class="text-sm font-semibold">Models</h3>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Each role runs on a model we checked is good enough for eigenEnterprise.
-        {#if !data.canManageAi}Owners and admins choose them.{/if}
-      </p>
-    </div>
+  <!-- eigenInference runs on the models we choose; picking them is for the company's own key. -->
+  {#if !data.ai.useEigenInference}
+    <section class="space-y-3" data-testid="model-slots">
+      <div>
+        <h3 class="text-sm font-semibold">Models</h3>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Each role runs on a model we checked is good enough for eigenEnterprise.
+          {#if !data.canManageAi}Owners and admins choose them.{/if}
+        </p>
+      </div>
 
-    <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
-      {#each data.ai.slots as slot (slot.slot)}
-        {@const meta = SLOT_LABEL[slot.slot]}
-        {@const current = slot.options.find((o) => o.id === slot.model)}
-        <li class="px-4 py-3">
-          <form
-            method="post"
-            action="?/setSlot"
-            use:enhance
-            class="grid gap-1.5 sm:grid-cols-[12rem_1fr] sm:items-center"
-          >
-            <input type="hidden" name="slot" value={slot.slot} />
-            <div>
-              <Label for="slot-{slot.slot}">{meta?.label ?? slot.slot}</Label>
-              <p class="text-xs text-muted-foreground">{meta?.hint}</p>
-            </div>
-            <div class="space-y-1">
-              <select
-                id="slot-{slot.slot}"
-                name="model"
-                value={slot.model}
-                disabled={!data.canManageAi}
-                onchange={submitOnChange}
-                class="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 -ring disabled:cursor-not-allowed disabled:opacity-60"
-              >
+      <ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
+        {#each data.ai.slots as slot (slot.slot)}
+          {@const meta = SLOT_LABEL[slot.slot]}
+          {@const current = slot.options.find((o) => o.id === slot.model)}
+          <li class="px-4 py-3">
+            <form
+              method="post"
+              action="?/setSlot"
+              use:enhance
+              class="grid gap-1.5 sm:grid-cols-[12rem_1fr] sm:items-center"
+            >
+              <input type="hidden" name="slot" value={slot.slot} />
+              <div>
+                <Label for="slot-{slot.slot}">{meta?.label ?? slot.slot}</Label>
+                <p class="text-xs text-muted-foreground">{meta?.hint}</p>
+              </div>
+              <div class="space-y-1">
+                <select
+                  id="slot-{slot.slot}"
+                  name="model"
+                  value={slot.model}
+                  disabled={!data.canManageAi}
+                  onchange={submitOnChange}
+                  class="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 -ring disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {#if !slot.available}
+                    <option value={slot.model} disabled>{slot.model} (not available)</option>
+                  {/if}
+                  {#each slot.options as option (option.id)}
+                    <option value={option.id}
+                      >{option.id}{option.recommended ? ' (recommended)' : ''}</option
+                    >
+                  {/each}
+                </select>
                 {#if !slot.available}
-                  <option value={slot.model} disabled>{slot.model} (not available)</option>
+                  <ErrorNotice
+                    testid="slot-unavailable-{slot.slot}"
+                    error={`${slot.model} is not available on ${data.ai.providerLabel}, so these calls fail. ${data.canManageAi ? 'Pick another model.' : 'An owner or admin picks another model.'}`}
+                    attempted={`Running the ${meta?.label ?? slot.slot} role on ${slot.model} (Settings → AI provider)`}
+                  />
+                {:else if current}
+                  <p class="text-xs text-muted-foreground">{current.note}</p>
                 {/if}
-                {#each slot.options as option (option.id)}
-                  <option value={option.id}
-                    >{option.id}{option.recommended ? ' (recommended)' : ''}</option
-                  >
-                {/each}
-              </select>
-              {#if !slot.available}
-                <ErrorNotice
-                  testid="slot-unavailable-{slot.slot}"
-                  error={`${slot.model} is not available on ${data.ai.providerLabel}, so these calls fail. ${data.canManageAi ? 'Pick another model.' : 'An owner or admin picks another model.'}`}
-                  attempted={`Running the ${meta?.label ?? slot.slot} role on ${slot.model} (Settings → AI provider)`}
-                />
-              {:else if current}
-                <p class="text-xs text-muted-foreground">{current.note}</p>
-              {/if}
-            </div>
-          </form>
+              </div>
+            </form>
+          </li>
+        {/each}
+        <li
+          class="grid gap-1.5 px-4 py-3 sm:grid-cols-[12rem_1fr] sm:items-center"
+          data-testid="embedding-slot"
+        >
+          <div>
+            <p class="text-sm font-medium leading-none">Search</p>
+            <p class="text-xs text-muted-foreground">Finds related memories (an embedding model).</p>
+          </div>
+          <div class="space-y-1">
+            <p class="font-mono text-sm">{data.ai.embeddingModel ?? 'Set on first use'}</p>
+            <p class="text-xs text-muted-foreground">
+              Fixed for this install: changing it would mean re-reading everything the company has
+              stored.
+            </p>
+          </div>
         </li>
-      {/each}
-      <li
-        class="grid gap-1.5 px-4 py-3 sm:grid-cols-[12rem_1fr] sm:items-center"
-        data-testid="embedding-slot"
-      >
-        <div>
-          <p class="text-sm font-medium leading-none">Search</p>
-          <p class="text-xs text-muted-foreground">Finds related memories (an embedding model).</p>
-        </div>
-        <div class="space-y-1">
-          <p class="font-mono text-sm">{data.ai.embeddingModel ?? 'Set on first use'}</p>
-          <p class="text-xs text-muted-foreground">
-            Fixed for this install: changing it would mean re-reading everything the company has
-            stored.
-          </p>
-        </div>
-      </li>
-    </ul>
-    {#if form?.slotMessage}
-      <p class="text-sm text-muted-foreground" role="status">{form.slotMessage}</p>
-    {/if}
-  </section>
+      </ul>
+      {#if form?.slotMessage}
+        <p class="text-sm text-muted-foreground" role="status">{form.slotMessage}</p>
+      {/if}
+    </section>
+  {/if}
 
   <SpeechStatus
     dictation={data.speech.dictation}

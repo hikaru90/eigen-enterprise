@@ -67,7 +67,8 @@ export async function readCompanyAiView(store: CompanyAiStore = companyAiStore()
     providerLabel: poolProviderLabel(provider),
     eigenInferenceAvailable: readPlatformAiConfig(env as Record<string, string | undefined>) !== null,
     slots: CHOOSABLE_SLOTS.map((slot) => {
-      const model = settings.picks[slot] ?? recommendedModel(slot, provider)
+      // eigenInference runs on our choice; the company's picks are for its own key (slots.ts).
+      const model = (settings.useEigenInference ? null : settings.picks[slot]) ?? recommendedModel(slot, provider)
       return {
         slot,
         model,
@@ -118,7 +119,8 @@ export async function setCompanySlotModel(
       `"${model}" is not in the model pool for the ${slot} slot. Choose one of: ${POOL_PROVIDERS.map((p) => `${served(p)} (${poolProviderLabel(p)})`).join('; ')}.`,
     )
   }
-  const provider = companyAiProvider((await store.read()).useEigenInference)
+  // A pick is for the company's own key (eigenInference ignores it), so it is checked against that pool.
+  const provider = companyAiProvider(false)
   if (!isServedOn(slot, model, provider)) {
     throw new CompanyAiInputError(
       `"${model}" is not available on ${poolProviderLabel(provider)} for the ${slot} slot. Choose one of: ${served(provider)}.`,

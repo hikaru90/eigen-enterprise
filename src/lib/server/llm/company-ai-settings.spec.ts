@@ -72,20 +72,20 @@ describe('Settings → AI service', () => {
     expect(slot('chat').options.map((o) => o.id)).toContain('openai/gpt-5-mini')
   })
 
-  it('on Opper: a stored pick Opper does not serve shows as unavailable (never shown as another model)', async () => {
-    const store = memoryStore({ picks: { chat: null, stt: 'qwen/qwen3-asr-1.7b', tts: null, decision: null } })
+  it('on eigenInference the stored picks are not shown: the slots run on our choice', async () => {
+    const store = memoryStore({ picks: { chat: 'openai/gpt-5-mini', stt: 'qwen/qwen3-asr-1.7b', tts: null, decision: null } })
     const view = await onOpper(() => readCompanyAiView(store))
-    expect(view.slots.find((s) => s.slot === 'stt')).toMatchObject({ model: 'qwen/qwen3-asr-1.7b', pick: 'qwen/qwen3-asr-1.7b', available: false })
+    expect(view.slots.find((s) => s.slot === 'stt')).toMatchObject({ model: 'mistral/voxtral-mini-transcribe-3-0', available: true })
+    expect(view.slots.find((s) => s.slot === 'chat')).toMatchObject({ model: '~deepseek/deepseek-flash-latest' })
   })
 
-  it('on Opper: picking a model Opper does not serve is refused, naming what it serves', async () => {
+  it("picks are for the company's own key: checked against OpenRouter's pool, whatever eigenInference runs on", async () => {
     const store = memoryStore()
     await onOpper(async () => {
-      await expect(setCompanySlotModel('decision', 'typesafe/jev-1.13', 'o', store)).rejects.toBeInstanceOf(CompanyAiInputError)
-      await expect(setCompanySlotModel('decision', 'typesafe/jev-1.13', 'o', store)).rejects.toThrow(/not available on Opper.*ovhcloud\/clef-flash/)
-      await setCompanySlotModel('decision', 'ovhcloud/clef-flash', 'o', store)
+      await setCompanySlotModel('decision', 'typesafe/jev-1.13', 'o', store)
+      await expect(setCompanySlotModel('decision', 'ovhcloud/clef-flash', 'o', store)).rejects.toThrow(/not available on OpenRouter/)
     })
-    expect(store.state.picks.decision).toBe('ovhcloud/clef-flash')
+    expect(store.state.picks.decision).toBe('typesafe/jev-1.13')
   })
 
   it("on its own key the company picks from OpenRouter's pool, whatever eigenInference runs on", async () => {

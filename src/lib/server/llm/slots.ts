@@ -159,6 +159,8 @@ async function embeddingModel(
  * which run on their operator's account. Throws LlmNotConfiguredError when the company's
  * source has no credential, ModelNotInPoolError when a stored model left the pool.
  */
+// eigenInference runs on the models we choose for it (the pool's picks for its provider); the
+// company's own picks (Settings → AI, shown only on its own key) apply only to its own key.
 export async function resolveSlot(
   slot: ModelSlot,
   callerId: string | null,
@@ -179,7 +181,7 @@ export async function resolveSlot(
   const model =
     slot === 'embedding'
       ? await embeddingModel(settings, config, pool, deps)
-      : assertPoolModel(slot, settings.picks[slot] ?? recommendedModel(slot, pool))
+      : assertPoolModel(slot, (source === 'byok' ? settings.picks[slot] : null) ?? recommendedModel(slot, pool))
   return { slot, source, config, model, pool, route: providerRoute(slot, model, pool) }
 }
 

@@ -85,11 +85,15 @@ function data(over: Record<string, unknown> = {}, ai: Record<string, unknown> = 
 const props = (d: ReturnType<typeof data>, form: unknown = null) => ({ data: d, form, params: {} }) as never
 
 describe('Settings → AI provider', () => {
-  it('shows the switch on and one dropdown per role slot, each set to the model the company runs on', async () => {
+  it('on eigenInference there is no Models section: we choose its models', async () => {
     render(AiPage, props(data()))
+    await expect.element(page.getByRole('switch', { name: 'Use eigenInference' })).toHaveAttribute('aria-checked', 'true')
+    expect(document.querySelector('[data-testid="model-slots"]')).toBeNull()
+    expect(document.querySelector('[data-testid="embedding-slot"]')).toBeNull()
+  })
 
-    const toggle = page.getByRole('switch', { name: 'Use eigenInference' })
-    await expect.element(toggle).toHaveAttribute('aria-checked', 'true')
+  it('on its own key: one dropdown per role slot, each set to the model the company runs on', async () => {
+    render(AiPage, props(data({}, { useEigenInference: false })))
     await expect.element(page.getByLabelText('Chat', { exact: true })).toHaveValue('~deepseek/deepseek-flash-latest')
     await expect.element(page.getByLabelText('Speech to text')).toHaveValue('qwen/qwen3-asr-1.7b')
     await expect.element(page.getByLabelText('Text to speech')).toHaveValue('qwen/qwen-audio-3.0-tts-flash')
@@ -97,23 +101,22 @@ describe('Settings → AI provider', () => {
     await expect.element(page.getByRole('option', { name: '~deepseek/deepseek-flash-latest (recommended)' })).toBeInTheDocument()
   })
 
-  it("on Opper a stored pick Opper doesn't serve is shown as not available, never as another model", async () => {
-    const opperSlots = data().ai.slots.map((slot) =>
+  it("on its own key a stored pick OpenRouter doesn't serve is shown as not available, never as another model", async () => {
+    const slots = data().ai.slots.map((slot) =>
       slot.slot === 'stt'
-        ? { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: 'qwen/qwen3-asr-1.7b', options: [option('mistral/voxtral-mini-transcribe-3-0', true)], available: false }
+        ? { slot: 'stt', model: 'mistral/voxtral-mini-transcribe-3-0', pick: 'mistral/voxtral-mini-transcribe-3-0', options: [option('qwen/qwen3-asr-1.7b', true)], available: false }
         : slot,
     )
-    render(AiPage, props(data({ speech: { dictation: { ready: true }, models: [], providerLabel: 'Opper' } }, { provider: 'opper', providerLabel: 'Opper', slots: opperSlots })))
-    await expect.element(page.getByLabelText('Speech to text')).toHaveValue('qwen/qwen3-asr-1.7b')
-    await expect.element(page.getByRole('option', { name: 'qwen/qwen3-asr-1.7b (not available)' })).toBeDisabled()
-    await expect.element(page.getByTestId('slot-unavailable-stt')).toHaveTextContent(/not available on Opper.*Pick another model/)
-    await expect.element(page.getByTestId('speech-status')).toHaveTextContent(/run on Opper/)
-    await userEvent.selectOptions(page.getByLabelText('Speech to text'), 'mistral/voxtral-mini-transcribe-3-0')
-    expect(submitted).toEqual([{ action: '?/setSlot', fields: { slot: 'stt', model: 'mistral/voxtral-mini-transcribe-3-0' } }])
+    render(AiPage, props(data({}, { useEigenInference: false, slots })))
+    await expect.element(page.getByLabelText('Speech to text')).toHaveValue('mistral/voxtral-mini-transcribe-3-0')
+    await expect.element(page.getByRole('option', { name: 'mistral/voxtral-mini-transcribe-3-0 (not available)' })).toBeDisabled()
+    await expect.element(page.getByTestId('slot-unavailable-stt')).toHaveTextContent(/not available on OpenRouter.*Pick another model/)
+    await userEvent.selectOptions(page.getByLabelText('Speech to text'), 'qwen/qwen3-asr-1.7b')
+    expect(submitted).toEqual([{ action: '?/setSlot', fields: { slot: 'stt', model: 'qwen/qwen3-asr-1.7b' } }])
   })
 
   it('embedding is not a dropdown: the install’s model is shown as fixed', async () => {
-    render(AiPage, props(data()))
+    render(AiPage, props(data({}, { useEigenInference: false })))
     const embedding = page.getByTestId('embedding-slot')
     await expect.element(embedding).toHaveTextContent('qwen/qwen3-embedding-8b')
     await expect.element(embedding).toHaveTextContent('Fixed for this install')
@@ -127,7 +130,7 @@ describe('Settings → AI provider', () => {
   })
 
   it('picking a model in a dropdown saves that slot right away', async () => {
-    render(AiPage, props(data()))
+    render(AiPage, props(data({}, { useEigenInference: false })))
     await userEvent.selectOptions(page.getByLabelText('Chat', { exact: true }), 'openai/gpt-5-mini')
     expect(submitted).toEqual([{ action: '?/setSlot', fields: { slot: 'chat', model: 'openai/gpt-5-mini' } }])
   })
@@ -180,7 +183,7 @@ describe('Settings → AI provider', () => {
   })
 
   it('shows what the server said after a save', async () => {
-    render(AiPage, props(data(), { slotMessage: 'Saved: openai/gpt-5-mini.' }))
+    render(AiPage, props(data({}, { useEigenInference: false }), { slotMessage: 'Saved: openai/gpt-5-mini.' }))
     await expect.element(page.getByText('Saved: openai/gpt-5-mini.')).toBeInTheDocument()
   })
 })
