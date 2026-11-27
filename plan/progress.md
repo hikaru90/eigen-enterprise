@@ -2,6 +2,13 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-27 — Encryption at rest: checked prod, plan for hosted companies (owner: "check that the company data is encrypted at rest" · "for the boxes that we host we should enable encryption … keep the keys in a secure store on our servers in eCloud")
+
+- **Found on os.cerberusblue.com (self-hosted, netcup KVM):** no disk encryption (plain ext4 on `vda3`, no dm-crypt, no fscrypt). Postgres and `/var/lib/ee*` are readable from a disk copy, and every key traces back to `/etc/ee/master.key` on that same disk. Sealed in the app: the provider key (1/1), `secrets.enc`, text files (1/1, no plaintext copy). **Thoughts:** 6/21 sealed, but all 21, those 6 included, still keep plaintext `raw_text` (+ `lexical_text`): the tenant-envelope rollout never removed the plaintext. Messages, contacts, Drive, mail, calendar and the graph have no encryption at all. Not changed.
+- **Decision (owner):** hosted companies get encryption at rest with one key per company, keys kept in eCloud. **Self-hosted installs are out of scope** (they own their disks), so os.cerberusblue.com stays as it is.
+- **Plan:** `eigenEnterprise-cloud/plan/phase-volume-encryption.md`. The host encrypts each company's volume (ZFS native encryption) with a key it fetches from eCloud at boot. **No box or fleet-protocol change.**
+- **Open (box side, independent):** drop the plaintext copies of sealed thoughts. Needs a call on full-text search, since `lexical_text` is plaintext by design.
+
 ## 2026-11-27 — Faster gates: content-hash step cache, shared lint cache, welcome-wizard spec, presence fix; parallel e2e not green yet (owner: "I want to cache the tests" · "do all four with sub agents on low")
 
 - **Found:** the owner's 11-26 test cache ("only things that are changed get retested") was built on branch `test-cache` (`b336a2af`, `13cfee1c`: unit/components by import graph + recorded reads, e2e by recorded server coverage) but never merged or logged here; its recording e2e runs failed (likely the since-fixed Co-workers slowness). Still unmerged; integrating it is next.
