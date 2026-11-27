@@ -48,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims', 'hostedAddress'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims', 'hostedAddress', 'platformAiProvider'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 /**
@@ -138,8 +138,18 @@ export const backupTargetV1 = z
   })
   .strict()
 
+/**
+ * Who serves eigenInference (feature `platformAiProvider`): the provider decides the model ids,
+ * audio, decisions and cost endpoints the box uses (src/lib/server/llm/platform-ai.ts). Sent only
+ * to boxes that announce the feature; a platformAi without it means OpenRouter (protocol v1).
+ */
+export const PLATFORM_AI_PROVIDERS = ['openrouter', 'opper'] as const
+export type PlatformAiProviderV1 = (typeof PLATFORM_AI_PROVIDERS)[number]
+
 export const platformAiV1 = z
   .object({
+    /** Only with feature `platformAiProvider`; absent = 'openrouter'. */
+    provider: z.enum(PLATFORM_AI_PROVIDERS).optional(),
     /** The os workload's PLATFORM_LLM_BASE_URL / _API_KEY / _MODEL_CHAT / _MODEL_EMBEDDING (the gateway's platform path; never the BYOK LLM_* names). */
     llmBaseUrl: httpsOrigin,
     llmApiKey: z.string().min(1).max(512),

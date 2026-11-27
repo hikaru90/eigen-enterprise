@@ -4,6 +4,7 @@ import {
   FLEET_HEADERS,
   FLEET_MAX_SKEW_MS,
   FLEET_PATHS,
+  PLATFORM_AI_PROVIDERS,
   desiredV1,
   enrollRequestV1,
   escrowRequestV1,
@@ -116,6 +117,24 @@ describe('fleet messages', () => {
   })
 })
 
+describe('platform AI provider (feature platformAiProvider)', () => {
+  const ai = { llmBaseUrl: 'https://api.opper.ai/v3/compat', llmApiKey: 'k', llmModelChat: 'c', llmModelEmbedding: 'e' }
+
+  it('is an announced feature, appended', () => {
+    expect(FLEET_FEATURES.at(-1)).toBe('platformAiProvider')
+    expect(PLATFORM_AI_PROVIDERS).toEqual(['openrouter', 'opper'])
+  })
+
+  it('platformAi may name its provider; without it the v1 meaning holds (OpenRouter)', () => {
+    expect(desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, provider: 'opper' } }).platformAi?.provider).toBe('opper')
+    expect(desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: ai }).platformAi?.provider).toBeUndefined()
+  })
+
+  it('an unknown provider is refused, never guessed', () => {
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, provider: 'eurouter' } })).toThrow()
+  })
+})
+
 describe('managed mail', () => {
   const mail = {
     region: 'eu-central-1',
@@ -185,8 +204,7 @@ describe('domain claims (plan/domains-one-claim.md D4)', () => {
     expect(FLEET_FEATURES.indexOf('claims')).toBe(FLEET_FEATURES.indexOf('domains') + 1)
   })
 
-  it('hostedAddress is a feature, appended at the end (plan/hosted-address.md H1)', () => {
-    expect(FLEET_FEATURES.at(-1)).toBe('hostedAddress')
+  it('hostedAddress is a feature, appended after claims (plan/hosted-address.md H1; append only)', () => {
     expect(FLEET_FEATURES.indexOf('hostedAddress')).toBe(FLEET_FEATURES.indexOf('claims') + 1)
   })
 
