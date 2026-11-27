@@ -2,6 +2,32 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-27 — Faster gates, all merged: per-change test cache + parallel e2e (owner: "stop leaving everything in unfinished branches, merge the things, fix it, add the cache")
+
+- **Merged `305ca3c5`:** `t3/e2e-parallel-workers` + `test-cache` on top of the step cache. Gate on main green twice (`main-ci-8`, `main-ci-9` on `62807883`).
+- **Per-change test cache (owner 11-26: "only things that are changed get retested"):**
+  - unit and component specs run when the Vitest import graph or a recorded read/list/spawn reaches a changed file;
+  - release e2e runs only the files whose recorded server coverage touches a change;
+  - toolchain/schema/messages/harness changes run everything, and so does `EE_GATE_FULL=1`;
+  - it sits inside the step cache (`f63da0fc`): an unchanged tree skips the step outright.
+  - Measured: a one-file change ran 6 unit spec files in 13 s (full: 70 s); an unchanged tree ran the whole ci gate in 2 s (was ~11 min). Components took 175 s (filling the cache).
+- **Parallel e2e:**
+  - one harness stack per worker;
+  - **2 workers by default:** 6.4–6.7 min against 14.5 min serial. 4 workers took 9–11.5 min with load flakes.
+  - A full recording release run on the combined branch: 75/75 green in 9.2 min.
+  - The e2e record merges every worker's server (startup + import graph); one raw file per worker.
+- **Fixed on the way:**
+  - `github-repos.e2e.ts` raced the minute tick: "is syncing already" is now followed by waiting for Last synced. `688263e6`.
+  - The invite "Copy link" swallowed a refused clipboard write. It now says why; there is a new component spec. `c384195d`.
+  - The recorder dropped `util.promisify.custom` (promisify(execFile) got a bare string, 3 specs failed only while recording). `5b3ee926`.
+  - The reputation page `resolve` call. `9a6cae60`.
+  - The contract lock was missing 6 tools that other sessions added (additions only). `aac037d1`.
+  - My presence `win` option broke the app-shell spec. `62807883`.
+- **Open:**
+  - `team-invite-passkey.e2e.ts` "Copied" failed in 3 of ~8 full parallel runs and never reproduced alone (20/20). The page now shows the browser's reason on the next failure.
+  - The release gate (`tag-gate.sh`) has not yet run end-to-end on main; e2e was proven on the branch.
+  - Not pushed.
+
 ## 2026-11-27 — Brand URL capture on x86_64: chromium gets the pkey syscalls back (bug: "/api/brand/extract/start failed (500): browser.newPage: Target page, context or browser has been closed" on ee-one)
 
 - **Found (ee-one kernel log, 15:25:42Z):** seccomp killed chrome-headless-shell (`sig=31`, `arch=c000003e`, `syscall=330` = `pkey_alloc`). V8 allocates memory protection keys on x86_64, and systemd's `@pkey` set is not in `@system-service`. The 11-23 allow list (`ef710636`) was found on the arm64 box, where V8 never calls them, so every x64 install failed URL capture.
