@@ -55,6 +55,7 @@ export function e2eDeps() {
    */
   async function ranOwnCode(sc, ran) {
     const all = sc.functions.map((f) => f.ranges[0])
+    /** @param {{ startOffset: number, endOffset: number }} r */
     const outer = (r) => all.every((o) => r.startOffset <= o.startOffset && r.endOffset >= o.endOffset)
     const candidates = ran.map((f) => f.ranges[0]).filter((r) => !outer(r))
     if (candidates.length === 0) return false
