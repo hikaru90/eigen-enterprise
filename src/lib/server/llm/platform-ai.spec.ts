@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { PLATFORM_AI_ENV, PLATFORM_AI_PROVIDER, readPlatformAiConfig } from './platform-ai'
+import { PLATFORM_AI_PROVIDERS as FLEET_PLATFORM_AI_PROVIDERS } from '../../../../ee/src/fleet/protocol'
+import { PLATFORM_AI_ENV, PLATFORM_AI_PROVIDER, PLATFORM_AI_PROVIDERS, PLATFORM_AI_PROVIDER_ENV, readPlatformAiConfig } from './platform-ai'
 
 const full = {
   PLATFORM_LLM_BASE_URL: 'https://llm.example.test/api/v1/',
@@ -35,7 +36,30 @@ describe('readPlatformAiConfig', () => {
       apiKey: 'sk-platform',
       modelChat: 'vendor/chat-1',
       modelEmbedding: 'vendor/embed-1',
+      provider: 'openrouter',
     })
+  })
+
+  it('who serves it: PLATFORM_LLM_PROVIDER, the providers the fleet protocol names', () => {
+    expect(PLATFORM_AI_PROVIDER_ENV).toBe('PLATFORM_LLM_PROVIDER')
+    expect(PLATFORM_AI_PROVIDERS).toEqual([...FLEET_PLATFORM_AI_PROVIDERS])
+    expect(readPlatformAiConfig({ ...full, PLATFORM_LLM_PROVIDER: 'opper' })?.provider).toBe('opper')
+    expect(readPlatformAiConfig({ ...full, PLATFORM_LLM_PROVIDER: ' openrouter ' })?.provider).toBe('openrouter')
+  })
+
+  it('no PLATFORM_LLM_PROVIDER = OpenRouter (protocol v1: a box upgrades before its agent writes the provider)', () => {
+    expect(readPlatformAiConfig(full)?.provider).toBe('openrouter')
+    expect(readPlatformAiConfig({ ...full, PLATFORM_LLM_PROVIDER: '' })?.provider).toBe('openrouter')
+  })
+
+  it('an unknown provider fails loud at read, naming it', () => {
+    expect(() => readPlatformAiConfig({ ...full, PLATFORM_LLM_PROVIDER: 'eurouter' })).toThrow(
+      /PLATFORM_LLM_PROVIDER "eurouter" is not a provider eigenInference knows \(openrouter, opper\)/,
+    )
+  })
+
+  it('a provider alone is not a platform AI: it is ignored when none of the four are set', () => {
+    expect(readPlatformAiConfig({ PLATFORM_LLM_PROVIDER: 'opper' })).toBeNull()
   })
 
   it('partial → throws naming the missing ones', () => {

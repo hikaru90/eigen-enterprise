@@ -2,8 +2,8 @@ import type { CompanyAiSettings } from './company-ai'
 import type { ResolvedLlmConfig } from './types'
 import { describe, expect, it, vi } from 'vitest'
 import { LlmNotConfiguredError } from './errors'
-import { ModelNotInPoolError } from './model-pool'
-import { companySlotSource, resolveSlot, type SlotDeps } from './slots'
+import { ModelNotInPoolError, ModelNotServedError } from './model-pool'
+import { companyPoolProvider, companySlotSource, resolveSlot, slotRoute, type SlotDeps } from './slots'
 
 vi.mock('$lib/server/env/private-env', () => ({ env: { DATABASE_URL: 'postgres://test@localhost:5433/test' } }))
 
@@ -16,9 +16,13 @@ function config(provider: string, over: Partial<ResolvedLlmConfig> = {}): Resolv
     ruleEmbedding: null,
     modelChat: null,
     modelEmbedding: null,
+    ...(provider === 'platform' ? { eigenInferenceProvider: 'openrouter' as const } : {}),
     ...over,
   }
 }
+
+const opper = (over: Partial<ResolvedLlmConfig> = {}) =>
+  config('platform', { baseUrl: 'https://api.opper.ai/v3/compat', eigenInferenceProvider: 'opper', ...over })
 
 function settings(over: Partial<CompanyAiSettings> = {}): CompanyAiSettings {
   return {
@@ -54,9 +58,67 @@ describe('resolveSlot: one resolution for every model call, for the company', ()
       ['embedding', 'qwen/qwen3-embedding-8b'],
     ] as const) {
       const target = await resolveSlot(slot, 'member-ony', d)
-      expect(target).toMatchObject({ slot, source: 'eigeninference', model })
+      expect(target).toMatchObject({ slot, source: 'eigeninference', model, pool: 'openrouter', route: model })
       expect(target.config.provider).toBe('platform')
     }
+  })
+
+  it("eigenInference on Opper: a slot with no pick runs on Opper's recommendation, sent as its EU id", async () => {
+    const d = deps({ eigenInference: async () => opper() })
+    for (const [slot, model, route] of [
+      ['chat', '~deepseek/deepseek-flash-latest', 'mistral/deepseek-v4-1-flash-1017'],
+      ['stt', 'mistral/voxtral-mini-transcribe-3-0', 'mistral/voxtral-mini-transcribe-3-0'],
+      ['tts', 'mistral/voxtral-mini-tts-3-0', 'mistral/voxtral-mini-tts-3-0'],
+      ['decision', 'ovhcloud/clef-flash', 'ovhcloud/clef-flash'],
+      ['embedding', 'qwen/qwen3-embedding-8b', 'ovhcloud/Qwen3-Embedding-8B'],
+    ] as const) {
+      await expect(resolveSlot(slot, 'u', d)).resolves.toMatchObject({ slot, source: 'eigeninference', model, pool: 'opper', route })
+    }
+  })
+
+  it('eigenInference on Opper: a stored pick Opper serves is kept, under its Opper id', async () => {
+    const d = deps({ eigenInference: async () => opper() }, settings({ picks: { chat: 'openai/gpt-5-mini', stt: null, tts: null, decision: null } }))
+    await expect(resolveSlot('chat', 'u', d)).resolves.toMatchObject({ model: 'openai/gpt-5-mini', route: 'azure/gpt-5-mini' })
+  })
+
+  it('eigenInference on Opper: a stored pick Opper does not serve fails loud, never swapped', async () => {
+    const d = deps(
+      { eigenInference: async () => opper() },
+      settings({ picks: { chat: null, stt: 'qwen/qwen3-asr-1.7b', tts: null, decision: 'typesafe/jev-1.13' } }),
+    )
+    await expect(resolveSlot('stt', 'u', d)).rejects.toBeInstanceOf(ModelNotServedError)
+    await expect(resolveSlot('decision', 'u', d)).rejects.toThrow(/not available on Opper.*Settings → AI/)
+  })
+
+  it('eigenInference on Opper: the pinned embedding model maps to its Opper route; text-embedding-3-small fails loud', async () => {
+    const pinnedQwen = deps({ eigenInference: async () => opper() }, settings({ embeddingModel: 'qwen/qwen3-embedding-8b' }))
+    await expect(resolveSlot('embedding', 'u', pinnedQwen)).resolves.toMatchObject({ route: 'ovhcloud/Qwen3-Embedding-8B' })
+    const pinnedOpenAi = deps({ eigenInference: async () => opper() }, settings({ embeddingModel: 'openai/text-embedding-3-small' }))
+    await expect(resolveSlot('embedding', 'u', pinnedOpenAi)).rejects.toBeInstanceOf(ModelNotServedError)
+    // never pinned on Opper either: the provisioned model must be one Opper serves
+    const pin = vi.fn(async (m: string) => m)
+    const provisioned = deps({ eigenInference: async () => opper({ modelEmbedding: 'openai/text-embedding-3-small' }), pinEmbeddingModel: pin })
+    await expect(resolveSlot('embedding', 'u', provisioned)).rejects.toBeInstanceOf(ModelNotServedError)
+    expect(pin).not.toHaveBeenCalled()
+  })
+
+  it('a per-call chat model (a co-worker) is sent under the provider id, or fails loud when the provider lacks it', async () => {
+    const target = await resolveSlot('chat', 'u', deps({ eigenInference: async () => opper() }))
+    expect(slotRoute(target, 'qwen/qwen3.8-flash')).toBe('alibaba:eu/qwen3.8-flash')
+    expect(() => slotRoute(target, 'vendor/unvetted')).toThrow(ModelNotInPoolError)
+    const openrouter = await resolveSlot('chat', 'u', deps())
+    expect(slotRoute(openrouter, 'qwen/qwen3.8-flash')).toBe('qwen/qwen3.8-flash')
+  })
+
+  it("the company's pool provider: eigenInference's provider when on, OpenRouter on its own key", async () => {
+    expect(await companyPoolProvider(null, deps({ eigenInference: async () => opper() }))).toBe('opper')
+    expect(await companyPoolProvider(null, deps())).toBe('openrouter')
+    expect(await companyPoolProvider(null, deps({ eigenInference: async () => opper() }, settings({ useEigenInference: false })))).toBe('openrouter')
+  })
+
+  it('an eigenInference config that names no provider is a bug: fails loud', async () => {
+    const d = deps({ eigenInference: async () => ({ ...config('platform'), eigenInferenceProvider: undefined }) })
+    await expect(resolveSlot('chat', 'u', d)).rejects.toThrow(/names no provider/)
   })
 
   it('eigenInference is one credential for every slot, whoever the owner is', async () => {
@@ -81,12 +143,12 @@ describe('resolveSlot: one resolution for every model call, for the company', ()
     const d = deps({ byokActive: async () => config('eurouter', { ruleChat: 'r' }), byokProvider }, settings({ useEigenInference: false }))
     const stt = await resolveSlot('stt', 'u', d)
     expect(byokProvider).toHaveBeenCalledWith('owner-olga', 'openrouter')
-    expect(stt.model).toBe('qwen/qwen3-asr-1.7b')
+    expect(stt).toMatchObject({ model: 'qwen/qwen3-asr-1.7b', pool: 'openrouter', route: 'qwen/qwen3-asr-1.7b' })
   })
 
   it('a provider outside the pool namespace (EUrouter rules) routes chat by its own rule: model null', async () => {
     const d = deps({ byokActive: async () => config('eurouter', { ruleChat: 'rule-1' }) }, settings({ useEigenInference: false }))
-    await expect(resolveSlot('chat', 'u', d)).resolves.toMatchObject({ model: null, config: { provider: 'eurouter' } })
+    await expect(resolveSlot('chat', 'u', d)).resolves.toMatchObject({ model: null, pool: null, route: null, config: { provider: 'eurouter' } })
   })
 
   it('a pick that is in the pool is used', async () => {

@@ -5,7 +5,7 @@ import { loadLlmProviderConfig, resolveActiveProviderLlmConfig } from './byok-cr
 import { companyAiStore, type CompanyAiSettings } from './company-ai'
 import { companyOwnerId } from './company-provider'
 import { LlmNotConfiguredError } from './errors'
-import { assertPoolModel, recommendedModel, type ModelSlot } from './model-pool'
+import { assertPoolModel, providerRoute, recommendedModel, type ModelSlot, type PoolProvider } from './model-pool'
 import { PLATFORM_AI_PROVIDER } from './platform-ai'
 import { loadEigenInferenceConfig } from './platform-llm'
 import { isByokBilling } from './preferences'
@@ -21,7 +21,10 @@ import { isByokBilling } from './preferences'
  * - **eigenInference on:** the hosting's endpoint and per-company key (`PLATFORM_LLM_*`).
  * - **eigenInference off (bring your own key):** the provider saved on the owner's account.
  *
- * The model is the slot's pick from the pool (`model-pool.ts`), or the pool's recommendation.
+ * The model is the slot's pick from the pool (`model-pool.ts`), or the recommendation of the
+ * provider that serves the pool here ({@link SlotTarget.pool}): eigenInference's provider
+ * (OpenRouter or Opper, PLATFORM_LLM_PROVIDER), or OpenRouter on the company's own key. A pick
+ * that provider does not serve fails loud (ModelNotServedError): never swapped for another.
  * The embedding model is fixed per install: pinned on its first resolution, never changed after.
  */
 
@@ -38,6 +41,10 @@ export type SlotTarget = {
    * and embeddings route by its own saved model or rule.
    */
   model: string | null
+  /** Who routes by the pool here (null exactly when model is null). */
+  pool: PoolProvider | null
+  /** The id the request sends for `model`: the pool provider's route (Opper's EU id, OpenRouter's id). */
+  route: string | null
 }
 
 /** Providers that route by the pool's model ids (OpenRouter's namespace). */
@@ -48,6 +55,26 @@ const OPENROUTER_ONLY_SLOTS: ReadonlySet<ModelSlot> = new Set(['stt', 'tts', 'de
 
 export function routesByPoolModel(provider: LlmProviderKind): boolean {
   return POOL_NAMESPACE.has(provider)
+}
+
+/** Which pool provider a config routes by: eigenInference's provider, OpenRouter for an OpenRouter key, else null. */
+export function poolProviderOf(config: ResolvedLlmConfig): PoolProvider | null {
+  if (config.provider === PLATFORM_AI_PROVIDER) {
+    if (!config.eigenInferenceProvider) {
+      throw new Error('The eigenInference config names no provider (platform-llm.ts must set eigenInferenceProvider).')
+    }
+    return config.eigenInferenceProvider
+  }
+  return config.provider === 'openrouter' ? 'openrouter' : null
+}
+
+/**
+ * The id to send for a per-call chat model (a co-worker's own model) on this target's provider.
+ * Outside the pool → ModelNotInPoolError; not served there → ModelNotServedError.
+ */
+export function slotRoute(target: SlotTarget, model: string): string {
+  if (!target.pool) throw new LlmNotConfiguredError(`The ${target.slot} slot on ${target.config.provider} does not route by the model pool.`)
+  return providerRoute(target.slot, model, target.pool)
 }
 
 export type SlotDeps = {
@@ -112,14 +139,18 @@ async function slotConfig(
 async function embeddingModel(
   settings: CompanyAiSettings,
   config: ResolvedLlmConfig,
+  pool: PoolProvider,
   deps: SlotDeps,
 ): Promise<string> {
   if (settings.embeddingModel) return assertPoolModel('embedding', settings.embeddingModel)
   // First resolution on this install: keep whatever its vectors were made with until now
   // (the hosting's provisioned model, the key's saved model, the server's env), so no
   // existing vector changes meaning. A model outside the pool fails loud here, once.
-  const current = config.modelEmbedding?.trim() || env.LLM_MODEL_EMBEDDING?.trim() || recommendedModel('embedding')
-  return deps.pinEmbeddingModel(assertPoolModel('embedding', current))
+  // A model this provider does not serve is never pinned (ModelNotServedError): the install's
+  // vectors would be made with a model it cannot call.
+  const current = config.modelEmbedding?.trim() || env.LLM_MODEL_EMBEDDING?.trim() || recommendedModel('embedding', pool)
+  providerRoute('embedding', current, pool)
+  return deps.pinEmbeddingModel(current)
 }
 
 /**
@@ -141,12 +172,23 @@ export async function resolveSlot(
     if (OPENROUTER_ONLY_SLOTS.has(slot)) {
       throw new LlmNotConfiguredError(`The ${slot} slot needs an OpenRouter-compatible endpoint; ${config.provider} is not one.`)
     }
-    return { slot, source, config, model: null }
+    return { slot, source, config, model: null, pool: null, route: null }
   }
 
+  const pool = poolProviderOf(config)!
   const model =
     slot === 'embedding'
-      ? await embeddingModel(settings, config, deps)
-      : assertPoolModel(slot, settings.picks[slot] ?? recommendedModel(slot))
-  return { slot, source, config, model }
+      ? await embeddingModel(settings, config, pool, deps)
+      : assertPoolModel(slot, settings.picks[slot] ?? recommendedModel(slot, pool))
+  return { slot, source, config, model, pool, route: providerRoute(slot, model, pool) }
+}
+
+/**
+ * The pool provider the company's models come from right now (Settings → AI lists what it
+ * serves): eigenInference's provider while the switch is on, else OpenRouter (the company's own
+ * OpenRouter key serves the pool; a provider outside it routes by its own model names).
+ */
+export async function companyPoolProvider(callerId: string | null, deps: SlotDeps = liveSlotDeps): Promise<PoolProvider> {
+  if ((await companySlotSource(callerId, deps)) === 'byok') return 'openrouter'
+  return poolProviderOf(await deps.eigenInference())!
 }

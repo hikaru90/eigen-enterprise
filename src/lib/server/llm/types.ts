@@ -1,3 +1,5 @@
+import type { PlatformAiProviderName } from './platform-ai'
+
 /**
  * Provider id as stored per-user (llm_provider_config.provider). Known ids today:
  * 'eurouter', 'openrouter', 'github_copilot', plus any models.dev catalog id —
@@ -7,6 +9,11 @@ export type LlmProviderKind = string
 
 export type ResolvedLlmConfig = {
   provider: LlmProviderKind
+  /**
+   * eigenInference only (provider 'platform'): who serves it (PLATFORM_LLM_PROVIDER,
+   * platform-ai.ts). It decides the model ids, speech, decision and cost endpoints.
+   */
+  eigenInferenceProvider?: PlatformAiProviderName
   baseUrl: string
   apiKey: string
   ruleChat: string | null
