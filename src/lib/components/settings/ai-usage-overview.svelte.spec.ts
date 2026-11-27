@@ -22,6 +22,7 @@ const row = (over: Partial<AiUsageRow>): AiUsageRow => ({
   promptTokens: 1000,
   completionTokens: 200,
   cachedTokens: 400,
+  eigenInferenceUsd: 0,
   ...over,
 })
 
@@ -63,6 +64,31 @@ describe('ai-usage-overview.svelte', () => {
     render(AiUsageOverview, { overview, period: '7' })
     await expect.element(rowOf('ai-usage-models').getByText('m/one')).toBeVisible()
     await expect.element(rowOf('ai-usage-models').getByText('Not recorded')).toBeVisible()
+  })
+
+  it('self-hosted: USD as logged, no billing line', async () => {
+    render(AiUsageOverview, { overview, period: '7' })
+    await expect.element(page.getByTestId('ai-usage-spend')).toHaveTextContent('$2.00')
+    expect(page.getByTestId('ai-usage-billing').elements()).toHaveLength(0)
+    expect(page.getByTestId('ai-usage-provider-usd').elements()).toHaveLength(0)
+  })
+
+  it('hosted with eigenInference: € invoiced everywhere, the provider USD beside it, the rate and its day stated', async () => {
+    const billing = { currency: 'EUR' as const, markup: 1.2, usdToEur: 0.95, rateDay: '2026-11-27' }
+    const hosted = foldAiUsage(
+      [row({ costUsd: 1.2, eigenInferenceUsd: 1 }), row({ userId: 'u-cw', name: 'Marketing', kind: 'coworker', task: 'coworkers.turn', model: null, costUsd: 0.6, eigenInferenceUsd: 0.5, calls: 2 })],
+      { from: '2026-11-25', to: '2026-11-27' },
+      billing,
+    )
+    render(AiUsageOverview, { overview: hosted, period: '7' })
+    await expect.element(page.getByTestId('ai-usage-spend')).toHaveTextContent('€1.71')
+    await expect.element(page.getByTestId('ai-usage-provider-usd')).toHaveTextContent('$1.50 provider cost')
+    await expect.element(page.getByTestId('ai-usage-billing')).toHaveTextContent('provider cost × 1.2, at 1 USD = 0.95 EUR (rate of 2026-11-27)')
+    const brain = rowOf('ai-usage-products').getByTestId('ai-usage-product-row').filter({ hasText: 'Brain' })
+    await expect.element(brain).toHaveTextContent('€1.14')
+    await expect.element(brain).toHaveTextContent('$1.00')
+    await expect.element(rowOf('ai-usage-products').getByText('Invoiced', { exact: true })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: /Nov 26: €1\.71/ })).toBeVisible()
   })
 
   it('says so when the period has no calls', async () => {

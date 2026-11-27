@@ -83,6 +83,7 @@ export default defineConfig({
       'src/lib/components/settings/speech-status.svelte.spec.ts',
       'src/routes/(nucleus)/settings/members/members-page.svelte.spec.ts',
       'src/lib/components/settings/ai-usage-overview.svelte.spec.ts',
+      'src/lib/components/ai-usage-meter.svelte.spec.ts',
       'src/lib/components/settings/logo-cropper.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/flyer-preview.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/banner-preview.svelte.spec.ts',

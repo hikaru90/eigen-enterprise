@@ -18,8 +18,8 @@ import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
 import { assertGatewayCallWithinMemberDailyCap } from '$lib/server/llm/member-daily-cap'
 import { assertPoolModel, modelSupportsTemperature, ttsSendsVoice } from '$lib/server/llm/model-pool'
+import { opperAudioUrl, opperSpeechAudio, opperTranscriptionBody, opperUsageTagHeaders } from '$lib/server/llm/opper'
 import { companySlotSource, resolveSlot, slotRoute, type SlotTarget } from '$lib/server/llm/slots'
-import { opperAudioUrl, opperSpeechAudio, opperTranscriptionBody } from '$lib/server/llm/opper'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
 
@@ -821,6 +821,7 @@ async function llmChatCompletionInner(input: {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
+            ...opperUsageTagHeaders(config),
           },
           body: JSON.stringify({
             ...(routing.ruleId ? { rule_id: routing.ruleId } : {}),
@@ -1041,6 +1042,7 @@ async function llmCreateEmbeddingsInner(input: {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
+            ...opperUsageTagHeaders(config),
           },
           body: JSON.stringify({
             ...(routing.ruleId ? { rule_id: routing.ruleId } : {}),

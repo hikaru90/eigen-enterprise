@@ -1,5 +1,6 @@
 import type { ToolContext, ToolDescriptor } from './types'
 import { z } from 'zod'
+import { aiBillingSchema, invoicedEur, type AiBilling } from '../ai-usage/billing'
 import { replyCostSchema, type ReplyCost } from '../ai-usage/usage'
 import { KernelError } from './errors'
 
@@ -38,6 +39,13 @@ export type MemberAiUsageView = z.infer<typeof memberAiUsageSchema>
 /** One reply's cost (settings.my_ai_usage with reply_message_id); null = none recorded for it. */
 export const myAiUsageOutputSchema = memberAiUsageSchema.extend({
   reply: replyCostSchema.nullable().optional(),
+  /**
+   * Hosted with eigenInference only (EE_AI_BILLING_* set): today's eigenInference calls as the
+   * provider reported them and what the company is invoiced for them (providerUsd × markup × usdToEur).
+   */
+  invoiced: z
+    .object({ providerUsd: z.number().nonnegative(), invoicedEur: z.number().nonnegative(), billing: aiBillingSchema })
+    .optional(),
 })
 export type MyAiUsageOutput = z.infer<typeof myAiUsageOutputSchema>
 
@@ -68,6 +76,10 @@ export type MemberAiCapPort = {
    * exists; `usage: null` when the reply has no recorded cost (replies from before costs were kept).
    */
   replyCost(userId: string, messageId: string): Promise<{ usage: ReplyCost | null } | null>
+  /** How the hosting invoices eigenInference (EE_AI_BILLING_*); null = self-hosted or no eigenInference. */
+  billing(): Promise<AiBilling | null>
+  /** The provider-reported USD (base_cost_usd) of the person's eigenInference calls today (UTC). */
+  eigenInferenceUsdToday(userId: string): Promise<number>
 }
 
 export type MemberAiCapToolDeps = { port: MemberAiCapPort }
@@ -82,6 +94,14 @@ function personOf(ctx: ToolContext): string {
     throw new KernelError('no_person', 'AI usage is counted per person; this call names no person')
   }
   return ctx.principal.id
+}
+
+/** Billing set: the person's eigenInference today in EUR; otherwise nothing (USD as logged). */
+async function invoicedToday(port: MemberAiCapPort, person: string): Promise<Pick<MyAiUsageOutput, 'invoiced'>> {
+  const billing = await port.billing()
+  if (billing === null) return {}
+  const providerUsd = await port.eigenInferenceUsdToday(person)
+  return { invoiced: { providerUsd, invoicedEur: invoicedEur(providerUsd, billing), billing } }
 }
 
 export function createMemberAiCapTools(deps: MemberAiCapToolDeps): ToolDescriptor[] {
@@ -122,7 +142,7 @@ export function createMemberAiCapTools(deps: MemberAiCapToolDeps): ToolDescripto
       name: 'settings.my_ai_usage',
       module: KERNEL_MEMBER_AI_CAP_MODULE_ID,
       summary:
-        'Your own AI usage today (UTC): what your model calls cost so far, the company’s daily cap per member, whether it applies to you, what is left and when it resets. With {reply_message_id: an assistant reply of yours} also what that reply cost (reply: {costUsd, tokens, modelCalls}, null when none was recorded).',
+        'Your own AI usage today (UTC): what your model calls cost so far, the company’s daily cap per member, whether it applies to you, what is left and when it resets. With {reply_message_id: an assistant reply of yours} also what that reply cost (reply: {costUsd, tokens, modelCalls}, null when none was recorded). On the hosted plan with eigenInference also invoiced: {providerUsd, invoicedEur, billing} — what today’s eigenInference calls are invoiced in EUR, with the markup and the rate’s day.',
       auditClass: 'read',
       inputSchema: usageInputSchema,
       outputSchema: myAiUsageOutputSchema,
@@ -131,7 +151,7 @@ export function createMemberAiCapTools(deps: MemberAiCapToolDeps): ToolDescripto
       handler: async (ctx, input) => {
         const { reply_message_id } = usageInputSchema.parse(input ?? {})
         const person = personOf(ctx)
-        const today = await deps.port.usageToday(person)
+        const today = { ...(await deps.port.usageToday(person)), ...(await invoicedToday(deps.port, person)) }
         if (reply_message_id === undefined) return today
         const reply = await deps.port.replyCost(person, reply_message_id)
         if (!reply) {

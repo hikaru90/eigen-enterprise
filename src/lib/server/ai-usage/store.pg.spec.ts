@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { readAiUsageRows } from './store'
+import { readAiUsageRows, readFleetAiUsage } from './store'
 
 /**
  * The overview's grouped read and migration 0190's backfill on the test database. Every case
@@ -44,11 +44,12 @@ describe.skipIf(!url)('AI usage (Postgres)', () => {
   const call = (
     tx: postgres.TransactionSql,
     userId: string,
-    row: { operation?: string; provider?: string; task?: string | null; model?: string | null; cost?: string; at?: string },
+    row: { operation?: string; provider?: string; task?: string | null; model?: string | null; cost?: string; base?: string; at?: string; completion?: number; cached?: number | null },
   ) => tx`
-    INSERT INTO activity_call_log (user_id, provider, operation, task, model, base_cost_usd, markup_usd, total_cost_usd, prompt_tokens, created_at)
+    INSERT INTO activity_call_log (user_id, provider, operation, task, model, base_cost_usd, markup_usd, total_cost_usd, prompt_tokens, completion_tokens, cached_tokens, created_at)
     VALUES (${userId}, ${row.provider ?? 'openrouter'}, ${row.operation ?? 'llm.chat.chat.success(attempt=1)'}, ${row.task ?? null},
-            ${row.model ?? null}, '0', '0', ${row.cost ?? '0.5'}, 100, ${row.at ?? '2026-11-20T12:00:00Z'}::timestamp)
+            ${row.model ?? null}, ${row.base ?? '0'}, '0', ${row.cost ?? '0.5'}, 100, ${row.completion ?? null}, ${row.cached ?? null},
+            ${row.at ?? '2026-11-20T12:00:00Z'}::timestamp)
   `
 
   it('groups LLM calls by principal, task, model and UTC day, within the period', async () => {
@@ -63,11 +64,42 @@ describe.skipIf(!url)('AI usage (Postgres)', () => {
 
       const rows = (await readAiUsageRows(tx, { from: '2026-11-20', to: '2026-11-21' })).filter((r) => r.userId === mia || r.userId === bot)
       expect(rows.sort((a, b) => a.day.localeCompare(b.day))).toEqual([
-        { userId: mia, name: 'Mia', kind: 'person', task: 'brain.retrieval_rerank', model: 'm/one', day: '2026-11-20', costUsd: 0.75, calls: 2, promptTokens: 200, completionTokens: 0, cachedTokens: 0 },
-        { userId: bot, name: 'Marketing', kind: 'coworker', task: 'coworkers.turn', model: 'm/two', day: '2026-11-21', costUsd: 0.5, calls: 1, promptTokens: 100, completionTokens: 0, cachedTokens: 0 },
+        { userId: mia, name: 'Mia', kind: 'person', task: 'brain.retrieval_rerank', model: 'm/one', day: '2026-11-20', costUsd: 0.75, calls: 2, promptTokens: 200, completionTokens: 0, cachedTokens: 0, eigenInferenceUsd: 0 },
+        { userId: bot, name: 'Marketing', kind: 'coworker', task: 'coworkers.turn', model: 'm/two', day: '2026-11-21', costUsd: 0.5, calls: 1, promptTokens: 100, completionTokens: 0, cachedTokens: 0, eigenInferenceUsd: 0 },
       ])
       const all = (await readAiUsageRows(tx, { from: null, to: null })).filter((r) => r.userId === mia)
       expect(all.reduce((n, r) => n + r.calls, 0)).toBe(3)
+    })
+  })
+
+  it('each group carries the provider-reported base of its eigenInference calls only (what the hosting invoices from)', async () => {
+    await inRolledBackTx(async (tx) => {
+      await call(tx, mia, { provider: 'platform', task: 'assistant.turn', model: `m/${tag}`, base: '0.001', cost: '0.0012' })
+      await call(tx, mia, { provider: 'openrouter', task: 'assistant.turn', model: `m/${tag}`, base: '0.004', cost: '0.0048' })
+      const [group] = (await readAiUsageRows(tx, { from: '2026-11-20', to: '2026-11-20' })).filter((r) => r.model === `m/${tag}`)
+      expect(group).toMatchObject({ calls: 2, costUsd: 0.006, eigenInferenceUsd: 0.001 })
+    })
+  })
+
+  it('the fleet read: eigenInference calls only (provider platform), per UTC day × task × model from a day on, provider-reported base cost', async () => {
+    await inRolledBackTx(async (tx) => {
+      const m1 = `m/one-${tag}`
+      const m2 = `m/two-${tag}`
+      // eigenInference: two people, same day/task/model → one row; base cost, never the box's marked-up total
+      await call(tx, mia, { provider: 'platform', task: 'assistant.turn', model: m1, base: '0.001', cost: '0.0012', completion: 10, cached: 40, at: '2026-11-20T00:00:00Z' })
+      await call(tx, bot, { provider: 'platform', task: 'assistant.turn', model: m1, base: '0.002', cost: '0.0024', completion: 5, at: '2026-11-20T23:59:59Z' })
+      await call(tx, mia, { provider: 'platform', task: null, model: m2, base: '0.0005', cost: '0.0006', at: '2026-11-21T08:00:00Z' })
+      // before the from day; BYOK and tool rows on the from day
+      await call(tx, mia, { provider: 'platform', task: 'assistant.turn', model: m1, base: '9', at: '2026-11-19T23:59:59Z' })
+      await call(tx, mia, { provider: 'openrouter', task: 'assistant.turn', model: m1, base: '9', at: '2026-11-20T12:00:00Z' })
+      await call(tx, mia, { provider: 'eurouter', task: 'assistant.turn', model: m2, base: '9', at: '2026-11-20T12:00:00Z' })
+      await call(tx, mia, { provider: 'agent', operation: 'tool_call.x', model: m1, at: '2026-11-20T12:00:00Z' })
+
+      const rows = (await readFleetAiUsage(tx, '2026-11-20')).filter((r) => r.model === m1 || r.model === m2)
+      expect(rows.sort((a, b) => a.day.localeCompare(b.day))).toEqual([
+        { day: '2026-11-20', task: 'assistant.turn', model: m1, calls: 2, promptTokens: 200, completionTokens: 15, cachedTokens: 40, costUsd: 0.003 },
+        { day: '2026-11-21', task: null, model: m2, calls: 1, promptTokens: 100, completionTokens: 0, cachedTokens: 0, costUsd: 0.0005 },
+      ])
     })
   })
 

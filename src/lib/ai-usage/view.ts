@@ -1,5 +1,8 @@
-import type { AiUsageOverview, AiUsageProductId } from './overview'
+import type { AiBilling } from './billing'
+import type { AiAmounts, AiUsageOverview, AiUsageProductId } from './overview'
+import { formatAiEur } from './billing'
 import { usageProductLabel, USAGE_PRODUCT_IDS } from './overview'
+import { formatAiUsd } from './usage'
 
 /** Pure view state of Settings → AI usage: the period switch and the daily bars. */
 
@@ -33,10 +36,31 @@ export function periodRange(period: AiUsagePeriod, now: Date): { from?: string; 
   return { from: shiftDay(to, 1 - days), to }
 }
 
+/**
+ * The amount the page shows: on the hosted plan with eigenInference (billing set) the € the
+ * company is invoiced, otherwise the USD the gateway logged.
+ */
+export function shownAmount(amounts: AiAmounts, billing: AiBilling | null): number {
+  if (billing === null) return amounts.costUsd
+  if (amounts.invoicedEur === undefined) throw new Error('The AI usage overview names a billing but an amount has no invoiced EUR.')
+  return amounts.invoicedEur
+}
+
+/** Billing set: the provider-reported USD the € is invoiced from (shown beside it). */
+export function providerUsdOf(amounts: AiAmounts): number {
+  if (amounts.providerUsd === undefined) throw new Error('The AI usage overview names a billing but an amount has no provider USD.')
+  return amounts.providerUsd
+}
+
+export function formatShown(amount: number, billing: AiBilling | null): string {
+  return billing === null ? formatAiUsd(amount) : formatAiEur(amount)
+}
+
+/** One day of the chart, in the page's amount (shownAmount). */
 export type DailyBar = {
   date: string
-  costUsd: number
-  segments: { id: AiUsageProductId; label: string; costUsd: number }[]
+  amount: number
+  segments: { id: AiUsageProductId; label: string; amount: number }[]
 }
 
 /** One bar per day of the period (days without cost at zero), its products in catalog order. */
@@ -44,24 +68,32 @@ export function dailyBars(overview: AiUsageOverview): DailyBar[] {
   const first = overview.from ?? overview.daily[0]?.date
   const last = overview.to ?? overview.daily.at(-1)?.date
   if (first === undefined || last === undefined) return []
-  const byDate = new Map(overview.daily.map((d) => [d.date, d]))
+  const billed = overview.billing !== null
+  const byDate = new Map(
+    overview.daily.map((d) => {
+      if (billed && (d.invoicedEur === undefined || d.productsEur === undefined)) {
+        throw new Error(`The AI usage overview names a billing but ${d.date} has no invoiced EUR.`)
+      }
+      return [d.date, billed ? { amount: d.invoicedEur!, products: d.productsEur! } : { amount: d.costUsd, products: d.products }]
+    }),
+  )
   const bars: DailyBar[] = []
   for (let date = first; date <= last; date = shiftDay(date, 1)) {
     const day = byDate.get(date)
     bars.push({
       date,
-      costUsd: day?.costUsd ?? 0,
+      amount: day?.amount ?? 0,
       segments: USAGE_PRODUCT_IDS.filter((id) => (day?.products[id] ?? 0) > 0).map((id) => ({
         id,
         label: usageProductLabel(id),
-        costUsd: day!.products[id]!,
+        amount: day!.products[id]!,
       })),
     })
   }
   return bars
 }
 
-/** The products with cost in the period, in catalog order (the chart's legend). */
+/** The products with an amount in the period, in catalog order (the chart's legend). */
 export function usedProducts(overview: AiUsageOverview): AiUsageOverview['products'] {
-  return overview.products.filter((p) => p.costUsd > 0)
+  return overview.products.filter((p) => shownAmount(p, overview.billing) > 0)
 }

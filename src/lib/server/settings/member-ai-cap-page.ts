@@ -1,8 +1,8 @@
 import type { RequestEvent } from '@sveltejs/kit'
 import { randomUUID } from 'node:crypto'
 import { fail } from '@sveltejs/kit'
+import type { AiUsageToday } from '$lib/ai-usage/usage'
 import { KernelError } from '$lib/kernel/errors'
-import type { MemberAiUsageView } from '$lib/kernel/member-ai-cap-tools'
 import { getUserRole, isAdminRole, kernelRolesFor } from '$lib/server/auth/user-role'
 import { appKernel } from '$lib/server/boot'
 import { ownerRun } from '$lib/server/website/owner-run'
@@ -13,7 +13,7 @@ import { ownerRun } from '$lib/server/website/owner-run'
  * admins change the cap (settings.member_ai_cap_set — their click is their approval, ownerRun).
  */
 
-export type MemberAiCapPageData = { usage: MemberAiUsageView }
+export type MemberAiCapPageData = { usage: AiUsageToday }
 
 export async function loadMemberAiCap(userId: string): Promise<MemberAiCapPageData> {
   const role = await getUserRole(userId)
@@ -23,7 +23,7 @@ export async function loadMemberAiCap(userId: string): Promise<MemberAiCapPageDa
     'settings.my_ai_usage',
     {},
     { principal: { id: userId, kind: 'human', roles: kernelRolesFor(role) }, requestId: randomUUID() },
-  )) as MemberAiUsageView
+  )) as AiUsageToday
   return { usage }
 }
 

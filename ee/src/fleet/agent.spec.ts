@@ -3,13 +3,14 @@ import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import { settingsSchema, type DesiredState } from '../company-repo.ts'
 import { addDomain, OS_HOME_PATH, OS_PUBLIC_SURFACE } from '../domains.ts'
 import { EE_VERSION } from '../version.ts'
-import { BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, IMPLEMENTED_FEATURES, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, UPGRADE_UNIT, type FleetHost } from './agent.ts'
+import { AI_BILLING_SECRETS, AI_USAGE_MAX_ROWS, BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, IMPLEMENTED_FEATURES, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, PLATFORM_AI_USAGE_TAG, UPGRADE_UNIT, type FleetHost } from './agent.ts'
 import type { HostedAddressRecord } from './hosted-address.ts'
-import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest, type DomainClaimV1 } from './protocol.ts'
+import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest, type AiUsageDayV1, type DomainClaimV1 } from './protocol.ts'
 
 const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
 const CP = 'https://hosting.example.com'
 const TOKEN = 't'.repeat(40)
+const USAGE_ROW: AiUsageDayV1 = { day: '2026-11-15', task: 'assistant.turn', model: 'deepseek/deepseek-v4-flash', calls: 3, promptTokens: 1200, completionTokens: 300, cachedTokens: 800, costUsd: 0.0042 }
 const SEALED = 'S'.repeat(43) + '='
 
 type Call = { url: string; init: RequestInit }
@@ -63,6 +64,7 @@ function fakeHost(opts: { managed?: boolean } = {}) {
     seats: vi.fn(async () => 4),
     mailDomains: vi.fn(async (_token: string): Promise<Array<{ name: string; receive: boolean }> | null> => [{ name: 'acme.example.com', receive: true }]),
     backupKey: vi.fn(async (_token: string): Promise<string> => 'K'.repeat(43) + '='),
+    aiUsage: vi.fn(async (_token: string, _from: string): Promise<AiUsageDayV1[] | null> => [USAGE_ROW]),
     backups: {
       hasKey: vi.fn(() => true),
       key: vi.fn((): string | null => SEALED),
@@ -116,6 +118,8 @@ function fakeHost(opts: { managed?: boolean } = {}) {
   }
 }
 
+/** A minimal valid report body (for checking the protocol's bounds). */
+const reportBase = () => ({ protocol: 1, eeVersion: '1.0.0', features: [], release: null, health: { os: 'healthy', reconcileError: null }, seats: null, hosts: [], disk: null, backup: null })
 const desired = (extra: Record<string, unknown> = {}) => () => Response.json({ protocol: 1, pollSeconds: 60, ...extra })
 const target = { endpoint: 'https://s3.example.com', region: 'eu-central-1', bucket: 'acme-backups', prefix: 'box', accessKeyId: 'AKIA', secretAccessKey: 'SECRET-S3' }
 
@@ -383,6 +387,144 @@ describe('fleet: desired state (level-triggered)', () => {
       expect(f.secrets['os']![legacy]).toBeUndefined()
       expect(f.state().workloads[0]!.secrets).not.toContain(legacy)
     }
+  })
+
+  it('platformAi: usageTag reaches os as PLATFORM_LLM_USAGE_TAG with the other PLATFORM_LLM_*; dropped when the control plane stops sending it; removed with them', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const ai = { provider: 'opper' as const, usageTag: 'box_1a2b', llmBaseUrl: 'https://api.opper.ai/v3/compat', llmApiKey: 'sk-OPPER', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
+    f.setAnswer(desired({ platformAi: ai }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(PLATFORM_AI_USAGE_TAG).toBe('PLATFORM_LLM_USAGE_TAG')
+    expect(f.secrets['os']).toMatchObject({ PLATFORM_LLM_PROVIDER: 'opper', PLATFORM_LLM_USAGE_TAG: 'box_1a2b' })
+    expect(f.state().workloads[0]!.secrets).toContain(PLATFORM_AI_USAGE_TAG)
+    const n = f.commits.length
+    await agent.poll()
+    expect(f.commits).toHaveLength(n)
+    expect(f.host.reconcile).not.toHaveBeenCalled()
+    // No tag in desired: the old one goes (os must not tag calls with a stale box name); the rest stays.
+    const { usageTag: _tag, ...untagged } = ai
+    f.setAnswer(desired({ platformAi: untagged }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.secrets['os']![PLATFORM_AI_USAGE_TAG]).toBeUndefined()
+    expect(f.state().workloads[0]!.secrets).not.toContain(PLATFORM_AI_USAGE_TAG)
+    expect(f.secrets['os']!['PLATFORM_LLM_API_KEY']).toBe('sk-OPPER')
+    expect(f.logs.at(-1)!.message).not.toMatch(/older ee/)
+    f.setAnswer(desired({ platformAi: ai }))
+    await agent.poll()
+    f.setAnswer(desired({ platformAi: null }))
+    await agent.poll()
+    expect(f.secrets['os']![PLATFORM_AI_USAGE_TAG]).toBeUndefined()
+    expect(f.state().workloads[0]!.secrets).not.toContain(PLATFORM_AI_USAGE_TAG)
+    for (const l of f.logs) expect(l.message).not.toContain('sk-OPPER')
+  })
+
+  describe('aiUsage (feature aiUsage)', () => {
+    const billing = { from: '2026-11-01', markup: 1.2, currency: 'EUR', usdToEur: 0.95, rateDay: '2026-11-27' }
+    const lastReport = (f: ReturnType<typeof fakeHost>) => JSON.parse(String(f.calls.at(-1)!.init.body)) as Record<string, unknown>
+
+    it('is announced in every report', async () => {
+      const f = fakeHost({ managed: true })
+      f.setAnswer(desired())
+      await new FleetAgent(f.host).poll()
+      expect(lastReport(f).features).toContain('aiUsage')
+    })
+
+    it('reports nothing before the control plane asks for usage (absent or null aiUsage)', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired())
+      await agent.poll()
+      await agent.poll()
+      expect(lastReport(f)).not.toHaveProperty('aiUsage')
+      f.setAnswer(desired({ aiUsage: null }))
+      await agent.poll()
+      await agent.poll()
+      expect(lastReport(f)).not.toHaveProperty('aiUsage')
+      expect(f.host.aiUsage).not.toHaveBeenCalled()
+    })
+
+    it('from the poll after desired.aiUsage arrives, every report carries the rows from its from day (asked with the loopback token)', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ aiUsage: billing }))
+      await agent.poll()
+      // The first report went out before the answer that names from.
+      expect(JSON.parse(String(f.calls[0]!.init.body))).not.toHaveProperty('aiUsage')
+      await agent.poll()
+      expect(f.host.aiUsage).toHaveBeenLastCalledWith('local-token', '2026-11-01')
+      expect(reportV1.parse(lastReport(f)).aiUsage).toEqual([USAGE_ROW])
+      // The control plane moves from forward: the next report asks from the new day.
+      f.setAnswer(desired({ aiUsage: { ...billing, from: '2026-11-15' } }))
+      await agent.poll()
+      await agent.poll()
+      expect(f.host.aiUsage).toHaveBeenLastCalledWith('local-token', '2026-11-15')
+      // null: no eigenInference any more, nothing reported.
+      f.setAnswer(desired({ aiUsage: null }))
+      await agent.poll()
+      const asked = f.host.aiUsage.mock.calls.length
+      await agent.poll()
+      expect(f.host.aiUsage).toHaveBeenCalledTimes(asked)
+      expect(lastReport(f)).not.toHaveProperty('aiUsage')
+    })
+
+    it('os cannot say → aiUsage null, journaled once per distinct error', async () => {
+      const f = fakeHost({ managed: true })
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      f.host.aiUsage.mockRejectedValue(new Error('os answered 404 on /api/fleet/ai-usage'))
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ aiUsage: billing }))
+      await agent.poll()
+      expect((await agent.poll()).ok).toBe(true)
+      await agent.poll()
+      expect(lastReport(f).aiUsage).toBeNull()
+      expect(f.logs.filter((l) => l.type === 'fleet.os_unanswered' && l.message.includes('/api/fleet/ai-usage'))).toHaveLength(1)
+      err.mockRestore()
+    })
+
+    it('more rows than the protocol carries: never truncated — aiUsage null and a loud journal entry naming the count', async () => {
+      const f = fakeHost({ managed: true })
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      expect(reportV1.safeParse({ ...reportBase(), aiUsage: Array.from({ length: AI_USAGE_MAX_ROWS }, () => USAGE_ROW) }).success).toBe(true)
+      expect(reportV1.safeParse({ ...reportBase(), aiUsage: Array.from({ length: AI_USAGE_MAX_ROWS + 1 }, () => USAGE_ROW) }).success).toBe(false)
+      f.host.aiUsage.mockResolvedValue(Array.from({ length: AI_USAGE_MAX_ROWS + 1 }, () => USAGE_ROW))
+      const agent = new FleetAgent(f.host)
+      f.setAnswer(desired({ aiUsage: billing }))
+      await agent.poll()
+      expect((await agent.poll()).ok).toBe(true)
+      expect(lastReport(f).aiUsage).toBeNull()
+      expect(f.logs).toContainEqual({ type: 'fleet.os_unanswered', message: expect.stringMatching(/5001 AI usage rows since 2026-11-01.*at most 5000/) })
+      err.mockRestore()
+    })
+
+    it('the billing reaches os as EE_AI_BILLING_* (declared, redeployed only on change); null removes them; absent leaves them', async () => {
+      const f = fakeHost({ managed: true })
+      const agent = new FleetAgent(f.host)
+      expect(AI_BILLING_SECRETS).toEqual(['EE_AI_BILLING_MARKUP', 'EE_AI_BILLING_USD_TO_EUR', 'EE_AI_BILLING_RATE_DAY'])
+      f.setAnswer(desired({ aiUsage: billing }))
+      expect((await agent.poll()).ok).toBe(true)
+      expect(f.secrets['os']).toMatchObject({ EE_AI_BILLING_MARKUP: '1.2', EE_AI_BILLING_USD_TO_EUR: '0.95', EE_AI_BILLING_RATE_DAY: '2026-11-27' })
+      expect(f.state().workloads[0]!.secrets).toEqual(expect.arrayContaining([...AI_BILLING_SECRETS]))
+      const n = f.commits.length
+      // from moving forward is no billing change: os is not redeployed for it.
+      f.setAnswer(desired({ aiUsage: { ...billing, from: '2026-11-20' } }))
+      await agent.poll()
+      expect(f.commits).toHaveLength(n)
+      expect(f.host.reconcile).not.toHaveBeenCalled()
+      f.setAnswer(desired({ aiUsage: { ...billing, usdToEur: 0.93, rateDay: '2026-11-28' } }))
+      await agent.poll()
+      expect(f.host.reconcile).toHaveBeenCalledTimes(1)
+      expect(f.secrets['os']).toMatchObject({ EE_AI_BILLING_USD_TO_EUR: '0.93', EE_AI_BILLING_RATE_DAY: '2026-11-28' })
+      f.setAnswer(desired())
+      await agent.poll()
+      expect(f.secrets['os']!['EE_AI_BILLING_MARKUP']).toBe('1.2')
+      f.setAnswer(desired({ aiUsage: null }))
+      await agent.poll()
+      for (const name of AI_BILLING_SECRETS) {
+        expect(f.secrets['os']![name]).toBeUndefined()
+        expect(f.state().workloads[0]!.secrets).not.toContain(name)
+      }
+    })
   })
 
   it('local token: re-declared on os when a bootstrap re-run (upgrade) dropped it, value kept', async () => {

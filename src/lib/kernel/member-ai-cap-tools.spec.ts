@@ -1,3 +1,4 @@
+import type { AiBilling } from '../ai-usage/billing'
 import type { ToolContext } from './types'
 import { describe, expect, it } from 'vitest'
 import { InMemoryApprovalModeStore, InMemoryApprovalStore, ModeAwareApprovalPolicy } from './approvals'
@@ -23,7 +24,7 @@ const REPLY_WITH_COST = '0b6f3c1e-8f55-4c2a-9d0e-6a1b2c3d4e5f'
 const REPLY_OLD = '1c7f4d2f-9a66-4d3b-8e1f-7b2c3d4e5f60'
 const NOT_MINE = '2d8a5e3a-ab77-4e4c-9f2a-8c3d4e5f6071'
 
-function makePort() {
+function makePort(billing: AiBilling | null = null) {
   const sets: Array<{ value: number | null; actor: string }> = []
   let cap: number | null = null
   const usageCalls: string[] = []
@@ -53,11 +54,16 @@ function makePort() {
       if (messageId === REPLY_OLD) return { usage: null }
       return null
     },
+    billing: async () => billing,
+    eigenInferenceUsdToday: async (userId) => {
+      usageCalls.push(`eigenInference:${userId}`)
+      return 0.2
+    },
   }
   return { port, sets, usageCalls, replyCalls }
 }
 
-function makeRegistry(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
+function makeRegistry(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', billing: AiBilling | null = null) {
   const approvals = new InMemoryApprovalStore()
   const approvalMode = new InMemoryApprovalModeStore(mode)
   const events = new InMemoryEventSink()
@@ -66,7 +72,7 @@ function makeRegistry(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all') {
     approvalPolicy: new ModeAwareApprovalPolicy(new Set(), approvalMode),
     approvalStore: approvals,
   })
-  const fx = makePort()
+  const fx = makePort(billing)
   for (const tool of createMemberAiCapTools({ port: fx.port })) registry.register(tool)
   return { registry, approvals, events, ...fx }
 }
@@ -164,6 +170,16 @@ describe('settings.my_ai_usage', () => {
     })
     await fx.registry.execute('settings.my_ai_usage', {}, brainAsMember)
     expect(fx.usageCalls).toEqual(['u-mia', 'u-mia'])
+  })
+
+  it('hosted with eigenInference: also what your eigenInference calls today are invoiced, in EUR with the rate and its day', async () => {
+    const billing = { currency: 'EUR' as const, markup: 1.5, usdToEur: 0.9, rateDay: '2026-11-27' }
+    const fx = makeRegistry('allow_all', billing)
+    expect(await fx.registry.execute('settings.my_ai_usage', {}, member)).toMatchObject({
+      spentUsd: 0.25,
+      invoiced: { providerUsd: 0.2, invoicedEur: 0.27, billing },
+    })
+    expect(fx.usageCalls).toEqual(['u-mia', 'eigenInference:u-mia'])
   })
 
   it('with reply_message_id it also says what that reply of yours cost (null when none was recorded)', async () => {

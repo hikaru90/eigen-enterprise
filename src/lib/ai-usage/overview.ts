@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { aiBillingSchema, invoicedEur, type AiBilling } from './billing'
 import { AI_PRODUCT_IDS, AI_PRODUCTS, AI_TASK_IDS, AI_TASKS, isAiTaskId, type AiProductId } from './tasks'
 
 /**
@@ -33,6 +34,8 @@ export type AiUsageRow = {
   promptTokens: number
   completionTokens: number
   cachedTokens: number
+  /** USD the provider reported for the group's eigenInference calls (provider `platform`, base_cost_usd): what the hosting invoices from. */
+  eigenInferenceUsd: number
 }
 
 const amountsShape = {
@@ -43,6 +46,10 @@ const amountsShape = {
   promptTokens: z.number().int().nonnegative(),
   completionTokens: z.number().int().nonnegative(),
   cachedTokens: z.number().int().nonnegative(),
+  /** Hosted with eigenInference only (billing set): the provider-reported USD of the eigenInference calls. */
+  providerUsd: z.number().nonnegative().optional(),
+  /** Hosted with eigenInference only: what the company is invoiced for them, EUR = providerUsd × markup × usdToEur. */
+  invoicedEur: z.number().nonnegative().optional(),
 }
 const amountsSchema = z.object(amountsShape)
 export type AiAmounts = z.infer<typeof amountsSchema>
@@ -53,6 +60,8 @@ export const overviewSchema = z.object({
   /** The period asked for (UTC dates, both included); null = open. */
   from: z.string().nullable(),
   to: z.string().nullable(),
+  /** How the hosting invoices eigenInference (hosted plan); null = self-hosted or no eigenInference: USD as logged. */
+  billing: aiBillingSchema.nullable(),
   totals: amountsSchema,
   products: z.array(
     z.object({
@@ -78,22 +87,43 @@ export const overviewSchema = z.object({
       costUsd: z.number().nonnegative(),
       /** USD per product that had calls that day. */
       products: z.record(z.string(), z.number().nonnegative()),
+      /** Billing set only: the day's € invoiced, in total and per product that had calls. */
+      invoicedEur: z.number().nonnegative().optional(),
+      productsEur: z.record(z.string(), z.number().nonnegative()).optional(),
     }),
   ),
 })
 export type AiUsageOverview = z.infer<typeof overviewSchema>
 
-const zero = (): AiAmounts => ({ costUsd: 0, calls: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0 })
+/** A running sum: the shown amounts and the eigenInference base they are invoiced from. */
+type Sum = {
+  costUsd: number
+  calls: number
+  promptTokens: number
+  completionTokens: number
+  cachedTokens: number
+  eigenInferenceUsd: number
+}
+
+const zero = (): Sum => ({ costUsd: 0, calls: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, eigenInferenceUsd: 0 })
 
 /** USD sums of 6-place amounts, without float residue. */
 const usd = (value: number) => Math.round(value * 1e8) / 1e8
 
-function add(into: AiAmounts, row: AiAmounts): void {
+function add(into: Sum, row: Sum): void {
   into.costUsd = usd(into.costUsd + row.costUsd)
   into.calls += row.calls
   into.promptTokens += row.promptTokens
   into.completionTokens += row.completionTokens
   into.cachedTokens += row.cachedTokens
+  into.eigenInferenceUsd = usd(into.eigenInferenceUsd + row.eigenInferenceUsd)
+}
+
+/** A sum as the overview shows it: USD as logged, and with billing its provider USD and € invoiced. */
+function shown(sum: Sum, billing: AiBilling | null): AiAmounts {
+  const { eigenInferenceUsd, ...amounts } = sum
+  if (billing === null) return amounts
+  return { ...amounts, providerUsd: eigenInferenceUsd, invoicedEur: invoicedEur(eigenInferenceUsd, billing) }
 }
 
 function bucket<K, V>(map: Map<K, V>, key: K, make: () => V): V {
@@ -113,60 +143,69 @@ const taskLabel = (task: string | null): string => {
   return isAiTaskId(task) ? AI_TASKS[task].label : `Unknown task “${task}”`
 }
 
-export function foldAiUsage(rows: readonly AiUsageRow[], period: { from: string | null; to: string | null }): AiUsageOverview {
+export function foldAiUsage(
+  rows: readonly AiUsageRow[],
+  period: { from: string | null; to: string | null },
+  billing: AiBilling | null = null,
+): AiUsageOverview {
   const totals = zero()
-  const tasks = new Map<string | null, AiAmounts>()
-  const people = new Map<string, { name: string; kind: 'person' | 'coworker'; amounts: AiAmounts; products: Map<AiUsageProductId, AiAmounts> }>()
-  const models = new Map<string | null, AiAmounts>()
-  const days = new Map<string, { costUsd: number; products: Map<AiUsageProductId, number> }>()
+  const tasks = new Map<string | null, Sum>()
+  const people = new Map<string, { name: string; kind: 'person' | 'coworker'; amounts: Sum; products: Map<AiUsageProductId, Sum> }>()
+  const models = new Map<string | null, Sum>()
+  const days = new Map<string, { costUsd: number; products: Map<AiUsageProductId, number>; eigenInference: Map<AiUsageProductId, number> }>()
 
   for (const row of rows) {
     const product = productOfTask(row.task)
     add(totals, row)
     add(bucket(tasks, row.task, zero), row)
     add(bucket(models, row.model, zero), row)
-    const person = bucket(people, row.userId, () => ({ name: row.name, kind: row.kind, amounts: zero(), products: new Map<AiUsageProductId, AiAmounts>() }))
+    const person = bucket(people, row.userId, () => ({ name: row.name, kind: row.kind, amounts: zero(), products: new Map<AiUsageProductId, Sum>() }))
     add(person.amounts, row)
     add(bucket(person.products, product, zero), row)
-    const day = bucket(days, row.day, () => ({ costUsd: 0, products: new Map<AiUsageProductId, number>() }))
+    const day = bucket(days, row.day, () => ({ costUsd: 0, products: new Map<AiUsageProductId, number>(), eigenInference: new Map<AiUsageProductId, number>() }))
     day.costUsd = usd(day.costUsd + row.costUsd)
     day.products.set(product, usd((day.products.get(product) ?? 0) + row.costUsd))
+    day.eigenInference.set(product, usd((day.eigenInference.get(product) ?? 0) + row.eigenInferenceUsd))
   }
 
   // Every catalog task, used or not; ids this release does not know join the unattributed bucket.
   const taskIds: (string | null)[] = [...AI_TASK_IDS, ...[...tasks.keys()].filter((id) => id !== null && !isAiTaskId(id))]
   if (tasks.has(null)) taskIds.push(null)
 
+  const show = (sum: Sum) => shown(sum, billing)
   return {
     from: period.from,
     to: period.to,
-    totals,
+    billing,
+    totals: show(totals),
     products: USAGE_PRODUCT_IDS.map((id) => {
-      const own = taskIds
-        .filter((task) => productOfTask(task) === id)
-        .map((task) => ({ id: task, label: taskLabel(task), ...(tasks.get(task) ?? zero()) }))
+      const own = taskIds.filter((task) => productOfTask(task) === id).map((task) => ({ task, sum: tasks.get(task) ?? zero() }))
       const sum = zero()
-      for (const task of own) add(sum, task)
-      return { id, label: usageProductLabel(id), ...sum, tasks: own }
+      for (const task of own) add(sum, task.sum)
+      return { id, label: usageProductLabel(id), ...show(sum), tasks: own.map(({ task, sum }) => ({ id: task, label: taskLabel(task), ...show(sum) })) }
     }),
     people: [...people]
       .map(([userId, p]) => ({
         userId,
         name: p.name,
         kind: p.kind,
-        ...p.amounts,
-        products: USAGE_PRODUCT_IDS.filter((id) => p.products.has(id)).map((id) => ({ id, label: usageProductLabel(id), ...p.products.get(id)! })),
+        ...show(p.amounts),
+        products: USAGE_PRODUCT_IDS.filter((id) => p.products.has(id)).map((id) => ({ id, label: usageProductLabel(id), ...show(p.products.get(id)!) })),
       }))
       .sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId)),
     models: [...models]
-      .map(([model, amounts]) => ({ model, ...amounts }))
+      .map(([model, amounts]) => ({ model, ...show(amounts) }))
       .sort((a, b) => (a.model === null ? 1 : b.model === null ? -1 : a.model.localeCompare(b.model))),
     daily: [...days]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, day]) => ({
-        date,
-        costUsd: day.costUsd,
-        products: Object.fromEntries(USAGE_PRODUCT_IDS.filter((id) => day.products.has(id)).map((id) => [id, day.products.get(id)!])),
-      })),
+      .map(([date, day]) => {
+        const used = USAGE_PRODUCT_IDS.filter((id) => day.products.has(id))
+        const base = { date, costUsd: day.costUsd, products: Object.fromEntries(used.map((id) => [id, day.products.get(id)!])) }
+        if (billing === null) return base
+        const productsEur = Object.fromEntries(used.map((id) => [id, invoicedEur(day.eigenInference.get(id)!, billing)]))
+        let eigenInference = 0
+        for (const id of used) eigenInference = usd(eigenInference + day.eigenInference.get(id)!)
+        return { ...base, invoicedEur: invoicedEur(eigenInference, billing), productsEur }
+      }),
   }
 }

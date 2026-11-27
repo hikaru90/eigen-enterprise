@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { MemberAiUsageView } from '$lib/kernel/member-ai-cap-tools'
+import type { MyAiUsageOutput } from '$lib/kernel/member-ai-cap-tools'
 
 /**
  * AI budget transparency (proposal 30a8d920): what one assistant reply cost, and a person's
@@ -44,8 +44,8 @@ export function replyCostLine(cost: ReplyCost): string {
   return cost.tokens > 0 ? `${usd} · ${formatTokens(cost.tokens)}` : usd
 }
 
-/** A person's usage today, as settings.my_ai_usage returns it. */
-export type AiUsageToday = MemberAiUsageView
+/** A person's usage today, as settings.my_ai_usage returns it (with `invoiced` on the hosted plan with eigenInference). */
+export type AiUsageToday = Omit<MyAiUsageOutput, 'reply'>
 
 export type UsageMeter =
   | { kind: 'capped'; share: number; zone: 'ok' | 'near' | 'over'; spent: string; cap: string; left: string }

@@ -1,5 +1,6 @@
 import { and, eq, gte, sql } from 'drizzle-orm'
 import { replyCostSchema, type ReplyCost } from '$lib/ai-usage/usage'
+import { PLATFORM_AI_ACTIVITY_PROVIDER } from '$lib/server/activity/gateway-providers'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { getDb } from '$lib/server/db'
 import { demoGuestAccess, type UserKind } from '$lib/server/db/auth.schema'
@@ -23,6 +24,8 @@ export type MemberDailyCapStore = {
   roleOf(userId: string): Promise<MemberRole | null>
   kindOf(userId: string): Promise<UserKind | null>
   spentUsdSince(userId: string, since: Date): Promise<number>
+  /** The provider-reported USD (base_cost_usd) of the person's eigenInference calls (provider platform) since a moment. */
+  eigenInferenceUsdSince(userId: string, since: Date): Promise<number>
   replyCost(userId: string, messageId: string): Promise<{ usage: ReplyCost | null } | null>
   /** Login-free demo per-IP AI call limit store (loaded lazily so non-demo tests stay DB-free). */
   demoGuest?: {
@@ -83,6 +86,24 @@ export const memberDailyCapStore: MemberDailyCapStore = {
     const total = Number(row?.total)
     if (!Number.isFinite(total) || total < 0) {
       throw new Error(`activity_call_log cost sum for a person is not a non-negative number: ${JSON.stringify(row?.total)}`)
+    }
+    return total
+  },
+
+  async eigenInferenceUsdSince(userId, since) {
+    const [row] = await getDb()
+      .select({ total: sql<string>`coalesce(sum(${activityCallLog.baseCostUsd}::numeric), 0)` })
+      .from(activityCallLog)
+      .where(
+        and(
+          eq(activityCallLog.userId, userId),
+          eq(activityCallLog.provider, PLATFORM_AI_ACTIVITY_PROVIDER),
+          gte(activityCallLog.createdAt, since),
+        ),
+      )
+    const total = Number(row?.total)
+    if (!Number.isFinite(total) || total < 0) {
+      throw new Error(`activity_call_log eigenInference cost sum for a person is not a non-negative number: ${JSON.stringify(row?.total)}`)
     }
     return total
   },

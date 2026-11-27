@@ -1,3 +1,4 @@
+import type { AiBilling } from '../ai-usage/billing'
 import type { AiUsageOverview, AiUsageRow } from '../ai-usage/overview'
 import type { ToolContext } from './types'
 import { describe, expect, it } from 'vitest'
@@ -25,15 +26,18 @@ const ROW: AiUsageRow = {
   promptTokens: 10,
   completionTokens: 2,
   cachedTokens: 0,
+  eigenInferenceUsd: 0.2,
 }
+const BILLING = { currency: 'EUR' as const, markup: 1.5, usdToEur: 0.9, rateDay: '2026-11-27' }
 
-function makeRegistry() {
+function makeRegistry(billing: AiBilling | null = null) {
   const reads: { from: string | null; to: string | null }[] = []
   const port: AiUsagePort = {
     rows: async (period) => {
       reads.push(period)
       return [ROW]
     },
+    billing: async () => billing,
   }
   const registry = new KernelRegistry({
     eventSink: new InMemoryEventSink(),
@@ -46,7 +50,7 @@ function makeRegistry() {
 
 describe('settings.ai_usage_overview', () => {
   it('is one read tool for the owner and admins', () => {
-    const tools = createAiUsageTools({ port: { rows: async () => [] } })
+    const tools = createAiUsageTools({ port: { rows: async () => [], billing: async () => null } })
     expect(tools.map((t) => t.name)).toEqual([...KERNEL_AI_USAGE_TOOL_NAMES])
     expect(KERNEL_AI_USAGE_TOOL_NAMES).toEqual(['settings.ai_usage_overview'])
     expect(tools[0]).toMatchObject({ auditClass: 'read', permission: { roles: ['admin'] } })
@@ -63,6 +67,20 @@ describe('settings.ai_usage_overview', () => {
       { from: null, to: null },
       { from: '2026-11-01', to: '2026-11-27' },
     ])
+  })
+
+  it('self-hosted or BYOK (no billing): USD as logged, nothing in EUR', async () => {
+    const { registry } = makeRegistry(null)
+    const out = (await registry.execute('settings.ai_usage_overview', {}, admin)) as AiUsageOverview
+    expect(out.billing).toBeNull()
+    expect(out.totals).toEqual({ costUsd: 0.25, calls: 1, promptTokens: 10, completionTokens: 2, cachedTokens: 0 })
+  })
+
+  it('hosted with eigenInference: also the provider USD and the € invoiced, naming the rate and its day', async () => {
+    const { registry } = makeRegistry(BILLING)
+    const out = (await registry.execute('settings.ai_usage_overview', {}, admin)) as AiUsageOverview
+    expect(out.billing).toEqual(BILLING)
+    expect(out.totals).toMatchObject({ costUsd: 0.25, providerUsd: 0.2, invoicedEur: 0.27 })
   })
 
   it('refuses a member before reading anything', async () => {

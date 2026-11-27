@@ -48,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims', 'hostedAddress', 'platformAiProvider'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims', 'hostedAddress', 'platformAiProvider', 'aiUsage'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 /**
@@ -90,6 +90,26 @@ export type EnrollResponseV1 = z.infer<typeof enrollResponseV1>
 
 // ── poll: the report ─────────────────────────────────────────────────────────
 
+const isoDay = z.iso.date()
+
+/** One row of a box's AI usage report: one UTC day, one task, one model. */
+export const aiUsageDayV1 = z
+  .object({
+    day: isoDay,
+    /** The box's task id (src/lib/ai-usage/tasks.ts); null = not attributed (before task tracking). */
+    task: z.string().min(1).max(120).nullable(),
+    /** The pool model id; null = not recorded (before model tracking). */
+    model: z.string().min(1).max(200).nullable(),
+    calls: z.number().int().min(0),
+    promptTokens: z.number().int().min(0),
+    completionTokens: z.number().int().min(0),
+    cachedTokens: z.number().int().min(0),
+    /** Provider-reported USD, before any markup. */
+    costUsd: z.number().min(0),
+  })
+  .strict()
+export type AiUsageDayV1 = z.infer<typeof aiUsageDayV1>
+
 export const reportV1 = z
   .object({
     protocol: z.literal(FLEET_PROTOCOL),
@@ -119,6 +139,13 @@ export const reportV1 = z
       .strict()
       .nullable()
       .optional(),
+    /**
+     * Feature `aiUsage`: the company's eigenInference usage per UTC day × task × model, from os's
+     * activity_call_log (provider-reported cost, before any markup; never content). Days from
+     * desired.aiUsage.from through today; the control plane upserts by (box, day, task, model).
+     * Absent = this box doesn't report usage; null = os can't say right now.
+     */
+    aiUsage: z.array(aiUsageDayV1).max(5000).nullable().optional(),
     /** Desired-state fields the box received but doesn't implement (so the control plane can see drift). */
     ignoredFields: z.array(z.string().max(64)).max(50).default([]),
   })
@@ -150,6 +177,12 @@ export const platformAiV1 = z
   .object({
     /** Only with feature `platformAiProvider`; absent = 'openrouter'. */
     provider: z.enum(PLATFORM_AI_PROVIDERS).optional(),
+    /**
+     * Only with feature `aiUsage`: the box's attribution tag at the provider (Opper: sent as
+     * `X-Opper-Tags: ee_box:<usageTag>` where the endpoint takes tags), so the control plane can
+     * cross-check the box's report against the provider's own numbers.
+     */
+    usageTag: z.string().regex(/^[a-zA-Z0-9_.-]{1,64}$/).optional(),
     /** The os workload's PLATFORM_LLM_BASE_URL / _API_KEY / _MODEL_CHAT / _MODEL_EMBEDDING (the gateway's platform path; never the BYOK LLM_* names). */
     llmBaseUrl: httpsOrigin,
     llmApiKey: z.string().min(1).max(512),
@@ -215,6 +248,22 @@ export const hostedAddressV1 = z
   .strict()
 export type HostedAddressV1 = z.infer<typeof hostedAddressV1>
 
+/**
+ * Feature `aiUsage` desired state: the first UTC day the report must include (the control plane
+ * moves it forward once a day is final on its side), and the billing the company sees in
+ * Settings → AI usage: provider cost × markup, in EUR at the control plane's rate of `rateDay`.
+ */
+export const aiUsageDesiredV1 = z
+  .object({
+    from: isoDay,
+    markup: z.number().min(1).max(10),
+    currency: z.literal('EUR'),
+    usdToEur: z.number().positive().max(10),
+    rateDay: isoDay,
+  })
+  .strict()
+export type AiUsageDesiredV1 = z.infer<typeof aiUsageDesiredV1>
+
 /** Known fields, each optional so a box can tell "not sent" from "sent as null". */
 const desiredKnown = {
   protocol: z.literal(FLEET_PROTOCOL),
@@ -244,6 +293,8 @@ const desiredKnown = {
   claims: z.array(domainClaimV1).max(500).nullable().optional(),
   /** The company's free hosted address (mail + website); null = none (adopted or self-hosted). */
   hostedAddress: hostedAddressV1.nullable().optional(),
+  /** Feature `aiUsage`: what to report and how the company is billed for eigenInference; null = no eigenInference. */
+  aiUsage: aiUsageDesiredV1.nullable().optional(),
 }
 
 export const desiredV1 = z.object(desiredKnown).strip()
