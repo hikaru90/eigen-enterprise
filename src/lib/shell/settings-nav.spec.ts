@@ -22,11 +22,14 @@ describe('settings sub-navigation', () => {
       'AI usage',
       'Passkeys & sessions',
       'API keys',
-      'Approval mode',
       'Plugins',
       'Updates',
     ])
     expect(settingsSections(owner).map((s) => s.id).slice(-2)).toEqual(['backups', 'export'])
+  })
+  it('has no Approval mode section: the one approval-mode control lives under the chat composer (Contribute a8494cc2)', () => {
+    expect(SETTINGS_SECTIONS.some((s) => s.id === 'approvals')).toBe(false)
+    expect(currentSettingsSection('/settings/approvals')).toBeNull()
   })
   it("Export is the owner's alone: admins and members never see it", () => {
     expect(settingsSections(admin).some((s) => s.id === 'export')).toBe(false)

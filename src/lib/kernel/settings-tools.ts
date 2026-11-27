@@ -133,7 +133,7 @@ const ELSEWHERE: ReadonlyArray<{ area: string; how: string }> = [
   { area: 'Members and groups', how: 'the members.* tools (invite, set_role, groups)' },
   {
     area: 'Approval mode',
-    how: 'Owner only, in Settings → Approvals (the agent never changes its own approval wall)',
+    how: 'Owner or admin, under the chat input (the agent never changes its own approval wall)',
   },
   {
     area: 'AI provider keys, passkeys, API keys, backups, account email',

@@ -16,8 +16,9 @@ export const CAPABILITIES = [
   'coworkers.manage',
   /** Settings → AI usage: where the company's AI money goes (settings.ai_usage_overview). */
   'ai_usage.view',
-  /** Settings → Approval mode. */
-  'approvals.manage',
+  // No 'approvals.manage' (owner, 2026-11-27, Contribute a8494cc2): the approval-mode
+  // settings page was removed; the mode is picked under the chat composer and PUT
+  // /api/approvals/mode checks the role itself (isUserAdmin).
   /** Settings → Backups (the owner's alone, D11). */
   'backups.manage',
   /** Settings → Export: exporting everything the company owns (the owner's alone, plan/phase-export.md). */
@@ -52,7 +53,9 @@ export const GUARDED_PAGES: readonly { prefix: string; capability: Capability }[
   { prefix: '/settings/members', capability: 'members.manage' },
   { prefix: '/settings/coworkers', capability: 'coworkers.manage' },
   { prefix: '/settings/ai-usage', capability: 'ai_usage.view' },
-  { prefix: '/settings/approvals', capability: 'approvals.manage' },
+  // No /settings/approvals guard (owner, 2026-11-27, Contribute a8494cc2): the
+  // approval-mode settings page was removed; the mode is picked under the chat
+  // composer, and PUT /api/approvals/mode keeps its own admin check.
   { prefix: '/settings/backups', capability: 'backups.manage' },
   { prefix: '/settings/export', capability: 'export.manage' },
   { prefix: '/settings/updates', capability: 'updates.manage' },

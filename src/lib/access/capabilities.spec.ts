@@ -10,7 +10,6 @@ describe('pageCapability', () => {
     ['/settings/domains', 'company.manage'],
     ['/settings/members', 'members.manage'],
     ['/settings/coworkers', 'coworkers.manage'],
-    ['/settings/approvals', 'approvals.manage'],
     ['/settings/backups', 'backups.manage'],
     ['/settings/updates', 'updates.manage'],
     ['/settings/modules', 'modules.manage'],

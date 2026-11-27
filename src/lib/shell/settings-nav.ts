@@ -31,7 +31,9 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: 'ai-usage', name: 'AI usage', href: '/settings/ai-usage' },
   { id: 'passkeys', name: 'Passkeys & sessions', href: '/settings/passkeys' },
   { id: 'api-keys', name: 'API keys', href: '/settings/api-keys' },
-  { id: 'approvals', name: 'Approval mode', href: '/settings/approvals' },
+  // No Approval-mode section (owner, 2026-11-27, Contribute a8494cc2): the one
+  // approval-mode control lives under the chat composer — a second settings page
+  // for the same dropdown was removed, not moved.
   // Every plugin, on or off, and the switch (owner, 2026-11-12) — owner and admins.
   { id: 'modules', name: 'Plugins', href: '/settings/modules' },
   // Updating eigenEnterprise on this server (ee does it) — owner and admins.

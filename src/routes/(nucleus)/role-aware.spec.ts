@@ -61,7 +61,6 @@ import { load as brandExtract } from './brand/extract/+page.server'
 import { load as driveGithub } from './drive/github/+page.server'
 import { load as website } from './m/website/+page.server'
 import { _aiUsageDeps, load as aiUsage } from './settings/ai-usage/+page.server'
-import { load as approvals } from './settings/approvals/+page.server'
 import { _backupsDeps, load as backups } from './settings/backups/+page.server'
 import { load as company } from './settings/company/+page.server'
 import { _coworkersDeps, load as coworkers } from './settings/coworkers/+page.server'
@@ -80,7 +79,6 @@ const LOADS: Record<string, { path: string; load: Load }> = {
   '/settings/members': { path: '/settings/members', load: members as Load },
   '/settings/coworkers': { path: '/settings/coworkers', load: coworkers as Load },
   '/settings/ai-usage': { path: '/settings/ai-usage', load: aiUsage as Load },
-  '/settings/approvals': { path: '/settings/approvals', load: approvals as Load },
   '/settings/backups': { path: '/settings/backups', load: backups as Load },
   '/settings/export': { path: '/settings/export', load: exportPage as Load },
   '/settings/modules': { path: '/settings/modules', load: modules as Load },
@@ -180,7 +178,6 @@ describe('role-aware UI: a member is never offered a page that refuses them', ()
     expect(hidden.sort()).toEqual([
       '/m/website',
       '/settings/ai-usage',
-      '/settings/approvals',
       '/settings/backups',
       '/settings/company',
       '/settings/coworkers',

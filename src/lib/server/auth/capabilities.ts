@@ -17,7 +17,8 @@ const RULES: Record<Capability, (role: MemberRole | null) => boolean> = {
   'coworkers.manage': isAdminRole,
   // Everyone's AI usage: owner and admins (a member reads their own, settings.my_ai_usage).
   'ai_usage.view': isAdminRole,
-  'approvals.manage': isAdminRole,
+  // No approvals.manage (owner, 2026-11-27, Contribute a8494cc2): the approval-mode
+  // settings page is gone; PUT /api/approvals/mode checks isUserAdmin directly.
   // The recovery code unlocks every backup: the owner's alone (D11).
   'backups.manage': (role) => role === 'owner',
   'export.manage': (role) => role === 'owner',
