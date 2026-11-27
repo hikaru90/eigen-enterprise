@@ -75,7 +75,34 @@ async function fillMail(): Promise<void> {
   await page.getByRole('textbox', { name: 'Send-from address' }).fill('hello@acme.test')
 }
 
+/**
+ * The wizard honours prefers-reduced-motion (its fly/fade transitions drop to
+ * 0 ms). Specs run with it on: the behaviour is the same, but Playwright no
+ * longer waits ~700 ms for every moving line to settle before it can click.
+ */
+function preferReducedMotion(): void {
+  const real = window.matchMedia.bind(window)
+  vi.stubGlobal('matchMedia', (query: string) =>
+    query === '(prefers-reduced-motion: reduce)'
+      ? ({
+          ...real(query),
+          matches: true,
+          media: query,
+          addEventListener() {},
+          removeEventListener() {},
+        } as MediaQueryList)
+      : real(query),
+  )
+}
+
+/** The boot light holds 50 ms instead of 1.6 s; it still gives way to the
+ * greeting on its own timer. The greeting keeps its real 2.2 s hold (specs
+ * click through it), except where a spec waits for it to pass on its own. */
+const FAST_OPENING = { bootMs: 50 }
+const FAST_GREETING = { ...FAST_OPENING, helloMs: 50 }
+
 const OWNER_NO_MAIL = {
+  ...FAST_OPENING,
   providerReady: false,
   needsMail: true,
   byokUiEnabled: true,
@@ -87,6 +114,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
     vi.clearAllMocks()
     fetchMock.mockResolvedValue(json(200, { ok: true }))
     vi.stubGlobal('fetch', fetchMock)
+    preferReducedMotion()
     window.localStorage.removeItem('ee-sound')
     window.localStorage.setItem('ee-voice', 'off')
     return () => {
@@ -96,7 +124,12 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   })
 
   it('opens as a cinematic boot — a light, a greeting, no form-wizard chrome', async () => {
-    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true, displayName: null })
+    render(WelcomeWizard, {
+      ...FAST_OPENING,
+      providerReady: true,
+      byokUiEnabled: true,
+      displayName: null,
+    })
 
     await expect.element(page.getByTestId('welcome-wizard')).toBeInTheDocument()
     await expect.element(page.getByTestId('boot-orb')).toBeInTheDocument()
@@ -105,7 +138,12 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   })
 
   it('asks for the name once, persists it, and greets by it', async () => {
-    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true, displayName: null })
+    render(WelcomeWizard, {
+      ...FAST_GREETING,
+      providerReady: true,
+      byokUiEnabled: true,
+      displayName: null,
+    })
 
     await page.getByText('What should I call you?').click()
     const nameInput = page.getByRole('textbox', { name: 'Your name' })
@@ -121,7 +159,12 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   })
 
   it('a known name skips the ask entirely', async () => {
-    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true, displayName: 'Ada' })
+    render(WelcomeWizard, {
+      ...FAST_OPENING,
+      providerReady: true,
+      byokUiEnabled: true,
+      displayName: 'Ada',
+    })
 
     await expect.element(page.getByText('Hello, Ada.')).toBeInTheDocument()
     await expect.element(page.getByRole('textbox', { name: 'Your name' })).not.toBeInTheDocument()
@@ -274,6 +317,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   it('without a mind, the gate is connecting one — or a muted skip', async () => {
     const oncomplete = vi.fn()
     render(WelcomeWizard, {
+      ...FAST_OPENING,
       providerReady: false,
       byokUiEnabled: true,
       displayName: 'Ada',
@@ -297,6 +341,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   it('the mind connecting hands off to the chat — the tour completes', async () => {
     const oncomplete = vi.fn()
     render(WelcomeWizard, {
+      ...FAST_OPENING,
       providerReady: false,
       byokUiEnabled: true,
       displayName: 'Ada',
@@ -320,6 +365,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   it('back from the provider sign-in redirect, the tour does not replay — it hands off', async () => {
     const oncomplete = vi.fn()
     render(WelcomeWizard, {
+      ...FAST_OPENING,
       providerReady: true,
       byokUiEnabled: true,
       displayName: 'Ada',
@@ -333,6 +379,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   it('with a working mind and email, Begin on the last line hands off', async () => {
     const oncomplete = vi.fn()
     render(WelcomeWizard, {
+      ...FAST_OPENING,
       providerReady: true,
       byokUiEnabled: true,
       displayName: 'Ada',
@@ -354,6 +401,7 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
   it('skip is reachable from the very first act and means complete-once', async () => {
     const oncomplete = vi.fn()
     render(WelcomeWizard, {
+      ...FAST_OPENING,
       providerReady: true,
       byokUiEnabled: true,
       displayName: null,
@@ -377,7 +425,12 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
         url === '/api/onboarding/name' ? json(400, { error: 'No.' }) : json(200, { ok: true }),
       ),
     )
-    render(WelcomeWizard, { providerReady: true, byokUiEnabled: true, displayName: null })
+    render(WelcomeWizard, {
+      ...FAST_GREETING,
+      providerReady: true,
+      byokUiEnabled: true,
+      displayName: null,
+    })
 
     const nameInput = page.getByRole('textbox', { name: 'Your name' })
     await nameInput.fill('Ada')
@@ -392,13 +445,21 @@ describe('welcome-wizard.svelte — the boot sequence', () => {
 
 // ─── The Domain and Email acts (plan/managed-domains.md) ──────────────────────
 
-const REGISTRANT = { firstName: 'Ada', lastName: 'Lovelace', organization: 'Acme GmbH', email: 'ada@acme.test' }
+const REGISTRANT = {
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  organization: 'Acme GmbH',
+  email: 'ada@acme.test',
+}
 const MANAGED_BUY = {
   ...OWNER_NO_MAIL,
   domainSetup: { managedMail: true, canBuy: true, registrant: REGISTRANT },
   domainPollMs: 20,
 }
-const MANAGED_NO_BUY = { ...OWNER_NO_MAIL, domainSetup: { managedMail: true, canBuy: false, registrant: null } }
+const MANAGED_NO_BUY = {
+  ...OWNER_NO_MAIL,
+  domainSetup: { managedMail: true, canBuy: false, registrant: null },
+}
 
 type Call = [string, { method?: string; body?: string } | undefined]
 const callsTo = (url: string) => (fetchMock.mock.calls as Call[]).filter(([u]) => u === url)
@@ -441,7 +502,10 @@ function fakeOs(opts: { states?: string[]; purchase?: { status: number; body: un
     }
     if (url === '/api/domains/purchases') {
       return Promise.resolve(
-        json(opts.purchase?.status ?? 202, opts.purchase?.body ?? { name: 'acme.eu', state: 'charging' }),
+        json(
+          opts.purchase?.status ?? 202,
+          opts.purchase?.body ?? { name: 'acme.eu', state: 'charging' },
+        ),
       )
     }
     if (url === '/api/domains') {
@@ -450,7 +514,9 @@ function fakeOs(opts: { states?: string[]; purchase?: { status: number; body: un
       return Promise.resolve(
         json(200, {
           canBuy: true,
-          domains: state ? [{ name: 'acme.eu', state, error, renewsAt: null, autoRenew: true }] : [],
+          domains: state
+            ? [{ name: 'acme.eu', state, error, renewsAt: null, autoRenew: true }]
+            : [],
         }),
       )
     }
@@ -495,6 +561,7 @@ describe('welcome-wizard.svelte — the Domain act, then the Email act', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('fetch', fetchMock)
+    preferReducedMotion()
     window.localStorage.setItem('ee-voice', 'off')
     return () => {
       vi.unstubAllGlobals()
@@ -506,7 +573,9 @@ describe('welcome-wizard.svelte — the Domain act, then the Email act', () => {
     fakeOs({ states: ['', 'charging', 'registering', 'configuring', 'active'] })
     render(WelcomeWizard, MANAGED_BUY)
     await openDomainAct()
-    await expect.element(page.getByText('Your company’s address on the internet.')).toBeInTheDocument()
+    await expect
+      .element(page.getByText('Your company’s address on the internet.'))
+      .toBeInTheDocument()
     await expect
       .element(page.getByTestId('onboarding-have-domain'))
       .toHaveTextContent('I already have one')
@@ -589,7 +658,9 @@ describe('welcome-wizard.svelte — the Domain act, then the Email act', () => {
     await page.getByRole('button', { name: 'Buy for €12.00 / year' }).click()
     await expect.element(page.getByText(/The registry refused acme\.eu\./)).toBeInTheDocument()
     await page.getByTestId('onboarding-domain-retry').click()
-    await expect.element(page.getByRole('textbox', { name: 'The name you want' })).toBeInTheDocument()
+    await expect
+      .element(page.getByRole('textbox', { name: 'The name you want' }))
+      .toBeInTheDocument()
   })
 
   it('a price change asks again at the new price; buying then accepts that price', async () => {
@@ -606,9 +677,13 @@ describe('welcome-wizard.svelte — the Domain act, then the Email act', () => {
     await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Buy for €12.00 / year' }).click()
     await expect
-      .element(page.getByText('The price of acme.eu changed to €14.00 a year. Buy it at the new price?'))
+      .element(
+        page.getByText('The price of acme.eu changed to €14.00 a year. Buy it at the new price?'),
+      )
       .toBeInTheDocument()
-    await expect.element(page.getByTestId('domain-confirm').getByText(/costs €14\.00 a year/)).toBeInTheDocument()
+    await expect
+      .element(page.getByTestId('domain-confirm').getByText(/costs €14\.00 a year/))
+      .toBeInTheDocument()
     fakeOs()
     await page.getByRole('button', { name: 'Buy for €14.00 / year' }).click()
     await vi.waitFor(() => expect(callsTo('/api/domains/purchases')).toHaveLength(2))
@@ -623,7 +698,11 @@ describe('welcome-wizard.svelte — the Domain act, then the Email act', () => {
     fakeOs({
       purchase: {
         status: 409,
-        body: { error: 'acme.eu was just registered by someone else.', reason: 'taken', priceCents: null },
+        body: {
+          error: 'acme.eu was just registered by someone else.',
+          reason: 'taken',
+          priceCents: null,
+        },
       },
     })
     render(WelcomeWizard, MANAGED_BUY)
