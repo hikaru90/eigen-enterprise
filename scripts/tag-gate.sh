@@ -29,10 +29,18 @@ fi
 # Each phase is timed (scripts/gate-step.sh); `npm run gate:times` shows the breakdown.
 export EE_GATE_RUN="${EE_GATE_RUN:-$(date +%Y%m%dT%H%M%S)-$$}"
 trap 'node "$(git rev-parse --show-toplevel)/scripts/gate-times.mjs" --run "$EE_GATE_RUN" --brief || true' EXIT
+# Both phases are cached by their inputs (scripts/gate-cache.mjs; EE_GATE_NO_CACHE=1 runs them).
+# The rehearsal also reads the previous stable release, picked from the v* tags merged into HEAD
+# and the ones on HEAD: every such tag and its commit is part of its key.
+gate_step="$(git rev-parse --show-toplevel)/scripts/gate-step.sh"
+release_tags="$( { git tag --merged HEAD --list 'v*'; echo '@HEAD'; git tag --points-at HEAD --list 'v*'; } | while read -r t; do
+  if [ "$t" = "@HEAD" ]; then echo "$t"; else echo "$t $(git rev-parse "$t^{commit}")"; fi
+done)"
 echo "tag-gate: upgrade rehearsal on $head …"
-"$(git rev-parse --show-toplevel)/scripts/gate-step.sh" release upgrade-rehearsal -- node scripts/upgrade-rehearsal.mjs
+"$gate_step" release upgrade-rehearsal --cache --cache-extra "$release_tags" -- node scripts/upgrade-rehearsal.mjs
 echo "tag-gate: e2e on $head …"
-EE_GATE=release npm run test:e2e
+# e2e.sh times its own phases; --outer only adds a row when the whole suite is a cache hit.
+EE_GATE=release "$gate_step" release e2e --cache --outer -- npm run test:e2e
 
 if [ "$(git rev-parse HEAD)" != "$head" ]; then
   echo "tag-gate: HEAD moved while the gate ran ($head → $(git rev-parse HEAD)); not stamping. Run it again." >&2
