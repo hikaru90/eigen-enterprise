@@ -6,6 +6,8 @@ export type PresenceStartDeps = {
   /** The "in a call" watcher, fed into the tracker. */
   watcher: (onChange: (inCall: Set<string>) => void) => Pick<InCallWatcher, 'follow' | 'reconcile'>
   memberIds: () => Promise<string[]>
+  /** Who switched "Share where I am" off (user_preference.share_where = false). */
+  shareWhereOff: () => Promise<string[]>
   onError: (err: unknown) => void
   sweepMs?: number
   refreshMs?: number
@@ -22,18 +24,31 @@ const REFRESH_MS = 60_000
  * and following every member needs the same pool — enough waiting
  * heartbeats starved the follow and hung the whole server. A failed follow
  * is reported through onError and tried again on the next refresh.
+ *
+ * Each refresh also reads everyone's "Share where I am" switch (one query;
+ * the other blue-green slot's changes arrive this way). Until the first read
+ * lands nobody shares where they are.
  */
 export async function startPresence(d: PresenceStartDeps): Promise<PresenceTracker> {
   const tracker = new PresenceTracker(d.now)
   const watcher = d.watcher((ids) => tracker.setInCall(ids))
   let first = true
-  const refresh = async () => {
+  const follow = async () => {
     await watcher.follow(await d.memberIds())
     if (!first) await watcher.reconcile()
     first = false
   }
-  refresh().catch(d.onError)
+  const shareSwitches = async () => {
+    const readAt = tracker.shareWhereRevision
+    tracker.setShareWhereOff(await d.shareWhereOff(), readAt)
+  }
+  // Independent: a failed follow never keeps the switches unread, nor the other way round.
+  const refresh = () => {
+    follow().catch(d.onError)
+    shareSwitches().catch(d.onError)
+  }
+  refresh()
   setInterval(() => tracker.sweep(), d.sweepMs ?? SWEEP_MS).unref()
-  setInterval(() => refresh().catch(d.onError), d.refreshMs ?? REFRESH_MS).unref()
+  setInterval(refresh, d.refreshMs ?? REFRESH_MS).unref()
   return tracker
 }

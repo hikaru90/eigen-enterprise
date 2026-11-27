@@ -364,6 +364,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/messages/messages/[id]/reactions POST': tool('messages.react'),
   '/api/messages/presence POST': transport(HEARTBEAT),
   '/api/messages/presence PUT': tool('messages.set_do_not_disturb'),
+  '/api/messages/presence/where PUT': tool('messages.set_share_where'),
   '/api/messages/viewing POST': transport(HEARTBEAT),
 
   // ─── Calls ────────────────────────────────────────────────────────────────

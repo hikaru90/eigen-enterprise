@@ -17,6 +17,7 @@ export const MESSAGES_WRITE_TOOLS = [
   'messages.react',
   'messages.mark_read',
   'messages.set_do_not_disturb',
+  'messages.set_share_where',
 ] as const
 
 export const MESSAGES_TOOL_NAMES = [
@@ -24,6 +25,7 @@ export const MESSAGES_TOOL_NAMES = [
   'messages.read',
   'messages.thread',
   'messages.members',
+  'messages.presence',
   ...MESSAGES_WRITE_TOOLS,
 ] as const
 

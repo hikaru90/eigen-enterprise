@@ -1,9 +1,11 @@
-import { NO_COWORKERS } from './test-fixtures'
+import type { WhereDrivePort } from './presence'
 import { describe, expect, it, vi } from 'vitest'
+import type { WhereReport } from '$lib/presence/where'
 import { PresenceTracker } from '$lib/server/presence/tracker'
-import { MessagesHub, messagesStreamResponse, parseLastEventId, type StreamFrame } from './hub'
+import { MessagesHub, messagesStreamResponse, parseLastEventId, presenceStreamResponse, type StreamFrame } from './hub'
 import { presenceStreamFor, reportPresence } from './presence'
 import { createChannel, markRead, openDm, postMessage } from './service'
+import { NO_COWORKERS } from './test-fixtures'
 import { fixture } from './test-fixtures'
 import { TypingBoard, typingStreamFor } from './typing'
 
@@ -92,6 +94,9 @@ describe('MessagesHub fan-out', () => {
   })
 })
 
+const HERE: WhereReport = { area: 'messages', path: '/messages', item: null }
+const NO_DRIVE: WhereDrivePort = { itemName: async () => null }
+
 async function readFrames(res: Response, count: number): Promise<string> {
   const reader = res.body!.getReader()
   const dec = new TextDecoder()
@@ -130,9 +135,9 @@ describe('messagesStreamResponse', () => {
   it('carries presence on the same stream: the company snapshot first, then changes — without ids, so resume is untouched', async () => {
     const { deps, hub } = liveFixture()
     const tracker = new PresenceTracker(() => new Date(Date.UTC(2026, 10, 12, 9, 0, 0)))
-    await reportPresence(deps, tracker, 'carl', { clientId: 'carl-tab-0001', state: 'active' })
+    await reportPresence(deps, tracker, 'carl', { clientId: 'carl-tab-0001', state: 'active', where: HERE })
     const ac = new AbortController()
-    const inner = (await presenceStreamFor(deps, async () => tracker, 'bea', NO_COWORKERS))!
+    const inner = (await presenceStreamFor(deps, async () => tracker, 'bea', NO_COWORKERS, NO_DRIVE))!
     let stopped = 0
     const presence = {
       start: async (send: Parameters<typeof inner.start>[0]) => {
@@ -151,7 +156,7 @@ describe('messagesStreamResponse', () => {
       while (!text.includes(needle)) text += dec.decode((await reader.read()).value)
     }
     await readUntil('"replace":true')
-    await reportPresence(deps, tracker, 'owner', { clientId: 'olga-tab-0001', state: 'idle' })
+    await reportPresence(deps, tracker, 'owner', { clientId: 'olga-tab-0001', state: 'idle', where: HERE })
     await readUntil('"replace":false')
     const frames = text.split('\n\n').filter((b) => b.startsWith('event: presence'))
     expect(frames).toHaveLength(2)
@@ -199,7 +204,7 @@ describe('messagesStreamResponse', () => {
     const ch = await createChannel(deps, 'owner', { name: 'general', private: false })
     await settle()
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const broken = await presenceStreamFor(deps, () => Promise.reject(new Error('calls hub down')), 'bea', NO_COWORKERS)
+    const broken = await presenceStreamFor(deps, () => Promise.reject(new Error('calls hub down')), 'bea', NO_COWORKERS, NO_DRIVE)
     const ac = new AbortController()
     const res = messagesStreamResponse(hub, 'bea', null, ac.signal, broken, null)
     const reader = res.body!.getReader()
@@ -224,5 +229,63 @@ describe('messagesStreamResponse', () => {
     expect(parseLastEventId('42')).toBe(42)
     expect(parseLastEventId('-1')).toBeNull()
     expect(parseLastEventId('abc')).toBeNull()
+  })
+})
+
+describe('presenceStreamResponse (GET /api/messages/presence/stream: the shell’s feed of everyone’s status + where)', () => {
+  it('the snapshot, then each change, as `event: presence` frames; stops presence on abort', async () => {
+    const { deps } = liveFixture()
+    const tracker = new PresenceTracker(() => new Date(Date.UTC(2026, 10, 12, 9, 0, 0)))
+    tracker.setShareWhereOff([])
+    await reportPresence(deps, tracker, 'carl', { clientId: 'carl-tab-0001', state: 'active', where: HERE })
+    const inner = (await presenceStreamFor(deps, async () => tracker, 'bea', NO_COWORKERS, NO_DRIVE))!
+    let stopped = 0
+    const ac = new AbortController()
+    const res = presenceStreamResponse(
+      {
+        start: async (send) => {
+          const stop = await inner.start(send)
+          return () => {
+            stopped++
+            stop()
+          }
+        },
+      },
+      'bea',
+      ac.signal,
+    )
+    expect(res.headers.get('content-type')).toBe('text/event-stream')
+    const reader = res.body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    const readUntil = async (needle: string) => {
+      while (!text.includes(needle)) text += dec.decode((await reader.read()).value)
+    }
+    await readUntil('"replace":true')
+    await reportPresence(deps, tracker, 'owner', { clientId: 'olga-tab-0001', state: 'idle', where: HERE })
+    await readUntil('"replace":false')
+    const frames = text.split('\n\n').filter((b) => b.startsWith('event: presence'))
+    const [snapshot, change] = frames.map((b) => JSON.parse(b.split('data: ')[1]) as { people: { userId: string; status: string; where: unknown }[] })
+    expect(snapshot.people.find((p) => p.userId === 'carl')).toMatchObject({ status: 'online', where: { area: 'messages', path: '/messages', item: null } })
+    expect(change.people.map((p) => `${p.userId}:${p.status}`)).toEqual(['owner:away'])
+    ac.abort()
+    expect(stopped).toBe(1)
+    await reader.cancel()
+    expect(stopped).toBe(1)
+  })
+
+  it('presence that cannot start is said on the stream (never a silent empty feed)', async () => {
+    const { deps } = liveFixture()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const broken = (await presenceStreamFor(deps, () => Promise.reject(new Error('calls hub down')), 'bea', NO_COWORKERS, NO_DRIVE))!
+    const ac = new AbortController()
+    const reader = presenceStreamResponse(broken, 'bea', ac.signal).body!.getReader()
+    const dec = new TextDecoder()
+    let text = ''
+    while (!text.includes('event: presence-error')) text += dec.decode((await reader.read()).value)
+    expect(logged).toHaveBeenCalled()
+    logged.mockRestore()
+    ac.abort()
+    await reader.cancel()
   })
 })

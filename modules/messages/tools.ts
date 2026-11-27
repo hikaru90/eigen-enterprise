@@ -3,7 +3,15 @@ import { z } from 'zod'
 import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { MESSAGES_MODULE_ID } from './manifest'
-import { setDoNotDisturb, type PresencePort } from './presence'
+import {
+  presenceFor,
+  setDoNotDisturb,
+  setShareWhere,
+  type CoworkerPresencePort,
+  type PresencePort,
+  type ShareWherePort,
+  type WhereDrivePort,
+} from './presence'
 import {
   conversationMembers,
   createChannel,
@@ -92,6 +100,8 @@ const postInput = z
 const editInput = z.object({ message_id: uuid, body: z.string() }).strict()
 const reactInput = z.object({ message_id: uuid, emoji: z.string().min(1) }).strict()
 const dndInput = z.object({ do_not_disturb: z.boolean() }).strict()
+const shareWhereInput = z.object({ share_where: z.boolean() }).strict()
+const presenceInput = z.object({ user_id: z.string().min(1).optional() }).strict()
 
 async function liveDeps(): Promise<MessagesDeps> {
   const { messagesDeps } = await import('./live')
@@ -100,6 +110,18 @@ async function liveDeps(): Promise<MessagesDeps> {
 
 async function livePresence(): Promise<PresencePort> {
   return (await import('$lib/server/presence')).presence()
+}
+
+async function liveShareWhere(): Promise<ShareWherePort> {
+  return (await import('$lib/server/presence')).shareWhereStore()
+}
+
+async function liveWhereDrive(): Promise<WhereDrivePort> {
+  return (await import('./live')).liveWhereDrive()
+}
+
+async function liveCoworkers(): Promise<CoworkerPresencePort> {
+  return (await import('$lib/server/coworkers/presence')).liveCoworkerPresence()
 }
 
 function livePush(d: MessagesDeps, c: Conversation, m: MessageDto): void {
@@ -125,8 +147,8 @@ const isMember = (ctx: ToolContext) => actsAsMember(ctx.principal)
 
 /**
  * The tools an AI co-worker reaches like a member (C3). Everything else in
- * Messages — creating channels, uploads, edits, deletes, Do not disturb — stays
- * a person's own act.
+ * Messages — creating channels, uploads, edits, deletes, Do not disturb, Share
+ * where I am, reading where people are — stays a person's own act.
  */
 export const MEMBER_TOOLS = [
   'messages.list_channels',
@@ -164,11 +186,17 @@ export function createMessagesTools(
   opts: {
     deps?: () => Promise<MessagesDeps>
     presence?: () => Promise<PresencePort>
+    shareWhere?: () => Promise<ShareWherePort>
+    whereDrive?: () => Promise<WhereDrivePort>
+    coworkerPresence?: () => Promise<CoworkerPresencePort>
     push?: PushFn
   } = {},
 ): ToolDescriptor[] {
   const deps = opts.deps ?? liveDeps
   const presence = opts.presence ?? livePresence
+  const shareWhere = opts.shareWhere ?? liveShareWhere
+  const whereDrive = opts.whereDrive ?? liveWhereDrive
+  const coworkerPresence = opts.coworkerPresence ?? liveCoworkers
   const push = opts.push ?? livePush
 
   function write<S extends z.ZodTypeAny>(
@@ -254,6 +282,20 @@ export function createMessagesTools(
         members: await conversationMembers(await deps(), memberId(ctx), conversationInput.parse(input).conversation_id),
       }),
     },
+    {
+      name: 'messages.presence',
+      module: MESSAGES_MODULE_ID,
+      summary:
+        "Everyone's presence (or one person's, user_id): status (in_call, dnd, online, away, offline; AI co-workers available, busy, paused) and where they are working — the sidebar area, and the page and item open only when you may open that item yourself; nowhere when they switched sharing off.",
+      auditClass: 'read',
+      inputSchema: presenceInput,
+      permission: PERSON,
+      handler: async (ctx, input) => {
+        const i = presenceInput.parse(input)
+        const [d, p, drive, coworkers] = await Promise.all([deps(), presence(), whereDrive(), coworkerPresence()])
+        return presenceFor(d, p, drive, coworkers, personId(ctx), i.user_id)
+      },
+    },
     write(
       'messages.create_channel',
       'Create a channel: public (open to everyone) or private with invited user_ids / group_ids.',
@@ -334,6 +376,15 @@ export function createMessagesTools(
       dndInput,
       async (userId, d, i) => ({
         presence: await setDoNotDisturb(d, await presence(), userId, { doNotDisturb: i.do_not_disturb }),
+      }),
+    ),
+    write(
+      'messages.set_share_where',
+      'Switch "Share where I am" on or off (on by default): off, others see your status but never where you are working. Answers your presence.',
+      'Switched Share where I am',
+      shareWhereInput,
+      async (userId, d, i) => ({
+        presence: await setShareWhere(d, await presence(), await shareWhere(), userId, { shareWhere: i.share_where }),
       }),
     ),
   ]

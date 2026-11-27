@@ -7,13 +7,14 @@ import { messagesStreamResponse, parseLastEventId } from '../../../../../modules
  * new conversations and read-state, only for conversations they may see —
  * and, for company members, everyone's presence (`event: presence`; AI
  * co-workers from facts, never a heartbeat) and who is typing where
- * (`event: typing`, Contribute 14aea69d).
+ * (`event: typing`, Contribute 14aea69d). Presence carries where each person
+ * is, filtered for this viewer (plan/phase-multiplayer-presence.md).
  * Resumes from Last-Event-ID (browser reconnect) or ?after=<id> (first
  * connect, the id the page loaded at).
  */
 export const GET: RequestHandler = async ({ locals, request, url }) => {
   if (!locals.user) return json({ error: 'sign in first' }, { status: 401 })
-  const { messagesDeps, messagesHub } = await import('../../../../../modules/messages/live')
+  const { messagesDeps, messagesHub, liveWhereDrive } = await import('../../../../../modules/messages/live')
   const { presenceStreamFor } = await import('../../../../../modules/messages/presence')
   const [hub, d] = await Promise.all([messagesHub(), messagesDeps()])
   const resume = parseLastEventId(request.headers.get('last-event-id')) ?? parseLastEventId(url.searchParams.get('after'))
@@ -22,7 +23,7 @@ export const GET: RequestHandler = async ({ locals, request, url }) => {
     import('$lib/server/coworkers/presence'),
     import('../../../../../modules/messages/typing'),
   ])
-  const feed = await presenceStreamFor(d, tracker, locals.user.id, await liveCoworkerPresence())
+  const feed = await presenceStreamFor(d, tracker, locals.user.id, await liveCoworkerPresence(), await liveWhereDrive())
   const typing = typingStreamFor(d, typingBoard(), locals.user.id)
   return messagesStreamResponse(hub, locals.user.id, resume, request.signal, feed, typing)
 }
