@@ -10,17 +10,20 @@ const { getDbMock, isUserAdminMock, decryptTenantValueMock, setSwitchMock, setSl
 }))
 
 vi.mock('$lib/server/llm/company-provider', () => ({ companyOwnerId: async () => 'owner-1' }))
+const viewProvider = vi.hoisted(() => ({ current: 'openrouter' as 'openrouter' | 'opper' }))
 vi.mock('$lib/server/llm/company-ai-settings', async (actual) => ({
   ...(await actual<typeof import('$lib/server/llm/company-ai-settings')>()),
   readCompanyAiView: async () => ({
     useEigenInference: false,
+    provider: viewProvider.current,
+    providerLabel: viewProvider.current === 'opper' ? 'Opper' : 'OpenRouter',
     eigenInferenceAvailable: false,
     embeddingModel: null,
     slots: [
-      { slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null, options: [] },
-      { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: null, options: [] },
-      { slot: 'tts', model: 'qwen/qwen-audio-3.0-tts-flash', pick: null, options: [] },
-      { slot: 'decision', model: 'typesafe/jev-1.13', pick: null, options: [] },
+      { slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null, options: [], available: true },
+      { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: null, options: [], available: true },
+      { slot: 'tts', model: 'qwen/qwen-audio-3.0-tts-flash', pick: null, options: [], available: true },
+      { slot: 'decision', model: 'typesafe/jev-1.13', pick: null, options: [], available: true },
     ],
   }),
   setCompanyUseEigenInference: setSwitchMock,
@@ -121,7 +124,23 @@ describe('settings/llm page server load', () => {
     expect(result.speech).toEqual({
       dictation: { ready: false, missing: 'openrouter_key' },
       models: [{ feature: 'dictation', model: 'qwen/qwen3-asr-0.6b', endpoints: 2, providers: ['A', 'B'] }],
+      providerLabel: 'OpenRouter',
     })
+  })
+
+  it("on Opper the speech models are not looked up in OpenRouter's catalog, and speech names Opper", async () => {
+    viewProvider.current = 'opper'
+    checkSpeechMock.mockClear()
+    try {
+      const result = await load({
+        locals: { user: { id: 'u1', email: 'a@b.c' } },
+        url: new URL('http://localhost/settings/llm'),
+      } as never)
+      expect(result.speech).toMatchObject({ models: [], providerLabel: 'Opper' })
+      expect(checkSpeechMock).not.toHaveBeenCalled()
+    } finally {
+      viewProvider.current = 'openrouter'
+    }
   })
 
   it('carries the company AI settings and checks the speech models the company picked', async () => {

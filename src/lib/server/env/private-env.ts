@@ -60,6 +60,8 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   PLATFORM_LLM_API_KEY?: string
   PLATFORM_LLM_MODEL_CHAT?: string
   PLATFORM_LLM_MODEL_EMBEDDING?: string
+  /** Who serves it: openrouter | opper; absent = openrouter (fleet protocol v1). */
+  PLATFORM_LLM_PROVIDER?: string
   FEEDBACK_INBOX_EMAIL?: string
   NODE_ENV?: string
   PAYPAL_CLIENT_SECRET?: string

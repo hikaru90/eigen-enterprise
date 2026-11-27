@@ -25,7 +25,8 @@ function view(overrides: Partial<SettingsView> = {}): SettingsView {
     company: { name: 'Kindred Digital Labs', hasLogo: false },
     ai: {
       eigenInference: false,
-      slots: [{ slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null }],
+      modelProvider: 'openrouter',
+      slots: [{ slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null, available: true, options: ['~deepseek/deepseek-flash-latest'] }],
       embeddingModel: null,
       activeProvider: 'openrouter',
       billing: 'byok',

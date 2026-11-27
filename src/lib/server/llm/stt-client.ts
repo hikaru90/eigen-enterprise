@@ -12,6 +12,10 @@ import { llmCreateTranscription } from './llm-client'
  * OpenRouter endpoints list no supported parameters, so the vocabulary prompt
  * (`stt-vocabulary.ts`) is sent but may have no effect. Quiet audio is still stopped before the
  * upload by `$lib/voice/clip-speech.ts` and judged after by `stt-judge.ts`.
+ *
+ * When eigenInference runs on Opper the slot's pick there is Mistral Voxtral
+ * (`mistral/voxtral-mini-transcribe-3-0`, EU) on Opper's own transcription endpoint; Opper's
+ * body has no vocabulary prompt, so none is sent.
  */
 
 export type SttAudioInput = {
@@ -45,7 +49,7 @@ export function parseSttTranscript(body: unknown): string {
 }
 
 /**
- * Transcribes audio via OpenRouter (`POST /audio/transcriptions`).
+ * Transcribes audio on the company's speech-to-text slot (OpenRouter or Opper, llm-client.ts).
  */
 export async function transcribeAudio(input: {
   userId: string

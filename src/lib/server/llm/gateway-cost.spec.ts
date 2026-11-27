@@ -69,3 +69,18 @@ describe('reportedTokenCount', () => {
     expect(reportedTokenCount({ total_tokens: -3 })).toBe(0)
   })
 })
+
+describe('gatewayReportedCostUsdForLog with response headers (Opper)', () => {
+  it('the body wins when it reports cost', () => {
+    expect(gatewayReportedCostUsdForLog({ usage: { cost: 0.002 } }, new Headers({ 'x-opper-cost': '0.5' }))).toBe(0.002)
+  })
+
+  it("else Opper's x-opper-cost header (embeddings, decisions report cost only there)", () => {
+    expect(gatewayReportedCostUsdForLog({ data: [] }, new Headers({ 'x-opper-cost': '0.0000123' }))).toBe(0.0000123)
+  })
+
+  it('no cost in body or header → 0, never inferred', () => {
+    expect(gatewayReportedCostUsdForLog({ usage: { prompt_tokens: 9 } }, new Headers())).toBe(0)
+    expect(gatewayReportedCostUsdForLog({ usage: { prompt_tokens: 9 } }, new Headers({ 'x-opper-cost': 'n/a' }))).toBe(0)
+  })
+})

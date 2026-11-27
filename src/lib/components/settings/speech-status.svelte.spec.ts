@@ -16,15 +16,15 @@ const liveModels = [
 
 describe('speech-status.svelte', () => {
   it('says plainly that speech runs on OpenRouter, whatever the chat provider', async () => {
-    render(SpeechStatus, { dictation: { ready: true }, models: liveModels })
+    render(SpeechStatus, { dictation: { ready: true }, models: liveModels, providerLabel: 'OpenRouter' })
     await expect
       .element(page.getByTestId('speech-status'))
-      .toHaveTextContent('always run on OpenRouter')
+      .toHaveTextContent('run on OpenRouter, whichever provider does the chat')
     await expect.element(page.getByTestId('speech-dictation')).toHaveTextContent('Ready')
   })
 
   it('names what dictation is missing', async () => {
-    render(SpeechStatus, {
+    render(SpeechStatus, { providerLabel: 'OpenRouter',
       dictation: { ready: false, missing: 'openrouter_key' },
       models: liveModels,
     })
@@ -34,7 +34,7 @@ describe('speech-status.svelte', () => {
   })
 
   it('shows each model’s live endpoints, and loudly when a model has none', async () => {
-    render(SpeechStatus, {
+    render(SpeechStatus, { providerLabel: 'OpenRouter',
       dictation: { ready: true },
       models: [
         liveModels[0]!,
@@ -55,7 +55,7 @@ describe('speech-status.svelte', () => {
   })
 
   it('a failed check says it could not check, never "fine"', async () => {
-    render(SpeechStatus, {
+    render(SpeechStatus, { providerLabel: 'OpenRouter',
       dictation: { ready: true },
       models: [
         {
@@ -74,5 +74,10 @@ describe('speech-status.svelte', () => {
     await expect
       .element(page.getByRole('button', { name: 'Copy agent instructions' }))
       .toBeInTheDocument()
+  })
+
+  it('on Opper it names Opper (its speech models have no OpenRouter endpoint list to show)', async () => {
+    render(SpeechStatus, { providerLabel: 'Opper', dictation: { ready: true }, models: [] })
+    await expect.element(page.getByTestId('speech-status')).toHaveTextContent('run on Opper, whichever provider does the chat')
   })
 })

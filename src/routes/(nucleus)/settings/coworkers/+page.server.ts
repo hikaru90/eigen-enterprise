@@ -4,7 +4,7 @@ import { requireCapability } from '$lib/server/auth/require-capability'
 import type { RhythmTarget, RhythmView } from '$lib/server/coworkers/rhythms'
 import type { CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
 import type { CoworkerTemplate } from '$lib/server/coworkers/templates'
-import { poolFor } from '$lib/server/llm/model-pool'
+import { chatModels } from '$lib/server/llm/model-pool'
 import { cardInput } from '$lib/server/org/form-input'
 import { field, runAction } from '$lib/server/org/page-actions'
 import { personRun, type PersonRunner } from '$lib/server/org/person-run'
@@ -28,7 +28,7 @@ const REASON = 'Only the owner or an admin manages the AI co-workers.'
 /** Overridable in tests: the registry runner and the pool's chat models. */
 export const _coworkersDeps: { run: PersonRunner; chatModels: () => ChatModelOption[]; timeZone: (userId: string) => Promise<string> } = {
   run: personRun,
-  chatModels: () => poolFor('chat').map(chatModelOption),
+  chatModels: () => chatModels().map(chatModelOption),
   timeZone: async (userId) => {
     const [{ withDbUser }, { getUserPreferredTimezone }] = await Promise.all([import('$lib/server/db'), import('$lib/server/memory/user-timezone')])
     return withDbUser(userId, () => getUserPreferredTimezone(userId))

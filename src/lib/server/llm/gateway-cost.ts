@@ -73,7 +73,16 @@ export function requireGatewayReportedCostUsd(body: unknown): number {
   return cost
 }
 
-/** Activity / transparency logging — reported cost only, zero when the gateway omitted it. */
-export function gatewayReportedCostUsdForLog(body: unknown): number {
-  return extractGatewayReportedCostUsd(body) ?? 0
+/** The response header Opper reports a call's USD cost in (the only place for embeddings and decisions). */
+export const OPPER_COST_HEADER = 'x-opper-cost'
+
+/**
+ * Activity / transparency logging — reported cost only, zero when the gateway omitted it.
+ * The body's cost (`usage.cost` / `cost`) first; else, when the response headers are given,
+ * Opper's `x-opper-cost`. Never inferred from tokens.
+ */
+export function gatewayReportedCostUsdForLog(body: unknown, headers?: Pick<Headers, 'get'> | null): number {
+  const fromBody = extractGatewayReportedCostUsd(body)
+  if (fromBody !== null) return fromBody
+  return parseUsdCost(headers?.get(OPPER_COST_HEADER) ?? undefined)
 }

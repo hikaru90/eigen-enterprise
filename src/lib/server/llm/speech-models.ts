@@ -16,8 +16,9 @@ export type SpeechModel = { feature: SpeechFeature; model: string }
 
 /**
  * dictation = speech to text (`stt-client.ts`); voice = the assistant speaking (`tts-client.ts`).
- * The company's picks (Settings → AI), or with none given every speech model in the pool (the
- * boot check: a pool model whose endpoints are gone shows on deploy).
+ * The company's picks (Settings → AI), or with none given every speech model OpenRouter serves
+ * in the pool (the boot check: a pool model whose endpoints are gone shows on deploy). Opper's
+ * speech models are not in this check: the endpoint list is OpenRouter's catalog.
  */
 export function speechModels(picks?: { stt: string; tts: string }): SpeechModel[] {
   if (picks) {
@@ -27,8 +28,8 @@ export function speechModels(picks?: { stt: string; tts: string }): SpeechModel[
     ]
   }
   return [
-    ...poolFor('stt').map((m) => ({ feature: 'dictation' as const, model: m.id })),
-    ...poolFor('tts').map((m) => ({ feature: 'voice' as const, model: m.id })),
+    ...poolFor('stt', 'openrouter').map((m) => ({ feature: 'dictation' as const, model: m.id })),
+    ...poolFor('tts', 'openrouter').map((m) => ({ feature: 'voice' as const, model: m.id })),
   ]
 }
 
@@ -60,13 +61,14 @@ async function checkOne(fetchFn: FetchFn, baseUrl: string, m: SpeechModel): Prom
 export const OPENROUTER_PUBLIC_API = 'https://openrouter.ai/api/v1'
 
 /**
- * Where the speech models are checked: the eigenInference endpoint on a hosted box (where its
- * speech runs), else OpenRouter's public catalog (a company's own OpenRouter key serves the
- * same pool ids). No env of its own: `OPENROUTER_BASE_URL` is not read here since CB1.
+ * Where the speech models are checked: the eigenInference endpoint on a hosted box whose
+ * eigenInference is OpenRouter (where its speech runs), else OpenRouter's public catalog (a
+ * company's own OpenRouter key serves the same pool ids; an Opper base has no such list). No env
+ * of its own: `OPENROUTER_BASE_URL` is not read here since CB1.
  */
 export function speechEndpointBaseUrl(): string {
   const platformAi = readPlatformAiConfig(env as Record<string, string | undefined>)
-  return platformAi ? platformAi.baseUrl : OPENROUTER_PUBLIC_API
+  return platformAi?.provider === 'openrouter' ? platformAi.baseUrl : OPENROUTER_PUBLIC_API
 }
 
 export async function checkSpeechModelEndpoints(

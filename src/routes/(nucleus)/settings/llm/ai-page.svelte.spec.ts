@@ -44,7 +44,7 @@ function data(over: Record<string, unknown> = {}, ai: Record<string, unknown> = 
     isOwner: true,
     byokConfigured: false,
     activeProvider: 'eurouter',
-    speech: { dictation: { ready: true }, models: [] },
+    speech: { dictation: { ready: true }, models: [], providerLabel: 'OpenRouter' },
     memberAiCap: {
       usage: { role: 'owner', capUsd: null, capApplies: false, spentUsd: 0, remainingUsd: null, resetsAt: '2026-11-24T00:00:00.000Z' },
     },
@@ -54,6 +54,8 @@ function data(over: Record<string, unknown> = {}, ai: Record<string, unknown> = 
     },
     ai: {
       useEigenInference: true,
+      provider: 'openrouter',
+      providerLabel: 'OpenRouter',
       eigenInferenceAvailable: true,
       embeddingModel: 'qwen/qwen3-embedding-8b',
       slots: [
@@ -62,15 +64,17 @@ function data(over: Record<string, unknown> = {}, ai: Record<string, unknown> = 
           model: '~deepseek/deepseek-flash-latest',
           pick: null,
           options: [option('~deepseek/deepseek-flash-latest', true), option('openai/gpt-5-mini')],
+          available: true,
         },
-        { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: null, options: [option('qwen/qwen3-asr-1.7b', true)] },
+        { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: null, options: [option('qwen/qwen3-asr-1.7b', true)], available: true },
         {
           slot: 'tts',
           model: 'qwen/qwen-audio-3.0-tts-flash',
           pick: null,
           options: [option('qwen/qwen-audio-3.0-tts-flash', true)],
+          available: true,
         },
-        { slot: 'decision', model: 'typesafe/jev-1.13', pick: null, options: [option('typesafe/jev-1.13', true)] },
+        { slot: 'decision', model: 'typesafe/jev-1.13', pick: null, options: [option('typesafe/jev-1.13', true)], available: true },
       ],
       ...ai,
     },
@@ -91,6 +95,21 @@ describe('Settings → AI provider', () => {
     await expect.element(page.getByLabelText('Text to speech')).toHaveValue('qwen/qwen-audio-3.0-tts-flash')
     await expect.element(page.getByLabelText('Decisions')).toHaveValue('typesafe/jev-1.13')
     await expect.element(page.getByRole('option', { name: '~deepseek/deepseek-flash-latest (recommended)' })).toBeInTheDocument()
+  })
+
+  it("on Opper a stored pick Opper doesn't serve is shown as not available, never as another model", async () => {
+    const opperSlots = data().ai.slots.map((slot) =>
+      slot.slot === 'stt'
+        ? { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: 'qwen/qwen3-asr-1.7b', options: [option('mistral/voxtral-mini-transcribe-3-0', true)], available: false }
+        : slot,
+    )
+    render(AiPage, props(data({ speech: { dictation: { ready: true }, models: [], providerLabel: 'Opper' } }, { provider: 'opper', providerLabel: 'Opper', slots: opperSlots })))
+    await expect.element(page.getByLabelText('Speech to text')).toHaveValue('qwen/qwen3-asr-1.7b')
+    await expect.element(page.getByRole('option', { name: 'qwen/qwen3-asr-1.7b (not available)' })).toBeDisabled()
+    await expect.element(page.getByTestId('slot-unavailable-stt')).toHaveTextContent(/not available on Opper.*Pick another model/)
+    await expect.element(page.getByTestId('speech-status')).toHaveTextContent(/run on Opper/)
+    await userEvent.selectOptions(page.getByLabelText('Speech to text'), 'mistral/voxtral-mini-transcribe-3-0')
+    expect(submitted).toEqual([{ action: '?/setSlot', fields: { slot: 'stt', model: 'mistral/voxtral-mini-transcribe-3-0' } }])
   })
 
   it('embedding is not a dropdown: the install’s model is shown as fixed', async () => {

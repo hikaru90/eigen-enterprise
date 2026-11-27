@@ -5,6 +5,7 @@ import { LlmHttpError, LlmNotConfiguredError } from './errors'
 import { gatewayReportedCostUsdForLog } from './gateway-cost'
 import { gatewayHostFromBaseUrl } from './llm-client'
 import { assertGatewayCallWithinMemberDailyCap } from './member-daily-cap'
+import { opperDecisionsUrl } from './opper'
 import { resolveSlot, type SlotTarget } from './slots'
 
 /**
@@ -22,6 +23,10 @@ import { resolveSlot, type SlotTarget } from './slots'
  *       usage: { input_tokens, output_tokens, cost, … }, id, provider: 'TypeSafe' }
  * Many questions per call (one state). Other question types exist (score, box, noul); only
  * `choice` is used here.
+ *
+ * On Opper (eigenInference provider opper, checked live 2026-11-27) the same body goes to
+ * `<base>/v1/systemone` (the decision slot's model there is clef-flash, EU) and the answer has
+ * the same shape; the cost is reported only in the `x-opper-cost` header.
  *
  * The state is never logged (it may be a private mail or a Memory thought): the cost row names
  * the caller's context and the number of questions only.
@@ -184,9 +189,10 @@ export async function llmDecide(
   assertQuestions(input.questions)
   await deps.capCheck(input.userId)
   const target = await deps.resolve(input.userId)
-  if (!target.model) throw new LlmNotConfiguredError('The decision slot resolved without a model.')
-  const model = target.model
-  const url = decisionsUrl(target.config.baseUrl)
+  if (!target.model || !target.route) throw new LlmNotConfiguredError('The decision slot resolved without a model.')
+  // The id the provider routes the pool model by (Opper's EU id; on OpenRouter the pool id).
+  const model = target.route
+  const url = target.pool === 'opper' ? opperDecisionsUrl(target.config.baseUrl) : decisionsUrl(target.config.baseUrl)
   const provider = activityProviderForLlmConfig(target.config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(target.config.baseUrl)
   const context = `decide:${input.logContext} questions=${Object.keys(input.questions).length}`
@@ -229,7 +235,7 @@ export async function llmDecide(
         throw new DecisionResponseError(`The decision response is not JSON (HTTP ${res.status}).`)
       }
       const parsed = parseResponse(json, input.questions)
-      const costUsd = gatewayReportedCostUsdForLog(json)
+      const costUsd = gatewayReportedCostUsdForLog(json, res.headers)
       const durationMs = deps.now() - started
       await deps.logCall(input.userId, {
         provider,

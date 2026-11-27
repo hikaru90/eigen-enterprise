@@ -16,8 +16,9 @@ import {
 import { routingRuleLookupErrorMessage } from '$lib/server/llm/llm-config-guard'
 import { fitEmbeddingResponse } from '$lib/server/llm/matryoshka'
 import { assertGatewayCallWithinMemberDailyCap } from '$lib/server/llm/member-daily-cap'
-import { assertPoolModel, modelSupportsTemperature } from '$lib/server/llm/model-pool'
-import { companySlotSource, resolveSlot, routesByPoolModel, type SlotTarget } from '$lib/server/llm/slots'
+import { assertPoolModel, modelSupportsTemperature, ttsSendsVoice } from '$lib/server/llm/model-pool'
+import { companySlotSource, resolveSlot, slotRoute, type SlotTarget } from '$lib/server/llm/slots'
+import { opperAudioUrl, opperSpeechAudio, opperTranscriptionBody } from '$lib/server/llm/opper'
 import { isGraphScaleQuiet } from '$lib/server/observability/graph-scale-quiet'
 import { sanitizeChatMessages } from '$lib/server/observability/strip-embeddings'
 
@@ -124,7 +125,8 @@ export {
   requireGatewayReportedCostUsd,
 } from '$lib/server/llm/gateway-cost'
 
-type RoutingConfig = { ruleId?: string; model: string; provider?: Record<string, unknown> }
+/** model = the id sent; poolModel = the pool id it routes (its traits: temperature, Matryoshka), when it is one. */
+type RoutingConfig = { ruleId?: string; model: string; poolModel?: string; provider?: Record<string, unknown> }
 type AiMessageRole = 'system' | 'user' | 'assistant'
 type AiOutputChoice = { role: AiMessageRole; content: string }
 
@@ -586,7 +588,11 @@ async function chatRoutingConfig(
   requestedOverride?: string,
 ): Promise<RoutingConfig> {
   const modelOverride = requestedOverride === undefined ? undefined : chatModelOverride(requestedOverride)
-  if (target.model) return { model: modelOverride || target.model }
+  if (target.model) {
+    // A pool model goes out under the id its provider routes it by (Opper's EU id, OpenRouter's id).
+    if (modelOverride) return { model: slotRoute(target, modelOverride), poolModel: modelOverride }
+    return { model: slotWireModel(target), poolModel: target.model }
+  }
   const config = target.config
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
@@ -611,7 +617,7 @@ async function chatRoutingConfig(
 
 /** The install's fixed embedding model; a bring-your-own-key provider outside the pool routes as it always did. */
 async function embeddingRoutingConfig(target: SlotTarget): Promise<RoutingConfig> {
-  if (target.model) return { model: target.model }
+  if (target.model) return { model: slotWireModel(target), poolModel: target.model }
   const config = target.config
   // Every non-EUrouter provider (OpenRouter, Copilot, models.dev catalog, …) is
   // OpenAI-compatible and routes by direct model name.
@@ -771,7 +777,9 @@ async function llmChatCompletionInner(input: {
   // OpenRouter pins a session's calls to one provider endpoint, so its prompt cache stays warm
   // across an agent's steps and turns. Only a caller's own session, never the per-user fallback.
   const providerSessionId =
-    input.aiSessionId?.trim() && routesByPoolModel(config.provider) ? aiSessionId.slice(0, 256) : null
+    input.aiSessionId?.trim() && target.pool === 'openrouter' ? aiSessionId.slice(0, 256) : null
+  // Which provider serves eigenInference, for PostHog (Activity names it by its gateway host).
+  const inferenceProvider = config.eigenInferenceProvider ? { eigen_inference_provider: config.eigenInferenceProvider } : {}
 
   const maxTokens = input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS
   const maxAttempts = 3
@@ -814,7 +822,7 @@ async function llmChatCompletionInner(input: {
             model: routing.model,
             ...(routing.provider ? { provider: routing.provider } : {}),
             messages: messages.map(toWireMessage),
-            ...(input.temperature !== undefined && modelSupportsTemperature(routing.model)
+            ...(input.temperature !== undefined && modelSupportsTemperature(routing.poolModel ?? routing.model)
               ? { temperature: input.temperature }
               : {}),
             max_tokens: maxTokens,
@@ -859,7 +867,7 @@ async function llmChatCompletionInner(input: {
       const attemptMs = Date.now() - attemptStart
       const fetchMs = Date.now() - fetchStart
       const usage = extractUsage(json)
-      const baseCost = gatewayReportedCostUsdForLog(json)
+      const baseCost = gatewayReportedCostUsdForLog(json, res.headers)
       if (!isGraphScaleQuiet()) {
         console.info(`[llm.chat:${logCtx}] gateway response ok`, {
           attempt,
@@ -895,6 +903,7 @@ async function llmChatCompletionInner(input: {
           $ai_session_id: aiSessionId,
           $ai_model: routing.model,
           $ai_provider: config.provider,
+          ...inferenceProvider,
           ...observedText,
           $ai_input_tokens: usage?.prompt_tokens,
           $ai_cache_read_input_tokens: usage?.prompt_tokens_details?.cached_tokens,
@@ -944,6 +953,7 @@ async function llmChatCompletionInner(input: {
             $ai_session_id: aiSessionId,
             $ai_model: routing.model,
             $ai_provider: config.provider,
+            ...inferenceProvider,
             ...observedText,
             $ai_is_error: true,
             $ai_error: msg,
@@ -1048,7 +1058,7 @@ async function llmCreateEmbeddingsInner(input: {
         throw new LlmHttpError(res.status, message)
       }
 
-      const baseCost = gatewayReportedCostUsdForLog(json)
+      const baseCost = gatewayReportedCostUsdForLog(json, res.headers)
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
         gatewayHost,
@@ -1059,7 +1069,7 @@ async function llmCreateEmbeddingsInner(input: {
       })
 
       // A gateway may ignore `dimensions` for a Matryoshka model (Qwen3: 4096 natively).
-      return fitEmbeddingResponse(routing.model, json, EMBEDDING_DIMENSIONS)
+      return fitEmbeddingResponse(routing.poolModel ?? routing.model, json, EMBEDDING_DIMENSIONS)
     } catch (err) {
       lastError = err
       const message = err instanceof Error ? err.message : String(err)
@@ -1120,17 +1130,25 @@ export async function loadOpenRouterSttConfig(userId: string): Promise<ResolvedL
   return (await resolveSlot('stt', userId)).config
 }
 
-/** The model a slot resolves to (pool slots on an OpenRouter-namespace endpoint always carry one). */
-function slotModel(target: SlotTarget): string {
-  if (!target.model) {
+/** The id a pool slot's request sends: its provider's route for the slot's pool model. */
+function slotWireModel(target: SlotTarget): string {
+  if (!target.model || !target.route) {
     throw new LlmNotConfiguredError(`The ${target.slot} slot resolved without a model.`)
   }
-  return target.model
+  return target.route
+}
+
+/** Speech on Opper has its own endpoints and JSON shapes (opper.ts); OpenRouter's are the default contract. */
+type SpeechShape = 'openrouter' | 'opper'
+
+function speechShape(target: SlotTarget): SpeechShape {
+  return target.pool === 'opper' ? 'opper' : 'openrouter'
 }
 
 /**
- * Speech-to-text via OpenRouter `POST /audio/transcriptions` (OpenAI-compatible JSON body), on
- * the company's speech-to-text slot.
+ * Speech-to-text on the company's speech-to-text slot: OpenRouter `POST /audio/transcriptions`
+ * (JSON `input_audio`), or on Opper `POST <origin>/v3/audio/transcriptions` (JSON data-URL
+ * `audio`; opper.ts). Both answer `{ text, usage.cost }`.
  */
 export async function llmCreateTranscription(input: {
   userId: string
@@ -1140,7 +1158,8 @@ export async function llmCreateTranscription(input: {
 }): Promise<unknown> {
   await assertGatewayCallWithinMemberDailyCap(input.userId)
   const target = await resolveSlot('stt', input.userId)
-  const run = () => llmCreateTranscriptionDedicated({ ...input, model: slotModel(target) }, target.config)
+  const run = () =>
+    llmCreateTranscriptionDedicated({ ...input, model: slotWireModel(target) }, target.config, speechShape(target))
   return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
 }
 
@@ -1152,11 +1171,26 @@ async function llmCreateTranscriptionDedicated(
     contentOrigin?: LlmContentOrigin
   },
   config: ResolvedLlmConfig,
+  shape: SpeechShape,
 ): Promise<unknown> {
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
-  const url = `${config.baseUrl}/audio/transcriptions`
-  const audioBase64 = Buffer.from(input.audio.bytes).toString('base64')
+  const url = shape === 'opper' ? opperAudioUrl(config.baseUrl, 'transcriptions') : `${config.baseUrl}/audio/transcriptions`
+  // Opper's body has no prompt (vocabulary): like every non-OpenAI model on OpenRouter, it never gets one.
+  const body = JSON.stringify(
+    shape === 'opper'
+      ? opperTranscriptionBody(input.model, input.audio)
+      : {
+          model: input.model,
+          input_audio: {
+            data: Buffer.from(input.audio.bytes).toString('base64'),
+            format: input.audio.format,
+          },
+          ...(input.audio.language ? { language: input.audio.language } : {}),
+          ...(input.audio.prompt ? { provider: { options: { openai: { prompt: input.audio.prompt } } } } : {}),
+          temperature: 0,
+        },
+  )
 
   const maxAttempts = 3
   let lastError: unknown
@@ -1182,16 +1216,7 @@ async function llmCreateTranscriptionDedicated(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
           },
-          body: JSON.stringify({
-            model: input.model,
-            input_audio: {
-              data: audioBase64,
-              format: input.audio.format,
-            },
-            ...(input.audio.language ? { language: input.audio.language } : {}),
-            ...(input.audio.prompt ? { provider: { options: { openai: { prompt: input.audio.prompt } } } } : {}),
-            temperature: 0,
-          }),
+          body,
         })
       } finally {
         clearTimeout(timeoutHandle)
@@ -1213,7 +1238,7 @@ async function llmCreateTranscriptionDedicated(
         throw new Error(`LLM STT HTTP ${res.status}: ${message}`)
       }
 
-      const sttCost = gatewayReportedCostUsdForLog(json)
+      const sttCost = gatewayReportedCostUsdForLog(json, res.headers)
       logLlmSttResponse(attempt, json, input.contentOrigin)
       await logActivityCall(db, input.userId, {
         provider: activityProvider,
@@ -1249,8 +1274,10 @@ async function llmCreateTranscriptionDedicated(
 }
 
 /**
- * Text-to-speech via OpenRouter `POST /audio/speech` (OpenAI-compatible).
- * Returns the gateway's raw audio bytes (mp3) — the assistant's voice is the
+ * Text-to-speech via OpenRouter `POST /audio/speech` (OpenAI-compatible; raw mp3 back), or on
+ * Opper `POST <origin>/v3/audio/speech` (JSON back, base64 mp3 + usage.cost; opper.ts).
+ * A model that speaks in its own voice (Voxtral, pool `ttsVoice`) is sent no voice.
+ * Returns the gateway's audio bytes (mp3) — the assistant's voice is the
  * gateway's neural TTS, never the browser's speechSynthesis.
  * Runs on the company's text-to-speech slot (eigenInference or the company's
  * own OpenRouter key), like speech to text.
@@ -1262,17 +1289,26 @@ export async function llmCreateSpeech(input: {
 }): Promise<Uint8Array> {
   await assertGatewayCallWithinMemberDailyCap(input.userId)
   const target = await resolveSlot('tts', input.userId)
-  const run = () => llmCreateSpeechDedicated({ ...input, model: slotModel(target) }, target.config)
+  const model = slotWireModel(target)
+  const voice = ttsSendsVoice(target.model!) ? input.voice : null
+  const run = () => llmCreateSpeechDedicated({ ...input, model, voice }, target.config, speechShape(target))
   return serialLlmRequestsEnabled() ? runLlmRequestGated(input.userId, run) : run()
 }
 
 async function llmCreateSpeechDedicated(
-  input: { userId: string; model: string; voice: string; text: string },
+  input: { userId: string; model: string; voice: string | null; text: string },
   config: ResolvedLlmConfig,
+  shape: SpeechShape,
 ): Promise<Uint8Array> {
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
-  const url = `${config.baseUrl}/audio/speech`
+  const url = shape === 'opper' ? opperAudioUrl(config.baseUrl, 'speech') : `${config.baseUrl}/audio/speech`
+  const voice = input.voice === null ? {} : { voice: input.voice }
+  const body = JSON.stringify(
+    shape === 'opper'
+      ? { model: input.model, input: input.text, ...voice }
+      : { model: input.model, input: input.text, ...voice, response_format: 'mp3' },
+  )
 
   const maxAttempts = 3
   let lastError: unknown
@@ -1297,12 +1333,7 @@ async function llmCreateSpeechDedicated(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
           },
-          body: JSON.stringify({
-            model: input.model,
-            input: input.text,
-            voice: input.voice,
-            response_format: 'mp3',
-          }),
+          body,
         })
       } finally {
         clearTimeout(timeoutHandle)
@@ -1320,6 +1351,21 @@ async function llmCreateSpeechDedicated(
           // not JSON — the sliced text is the message
         }
         throw new Error(`LLM TTS HTTP ${res.status}: ${message}`)
+      }
+
+      if (shape === 'opper') {
+        const answer = (await res.json()) as unknown
+        const bytes = opperSpeechAudio(answer)
+        const cost = gatewayReportedCostUsdForLog(answer, res.headers)
+        await logActivityCall(db, input.userId, {
+          provider: activityProvider,
+          gatewayHost,
+          operation: `llm.tts.success(attempt=${attempt},model=${input.model})`,
+          baseCostUsd: cost,
+          context: `tts:${input.model}${cost === 0 ? ' (usage cost missing from gateway)' : ''}`,
+          durationMs: Date.now() - attemptStart,
+        })
+        return bytes
       }
 
       const contentType = res.headers.get('content-type') ?? ''

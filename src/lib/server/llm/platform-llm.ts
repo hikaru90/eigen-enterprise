@@ -29,6 +29,7 @@ export function loadEigenInferenceConfig(): ResolvedLlmConfig {
   if (!platformAi) throw new LlmNotConfiguredError(EIGEN_INFERENCE_NOT_CONNECTED)
   return {
     provider: PLATFORM_AI_PROVIDER,
+    eigenInferenceProvider: platformAi.provider,
     baseUrl: platformAi.baseUrl,
     apiKey: platformAi.apiKey,
     ruleChat: null,

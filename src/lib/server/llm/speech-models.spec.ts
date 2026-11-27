@@ -10,6 +10,7 @@ import {
   reportSpeechModelsAtStartup,
   resetSpeechModelCheckCache,
   speechModelProblems,
+  speechModels,
 } from './speech-models'
 
 const BASE = 'https://openrouter.ai/api/v1'
@@ -116,6 +117,31 @@ describe('speechEndpointBaseUrl', () => {
 
   it("a self-hosted box asks OpenRouter's public catalog (the pool's namespace); OPENROUTER_BASE_URL is not read", () => {
     mockEnv.OPENROUTER_BASE_URL = 'https://openrouter.example/api/v1'
+    expect(speechEndpointBaseUrl()).toBe('https://openrouter.ai/api/v1')
+  })
+})
+
+describe('speech models on OpenRouter vs Opper', () => {
+  beforeEach(() => {
+    for (const k of Object.keys(mockEnv)) delete mockEnv[k]
+    mockEnv.DATABASE_URL = TEST_DB
+  })
+
+  it("the boot check covers OpenRouter's speech pool only (the endpoint list is OpenRouter's catalog)", () => {
+    expect(speechModels()).toEqual([
+      { feature: 'dictation', model: 'qwen/qwen3-asr-1.7b' },
+      { feature: 'voice', model: 'qwen/qwen-audio-3.0-tts-flash' },
+    ])
+  })
+
+  it("a box whose eigenInference is Opper checks OpenRouter's public catalog, never Opper's base", () => {
+    Object.assign(mockEnv, {
+      PLATFORM_LLM_BASE_URL: 'https://api.opper.ai/v3/compat',
+      PLATFORM_LLM_API_KEY: 'sk',
+      PLATFORM_LLM_MODEL_CHAT: 'c',
+      PLATFORM_LLM_MODEL_EMBEDDING: 'e',
+      PLATFORM_LLM_PROVIDER: 'opper',
+    })
     expect(speechEndpointBaseUrl()).toBe('https://openrouter.ai/api/v1')
   })
 })

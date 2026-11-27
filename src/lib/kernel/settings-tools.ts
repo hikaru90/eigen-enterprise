@@ -54,8 +54,22 @@ const settingsViewSchema = z.object({
   ai: z.object({
     /** Settings → AI: "Use eigenInference" (CB1). Off = the company's own key (the providers below). */
     eigenInference: z.boolean(),
-    /** The model each choosable slot runs on (a pool model; pick null = the pool's pick). */
-    slots: z.array(z.object({ slot: z.enum(AI_SLOTS), model: z.string(), pick: z.string().nullable() })),
+    /** Who serves the company's models now: eigenInference's provider while it is on, else OpenRouter. */
+    modelProvider: z.enum(['openrouter', 'opper']),
+    /**
+     * The model each choosable slot runs on (a pool model; pick null = the provider's pick), the
+     * models the provider serves for it (options, recommended first), and whether the slot's
+     * model is one of them (available false: its calls fail until another is picked).
+     */
+    slots: z.array(
+      z.object({
+        slot: z.enum(AI_SLOTS),
+        model: z.string(),
+        pick: z.string().nullable(),
+        available: z.boolean(),
+        options: z.array(z.string()),
+      }),
+    ),
     /** The install's embedding model, fixed per install (null until the first embedding pins it). */
     embeddingModel: z.string().nullable(),
     activeProvider: z.string(),
@@ -109,7 +123,7 @@ const UPDATABLE: ReadonlyArray<{ setting: SettingChange['setting']; description:
   {
     setting: 'ai_slot_model',
     description:
-      'The model a role slot runs on: {slot: chat | stt | tts | decision, value: a model from the curated pool}. settings.get lists each slot; embedding is fixed per install.',
+      "The model a role slot runs on: {slot: chat | stt | tts | decision, value: one of the slot's options in settings.get (the curated pool models the company's provider serves)}. Embedding is fixed per install.",
   },
 ]
 

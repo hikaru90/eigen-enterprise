@@ -9,8 +9,11 @@ const target = (over: Partial<SlotTarget> = {}): SlotTarget => ({
   slot: 'decision',
   source: 'eigeninference',
   model: 'typesafe/jev-1.13',
+  pool: 'openrouter',
+  route: 'typesafe/jev-1.13',
   config: {
     provider: 'platform',
+    eigenInferenceProvider: 'openrouter',
     baseUrl: 'https://inference.example/v1',
     apiKey: 'sk-secret-key',
     ruleChat: null,
@@ -154,5 +157,36 @@ describe('llmDecide', () => {
     await expect(llmDecide({ userId: 'u', state: 's', questions, logContext: 'k' }, down)).rejects.toBeInstanceOf(LlmHttpError)
     expect(down.fetch).toHaveBeenCalledTimes(3)
     expect(down.logged).toHaveLength(3)
+  })
+})
+
+describe('llmDecide on Opper (eigenInference provider opper)', () => {
+  const opperTarget = (): SlotTarget =>
+    target({
+      model: 'ovhcloud/clef-flash',
+      pool: 'opper',
+      route: 'ovhcloud/clef-flash',
+      config: { ...target().config, eigenInferenceProvider: 'opper', baseUrl: 'https://api.opper.ai/v3/compat' },
+    })
+  const answer = {
+    model: 'clef-flash',
+    answers: { mine: { type: 'choice', choice: 'yes', probabilities: { yes: 0.9, no: 0.1 }, confidence: 0.9 } },
+    usage: { input_tokens: 40, output_tokens: 2 },
+  }
+
+  it('posts the unchanged Decisions body to <base>/v1/systemone; cost from the x-opper-cost header', async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(answer), { status: 200, headers: { 'content-type': 'application/json', 'x-opper-cost': '0.000021' } }),
+    )
+    const d = deps({ resolve: async () => opperTarget(), fetch: fetchMock as unknown as typeof fetch })
+    const out = await llmDecide({ userId: 'u', state: 'Invoice #44', questions, logContext: 'k' }, d)
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://api.opper.ai/v3/compat/v1/systemone')
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({
+      model: 'ovhcloud/clef-flash',
+      state: 'Invoice #44',
+      questions: { mine: { type: 'choice', instructions: questions.mine.instructions, criteria: questions.mine.criteria } },
+    })
+    expect(out).toMatchObject({ model: 'clef-flash', costUsd: 0.000021, answers: { mine: { choice: 'yes', confidence: 0.9 } } })
+    expect(d.logged[0]).toMatchObject({ gatewayHost: 'api.opper.ai', baseCostUsd: 0.000021 })
   })
 })
