@@ -28,6 +28,7 @@ export async function companyWith(
   const company = new CompanyPresence({
     me,
     open: () => new Source(),
+    win: () => new EventTarget(),
     // Not a real Response: its body parses in microtasks only, so the one tick below is enough
     // in a real browser too (a real Response's json() can take longer than that there).
     fetch: async () =>

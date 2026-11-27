@@ -53,8 +53,10 @@ const AREAS: Record<string, string> = { drive: 'Drive', messages: 'Messages', da
 function setup(fetchImpl?: (url: string) => Promise<Response>) {
   const sources: FakeSource[] = []
   const fetch = vi.fn(fetchImpl ?? (async () => Response.json(DIRECTORY)))
+  const win = new EventTarget()
   const company = new CompanyPresence({
     me: 'me',
+    win: () => win,
     open: () => {
       const s = new FakeSource()
       sources.push(s)
@@ -63,7 +65,7 @@ function setup(fetchImpl?: (url: string) => Promise<Response>) {
     fetch,
     areaName: (id) => AREAS[id] ?? null,
   })
-  return { company, sources, fetch }
+  return { company, sources, fetch, win }
 }
 
 describe('CompanyPresence (where everyone is working — the live presence feed)', () => {
@@ -280,5 +282,44 @@ describe('CompanyPresence (where everyone is working — the live presence feed)
     company.close()
     sources[0].emit('presence', { replace: true, people: [entry({ userId: 'anna' })] })
     expect(company.peopleIn('drive')).toEqual([])
+  })
+
+  it('leaving the page closes the feed quietly: the browser aborting it is no outage', async () => {
+    vi.useFakeTimers()
+    const { company, sources, win } = setup()
+    company.connect()
+    await vi.advanceTimersByTimeAsync(0)
+    sources[0].open()
+    win.dispatchEvent(new Event('pagehide'))
+    expect(sources[0].closed).toBe(true)
+    // The browser still reports the aborted stream as it goes.
+    sources[0].readyState = 2
+    sources[0].emit('error')
+    expect(err).not.toHaveBeenCalled()
+    expect(company.error).toBeNull()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(sources).toHaveLength(1)
+  })
+
+  it('a page restored from the back/forward cache opens the feed again', async () => {
+    const { company, sources, win } = setup()
+    company.connect()
+    await settle()
+    sources[0].open()
+    win.dispatchEvent(new Event('pagehide'))
+    win.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }))
+    expect(sources).toHaveLength(2)
+    sources[1].open()
+    expect(company.status).toBe('live')
+  })
+
+  it('after close() leaving and coming back opens nothing', async () => {
+    const { company, sources, win } = setup()
+    company.connect()
+    await settle()
+    company.close()
+    win.dispatchEvent(new Event('pagehide'))
+    win.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }))
+    expect(sources).toHaveLength(1)
   })
 })

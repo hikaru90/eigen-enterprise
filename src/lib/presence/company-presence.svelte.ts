@@ -49,6 +49,9 @@ export type CompanyPresenceEnv = {
   /** My user id: I am never among the others. */
   me: string
   open: () => PresenceStreamSource
+  /** The tab: leaving the page closes the feed before the browser aborts it (that abort is no outage). */
+  /** Read in connect() only (the browser, after mount), never while rendering on the server. */
+  win: () => Pick<EventTarget, 'addEventListener' | 'removeEventListener'>
   fetch: (input: string) => Promise<Response>
   /** The sidebar entry's name for an area id (`Dashboard` for the dashboard); null for one I have no entry for. */
   areaName: (area: string) => string | null
@@ -77,6 +80,7 @@ export class CompanyPresence {
   #retry: ReturnType<typeof setTimeout> | undefined
   #failures = 0
   #stopped = true
+  #win: Pick<EventTarget, 'addEventListener' | 'removeEventListener'> | null = null
 
   constructor(private readonly env: CompanyPresenceEnv) {}
 
@@ -145,7 +149,23 @@ export class CompanyPresence {
 
   connect(): void {
     this.#stopped = false
+    this.#win = this.env.win()
+    this.#win.addEventListener('pagehide', this.#onPageHide)
+    this.#win.addEventListener('pageshow', this.#onPageShow)
     void this.#loadDirectory()
+    this.#start()
+  }
+
+  /** Leaving the page: close the feed ourselves, so the browser's abort of it is not reported as an outage. */
+  readonly #onPageHide = () => {
+    clearTimeout(this.#retry)
+    this.#source?.close()
+    this.#source = null
+  }
+
+  /** Back from the back/forward cache: the feed was closed on the way out, open it again. */
+  readonly #onPageShow = (e: Event) => {
+    if (this.#stopped || this.#source || !(e as PageTransitionEvent).persisted) return
     this.#start()
   }
 
@@ -158,6 +178,9 @@ export class CompanyPresence {
 
   close(): void {
     this.#stopped = true
+    this.#win?.removeEventListener('pagehide', this.#onPageHide)
+    this.#win?.removeEventListener('pageshow', this.#onPageShow)
+    this.#win = null
     clearTimeout(this.#retry)
     this.#source?.close()
     this.#source = null

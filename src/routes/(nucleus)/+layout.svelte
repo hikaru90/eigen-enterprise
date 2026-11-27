@@ -63,6 +63,7 @@
       ? new CompanyPresence({
           me: data.user.id,
           open: () => new EventSource('/api/messages/presence/stream'),
+          win: () => window,
           fetch: (input) => fetch(input),
           areaName: (area) =>
             area === DASHBOARD_AREA ? 'Dashboard' : (navItems.find((i) => i.id === area)?.name ?? null),
