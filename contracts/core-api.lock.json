@@ -19033,6 +19033,80 @@
       "approval": {
         "always": false,
         "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "email",
+      "name": "email.reputation_check",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "email",
+      "name": "email.reputation_get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
+        "risk": "internal"
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "module": "email",
+      "name": "email.reputation_resume",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": true,
         "risk": "external"
       },
       "auditClass": "external",
@@ -24378,6 +24452,33 @@
         "gated": false,
         "risk": null
       },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "module": "messages",
+      "name": "messages.presence",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
       "auditClass": "mutate",
       "input": {
         "additionalProperties": false,
@@ -24472,6 +24573,35 @@
       },
       "module": "messages",
       "name": "messages.set_do_not_disturb",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "share_where": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "share_where"
+        ],
+        "type": "object"
+      },
+      "module": "messages",
+      "name": "messages.set_share_where",
       "output": null,
       "permission": {
         "roles": [
@@ -26953,6 +27083,525 @@
       },
       "auditClass": "read",
       "input": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "type": "string"
+          },
+          "to": {
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "module": "kernel",
+      "name": "settings.ai_usage_overview",
+      "output": {
+        "additionalProperties": false,
+        "properties": {
+          "billing": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "currency": {
+                    "const": "EUR",
+                    "type": "string"
+                  },
+                  "markup": {
+                    "maximum": 10,
+                    "minimum": 1,
+                    "type": "number"
+                  },
+                  "rateDay": {
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                    "type": "string"
+                  },
+                  "usdToEur": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 10,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "currency",
+                  "markup",
+                  "rateDay",
+                  "usdToEur"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "daily": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "costUsd": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "date": {
+                  "type": "string"
+                },
+                "invoicedEur": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "products": {
+                  "additionalProperties": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "productsEur": {
+                  "additionalProperties": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "costUsd",
+                "date",
+                "products"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "models": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "cachedTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "calls": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "completionTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "costUsd": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "invoicedEur": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "model": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "promptTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "providerUsd": {
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "cachedTokens",
+                "calls",
+                "completionTokens",
+                "costUsd",
+                "model",
+                "promptTokens"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "people": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "cachedTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "calls": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "completionTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "costUsd": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "invoicedEur": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "kind": {
+                  "enum": [
+                    "person",
+                    "coworker"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "products": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cachedTokens": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "calls": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "completionTokens": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "id": {
+                        "enum": [
+                          "assistant",
+                          "coworkers",
+                          "memory",
+                          "brain",
+                          "decisions",
+                          "calls",
+                          "contacts",
+                          "calendar",
+                          "handover",
+                          "repos",
+                          "branding",
+                          "website",
+                          "drive",
+                          "contribute",
+                          "email",
+                          "speech",
+                          "setup",
+                          "unattributed"
+                        ],
+                        "type": "string"
+                      },
+                      "invoicedEur": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "promptTokens": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "providerUsd": {
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "cachedTokens",
+                      "calls",
+                      "completionTokens",
+                      "costUsd",
+                      "id",
+                      "label",
+                      "promptTokens"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "promptTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "providerUsd": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "userId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cachedTokens",
+                "calls",
+                "completionTokens",
+                "costUsd",
+                "kind",
+                "name",
+                "products",
+                "promptTokens",
+                "userId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "products": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "cachedTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "calls": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "completionTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "costUsd": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "id": {
+                  "enum": [
+                    "assistant",
+                    "coworkers",
+                    "memory",
+                    "brain",
+                    "decisions",
+                    "calls",
+                    "contacts",
+                    "calendar",
+                    "handover",
+                    "repos",
+                    "branding",
+                    "website",
+                    "drive",
+                    "contribute",
+                    "email",
+                    "speech",
+                    "setup",
+                    "unattributed"
+                  ],
+                  "type": "string"
+                },
+                "invoicedEur": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "promptTokens": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "providerUsd": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "tasks": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cachedTokens": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "calls": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "completionTokens": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "costUsd": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "invoicedEur": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "promptTokens": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "providerUsd": {
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "cachedTokens",
+                      "calls",
+                      "completionTokens",
+                      "costUsd",
+                      "id",
+                      "label",
+                      "promptTokens"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "cachedTokens",
+                "calls",
+                "completionTokens",
+                "costUsd",
+                "id",
+                "label",
+                "promptTokens",
+                "tasks"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "totals": {
+            "additionalProperties": false,
+            "properties": {
+              "cachedTokens": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "calls": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "completionTokens": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "costUsd": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "invoicedEur": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "promptTokens": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "providerUsd": {
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "cachedTokens",
+              "calls",
+              "completionTokens",
+              "costUsd",
+              "promptTokens"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "billing",
+          "daily",
+          "from",
+          "models",
+          "people",
+          "products",
+          "to",
+          "totals"
+        ],
+        "type": "object"
+      },
+      "permission": {
+        "roles": [
+          "admin"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
         "properties": {},
         "type": "object"
       },
@@ -26982,6 +27631,13 @@
                   "string",
                   "null"
                 ]
+              },
+              "modelProvider": {
+                "enum": [
+                  "openrouter",
+                  "opper"
+                ],
+                "type": "string"
               },
               "providers": {
                 "items": {
@@ -27038,8 +27694,17 @@
                 "items": {
                   "additionalProperties": false,
                   "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
                     "model": {
                       "type": "string"
+                    },
+                    "options": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "pick": {
                       "type": [
@@ -27058,7 +27723,9 @@
                     }
                   },
                   "required": [
+                    "available",
                     "model",
+                    "options",
                     "pick",
                     "slot"
                   ],
@@ -27072,6 +27739,7 @@
               "billing",
               "eigenInference",
               "embeddingModel",
+              "modelProvider",
               "providers",
               "slots"
             ],
@@ -27467,6 +28135,56 @@
               }
             ]
           },
+          "invoiced": {
+            "additionalProperties": false,
+            "properties": {
+              "billing": {
+                "additionalProperties": false,
+                "properties": {
+                  "currency": {
+                    "const": "EUR",
+                    "type": "string"
+                  },
+                  "markup": {
+                    "maximum": 10,
+                    "minimum": 1,
+                    "type": "number"
+                  },
+                  "rateDay": {
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                    "type": "string"
+                  },
+                  "usdToEur": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 10,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "currency",
+                  "markup",
+                  "rateDay",
+                  "usdToEur"
+                ],
+                "type": "object"
+              },
+              "invoicedEur": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "providerUsd": {
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "billing",
+              "invoicedEur",
+              "providerUsd"
+            ],
+            "type": "object"
+          },
           "remainingUsd": {
             "anyOf": [
               {
@@ -27636,6 +28354,13 @@
                   "null"
                 ]
               },
+              "modelProvider": {
+                "enum": [
+                  "openrouter",
+                  "opper"
+                ],
+                "type": "string"
+              },
               "providers": {
                 "items": {
                   "additionalProperties": false,
@@ -27691,8 +28416,17 @@
                 "items": {
                   "additionalProperties": false,
                   "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
                     "model": {
                       "type": "string"
+                    },
+                    "options": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
                     },
                     "pick": {
                       "type": [
@@ -27711,7 +28445,9 @@
                     }
                   },
                   "required": [
+                    "available",
                     "model",
+                    "options",
                     "pick",
                     "slot"
                   ],
@@ -27725,6 +28461,7 @@
               "billing",
               "eigenInference",
               "embeddingModel",
+              "modelProvider",
               "providers",
               "slots"
             ],

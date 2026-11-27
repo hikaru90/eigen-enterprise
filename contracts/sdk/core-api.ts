@@ -3136,6 +3136,20 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "email.reputation_check": {
+    input: Record<string, never>
+    output: unknown
+  }
+  "email.reputation_get": {
+    input: Record<string, never>
+    output: unknown
+  }
+  "email.reputation_resume": {
+    input: {
+      "reason": string
+    }
+    output: unknown
+  }
   "email.send_mail": {
     input: {
       "from"?: string
@@ -4126,6 +4140,12 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "messages.presence": {
+    input: {
+      "user_id"?: string
+    }
+    output: unknown
+  }
   "messages.react": {
     input: {
       "emoji": string
@@ -4145,6 +4165,12 @@ export type CoreApiTools = {
   "messages.set_do_not_disturb": {
     input: {
       "do_not_disturb": boolean
+    }
+    output: unknown
+  }
+  "messages.set_share_where": {
+    input: {
+      "share_where": boolean
     }
     output: unknown
   }
@@ -4598,6 +4624,93 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "settings.ai_usage_overview": {
+    input: {
+      "from"?: string
+      "to"?: string
+    }
+    output: {
+      "billing": ({
+        "currency": "EUR"
+        "markup": number
+        "rateDay": string
+        "usdToEur": number
+      }) | null
+      "daily": Array<{
+        "costUsd": number
+        "date": string
+        "invoicedEur"?: number
+        "products": Record<string, number>
+        "productsEur"?: Record<string, number>
+      }>
+      "from": string | null
+      "models": Array<{
+        "cachedTokens": number
+        "calls": number
+        "completionTokens": number
+        "costUsd": number
+        "invoicedEur"?: number
+        "model": string | null
+        "promptTokens": number
+        "providerUsd"?: number
+      }>
+      "people": Array<{
+        "cachedTokens": number
+        "calls": number
+        "completionTokens": number
+        "costUsd": number
+        "invoicedEur"?: number
+        "kind": "person" | "coworker"
+        "name": string
+        "products": Array<{
+          "cachedTokens": number
+          "calls": number
+          "completionTokens": number
+          "costUsd": number
+          "id": "assistant" | "coworkers" | "memory" | "brain" | "decisions" | "calls" | "contacts" | "calendar" | "handover" | "repos" | "branding" | "website" | "drive" | "contribute" | "email" | "speech" | "setup" | "unattributed"
+          "invoicedEur"?: number
+          "label": string
+          "promptTokens": number
+          "providerUsd"?: number
+        }>
+        "promptTokens": number
+        "providerUsd"?: number
+        "userId": string
+      }>
+      "products": Array<{
+        "cachedTokens": number
+        "calls": number
+        "completionTokens": number
+        "costUsd": number
+        "id": "assistant" | "coworkers" | "memory" | "brain" | "decisions" | "calls" | "contacts" | "calendar" | "handover" | "repos" | "branding" | "website" | "drive" | "contribute" | "email" | "speech" | "setup" | "unattributed"
+        "invoicedEur"?: number
+        "label": string
+        "promptTokens": number
+        "providerUsd"?: number
+        "tasks": Array<{
+          "cachedTokens": number
+          "calls": number
+          "completionTokens": number
+          "costUsd": number
+          "id": string | null
+          "invoicedEur"?: number
+          "label": string
+          "promptTokens": number
+          "providerUsd"?: number
+        }>
+      }>
+      "to": string | null
+      "totals": {
+        "cachedTokens": number
+        "calls": number
+        "completionTokens": number
+        "costUsd": number
+        "invoicedEur"?: number
+        "promptTokens": number
+        "providerUsd"?: number
+      }
+    }
+  }
   "settings.get": {
     input: Record<string, unknown>
     output: {
@@ -4606,6 +4719,7 @@ export type CoreApiTools = {
         "billing": "byok" | "platform"
         "eigenInference": boolean
         "embeddingModel": string | null
+        "modelProvider": "openrouter" | "opper"
         "providers": Array<{
           "authType": string
           "configured": boolean
@@ -4616,7 +4730,9 @@ export type CoreApiTools = {
           "ruleEmbedding": string | null
         }>
         "slots": Array<{
+          "available": boolean
           "model": string
+          "options": Array<string>
           "pick": string | null
           "slot": "chat" | "stt" | "tts" | "decision"
         }>
@@ -4691,6 +4807,16 @@ export type CoreApiTools = {
     output: {
       "capApplies": boolean
       "capUsd": number | null
+      "invoiced"?: {
+        "billing": {
+          "currency": "EUR"
+          "markup": number
+          "rateDay": string
+          "usdToEur": number
+        }
+        "invoicedEur": number
+        "providerUsd": number
+      }
       "remainingUsd": number | null
       "reply"?: ({
         "costUsd": number
@@ -4715,6 +4841,7 @@ export type CoreApiTools = {
         "billing": "byok" | "platform"
         "eigenInference": boolean
         "embeddingModel": string | null
+        "modelProvider": "openrouter" | "opper"
         "providers": Array<{
           "authType": string
           "configured": boolean
@@ -4725,7 +4852,9 @@ export type CoreApiTools = {
           "ruleEmbedding": string | null
         }>
         "slots": Array<{
+          "available": boolean
           "model": string
+          "options": Array<string>
           "pick": string | null
           "slot": "chat" | "stt" | "tts" | "decision"
         }>
@@ -5362,6 +5491,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "email.mailbox_list",
   "email.mailbox_set_address",
   "email.mailbox_set_disabled",
+  "email.reputation_check",
+  "email.reputation_get",
+  "email.reputation_resume",
   "email.send_mail",
   "email.send_template",
   "email.sender_add",
@@ -5485,9 +5617,11 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "messages.members",
   "messages.open_dm",
   "messages.post",
+  "messages.presence",
   "messages.react",
   "messages.read",
   "messages.set_do_not_disturb",
+  "messages.set_share_where",
   "messages.thread",
   "messages.upload_attachments",
   "module_hub.file",
@@ -5545,6 +5679,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "roadmap.add_item",
   "roadmap.list_items",
   "roadmap.update_item",
+  "settings.ai_usage_overview",
   "settings.get",
   "settings.logo_recrop",
   "settings.logo_remove",
