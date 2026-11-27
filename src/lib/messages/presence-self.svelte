@@ -11,7 +11,9 @@
    * My own status at the foot of the Messages sidebar (where Slack and Teams
    * put it): my picture with its dot, the words, and the Do not disturb
    * switch. The switch shows the server's state; flipping it asks the page
-   * (ontoggle), which saves it and the feed confirms.
+   * (ontoggle), which saves it and the feed confirms. Under it, Share where I
+   * am (plan/phase-multiplayer-presence.md) — once the server has said how
+   * it is set (`share`), saved the same way (onshare).
    */
   let {
     name,
@@ -22,6 +24,8 @@
     error,
     ontoggle,
     switchId = 'presence-dnd',
+    share = null,
+    onshare,
   }: {
     name: string
     image: string | null
@@ -33,7 +37,12 @@
     ontoggle: (on: boolean) => void
     /** The switch's element id (the nav's copy needs its own, Messages shows both). */
     switchId?: string
+    /** Share where I am as the server has it; null until it has said (no switch is shown yet). */
+    share?: boolean | null
+    onshare?: (on: boolean) => void
   } = $props()
+  // svelte-ignore state_referenced_locally
+  const shareId = `${switchId}-share-where`
 
   const label = $derived(presenceLabel(presence, now))
 </script>
@@ -70,6 +79,22 @@
     />
     <Label for={switchId} class="text-xs font-normal text-foreground/80">Do not disturb</Label>
   </div>
+  {#if share !== null && share !== undefined && onshare}
+    <div class="mt-2 flex items-center gap-2">
+      <Switch
+        id={shareId}
+        size="sm"
+        disabled={saving}
+        data-testid="presence-share-where"
+        aria-describedby="{shareId}-hint"
+        bind:checked={() => share, (on) => onshare(on)}
+      />
+      <Label for={shareId} class="text-xs font-normal text-foreground/80">Share where I am</Label>
+    </div>
+    <p id="{shareId}-hint" class="mt-1 text-xs text-muted-foreground" data-testid="presence-share-where-hint">
+      Others see which page you’re on; files and chats only if they can open them.
+    </p>
+  {/if}
   {#if error}
     <ErrorNotice
       class="mt-1.5 text-xs"

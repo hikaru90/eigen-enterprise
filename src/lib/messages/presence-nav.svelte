@@ -11,7 +11,8 @@
    * Me at the foot of the main nav (Contribute e4ef6be1): my picture with its
    * status dot, my name and my status in words — on every page, where people
    * look for it, so Do not disturb is not forgotten. Clicking opens my status
-   * card (the same one as in Messages) with the Do not disturb switch.
+   * card (the same one as in Messages) with the Do not disturb switch and
+   * Share where I am (plan/phase-multiplayer-presence.md).
    */
   let {
     self,
@@ -78,6 +79,8 @@
         error={self.error}
         ontoggle={(on) => void self.setDoNotDisturb(on)}
         switchId="shell-presence-dnd"
+        share={self.shareWhere}
+        onshare={(on) => void self.setShareWhere(on)}
       />
     {:else}
       {#if self.error}

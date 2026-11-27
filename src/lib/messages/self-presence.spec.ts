@@ -13,6 +13,8 @@ const view = (over: Partial<PresenceView> = {}): PresenceView => ({
 const answer = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
+const HERE = { area: 'drive', path: '/drive', item: null }
+
 /** Lets the fetch promise chain settle. */
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
@@ -29,12 +31,12 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
       answer(200, { presence: view({ status: 'dnd', doNotDisturb: true }) }),
     )
     const self = new SelfPresence({ fetch })
-    self.beat({ clientId: 'tab-0123456789', state: 'active' })
+    self.beat({ clientId: 'tab-0123456789', state: 'active', where: HERE })
     await settle()
     expect(fetch).toHaveBeenCalledWith('/api/messages/presence', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clientId: 'tab-0123456789', state: 'active' }),
+      body: JSON.stringify({ clientId: 'tab-0123456789', state: 'active', where: HERE }),
       keepalive: true,
     })
     expect(self.view).toEqual(view({ status: 'dnd', doNotDisturb: true }))
@@ -45,7 +47,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
     const self = new SelfPresence({
       fetch: async () => answer(403, { error: 'only members of the company have a presence' }),
     })
-    self.beat({ clientId: 'tab-0123456789', state: 'active' })
+    self.beat({ clientId: 'tab-0123456789', state: 'active', where: HERE })
     await settle()
     expect(self.error?.error).toBe('only members of the company have a presence')
     expect(err).toHaveBeenCalled()
@@ -57,7 +59,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
     const self = new SelfPresence({
       fetch: async () => Promise.reject(new TypeError('Failed to fetch')),
     })
-    self.beat({ clientId: 'tab-0123456789', state: 'active' })
+    self.beat({ clientId: 'tab-0123456789', state: 'active', where: HERE })
     await settle()
     expect(self.error?.error).toBe('Status could not be updated: Failed to fetch')
     err.mockRestore()
@@ -101,5 +103,48 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
     self.receive(view({ status: 'in_call' }))
     expect(self.view?.status).toBe('in_call')
     expect(self.error).toBeNull()
+  })
+
+  it('Share where I am is unknown until the server says it, then follows every answer', () => {
+    const self = new SelfPresence({ fetch: vi.fn<SelfPresenceFetch>() })
+    expect(self.shareWhere).toBeNull()
+    self.receive({ ...view(), shareWhere: false })
+    expect(self.shareWhere).toBe(false)
+    // The Messages feed's presence carries no switch: it leaves it as it was.
+    self.receive(view({ status: 'away' }))
+    expect(self.shareWhere).toBe(false)
+  })
+
+  it('Share where I am is saved with PUT …/presence/where and the answer becomes my status', async () => {
+    let resolve!: (r: Response) => void
+    const fetch = vi.fn<SelfPresenceFetch>(() => new Promise<Response>((r) => (resolve = r)))
+    const self = new SelfPresence({ fetch })
+    self.receive({ ...view(), shareWhere: true })
+    const saved = self.setShareWhere(false)
+    expect(self.saving).toBe(true)
+    expect(fetch).toHaveBeenCalledWith('/api/messages/presence/where', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ shareWhere: false }),
+    })
+    resolve(answer(200, { presence: { ...view(), shareWhere: false } }))
+    await saved
+    expect(self.saving).toBe(false)
+    expect(self.shareWhere).toBe(false)
+  })
+
+  it('a refused Share where I am keeps the switch as it was and says why', async () => {
+    const self = new SelfPresence({ fetch: async () => answer(500, { error: 'tracker down' }) })
+    self.receive({ ...view(), shareWhere: true })
+    await self.setShareWhere(false)
+    expect(self.shareWhere).toBe(true)
+    expect(self.error?.error).toBe('tracker down')
+    expect(self.saving).toBe(false)
+  })
+
+  it('a Share where I am that cannot reach the server says so', async () => {
+    const self = new SelfPresence({ fetch: async () => Promise.reject(new TypeError('Failed to fetch')) })
+    await self.setShareWhere(true)
+    expect(self.error?.error).toBe('Sharing where you are could not be saved: Failed to fetch')
   })
 })

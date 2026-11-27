@@ -30,6 +30,7 @@
   import OfficeViewerLoader from '$lib/office/office-viewer-loader.svelte'
   import { isOfficeKind } from '$lib/office/kinds'
   import { OFFICE_VIEWERS } from '$lib/office/viewers'
+  import { declarePresenceFocus } from '$lib/presence/focus.svelte'
   import { docTitle } from '$lib/shell/title'
 
   /**
@@ -42,6 +43,8 @@
    * maximised in the window; Esc leaves it.
    */
   let { data }: { data: PageData } = $props()
+  // Where I am (plan/phase-multiplayer-presence.md): this file is the page's open item.
+  declarePresenceFocus(() => ({ kind: 'drive_file', id: data.file.id }))
   const contentUrl = $derived(`/api/drive/files/${data.file.id}/content`)
   const fmt = (d: string | Date) =>
     new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })

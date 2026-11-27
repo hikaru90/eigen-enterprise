@@ -1,6 +1,7 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- data-held hrefs go through appHref(), which calls resolve() */
   import type { Snippet } from 'svelte'
+  import CircleAlert from '@lucide/svelte/icons/circle-alert'
   import Menu from '@lucide/svelte/icons/menu'
   import PanelLeftClose from '@lucide/svelte/icons/panel-left-close'
   import PanelLeftOpen from '@lucide/svelte/icons/panel-left-open'
@@ -14,6 +15,7 @@
   import AssistantPanel from '$lib/components/assistant/assistant-panel.svelte'
   import { provideAssistant } from '$lib/components/assistant/context'
   import ContributeButton from '$lib/components/contribute/contribute-button.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
   import { motionDuration, panelSlide, prefersReducedMotion } from '$lib/gestures/panel-slide'
   import { peekOffset, sideMove, type SidePanels } from '$lib/gestures/side-swipe'
@@ -23,6 +25,10 @@
   import PresenceDot from '$lib/messages/presence-dot.svelte'
   import PresenceNav from '$lib/messages/presence-nav.svelte'
   import type { SelfPresence } from '$lib/messages/self-presence.svelte'
+  import * as Popover from '$lib/components/ui/popover'
+  import type { CompanyPresence, PresencePerson } from '$lib/presence/company-presence.svelte'
+  import PresenceStack from '$lib/presence/presence-stack.svelte'
+  import { DASHBOARD_AREA, type WhereReport } from '$lib/presence/where'
   import { appHref } from '$lib/shell/href'
   import { iconFor } from '$lib/shell/module-icon'
   import { currentNavId, type ShellData, type ShellNavItem } from '$lib/shell/nav'
@@ -59,12 +65,20 @@
    * sides: right brings the nav (the phone drawer, or the collapsed desktop
    * sidebar), left brings the assistant panel; toward an open side it puts
    * that side away first (side-swipe.ts).
+   *
+   * Multiplayer (plan/phase-multiplayer-presence.md): every sidebar entry —
+   * and the company badge for the dashboard — carries the small avatars of
+   * the people working there right now; the top bar shows who is "Here with
+   * you" (same page or item). The collapsed sidebar's toggle says how many
+   * are at work; the phone drawer is the sidebar, so it shows the same.
    */
   let {
     shell,
     pathname,
     user,
     presence,
+    company = null,
+    where = null,
     inkFrame = true,
     notice,
     children,
@@ -78,6 +92,10 @@
      * is off — then there is no status anywhere (off means off).
      */
     presence: SelfPresence | null
+    /** Where everyone is working (the live presence feed); null while Messages, which owns presence, is off. */
+    company?: CompanyPresence | null
+    /** Where this tab is (what its heartbeat reports): "Here with you" are the people at the same place. */
+    where?: WhereReport | null
     /**
      * The app's own style: the board's black frame (sidebar and top bar on
      * ink, the page a light panel inside it). With an active brand style the
@@ -169,6 +187,16 @@
     (drawerOpen ? 'Close menu' : 'Open menu') + (myStatus ? ` — your status: ${presenceLabel(myStatus, new Date())}` : ''),
   )
 
+  const hereWithYou = $derived(company?.hereWithMe(where) ?? [])
+  const atWork = $derived(company?.others.length ?? 0)
+  const toggleLabel = $derived(
+    (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar') +
+      (sidebarCollapsed && atWork > 0 ? ` — ${atWork} ${atWork === 1 ? 'person' : 'people'} at work in the app` : ''),
+  )
+  const peopleIn = (area: string): PresencePerson[] => company?.peopleIn(area) ?? []
+  /** Room for the avatar stack at the right end of a pill (20px avatars overlapping by 6px, +n chip). */
+  const stackRoom = (n: number) => 12 + 20 + (Math.min(n, 3) - 1) * 14 + (n > 3 ? 20 : 0)
+
   function closeDrawer(): void {
     drawerOpen = false
   }
@@ -256,12 +284,14 @@
   {@const Icon = iconFor(item.id)}
   {@const current = currentId === item.id}
   {@const dimmed = !item.active}
+  {@const here = peopleIn(item.id)}
   <!-- Controls are pills (the board): the current page is the white pill with the coral dot. -->
   <a
     href={appHref(item.href)}
     onclick={closeDrawer}
     aria-current={current ? 'page' : undefined}
     data-testid="shell-nav-{item.id}"
+    style={here.length > 0 ? `padding-right: ${stackRoom(here.length)}px;` : undefined}
     class="group flex h-8 min-w-0 items-center gap-2.5 rounded-full px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring
       {current
       ? 'bg-primary font-medium text-primary-foreground'
@@ -274,11 +304,21 @@
     {#if current}<span class="ml-auto size-1.5 shrink-0 rounded-full bg-coral" aria-hidden="true"></span>{/if}
     {#if dimmed}<span class="chip chip-line ml-auto shrink-0">Off</span>{/if}
   </a>
+  {#if here.length > 0}
+    <!-- Beside the link, not inside it (no button in a link): who is working in this entry now. -->
+    <PresenceStack
+      people={here}
+      title="In {item.name}"
+      class="absolute top-1/2 right-1.5 -translate-y-1/2"
+      testid="shell-nav-presence-{item.id}"
+    />
+  {/if}
 {/snippet}
 
 {#snippet sidebar()}
+  {@const onDash = peopleIn(DASHBOARD_AREA)}
   <div class="flex h-full min-h-0 flex-col">
-    <div class="flex shrink-0 items-center px-3 pt-3 pb-1">
+    <div class="relative flex shrink-0 items-center px-3 pt-3 pb-1">
       <!-- The company is the way home: its dashboard at / (polish P-2). -->
       <a
         href={resolve('/')}
@@ -286,6 +326,7 @@
         aria-current={onDashboard ? 'page' : undefined}
         data-testid="shell-company-link"
         title="Dashboard"
+        style={onDash.length > 0 ? `padding-right: ${stackRoom(onDash.length)}px;` : undefined}
         class="group flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full pr-3 pl-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring
           {onDashboard ? 'bg-accent' : 'hover:bg-accent'}"
       >
@@ -312,13 +353,21 @@
           <span class="truncate font-mono text-xs text-muted-foreground">Dashboard</span>
         </span>
       </a>
+      {#if onDash.length > 0}
+        <PresenceStack
+          people={onDash}
+          title="On the dashboard"
+          class="absolute top-1/2 right-5 -translate-y-[calc(50%-0.125rem)]"
+          testid="shell-nav-presence-dashboard"
+        />
+      {/if}
     </div>
     <nav class="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-4" aria-label="Main" data-testid="shell-nav-scroll">
       <ul class="flex flex-col gap-0.5" data-testid="shell-nav">
-        {#each mainItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
+        {#each mainItems as item (item.id)}<li class="relative">{@render navLink(item)}</li>{/each}
       </ul>
       <ul class="mt-5 flex flex-col gap-0.5">
-        {#each footerItems as item (item.id)}<li>{@render navLink(item)}</li>{/each}
+        {#each footerItems as item (item.id)}<li class="relative">{@render navLink(item)}</li>{/each}
       </ul>
     </nav>
     <div class="mx-3 mb-3 flex shrink-0 items-center gap-2.5 rounded-full bg-card py-1.5 pr-1.5 pl-1.5" data-testid="shell-user-footer">
@@ -438,8 +487,8 @@
       <!-- Desktop: collapse / expand the sidebar (⌘\ / Ctrl+\). -->
       <button
         type="button"
-        class="hidden size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:flex"
-        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        class="relative hidden size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:flex"
+        aria-label={toggleLabel}
         aria-expanded={!sidebarCollapsed}
         aria-controls="shell-sidebar"
         aria-keyshortcuts="Meta+Backslash Control+Backslash"
@@ -449,6 +498,14 @@
       >
         {#if sidebarCollapsed}
           <PanelLeftOpen class="size-4" aria-hidden="true" strokeWidth={1.75} />
+          <!-- The sidebar's avatars are put away with it: how many are at work stays on its toggle. -->
+          {#if atWork > 0}
+            <span
+              class="pointer-events-none absolute -top-0.5 -right-0.5 inline-grid h-4 min-w-4 place-items-center rounded-full bg-card px-1 font-mono text-xs leading-none text-foreground ring-2 ring-sidebar"
+              data-testid="shell-sidebar-presence"
+              aria-hidden="true">{atWork}</span
+            >
+          {/if}
         {:else}
           <PanelLeftClose class="size-4" aria-hidden="true" strokeWidth={1.75} />
         {/if}
@@ -460,6 +517,24 @@
           </div>
         {/if}
       </div>
+      {#if company?.error}
+        <!-- Where everyone is could not be loaded or went stale: said, never hidden. -->
+        <Popover.Root>
+          <Popover.Trigger
+            class="flex size-9 shrink-0 items-center justify-center rounded-full text-destructive outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Where everyone is working is unavailable. Show why"
+            data-testid="shell-presence-error"
+          >
+            <CircleAlert class="size-4" aria-hidden="true" strokeWidth={1.75} />
+          </Popover.Trigger>
+          <Popover.Content align="end" sideOffset={8} class="w-72 p-3">
+            <ErrorNotice class="text-xs" error={company.error} attempted="Showing where everyone is working (presence feed)" />
+          </Popover.Content>
+        </Popover.Root>
+      {/if}
+      {#if hereWithYou.length > 0}
+        <PresenceStack people={hereWithYou} title="Here with you" side="bottom" testid="shell-here-with-you" />
+      {/if}
       <!-- Top right: anyone proposes an improvement to the app (the Make a wish board). -->
       <ContributeButton />
     </header>

@@ -71,6 +71,7 @@
   } from '$lib/messages/view'
   import { uploadVoiceRecording } from '$lib/messages/voice-upload'
   import { m as msg } from '$lib/paraglide/messages.js'
+  import { getPresenceFocus } from '$lib/presence/focus.svelte'
   import { syncAppBadge, totalUnread } from '$lib/pwa/badge'
   import NotificationsBanner from '$lib/pwa/notifications-banner.svelte'
   import { docTitle } from '$lib/shell/title'
@@ -138,6 +139,9 @@
     const mine = people.find((p) => p.userId === data.me)
     if (mine) selfPresence?.receive(mine)
   }
+  // Where I am (plan/phase-multiplayer-presence.md): the open conversation is
+  // this page's item — declared on every switch, cleared when none is open.
+  const presenceFocus = getPresenceFocus()
 
   let listEl = $state<HTMLDivElement | null>(null)
   let composerEl = $state<HTMLTextAreaElement | null>(null)
@@ -302,6 +306,7 @@
   // ── conversation selection ──────────────────────────────────────────────
   async function openConversation(id: string, updateUrl = true) {
     selectedId = id
+    presenceFocus.set({ kind: 'conversation', id })
     draft = drafts.read(id)
     messages = []
     hasMore = false
@@ -355,6 +360,7 @@
 
   function closeConversation() {
     selectedId = null
+    presenceFocus.set(null)
     thread = null
     clearPending(pendingFiles)
     pendingFiles = []
@@ -937,6 +943,7 @@
       selectedId = null
       void reportViewing()
     }
+    presenceFocus.set(null)
   })
 
   // ── new channel / new message dialogs ───────────────────────────────────
@@ -1241,9 +1248,11 @@
         image={myself.image ?? null}
         presence={presenceFor(data.me)}
         {now}
-        saving={dndSaving}
-        error={presenceError}
+        saving={dndSaving || selfPresence?.saving === true}
+        error={presenceError ?? selfPresence?.error ?? null}
         ontoggle={(on) => void setDoNotDisturb(on)}
+        share={selfPresence?.shareWhere ?? null}
+        onshare={(on) => void selfPresence?.setShareWhere(on)}
       />
     {/if}
   </nav>

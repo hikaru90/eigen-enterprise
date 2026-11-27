@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
+  import { afterNavigate } from '$app/navigation'
   import { page } from '$app/state'
   import { browserPresenceChannel, CallPresence, setCallPresence } from '$lib/calls/call-presence.svelte'
   import { callsClient } from '$lib/calls/client'
@@ -8,6 +9,10 @@
   import AppShell from '$lib/components/app-shell.svelte'
   import { PresenceHeartbeat } from '$lib/messages/presence'
   import { SelfPresence, setSelfPresence } from '$lib/messages/self-presence.svelte'
+  import { CompanyPresence, setCompanyPresence } from '$lib/presence/company-presence.svelte'
+  import { PresenceFocus, setPresenceFocus } from '$lib/presence/focus.svelte'
+  import { whereOf } from '$lib/presence/report'
+  import { DASHBOARD_AREA } from '$lib/presence/where'
   import NotificationsBanner from '$lib/pwa/notifications-banner.svelte'
   import { shellVisible } from '$lib/shell/nav'
 
@@ -21,7 +26,10 @@
   // A call runs in its own tab (the call page owns it); every tab knows which
   // call this browser is in — one call at a time across tabs.
   const callPresence = setCallPresence(new CallPresence())
-  const resume = () => liveCalls.resume()
+  const resume = () => {
+    liveCalls.resume()
+    company?.resume()
+  }
   const onVisible = () => {
     if (document.visibilityState === 'visible') resume()
   }
@@ -39,16 +47,41 @@
     data.user && data.liveFeeds?.presence ? new SelfPresence({ fetch: (input, init) => fetch(input, init) }) : null,
   )
 
+  // Where everyone is working (plan/phase-multiplayer-presence.md): every beat
+  // says where this tab is — the sidebar entry, the page, and the one item
+  // the page declared open (PresenceFocus) — and a navigation or a new item
+  // beats at once (moved), so others' sidebars follow within about a second.
+  // The live feed of everyone's place opens with the beat: only while
+  // Messages, which owns presence, is on.
+  const focus = setPresenceFocus(new PresenceFocus(() => presenceBeat?.moved()))
+  // Signed in means the shell's data is there (the layout load); signed out there is no beat at all.
+  const navItems = $derived(data.shell?.nav.items ?? [])
+  const myWhere = $derived(whereOf(navItems, page.url.pathname, focus.item))
+  // svelte-ignore state_referenced_locally
+  const company = setCompanyPresence(
+    data.user && data.liveFeeds?.presence
+      ? new CompanyPresence({
+          me: data.user.id,
+          open: () => new EventSource('/api/messages/presence/stream'),
+          fetch: (input) => fetch(input),
+          areaName: (area) =>
+            area === DASHBOARD_AREA ? 'Dashboard' : (navItems.find((i) => i.id === area)?.name ?? null),
+        })
+      : null,
+  )
+  afterNavigate(() => presenceBeat?.moved())
+
   onMount(() => {
     if (!data.user) return
     callPresence.connect(browserPresenceChannel)
     // Only for plugins that are on: the plugin gate answers 409 otherwise, and
     // a feed would retry forever. A switch takes effect on the next full load.
-    if (data.liveFeeds?.calls) {
-      liveCalls.connect(() => new EventSource('/api/calls/stream'))
+    if (data.liveFeeds?.calls || company) {
       window.addEventListener('online', resume)
       document.addEventListener('visibilitychange', onVisible)
     }
+    if (data.liveFeeds?.calls) liveCalls.connect(() => new EventSource('/api/calls/stream'))
+    company?.connect()
     if (selfPresence) {
       presenceBeat = new PresenceHeartbeat({
         clientId: crypto.randomUUID(),
@@ -56,6 +89,7 @@
         doc: document,
         win: window,
         now: () => Date.now(),
+        where: () => myWhere,
       })
       presenceBeat.start()
     }
@@ -63,6 +97,7 @@
 
   onDestroy(() => {
     liveCalls.close()
+    company?.close()
     callPresence.close()
     presenceBeat?.stop()
     if (typeof window === 'undefined') return
@@ -103,6 +138,8 @@
       pathname={page.url.pathname}
       user={data.user}
       presence={selfPresence}
+      {company}
+      where={myWhere}
       inkFrame={!brandActive}
     >
       {#snippet notice()}

@@ -132,6 +132,7 @@ export default defineConfig({
       'src/lib/messages/voice-player.svelte.spec.ts',
       'src/lib/messages/presence-dot.svelte.spec.ts',
       'src/lib/messages/presence-nav.svelte.spec.ts',
+      'src/lib/presence/*.svelte.spec.ts',
       'src/lib/calls/call-view.svelte.spec.ts',
       'src/lib/calls/call-brain.svelte.spec.ts',
       'src/lib/calls/call-chat.svelte.spec.ts',
