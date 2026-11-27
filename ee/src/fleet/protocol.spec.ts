@@ -5,6 +5,7 @@ import {
   FLEET_MAX_SKEW_MS,
   FLEET_PATHS,
   PLATFORM_AI_PROVIDERS,
+  aiUsageDayV1,
   desiredV1,
   enrollRequestV1,
   escrowRequestV1,
@@ -120,8 +121,8 @@ describe('fleet messages', () => {
 describe('platform AI provider (feature platformAiProvider)', () => {
   const ai = { llmBaseUrl: 'https://api.opper.ai/v3/compat', llmApiKey: 'k', llmModelChat: 'c', llmModelEmbedding: 'e' }
 
-  it('is an announced feature, appended', () => {
-    expect(FLEET_FEATURES.at(-1)).toBe('platformAiProvider')
+  it('is an announced feature, appended after hostedAddress', () => {
+    expect(FLEET_FEATURES.indexOf('platformAiProvider')).toBe(FLEET_FEATURES.indexOf('hostedAddress') + 1)
     expect(PLATFORM_AI_PROVIDERS).toEqual(['openrouter', 'opper'])
   })
 
@@ -132,6 +133,35 @@ describe('platform AI provider (feature platformAiProvider)', () => {
 
   it('an unknown provider is refused, never guessed', () => {
     expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, provider: 'eurouter' } })).toThrow()
+  })
+})
+
+describe('AI usage (feature aiUsage)', () => {
+  const row = { day: '2026-11-27', task: 'assistant.turn', model: 'openai/gpt-5-mini', calls: 3, promptTokens: 120, completionTokens: 40, cachedTokens: 0, costUsd: 0.0012 }
+
+  it('is appended after platformAiProvider', () => {
+    expect(FLEET_FEATURES.at(-1)).toBe('aiUsage')
+    expect(FLEET_FEATURES.indexOf('aiUsage')).toBe(FLEET_FEATURES.indexOf('platformAiProvider') + 1)
+  })
+
+  it('the report carries usage rows; unattributed rows keep task/model null', () => {
+    const r = aiUsageDayV1.parse({ ...row, task: null, model: null })
+    expect(r.task).toBeNull()
+    expect(() => aiUsageDayV1.parse({ ...row, costUsd: -1 })).toThrow()
+    expect(() => aiUsageDayV1.parse({ ...row, day: '27.11.2026' })).toThrow()
+    expect(() => aiUsageDayV1.parse({ ...row, extra: 1 })).toThrow()
+  })
+
+  it('desired names the first day to report and the EUR billing', () => {
+    const d = desiredV1.parse({ protocol: 1, pollSeconds: 60, aiUsage: { from: '2026-11-01', markup: 1.2, currency: 'EUR', usdToEur: 0.95, rateDay: '2026-11-27' } })
+    expect(d.aiUsage?.usdToEur).toBe(0.95)
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, aiUsage: { from: '2026-11-01', markup: 1.2, currency: 'USD', usdToEur: 0.95, rateDay: '2026-11-27' } })).toThrow()
+  })
+
+  it('platformAi may carry a usage tag in Opper\'s tag-value alphabet', () => {
+    const ai = { llmBaseUrl: 'https://api.opper.ai/v3/compat', llmApiKey: 'k', llmModelChat: 'c', llmModelEmbedding: 'e', provider: 'opper' as const }
+    expect(desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, usageTag: 'box_1a2b' } }).platformAi?.usageTag).toBe('box_1a2b')
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, usageTag: 'a b' } })).toThrow()
   })
 })
 
