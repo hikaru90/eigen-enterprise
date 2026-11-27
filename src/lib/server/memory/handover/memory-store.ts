@@ -55,5 +55,9 @@ export function memoryHandoverStore(): HandoverStore & { handovers: Map<string, 
     async deleteEntry(id) {
       return entries.delete(id)
     },
+    async deleteHandover(id) {
+      for (const [entryId, e] of entries) if (e.handoverId === id) entries.delete(entryId)
+      return handovers.delete(id)
+    },
   }
 }

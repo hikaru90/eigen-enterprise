@@ -9,6 +9,7 @@ import {
   handoverBoard,
   listHandovers,
   removeEntry,
+  removeHandover,
   updateEntry,
   type HandoverDeps,
 } from './service'
@@ -171,6 +172,26 @@ describe('assigning an entry', () => {
     const h = await createHandover(deps, ony, { title: 'H' })
     const e = await addEntry(deps, ony, { handoverId: h.id, topic: 'T', sentence: 'S.', status: 'for_info' })
     await expect(assignEntry(deps, { userId: 'kim', via: 'person' }, { entryId: e.id, assigneeId: 'alex' })).rejects.toMatchObject({ code: 'forbidden' })
+  })
+})
+
+describe('deleting a whole handover (Contribute 8587d182)', () => {
+  it('the owner deletes a handover and its entries are gone from the board', async () => {
+    const { deps } = setup()
+    const h = await createHandover(deps, ony, { title: 'Mistaken handover' })
+    await addEntry(deps, ony, { handoverId: h.id, topic: 'T', sentence: 'S.', status: 'for_info' })
+    expect(await removeHandover(deps, ony, h.id)).toEqual({ id: h.id, removed: true })
+    expect((await listHandovers(deps, 'alex')).map((x) => x.id)).not.toContain(h.id)
+    await expect(getHandover(deps, 'ony', h.id)).rejects.toMatchObject({ code: 'not_found' })
+  })
+
+  it('only the owner deletes; a non-member deletes nothing; unknown ids are not found', async () => {
+    const { deps } = setup()
+    const h = await createHandover(deps, ony, { title: 'Handover to Alex' })
+    await expect(removeHandover(deps, { userId: 'kim', via: 'person' }, h.id)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(removeHandover(deps, { userId: 'stranger', via: 'person' }, h.id)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(removeHandover(deps, ony, 'missing')).rejects.toMatchObject({ code: 'not_found' })
+    expect((await listHandovers(deps, 'alex')).map((x) => x.id)).toContain(h.id)
   })
 })
 

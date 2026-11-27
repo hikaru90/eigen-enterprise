@@ -219,6 +219,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/m/memory/handover ?/assign': tool('handover.assign_entry'),
   '/(nucleus)/m/memory/handover ?/create': tool('handover.create'),
   '/(nucleus)/m/memory/handover ?/remove': tool('handover.remove_entry'),
+  '/(nucleus)/m/memory/handover ?/remove_handover': tool('handover.delete'),
   '/(nucleus)/m/memory/handover ?/update': tool('handover.update_entry'),
   '/(nucleus)/m/memory/reminders ?/complete': tool('reminders.complete'),
   '/(nucleus)/m/memory/reminders ?/create': tool('reminders.create'),

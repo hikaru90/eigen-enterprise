@@ -20042,6 +20042,37 @@
           "handover_id": {
             "minLength": 1,
             "type": "string"
+          }
+        },
+        "required": [
+          "handover_id"
+        ],
+        "type": "object"
+      },
+      "module": "memory",
+      "name": "handover.delete",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "member"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
+          "handover_id": {
+            "minLength": 1,
+            "type": "string"
           },
           "link": {
             "description": "An app path (/m/…) or an http(s) address of the detail document or item.",

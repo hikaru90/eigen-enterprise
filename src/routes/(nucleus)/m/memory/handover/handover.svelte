@@ -136,11 +136,19 @@
 
   {#each handovers as h (h.id)}
     <section class="flex min-w-0 flex-col gap-3 rounded-2xl bg-card p-4" id="handover-{h.id}" data-testid="handover-{h.id}">
-      <header class="flex min-w-0 flex-col gap-0.5">
-        <h2 class="text-[15px] leading-snug font-medium">{h.title}</h2>
-        <p class="text-sm text-muted-foreground">
-          {byline(h)}
-        </p>
+      <header class="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div class="flex min-w-0 flex-col gap-0.5">
+          <h2 class="text-[15px] leading-snug font-medium">{h.title}</h2>
+          <p class="text-sm text-muted-foreground">
+            {byline(h)}
+          </p>
+        </div>
+        {#if h.canEdit}
+          <form method="POST" action="?/remove_handover" use:enhance class="shrink-0">
+            <input type="hidden" name="handover_id" value={h.id} />
+            <button type="submit" class={quiet} data-testid="handover-delete-{h.id}">{m.handover_delete()}</button>
+          </form>
+        {/if}
       </header>
 
       {#if h.entries.length === 0}

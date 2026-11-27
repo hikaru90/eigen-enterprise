@@ -62,6 +62,8 @@ export type HandoverStore = {
   /** Null when the entry is gone; HandoverTopicTakenError when the new topic is taken. */
   updateEntry(id: string, patch: HandoverEntryPatch): Promise<HandoverEntry | null>
   deleteEntry(id: string): Promise<boolean>
+  /** Removes the handover and (cascade) its entries. False when it was already gone. */
+  deleteHandover(id: string): Promise<boolean>
 }
 
 /** A store-level refusal: the handover already has an entry on that topic (one entry per topic). */

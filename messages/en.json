@@ -793,6 +793,7 @@
   "handover_entry_assigned": "Assigned to {name}",
   "handover_entry_assigned_done": "{name} completed it",
   "handover_entry_by_brain": "kept current by the brain",
+  "handover_delete": "Delete handover",
   "calendar_reminder_body": "In {minutes} min · {time}",
   "calendar_reminder_body_now": "Starts now · {time}",
   "calendar_reminder_join": "Tap to join the call",

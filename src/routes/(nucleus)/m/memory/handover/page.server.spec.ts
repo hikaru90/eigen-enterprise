@@ -119,6 +119,17 @@ describe('Memory › Handover page', () => {
     expect(await act('add', 'ony', { handover_id: h!.id, topic: 't', sentence: 'S.', status: 'for_info' })).toMatchObject({ status: 409, data: { formId: `add-${h!.id}` } })
   })
 
+  it('the owner deletes a whole handover through handover.delete (Contribute 8587d182); a colleague cannot', async () => {
+    setup()
+    await act('create', 'ony', { title: 'Mistake' })
+    const [h] = (await loaded('ony')).handovers
+    const out = await act('remove_handover', 'alex', { handover_id: h!.id })
+    expect(out).toMatchObject({ status: 403, data: { formId: h!.id, agent: { tool: 'handover.delete' } } })
+    expect(await act('remove_handover', 'ony', { handover_id: h!.id })).toMatchObject({ formId: h!.id, ok: true })
+    expect((await loaded('ony')).handovers).toEqual([])
+    expect(executed.at(-1)).toMatchObject({ name: 'handover.delete', input: { handover_id: h!.id } })
+  })
+
   it('someone who is no member of the company is refused', async () => {
     setup()
     expect(await act('create', 'stranger', { title: 'X' })).toMatchObject({ status: 403 })

@@ -791,6 +791,7 @@
   "handover_entry_assigned": "Zugewiesen an {name}",
   "handover_entry_assigned_done": "{name} hat es erledigt",
   "handover_entry_by_brain": "vom Brain aktuell gehalten",
+  "handover_delete": "Übergabe löschen",
   "calendar_reminder_body": "In {minutes} Min. · {time}",
   "calendar_reminder_body_now": "Beginnt jetzt · {time}",
   "calendar_reminder_join": "Tippen, um dem Anruf beizutreten",

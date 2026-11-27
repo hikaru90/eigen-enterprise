@@ -342,6 +342,17 @@ export async function removeEntry(d: HandoverDeps, actor: HandoverActor, entryId
   return { id: entry.id, removed: true }
 }
 
+/**
+ * Removes a whole handover with its entries (Contribute 8587d182: a mistakenly
+ * created handover must not stay forever). Owner-only, like every write. An
+ * assigned task an entry gave out stays with its assignee (it is their task).
+ */
+export async function removeHandover(d: HandoverDeps, actor: HandoverActor, id: string): Promise<{ id: string; removed: true }> {
+  const handover = await ownedHandover(d, actor, id)
+  if (!(await d.store.deleteHandover(handover.id))) throw new HandoverError('not_found', 'Handover not found.')
+  return { id: handover.id, removed: true }
+}
+
 const STATUS_WORDS: Record<HandoverStatus, string> = {
   decision_needed: 'Decision needed',
   in_progress: 'In progress',

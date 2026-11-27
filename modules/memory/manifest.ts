@@ -92,6 +92,7 @@ export const HANDOVER_TOOL_NAMES = [
   'handover.add_entry',
   'handover.update_entry',
   'handover.remove_entry',
+  'handover.delete',
   'handover.assign_entry',
   'handover.draft_entry',
 ] as const

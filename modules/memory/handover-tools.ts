@@ -178,6 +178,16 @@ export function createHandoverTools(opts: HandoverToolDeps = {}): ToolDescriptor
     },
     {
       ...base,
+      name: 'handover.delete',
+      summary:
+        "Delete one of the person's own handovers with all of its entries — for one created by mistake. A task an entry assigned stays with its assignee.",
+      auditClass: 'mutate',
+      activity: () => 'Deleted a handover',
+      inputSchema: getInput,
+      handler: async (ctx, input) => (await service()).removeHandover(await deps(), await actor(ctx), getInput.parse(input).handover_id),
+    },
+    {
+      ...base,
       name: 'handover.assign_entry',
       summary:
         "Assign an entry of the person's own handover to another member (tasks.assignees): they get an assigned task from the person — in their Needs you, with the sentence, status and links. Unassigned entries stay information.",

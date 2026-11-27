@@ -108,4 +108,8 @@ export const actions: Actions = {
     const entryId = text(await request.formData(), 'entry_id') ?? ''
     return run(signedIn(locals), entryId, 'handover.remove_entry', { entry_id: entryId })
   },
+  remove_handover: async ({ locals, request }) => {
+    const handoverId = text(await request.formData(), 'handover_id') ?? ''
+    return run(signedIn(locals), handoverId, 'handover.delete', { handover_id: handoverId })
+  },
 }

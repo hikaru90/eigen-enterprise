@@ -3326,6 +3326,12 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "handover.delete": {
+    input: {
+      "handover_id": string
+    }
+    output: unknown
+  }
   "handover.draft_entry": {
     input: {
       "handover_id": string
@@ -5519,6 +5525,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "handover.add_entry",
   "handover.assign_entry",
   "handover.create",
+  "handover.delete",
   "handover.draft_entry",
   "handover.get",
   "handover.list",

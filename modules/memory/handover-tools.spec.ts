@@ -94,6 +94,17 @@ describe('handover.* tools', () => {
     expect(await tool('handover.remove_entry').handler(agent, { entry_id: e.id })).toEqual({ id: e.id, removed: true })
   })
 
+  it('handover.delete (Contribute 8587d182): the owner removes a mistaken handover with its entries; the schema takes only the id', async () => {
+    const { tool, agent } = setup()
+    const h = (await tool('handover.create').handler(agent, { title: 'Mistake' })) as HandoverView
+    await tool('handover.add_entry').handler(agent, { handover_id: h.id, topic: 'T', sentence: 'S.', status: 'for_info' })
+    expect(tool('handover.delete').auditClass).toBe('mutate')
+    expect(await tool('handover.delete').handler(agent, { handover_id: h.id })).toEqual({ id: h.id, removed: true })
+    const listed = (await tool('handover.list').handler(agent, {})) as { handovers: Array<{ id: string }> }
+    expect(listed.handovers.map((x) => x.id)).not.toContain(h.id)
+    await expect(tool('handover.get').handler(agent, { handover_id: h.id })).rejects.toThrow(/not found/i)
+  })
+
   it('draft_entry by the assistant is the brain’s upkeep', async () => {
     const { tool, agent } = setup()
     const h = (await tool('handover.create').handler(agent, { title: 'H' })) as HandoverView

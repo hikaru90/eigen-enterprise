@@ -78,4 +78,16 @@ describe('Memory › Handover', () => {
     await expect.element(page.getByTestId('handover-add-h1')).not.toBeInTheDocument()
     await expect.element(page.getByTestId('handover-entry-edit-e1')).not.toBeInTheDocument()
   })
+
+  it('the owner can delete the whole handover (Contribute 8587d182)', async () => {
+    render(Handover, { handovers: [handover()], members, userId: 'ony' })
+    await expect.element(page.getByTestId('handover-delete-h1')).toBeVisible()
+    await expect.element(page.getByTestId('handover-delete-h1')).toHaveTextContent(/Delete handover/)
+  })
+
+  it('a colleague gets no delete handover control (Contribute 8587d182)', async () => {
+    render(Handover, { handovers: [handover({ canEdit: false })], members, userId: 'alex' })
+    await expect.element(page.getByTestId('handover-read-only-h1')).toBeVisible()
+    await expect.element(page.getByTestId('handover-delete-h1')).not.toBeInTheDocument()
+  })
 })

@@ -70,5 +70,10 @@ export function dbHandoverStore(db: () => AppDatabase): HandoverStore {
       const rows = await db().delete(handoverEntries).where(eq(handoverEntries.id, id)).returning({ id: handoverEntries.id })
       return rows.length === 1
     },
+    async deleteHandover(id) {
+      // The entries cascade (handover_entries.handover_id ON DELETE CASCADE).
+      const rows = await db().delete(handovers).where(eq(handovers.id, id)).returning({ id: handovers.id })
+      return rows.length === 1
+    },
   }
 }
