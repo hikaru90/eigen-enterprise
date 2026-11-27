@@ -18,7 +18,7 @@ import { createHash, createPublicKey, verify } from 'node:crypto'
 
 // BEGIN RELEASE PUBLIC KEY (written by scripts/release-key.sh)
 export const RELEASE_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAKvl3XdC1tUoV6fLiwOpijRl2xs92UJmt4rRqvzJPRvA=
+MCowBQYDK2VwAyEAj7ofiADOlLSM5eiX5GalA7oql/yOdkeDq60hNq5+GBU=
 -----END PUBLIC KEY-----
 `
 // END RELEASE PUBLIC KEY

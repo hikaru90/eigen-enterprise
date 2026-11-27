@@ -67,7 +67,7 @@ release_public_key() {
 # BEGIN RELEASE PUBLIC KEY (written by scripts/release-key.sh)
   cat <<'PEM'
 -----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAKvl3XdC1tUoV6fLiwOpijRl2xs92UJmt4rRqvzJPRvA=
+MCowBQYDK2VwAyEAj7ofiADOlLSM5eiX5GalA7oql/yOdkeDq60hNq5+GBU=
 -----END PUBLIC KEY-----
 PEM
 # END RELEASE PUBLIC KEY
