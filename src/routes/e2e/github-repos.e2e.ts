@@ -64,11 +64,37 @@ async function openRepoFolder(page: Page): Promise<void> {
   await openPath(page, ['kindred', 'shop'])
 }
 
+/** "Last synced …" of the repo's status row (its "next …" moves as soon as Sync now is clicked). */
+async function lastSynced(page: Page): Promise<string> {
+  const text = (await page.getByTestId(`repos-status-${REPO}`).textContent()) ?? ''
+  const m = /Last synced [^·]*/.exec(text)
+  if (!m) throw new Error(`no "Last synced" in the status row of ${REPO}: ${text}`)
+  return m[0].trim()
+}
+
+/**
+ * Sync now, and wait until that sync is done. The job-queue tick (every minute) may claim the
+ * newly connected repo first: then the page says it is syncing already, and the sync the tick
+ * runs is the one waited for — the status row's "Last synced" moves when it is done.
+ */
 async function syncNow(page: Page): Promise<void> {
   const status = page.getByTestId(`repos-status-${REPO}`)
   await expect(status).toBeVisible()
+  const before = await lastSynced(page)
   await status.getByRole('button', { name: 'Sync now' }).click()
-  await expect(page.getByRole('status').filter({ hasText: `Synced ${REPO}.` })).toBeVisible({ timeout: 90_000 })
+  const synced = page.getByRole('status').filter({ hasText: `Synced ${REPO}.` })
+  const already = page.getByRole('status').filter({ hasText: `${REPO} is syncing already.` })
+  await expect(synced.or(already)).toBeVisible({ timeout: 90_000 })
+  if (await synced.isVisible()) return
+  await expect
+    .poll(
+      async () => {
+        await gotoHydrated(page, '/drive/github')
+        return lastSynced(page)
+      },
+      { timeout: 90_000, intervals: [2_000] },
+    )
+    .not.toBe(before)
 }
 
 test('GitHub repos: every file of the default branch in Drive, then docs only', async ({ browser }) => {
