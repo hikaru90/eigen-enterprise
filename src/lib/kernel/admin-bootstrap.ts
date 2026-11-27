@@ -144,13 +144,18 @@ function liveMemberAiCapPort(): MemberAiCapPort {
     setCapUsd: async (value, actor) => (await store()).setCapUsd(value, actor),
     usageToday: async (userId) => (await cap()).memberAiUsageToday(userId),
     replyCost: async (userId, messageId) => (await store()).replyCost(userId, messageId),
+    billing: async () => (await import('$lib/server/ai-usage/billing-env')).aiBillingFromEnv(),
+    eigenInferenceUsdToday: async (userId) => (await store()).eigenInferenceUsdSince(userId, (await cap()).utcDayStart(new Date())),
   }
 }
 
 /** The live AI-usage read, loaded on first use (registering the tools touches no server module). */
 function liveAiUsagePort(): AiUsagePort {
   const live = async () => (await import('$lib/server/ai-usage/store')).liveAiUsagePort
-  return { rows: async (period) => (await live()).rows(period) }
+  return {
+    rows: async (period) => (await live()).rows(period),
+    billing: async () => (await live()).billing(),
+  }
 }
 
 /** The live company-operations port (logo, backup now, release install and rollback), loaded on first use. */

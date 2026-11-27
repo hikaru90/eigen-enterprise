@@ -1,20 +1,25 @@
 <script lang="ts">
   import { resolve } from '$app/paths'
+  import { billingLine } from '$lib/ai-usage/billing'
   import type { AiAmounts, AiUsageOverview, AiUsageProductId } from '$lib/ai-usage/overview'
   import { formatAiUsd, formatTokens } from '$lib/ai-usage/usage'
-  import { AI_USAGE_PERIODS, dailyBars, usedProducts, type AiUsagePeriod } from '$lib/ai-usage/view'
+  import { AI_USAGE_PERIODS, dailyBars, formatShown, providerUsdOf, shownAmount, usedProducts, type AiUsagePeriod } from '$lib/ai-usage/view'
   import SectionHeader from '$lib/components/page/section-header.svelte'
 
   /**
    * Settings → AI usage (plan/phase-ai-usage-overview.md §5), a view of
    * settings.ai_usage_overview: where the company's AI money goes. Observation only: amounts
    * and counts, people listed by name. Neutral bars; the one accent marks the product picked
-   * in the legend.
+   * in the legend. On the hosted plan with eigenInference (overview.billing) every amount is the
+   * € the company is invoiced, the provider's USD beside it, and the rate is stated.
    */
   let { overview, period }: { overview: AiUsageOverview; period: AiUsagePeriod } = $props()
 
+  const billing = $derived(overview.billing)
   const bars = $derived(dailyBars(overview))
-  const peak = $derived(Math.max(...bars.map((b) => b.costUsd), 0))
+  const peak = $derived(Math.max(...bars.map((b) => b.amount), 0))
+  const money = (amount: number) => formatShown(amount, billing)
+  const amountOf = (a: AiAmounts) => money(shownAmount(a, billing))
   const legend = $derived(usedProducts(overview))
 
   let picked = $state<AiUsageProductId | null>(null)
@@ -40,7 +45,10 @@
 </script>
 
 {#snippet amounts(a: AiAmounts)}
-  <td class="px-3 py-2 text-right font-mono tabular-nums">{formatAiUsd(a.costUsd)}</td>
+  <td class="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap">
+    {amountOf(a)}
+    {#if billing}<span class="block text-xs text-muted-foreground">{formatAiUsd(providerUsdOf(a))}</span>{/if}
+  </td>
   <td class="px-3 py-2 text-right font-mono tabular-nums">{count(a.calls)}</td>
   <td class="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap">{tokensOf(a)}</td>
 {/snippet}
@@ -49,7 +57,7 @@
   <thead class="text-xs text-muted-foreground">
     <tr class="border-b border-border">
       <th class="px-3 py-2 text-left font-medium">{first}</th>
-      <th class="px-3 py-2 text-right font-medium">Cost</th>
+      <th class="px-3 py-2 text-right font-medium">{billing ? 'Invoiced' : 'Cost'}</th>
       <th class="px-3 py-2 text-right font-medium">Calls</th>
       <th class="px-3 py-2 text-right font-medium">Tokens</th>
     </tr>
@@ -64,7 +72,12 @@
 {/snippet}
 
 <div class="space-y-8" data-testid="ai-usage">
-  <SectionHeader title="AI usage" description="What the company's AI calls cost, as the gateway reported it. Days are UTC.">
+  <SectionHeader
+    title="AI usage"
+    description={billing
+      ? 'What the company is invoiced for eigenInference, from the cost the provider reported. Days are UTC.'
+      : "What the company's AI calls cost, as the gateway reported it. Days are UTC."}
+  >
     {#snippet actions()}
       <nav class="flex gap-1" aria-label="Period" data-sveltekit-noscroll>
         {#each AI_USAGE_PERIODS as option (option.id)}
@@ -80,10 +93,19 @@
     {/snippet}
   </SectionHeader>
 
+  {#if billing}
+    <p class="text-sm text-muted-foreground" data-testid="ai-usage-billing">{billingLine(billing)}</p>
+  {/if}
+
   <dl class="grid grid-cols-1 gap-3 sm:grid-cols-3">
     <div class="{card} p-4">
-      <dt class="text-sm text-muted-foreground">Spend</dt>
-      <dd class="mt-1 text-2xl font-semibold" data-testid="ai-usage-spend">{formatAiUsd(overview.totals.costUsd)}</dd>
+      <dt class="text-sm text-muted-foreground">{billing ? 'Invoiced' : 'Spend'}</dt>
+      <dd class="mt-1 text-2xl font-semibold" data-testid="ai-usage-spend">{amountOf(overview.totals)}</dd>
+      {#if billing}
+        <dd class="text-xs text-muted-foreground" data-testid="ai-usage-provider-usd">
+          {formatAiUsd(providerUsdOf(overview.totals))} provider cost
+        </dd>
+      {/if}
     </div>
     <div class="{card} p-4">
       <dt class="text-sm text-muted-foreground">Calls</dt>
@@ -100,14 +122,14 @@
     <p class="{card} p-6 text-center text-sm text-muted-foreground" data-testid="ai-usage-empty">No AI calls in this period.</p>
   {:else}
     <section class="space-y-3">
-      <h3 class="text-sm font-semibold">Spend per day</h3>
+      <h3 class="text-sm font-semibold">{billing ? 'Invoiced per day' : 'Spend per day'}</h3>
       <div class="{card} p-4">
         <div class="flex justify-between gap-3 text-xs text-muted-foreground">
-          <span>Full height: {formatAiUsd(peak)}</span>
+          <span>Full height: {money(peak)}</span>
           <span class="min-h-4 text-right" role="status" data-testid="ai-usage-day-detail">
             {#if hoveredBar}
-              {dayLabel(hoveredBar.date)}: {formatAiUsd(hoveredBar.costUsd)}{#each hoveredBar.segments as segment (segment.id)}
-                &nbsp;· {segment.label} {formatAiUsd(segment.costUsd)}
+              {dayLabel(hoveredBar.date)}: {money(hoveredBar.amount)}{#each hoveredBar.segments as segment (segment.id)}
+                &nbsp;· {segment.label} {money(segment.amount)}
               {/each}
             {/if}
           </span>
@@ -117,7 +139,7 @@
             <button
               type="button"
               class="flex min-w-0 flex-1 flex-col-reverse items-center gap-0.5 rounded-t-sm hover:bg-muted/60"
-              aria-label={`${dayLabel(bar.date)}: ${formatAiUsd(bar.costUsd)}`}
+              aria-label={`${dayLabel(bar.date)}: ${money(bar.amount)}`}
               data-testid="ai-usage-day"
               onmouseenter={() => (hovered = bar.date)}
               onmouseleave={() => (hovered = null)}
@@ -127,7 +149,7 @@
               {#each bar.segments as segment (segment.id)}
                 <span
                   class={['block w-full max-w-6 shrink last:rounded-t-sm', segmentClass(segment.id)]}
-                  style:height={`${(segment.costUsd / peak) * 100}%`}
+                  style:height={`${(segment.amount / peak) * 100}%`}
                 ></span>
               {/each}
             </button>
@@ -147,7 +169,7 @@
             >
               <span class={['size-2 rounded-full', segmentClass(product.id)]}></span>
               {product.label}
-              <span class="font-mono text-muted-foreground">{formatAiUsd(product.costUsd)}</span>
+              <span class="font-mono text-muted-foreground">{amountOf(product)}</span>
             </button>
           {/each}
         </div>

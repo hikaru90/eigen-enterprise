@@ -4,6 +4,7 @@ import type { AiUsagePort } from '$lib/kernel/ai-usage-tools'
 import { ACTIVITY_PAGE_LLM_PROVIDERS, PLATFORM_AI_ACTIVITY_PROVIDER } from '$lib/server/activity/gateway-providers'
 import type { FleetAiUsageDay } from '$lib/server/fleet/ai-usage'
 import { createAdminSql } from '$lib/server/job-queue/admin-db'
+import { aiBillingFromEnv } from './billing-env'
 
 /**
  * The company-wide read behind settings.ai_usage_overview. activity_call_log is row-level
@@ -24,6 +25,7 @@ type Group = {
   promptTokens: string
   completionTokens: string
   cachedTokens: string
+  eigenInferenceUsd: string
 }
 
 function amount(value: string | number, what: string): number {
@@ -69,7 +71,8 @@ export async function readAiUsageRows(
       COUNT(*)::int AS calls,
       COALESCE(SUM(a.prompt_tokens), 0)::text AS "promptTokens",
       COALESCE(SUM(a.completion_tokens), 0)::text AS "completionTokens",
-      COALESCE(SUM(a.cached_tokens), 0)::text AS "cachedTokens"
+      COALESCE(SUM(a.cached_tokens), 0)::text AS "cachedTokens",
+      COALESCE(SUM(a.base_cost_usd::numeric) FILTER (WHERE a.provider = ${PLATFORM_AI_ACTIVITY_PROVIDER}), 0)::text AS "eigenInferenceUsd"
     FROM activity_call_log a
     JOIN "user" u ON u.id = a.user_id
     WHERE a.provider IN ${sql([...ACTIVITY_PAGE_LLM_PROVIDERS])}
@@ -89,10 +92,12 @@ export async function readAiUsageRows(
     promptTokens: amount(g.promptTokens, 'prompt tokens'),
     completionTokens: amount(g.completionTokens, 'completion tokens'),
     cachedTokens: amount(g.cachedTokens, 'cached tokens'),
+    eigenInferenceUsd: amount(g.eigenInferenceUsd, 'eigenInference base cost'),
   }))
 }
 
 export const liveAiUsagePort: AiUsagePort = {
+  billing: async () => aiBillingFromEnv(),
   async rows(period) {
     const sql = createAdminSql(1)
     try {

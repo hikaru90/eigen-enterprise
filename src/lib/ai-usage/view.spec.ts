@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { foldAiUsage, type AiUsageRow } from './overview'
-import { dailyBars, periodOf, periodRange, usedProducts } from './view'
+import { dailyBars, formatShown, periodOf, periodRange, providerUsdOf, shownAmount, usedProducts } from './view'
 
-const row = (day: string, task: string | null, costUsd: number): AiUsageRow => ({
-  userId: 'u', name: 'Mia', kind: 'person', task, model: 'm', day, costUsd, calls: 1, promptTokens: 0, completionTokens: 0, cachedTokens: 0,
+const row = (day: string, task: string | null, costUsd: number, eigenInferenceUsd = 0): AiUsageRow => ({
+  userId: 'u', name: 'Mia', kind: 'person', task, model: 'm', day, costUsd, calls: 1, promptTokens: 0, completionTokens: 0, cachedTokens: 0, eigenInferenceUsd,
 })
 const NOW = new Date('2026-11-27T15:00:00Z')
 
@@ -31,8 +31,8 @@ describe('daily bars', () => {
   it('shows every day of the period, days without calls at zero, products in catalog order', () => {
     const bars = dailyBars(overview)
     expect(bars.map((b) => b.date)).toEqual(['2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26'])
-    expect(bars[0]).toEqual({ date: '2026-11-22', costUsd: 0, segments: [] })
-    expect(bars[3]!.segments.map((s) => [s.id, s.costUsd])).toEqual([
+    expect(bars[0]).toEqual({ date: '2026-11-22', amount: 0, segments: [] })
+    expect(bars[3]!.segments.map((s) => [s.id, s.amount])).toEqual([
       ['assistant', 2],
       ['unattributed', 0.5],
     ])
@@ -45,5 +45,35 @@ describe('daily bars', () => {
 
   it('names the products that cost something, in catalog order', () => {
     expect(usedProducts(overview).map((p) => p.id)).toEqual(['assistant', 'brain', 'unattributed'])
+  })
+
+  it('self-hosted: amounts are the logged USD', () => {
+    expect(shownAmount(overview.totals, overview.billing)).toBe(3.5)
+    expect(formatShown(3.5, overview.billing)).toBe('$3.50')
+  })
+})
+
+describe('daily bars on the hosted plan (eigenInference invoiced in EUR)', () => {
+  const billing = { currency: 'EUR' as const, markup: 1.2, usdToEur: 0.95, rateDay: '2026-11-27' }
+  // the assistant call ran on eigenInference; the brain one on the company's own key
+  const overview = foldAiUsage(
+    [row('2026-11-23', 'brain.compose_answer', 1, 0), row('2026-11-25', 'assistant.turn', 2.4, 2)],
+    { from: '2026-11-22', to: '2026-11-26' },
+    billing,
+  )
+
+  it('the bars, the amounts and the legend are € invoiced', () => {
+    const bars = dailyBars(overview)
+    expect(bars[1]).toEqual({ date: '2026-11-23', amount: 0, segments: [] })
+    expect(bars[3]).toEqual({ date: '2026-11-25', amount: 2.28, segments: [{ id: 'assistant', label: 'Assistant', amount: 2.28 }] })
+    expect(shownAmount(overview.totals, billing)).toBe(2.28)
+    expect(formatShown(2.28, billing)).toBe('€2.28')
+    expect(usedProducts(overview).map((p) => p.id)).toEqual(['assistant'])
+  })
+
+  it('an amount without its € (a broken overview) fails loud instead of showing zero', () => {
+    expect(() => shownAmount({ costUsd: 1, calls: 1, promptTokens: 0, completionTokens: 0, cachedTokens: 0 }, billing)).toThrow(/invoiced/)
+    expect(() => providerUsdOf({ costUsd: 1, calls: 1, promptTokens: 0, completionTokens: 0, cachedTokens: 0 })).toThrow(/provider USD/)
+    expect(providerUsdOf(overview.totals)).toBe(2)
   })
 })

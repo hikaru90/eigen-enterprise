@@ -1,3 +1,4 @@
+import type { AiBilling } from '../ai-usage/billing'
 import type { ToolDescriptor } from './types'
 import { z } from 'zod'
 import { foldAiUsage, overviewSchema, type AiUsageRow } from '../ai-usage/overview'
@@ -26,6 +27,8 @@ const inputSchema = z
 export type AiUsagePort = {
   /** The cost log's LLM rows of the period, grouped by principal, task, model and UTC day. */
   rows(period: { from: string | null; to: string | null }): Promise<AiUsageRow[]>
+  /** How the hosting invoices eigenInference (EE_AI_BILLING_*); null = self-hosted or no eigenInference. Throws on a partial set. */
+  billing(): Promise<AiBilling | null>
 }
 
 export type AiUsageToolDeps = { port: AiUsagePort }
@@ -36,7 +39,7 @@ export function createAiUsageTools(deps: AiUsageToolDeps): ToolDescriptor[] {
       name: 'settings.ai_usage_overview',
       module: KERNEL_AI_USAGE_MODULE_ID,
       summary:
-        'Where the company’s AI money went: totals, every AI product with its tasks, every person and AI co-worker with their per-product split, every model, and the spend of each day. Optional {from, to} as YYYY-MM-DD (UTC, both included); without them everything on record. USD is what the company is billed. Owner and admins; for your own usage use settings.my_ai_usage.',
+        'Where the company’s AI money went: totals, every AI product with its tasks, every person and AI co-worker with their per-product split, every model, and the spend of each day. Optional {from, to} as YYYY-MM-DD (UTC, both included); without them everything on record. costUsd is the USD the gateway logged. On the hosted plan with eigenInference, billing names the markup and the USD→EUR rate with its day, and every amount also has providerUsd (what the provider reported for the eigenInference calls) and invoicedEur (what the company is invoiced: providerUsd × markup × usdToEur). Owner and admins; for your own usage use settings.my_ai_usage.',
       auditClass: 'read',
       inputSchema,
       outputSchema: overviewSchema,
@@ -46,7 +49,8 @@ export function createAiUsageTools(deps: AiUsageToolDeps): ToolDescriptor[] {
         if (from !== null && to !== null && from > to) {
           throw new KernelError('invalid_input', `The period ends (${to}) before it starts (${from}).`)
         }
-        return foldAiUsage(await deps.port.rows({ from, to }), { from, to })
+        const [rows, billing] = await Promise.all([deps.port.rows({ from, to }), deps.port.billing()])
+        return foldAiUsage(rows, { from, to }, billing)
       },
     },
   ]

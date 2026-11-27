@@ -64,11 +64,20 @@ describe.skipIf(!url)('AI usage (Postgres)', () => {
 
       const rows = (await readAiUsageRows(tx, { from: '2026-11-20', to: '2026-11-21' })).filter((r) => r.userId === mia || r.userId === bot)
       expect(rows.sort((a, b) => a.day.localeCompare(b.day))).toEqual([
-        { userId: mia, name: 'Mia', kind: 'person', task: 'brain.retrieval_rerank', model: 'm/one', day: '2026-11-20', costUsd: 0.75, calls: 2, promptTokens: 200, completionTokens: 0, cachedTokens: 0 },
-        { userId: bot, name: 'Marketing', kind: 'coworker', task: 'coworkers.turn', model: 'm/two', day: '2026-11-21', costUsd: 0.5, calls: 1, promptTokens: 100, completionTokens: 0, cachedTokens: 0 },
+        { userId: mia, name: 'Mia', kind: 'person', task: 'brain.retrieval_rerank', model: 'm/one', day: '2026-11-20', costUsd: 0.75, calls: 2, promptTokens: 200, completionTokens: 0, cachedTokens: 0, eigenInferenceUsd: 0 },
+        { userId: bot, name: 'Marketing', kind: 'coworker', task: 'coworkers.turn', model: 'm/two', day: '2026-11-21', costUsd: 0.5, calls: 1, promptTokens: 100, completionTokens: 0, cachedTokens: 0, eigenInferenceUsd: 0 },
       ])
       const all = (await readAiUsageRows(tx, { from: null, to: null })).filter((r) => r.userId === mia)
       expect(all.reduce((n, r) => n + r.calls, 0)).toBe(3)
+    })
+  })
+
+  it('each group carries the provider-reported base of its eigenInference calls only (what the hosting invoices from)', async () => {
+    await inRolledBackTx(async (tx) => {
+      await call(tx, mia, { provider: 'platform', task: 'assistant.turn', model: `m/${tag}`, base: '0.001', cost: '0.0012' })
+      await call(tx, mia, { provider: 'openrouter', task: 'assistant.turn', model: `m/${tag}`, base: '0.004', cost: '0.0048' })
+      const [group] = (await readAiUsageRows(tx, { from: '2026-11-20', to: '2026-11-20' })).filter((r) => r.model === `m/${tag}`)
+      expect(group).toMatchObject({ calls: 2, costUsd: 0.006, eigenInferenceUsd: 0.001 })
     })
   })
 

@@ -37,6 +37,16 @@ describe('ai-usage-meter.svelte', () => {
     await expect.element(page.getByTestId('owner-note')).toHaveTextContent('Owners and admins have no daily cap. Members can use up to $0.50 a day.')
   })
 
+  it('hosted with eigenInference: also what today’s eigenInference calls are invoiced, in EUR with the rate', async () => {
+    const billing = { currency: 'EUR' as const, markup: 1.2, usdToEur: 0.95, rateDay: '2026-11-27' }
+    render(AiUsageMeter, { usage: { ...member, invoiced: { providerUsd: 0.08, invoicedEur: 0.0912, billing } } })
+    await expect.element(page.getByTestId('ai-usage-meter-invoiced')).toHaveTextContent(
+      'eigenInference today: €0.09 invoiced ($0.08 provider cost × 1.2, at 1 USD = 0.95 EUR of 2026-11-27).',
+    )
+    render(AiUsageMeter, { usage: member, testid: 'self-hosted' })
+    expect(page.getByTestId('self-hosted-invoiced').elements()).toHaveLength(0)
+  })
+
   it('compact: a pill with spent / cap, the whole sentence for screen readers', async () => {
     render(AiUsageMeter, { usage: { ...member, spentUsd: 0.45, remainingUsd: 0.05 }, variant: 'compact' })
     const pill = page.getByTestId('ai-usage-meter')

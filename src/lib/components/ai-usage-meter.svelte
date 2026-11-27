@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { usageMeter, usageSentence, type AiUsageToday } from '$lib/ai-usage/usage'
+  import { formatAiEur } from '$lib/ai-usage/billing'
+  import { formatAiUsd, usageMeter, usageSentence, type AiUsageToday } from '$lib/ai-usage/usage'
 
   /**
    * A person's AI use today against the company's daily cap per member (proposal 30a8d920),
@@ -90,6 +91,13 @@
     {:else}
       <p class="text-sm text-muted-foreground" data-testid="{testid}-note">
         The company has no daily AI cap per member.
+      </p>
+    {/if}
+    {#if usage.invoiced}
+      {@const inv = usage.invoiced}
+      <p class="text-sm text-muted-foreground" data-testid="{testid}-invoiced">
+        eigenInference today: {formatAiEur(inv.invoicedEur)} invoiced ({formatAiUsd(inv.providerUsd)} provider cost × {inv.billing.markup}, at 1 USD =
+        {inv.billing.usdToEur} EUR of {inv.billing.rateDay}).
       </p>
     {/if}
   </div>
