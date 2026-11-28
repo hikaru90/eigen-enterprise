@@ -22,7 +22,7 @@ async function setup(lookAt = vi.fn(async () => ({ text: 'A blue hero banner rea
   const dir = await mkdtemp(join(tmpdir(), 'drive-image-'))
   dirs.push(dir)
   const access = memoryDriveAccess({ users: { alice: { role: 'member' }, cw: { role: 'member' } } })
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 4 << 20, locks: memoryEditLockStore() })
+  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir, Buffer.alloc(32, 7)), access, maxUploadBytes: 4 << 20, locks: memoryEditLockStore() })
   const [tool] = createDriveImageTools({ service: async () => drive, lookAt: async () => lookAt as never })
   return { drive, tool: tool!, lookAt }
 }
