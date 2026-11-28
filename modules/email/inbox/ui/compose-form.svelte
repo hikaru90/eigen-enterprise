@@ -1,7 +1,11 @@
 <script lang="ts">
   import type { ComposeDraft } from '../send'
   import type { SubmitFunction } from '@sveltejs/kit'
+  import Maximize2 from '@lucide/svelte/icons/maximize-2'
+  import Minimize2 from '@lucide/svelte/icons/minimize-2'
+  import Minus from '@lucide/svelte/icons/minus'
   import Paperclip from '@lucide/svelte/icons/paperclip'
+  import X from '@lucide/svelte/icons/x'
   import { onMount, tick } from 'svelte'
   import { enhance } from '$app/forms'
   import ErrorNotice from '$lib/components/error-notice.svelte'
@@ -75,27 +79,84 @@
     } else toInput?.focus()
   })
 
+  /**
+   * The compose window (wish 498da734): a Gmail-style window over the inbox,
+   * bottom-right, that grows to a large window or minimises to its title bar
+   * (the form stays mounted, so nothing typed is lost). On phones it is full
+   * screen. Pure view state.
+   */
+  type Size = 'normal' | 'large' | 'minimised'
+  let size = $state<Size>('normal')
+  const windowClass = $derived(
+    size === 'minimised'
+      ? 'inset-x-0 bottom-0 md:left-auto md:right-4 md:w-80'
+      : size === 'large'
+        ? 'inset-0 md:inset-x-[6vw] md:inset-y-[5vh]'
+        : 'inset-0 md:inset-auto md:right-4 md:bottom-0 md:h-[min(42rem,88vh)] md:w-[min(40rem,calc(100vw-2rem))]',
+  )
+
   const fieldClass = 'grid gap-1 sm:grid-cols-[4.5rem_minmax(0,1fr)] sm:items-center sm:gap-3'
   const labelClass = 'text-[13px] text-muted-foreground'
 </script>
 
 <section
-  class="flex min-w-0 flex-col"
+  class="fixed z-50 flex min-w-0 flex-col overflow-hidden border border-border bg-background shadow-2xl md:rounded-t-lg {size ===
+  'large'
+    ? 'md:rounded-lg'
+    : ''} {windowClass}"
+  role="dialog"
   aria-labelledby="compose-heading"
   data-testid="compose"
   data-mode={draft.mode}
+  data-size={size}
 >
+  <header class="flex shrink-0 items-center gap-1 border-b border-border bg-muted/60 py-1.5 pr-1.5 pl-4">
+    {#if size === 'minimised'}
+      <button
+        type="button"
+        class="min-w-0 flex-1 truncate text-left text-sm font-semibold"
+        onclick={() => (size = 'normal')}
+        aria-label="Restore"
+        ><span id="compose-heading">{subject.trim() || TITLES[draft.mode]}</span></button
+      >
+    {:else}
+      <h3 id="compose-heading" class="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
+        {TITLES[draft.mode]}
+      </h3>
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Minimise"
+        onclick={() => (size = 'minimised')}><Minus aria-hidden="true" /></Button
+      >
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="ghost"
+        class="hidden md:inline-flex"
+        aria-label={size === 'large' ? 'Shrink' : 'Expand'}
+        onclick={() => (size = size === 'large' ? 'normal' : 'large')}
+        >{#if size === 'large'}<Minimize2 aria-hidden="true" />{:else}<Maximize2
+            aria-hidden="true"
+          />{/if}</Button
+      >
+    {/if}
+    <Button href={discardHref} size="icon-sm" variant="ghost" aria-label="Close"
+      ><X aria-hidden="true" /></Button
+    >
+  </header>
   <form
     method="POST"
     action="?/send"
     enctype="multipart/form-data"
     use:enhance={submit}
-    class="flex flex-col gap-3 px-4 py-4"
+    class="min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 {size === 'minimised'
+      ? 'hidden'
+      : 'flex'}"
+    hidden={size === 'minimised'}
     aria-busy={busy}
   >
-    <h3 id="compose-heading" class="text-base font-semibold tracking-tight">
-      {TITLES[draft.mode]}
-    </h3>
 
     {#if draft.blocked}
       <p class="text-sm text-destructive" role="alert" data-testid="compose-blocked">
@@ -210,7 +271,7 @@
       bind:ref={bodyInput}
       bind:value={body}
       rows={14}
-      class="min-h-[14rem] font-sans text-sm"
+      class="min-h-[14rem] flex-1 font-sans text-sm"
       data-testid="compose-body"
     />
 
