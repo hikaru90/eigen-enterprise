@@ -33,6 +33,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     calls,
     /** Transcript segments per call I was in (a Transcript link where there are any). */
     transcripts: await service.transcriptCounts(locals.user.id, calls),
+    /** Per call I may summarize (I switched the Company Brain on): my kept summary, or null — "Make summary". */
+    summaries: await service.recapsForList(locals.user.id, calls),
     people: members.map((m) => ({
       id: m.id,
       name: m.name.trim() || m.email,

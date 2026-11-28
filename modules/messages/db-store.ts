@@ -75,6 +75,9 @@ export function dbMessagesStore(db: AppDatabase): MessagesStore {
     async setPrivate(id, isPrivate) {
       await db.update(conversations).set({ private: isPrivate }).where(eq(conversations.id, id))
     },
+    async setName(id, name) {
+      await db.update(conversations).set({ name }).where(eq(conversations.id, id))
+    },
     async addMembers(id, userIds) {
       if (userIds.length === 0) return
       await db

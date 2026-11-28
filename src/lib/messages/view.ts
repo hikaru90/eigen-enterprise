@@ -183,7 +183,12 @@ export type ConversationView = {
   private: boolean
   unread: number
   memberIds: string[]
+  /** A group chat its members named (the title is that name). */
+  named?: boolean
 }
+
+/** A direct message with three or more people: it may carry a name (wish 2734a371). */
+export const isGroupChat = (c: Pick<ConversationView, 'kind' | 'memberIds'>) => c.kind === 'dm' && c.memberIds.length >= 3
 
 /** Upserts by id and keeps time order (oldest first). */
 export function mergeMessages(

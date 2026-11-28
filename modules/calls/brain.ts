@@ -133,6 +133,10 @@ export type BrainAnswerStore = {
   get(id: string): Promise<BrainAnswer | null>
   /** One person's answers in one call, oldest first. */
   listMine(callId: string, userId: string): Promise<BrainAnswer[]>
+  /** Keeps the recap the Brain wrote for this person (a newer one replaces it). */
+  saveRecap(callId: string, userId: string, recap: string, at: Date): Promise<void>
+  /** This person's kept recaps per call; calls without one are absent. */
+  recapsFor(userId: string, callIds: string[]): Promise<Map<string, string>>
 }
 
 /** The store for specs (in memory). Sharing is the call record's (brainShared); the service reads it from there. */
@@ -151,6 +155,21 @@ export class MemoryBrainAnswerStore implements BrainAnswerStore {
 
   async listMine(callId: string, userId: string): Promise<BrainAnswer[]> {
     return structuredClone(this.answers.filter((a) => a.callId === callId && a.askedBy === userId))
+  }
+
+  readonly recaps = new Map<string, string>()
+
+  async saveRecap(callId: string, userId: string, recap: string): Promise<void> {
+    this.recaps.set(`${callId}|${userId}`, recap)
+  }
+
+  async recapsFor(userId: string, callIds: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>()
+    for (const id of callIds) {
+      const r = this.recaps.get(`${id}|${userId}`)
+      if (r !== undefined) out.set(id, r)
+    }
+    return out
   }
 }
 

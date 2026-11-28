@@ -1,4 +1,21 @@
-import { bigserial, boolean, index, primaryKey, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+  bigserial,
+  boolean,
+  customType,
+  index,
+  integer,
+  primaryKey,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core'
+
+const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType: () => 'bytea',
+  toDriver: (v) => Buffer.from(v),
+  fromDriver: (v) => new Uint8Array(v),
+})
 
 /**
  * Calls (migrations 0122, 0152, 0157, 0159, 0169). Company-level tables (no RLS): access is
@@ -122,6 +139,38 @@ export const callBrainAnswers = pgTable(
  * in the call wrote — a member (user id) or a guest (guest:<id>), with their
  * name when they wrote it. seq is arrival order (a live reader's cursor).
  */
+/** A pasted image in a call's chat (migration 0198): bytes kept with the call — a guest has no Drive. */
+export const callChatImages = pgTable(
+  'call_chat_image',
+  {
+    id: uuid('id').primaryKey(),
+    callId: uuid('call_id')
+      .notNull()
+      .references(() => calls.id, { onDelete: 'cascade' }),
+    uploadedBy: text('uploaded_by').notNull(),
+    name: text('name').notNull(),
+    mime: text('mime').notNull(),
+    size: integer('size').notNull(),
+    bytes: bytea('bytes').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('call_chat_image_call_idx').on(t.callId)],
+)
+
+/** The Company Brain's recap of a call, kept for whoever made it (migration 0198): shown on their /calls row. */
+export const callBrainRecaps = pgTable(
+  'call_brain_recap',
+  {
+    callId: uuid('call_id')
+      .notNull()
+      .references(() => calls.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    recap: text('recap').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.callId, t.userId], name: 'call_brain_recap_pk' })],
+)
+
 export const callChatMessages = pgTable(
   'call_chat_message',
   {
@@ -133,6 +182,8 @@ export const callChatMessages = pgTable(
     authorKind: text('author_kind', { enum: ['member', 'guest'] }).notNull(),
     authorName: text('author_name').notNull(),
     body: text('body').notNull(),
+    /** A pasted image (0198); the body may then be empty. */
+    imageId: uuid('image_id').references(() => callChatImages.id),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index('call_chat_message_call_idx').on(t.callId, t.seq)],

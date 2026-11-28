@@ -16,7 +16,16 @@ import {
   type BrainAnswerStore,
   type CallBrain,
 } from './brain'
-import { CHAT_PAGE, chatTurns, parseChatBody, type CallChatStore, type ChatMessage } from './chat'
+import {
+  CHAT_PAGE,
+  chatTurns,
+  parseChatBody,
+  parseChatImage,
+  type CallChatStore,
+  type ChatImageInfo,
+  type ChatImageUpload,
+  type ChatMessage,
+} from './chat'
 import { CallsError } from './errors'
 import {
   guestJoinUrl,
@@ -150,6 +159,8 @@ export type CallChatMessageDto = {
   authorKind: 'member' | 'guest'
   authorName: string
   body: string
+  /** A pasted image (wish 4fbf9991): its bytes via the chat's image route; the body is then empty. */
+  image: ChatImageInfo | null
   createdAt: string
 }
 
@@ -317,14 +328,23 @@ const segmentDto = (s: TranscriptSegment): TranscriptSegmentDto => ({
   endedAt: s.endedAt.toISOString(),
   text: s.text,
 })
-const chatDto = (m: ChatMessage): CallChatMessageDto => ({
-  seq: m.seq,
-  authorId: m.authorId,
-  authorKind: m.authorKind,
-  authorName: m.authorName,
-  body: m.body,
-  createdAt: m.createdAt.toISOString(),
-})
+const chatDto = (
+  m: ChatMessage,
+  images: ReadonlyMap<string, ChatImageInfo>,
+): CallChatMessageDto => {
+  const image = m.imageId ? images.get(m.imageId) : undefined
+  if (m.imageId && !image)
+    throw new Error(`calls: chat line ${m.seq} names image ${m.imageId}, which is not stored`)
+  return {
+    seq: m.seq,
+    authorId: m.authorId,
+    authorKind: m.authorKind,
+    authorName: m.authorName,
+    body: m.body,
+    image: image ?? null,
+    createdAt: m.createdAt.toISOString(),
+  }
+}
 
 /** A chat cursor: absent (from the start) or a seq. */
 function chatSince(raw: unknown): number | undefined {
@@ -453,10 +473,57 @@ export function createCallsService(d: CallsDeps) {
     }
   }
 
+  /** DTOs for chat lines, their images' display loaded once. */
+  async function chatDtos(rows: ChatMessage[]): Promise<CallChatMessageDto[]> {
+    const ids = rows.flatMap((m) => (m.imageId ? [m.imageId] : []))
+    const images = ids.length > 0 ? await d.chat.imageInfo(ids) : new Map<string, ChatImageInfo>()
+    return rows.map((m) => chatDto(m, images))
+  }
+
   /** One read of a call's chat after `since`. */
   async function chatPage(callId: string, since: number | undefined): Promise<CallChatPage> {
     const rows = await d.chat.list(callId, since, CHAT_PAGE + 1)
-    return { messages: rows.slice(0, CHAT_PAGE).map(chatDto), hasMore: rows.length > CHAT_PAGE }
+    return { messages: await chatDtos(rows.slice(0, CHAT_PAGE)), hasMore: rows.length > CHAT_PAGE }
+  }
+
+  /** Stores a pasted image and its line (an image line has no text). */
+  async function addImageLine(
+    callId: string,
+    author: { id: string; kind: 'member' | 'guest'; name: string },
+    raw: ChatImageUpload,
+  ): Promise<CallChatMessageDto> {
+    const file = parseChatImage(raw)
+    const imageId = newId()
+    const at = now()
+    await d.chat.addImage({
+      id: imageId,
+      callId,
+      uploadedBy: author.id,
+      name: file.name,
+      mime: file.mime,
+      size: file.bytes.byteLength,
+      bytes: file.bytes,
+      createdAt: at,
+    })
+    const line = await d.chat.add({
+      callId,
+      authorId: author.id,
+      authorKind: author.kind,
+      authorName: author.name,
+      body: '',
+      imageId,
+      createdAt: at,
+    })
+    return (await chatDtos([line]))[0]!
+  }
+
+  async function imageOf(
+    callId: string,
+    imageId: string,
+  ): Promise<{ mime: string; bytes: Uint8Array }> {
+    const img = await d.chat.image(callId, imageId)
+    if (!img) throw new CallsError('not_found', 'image not found')
+    return { mime: img.mime, bytes: img.bytes }
   }
 
   /** A member may read a call's chat: in it now (accepted, live), or was in it (joined at least once). */
@@ -1005,7 +1072,11 @@ export function createCallsService(d: CallsDeps) {
       const p = rec.participants.find((x) => x.userId === userId)
       if (!p || p.joinedAt === null) throw new CallsError('forbidden', 'only people who were in the call can read its transcript')
       const segments = await d.transcripts.list(id)
-      return { call: dto(rec, await peopleById()), segments: segments.map(segmentDto), chat: (await allChat(id)).map(chatDto) }
+      return {
+        call: dto(rec, await peopleById()),
+        segments: segments.map(segmentDto),
+        chat: await chatDtos(await allChat(id)),
+      }
     },
 
     /**
@@ -1027,8 +1098,40 @@ export function createCallsService(d: CallsDeps) {
       chatHere(rec)
       const name = displayName((await peopleById()).get(userId))
       if (!name) throw new CallsError('not_found', 'call not found')
-      const line = await d.chat.add({ callId: id, authorId: userId, authorKind: 'member', authorName: name.slice(0, 200), body, createdAt: now() })
-      return chatDto(line)
+      const line = await d.chat.add({
+        callId: id,
+        authorId: userId,
+        authorKind: 'member',
+        authorName: name.slice(0, 200),
+        body,
+        createdAt: now(),
+      })
+      return (await chatDtos([line]))[0]!
+    },
+
+    /** I paste an image in the chat of the live call I am in (wish 4fbf9991): a line of its own. */
+    async postChatImage(
+      userId: string,
+      id: string,
+      file: ChatImageUpload,
+    ): Promise<CallChatMessageDto> {
+      const rec = await visible(userId, id)
+      inTheCall(rec, userId)
+      chatHere(rec)
+      const name = displayName((await peopleById()).get(userId))
+      if (!name) throw new CallsError('not_found', 'call not found')
+      return addImageLine(id, { id: userId, kind: 'member', name: name.slice(0, 200) }, file)
+    },
+
+    /** An image of the call's chat, for whoever reads that chat. */
+    async chatImage(
+      userId: string,
+      id: string,
+      imageId: string,
+    ): Promise<{ mime: string; bytes: Uint8Array }> {
+      const rec = await visible(userId, id)
+      if (!readsChat(rec, userId)) throw new CallsError('not_found', 'image not found')
+      return imageOf(id, imageId)
     },
 
     /** The call's chat (arrival order, after `since`): for people in the call now or who were in it. */
@@ -1045,9 +1148,40 @@ export function createCallsService(d: CallsDeps) {
       const { rec, guest } = await chattingGuest(token)
       const identity = guestIdentity(guest.id)
       const p = rec.participants.find((x) => x.userId === identity)
-      if (!p || !inRoom(p)) throw new CallsError('conflict', 'join the call before writing in its chat')
-      const line = await d.chat.add({ callId: rec.call.id, authorId: identity, authorKind: 'guest', authorName: guest.displayName, body, createdAt: now() })
-      return chatDto(line)
+      if (!p || !inRoom(p))
+        throw new CallsError('conflict', 'join the call before writing in its chat')
+      const line = await d.chat.add({
+        callId: rec.call.id,
+        authorId: identity,
+        authorKind: 'guest',
+        authorName: guest.displayName,
+        body,
+        createdAt: now(),
+      })
+      return (await chatDtos([line]))[0]!
+    },
+
+    /** The guest pastes an image (wish 4fbf9991) — only while they are in the room. */
+    async guestPostChatImage(token: string, file: ChatImageUpload): Promise<CallChatMessageDto> {
+      const { rec, guest } = await chattingGuest(token)
+      const identity = guestIdentity(guest.id)
+      const p = rec.participants.find((x) => x.userId === identity)
+      if (!p || !inRoom(p))
+        throw new CallsError('conflict', 'join the call before writing in its chat')
+      return addImageLine(
+        rec.call.id,
+        { id: identity, kind: 'guest', name: guest.displayName },
+        file,
+      )
+    },
+
+    /** An image of the chat, as the guest reads it (while their link works). */
+    async guestChatImage(
+      token: string,
+      imageId: string,
+    ): Promise<{ mime: string; bytes: Uint8Array }> {
+      const { rec } = await chattingGuest(token)
+      return imageOf(rec.call.id, imageId)
     },
 
     /** The chat as a guest reads it: while their link works, once they joined with a name. */
@@ -1060,7 +1194,7 @@ export function createCallsService(d: CallsDeps) {
     /** One chat line by its seq, no access check — for the live stream, which checks each reader (canReadChat). */
     chatMessage: async (seq: number): Promise<{ callId: string; message: CallChatMessageDto } | null> => {
       const m = await d.chat.get(seq)
-      return m ? { callId: m.callId, message: chatDto(m) } : null
+      return m ? { callId: m.callId, message: (await chatDtos([m]))[0]! } : null
     },
 
     /** May this person read this call's chat on the live stream? (Guests read through their link, never the stream.) */
@@ -1153,7 +1287,21 @@ export function createCallsService(d: CallsDeps) {
       if (heard === '') throw new CallsError('conflict', 'the Company Brain heard nothing in this call')
       const recap = (await d.brain.recap({ userId, callTitle: rec.call.title, people: peopleInCall(view), heard })).trim()
       if (recap === '') throw new Error(`calls: the Company Brain gave an empty recap (${id})`)
+      await d.brainAnswers.saveRecap(id, userId, recap, now())
       return { recap }
+    },
+
+    /**
+     * My /calls rows' summary (wish 397dfda6): per call I may recap (over, and I
+     * switched the Company Brain on in it) the recap I already made, or null —
+     * then the row offers "Make summary". Calls I may not recap are absent.
+     */
+    async recapsForList(userId: string, calls: CallDto[]): Promise<Record<string, string | null>> {
+      const offered = calls
+        .filter((c) => !isLive(c.state) && c.brain.turnedOnBy.includes(userId))
+        .map((c) => c.id)
+      const kept = await d.brainAnswers.recapsFor(userId, offered)
+      return Object.fromEntries(offered.map((id) => [id, kept.get(id) ?? null]))
     },
 
     /** Stores every windowed meeting whose window closed with nobody in it as over; returns how many changed. */

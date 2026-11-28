@@ -1,6 +1,6 @@
-import type { CallChatStore, ChatMessage, NewChatMessage } from './chat'
+import type { CallChatStore, ChatImageInfo, ChatMessage, NewChatMessage } from './chat'
 import { and, asc, count, eq, gt, inArray, sql } from 'drizzle-orm'
-import { callChatMessages } from '$lib/server/db/calls.schema'
+import { callChatImages, callChatMessages } from '$lib/server/db/calls.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 
 /**
@@ -9,6 +9,8 @@ import type { AppDatabase } from '$lib/server/db/context'
  * <seq>) — the hub loads that one line and sends it to each person who may
  * read it (CallsHub.dispatchChat).
  */
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const CALLS_CHAT_NOTIFY_CHANNEL = 'ee_calls_chat'
 
@@ -47,6 +49,31 @@ export function dbChatStore(db: AppDatabase): CallChatStore {
         .where(inArray(callChatMessages.callId, callIds))
         .groupBy(callChatMessages.callId)
       return new Map(rows.map((r) => [r.callId, Number(r.n)]))
+    },
+    async addImage(image) {
+      await db.insert(callChatImages).values(image)
+    },
+    async image(callId, id) {
+      if (!UUID.test(id)) return null
+      const [row] = await db
+        .select()
+        .from(callChatImages)
+        .where(and(eq(callChatImages.callId, callId), eq(callChatImages.id, id)))
+        .limit(1)
+      return row ?? null
+    },
+    async imageInfo(ids) {
+      if (ids.length === 0) return new Map()
+      const rows = await db
+        .select({
+          id: callChatImages.id,
+          name: callChatImages.name,
+          mime: callChatImages.mime,
+          size: callChatImages.size,
+        })
+        .from(callChatImages)
+        .where(inArray(callChatImages.id, ids))
+      return new Map(rows.map((r): [string, ChatImageInfo] => [r.id, r]))
     },
   }
 }

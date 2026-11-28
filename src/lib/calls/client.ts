@@ -113,6 +113,16 @@ export type ChatClient = {
   readChat(id: string, since: number): Promise<CallChatPage>
   /** Write a line; the stored line comes back. */
   postChat(id: string, body: string): Promise<CallChatMessageDto>
+  /** Paste an image as a line of its own (wish 4fbf9991); the stored line comes back. */
+  postChatImage(id: string, file: File): Promise<CallChatMessageDto>
+  /** Where a line's image is shown from (the reader's own route). */
+  imageUrl(id: string, imageId: string): string
+}
+
+const imageForm = (file: File) => {
+  const form = new FormData()
+  form.append('file', file, file.name || 'image')
+  return form
 }
 
 /** A member's chat: /api/calls/[id]/chat (the calls.chat_read / calls.chat_post tools' route). */
@@ -126,6 +136,14 @@ export function chatClient(): ChatClient {
           body: JSON.stringify({ body }),
         })
       ).message,
+    postChatImage: async (id, file) =>
+      (
+        await request<{ message: CallChatMessageDto }>(`${at(id)}/chat/images`, {
+          method: 'POST',
+          body: imageForm(file),
+        })
+      ).message,
+    imageUrl: (id, imageId) => `${at(id)}/chat/images/${encodeURIComponent(imageId)}`,
   }
 }
 
@@ -141,6 +159,14 @@ export function guestChatClient(linkToken: string): ChatClient {
           body: JSON.stringify({ body }),
         })
       ).message,
+    postChatImage: async (_id, file) =>
+      (
+        await request<{ message: CallChatMessageDto }>(`${base}/images`, {
+          method: 'POST',
+          body: imageForm(file),
+        })
+      ).message,
+    imageUrl: (_id, imageId) => `${base}/images/${encodeURIComponent(imageId)}`,
   }
 }
 
@@ -165,7 +191,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     res = await fetch(path, {
       ...init,
-      headers: { 'content-type': 'application/json', ...(init.headers ?? {}) },
+      // A multipart upload sets its own content type (with the boundary).
+      headers:
+        init.body instanceof FormData
+          ? (init.headers ?? {})
+          : { 'content-type': 'application/json', ...(init.headers ?? {}) },
     })
   } catch (err) {
     throw new CallRequestError({

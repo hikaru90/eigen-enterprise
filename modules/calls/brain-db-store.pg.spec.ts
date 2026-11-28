@@ -94,6 +94,20 @@ describe.skipIf(!url)('Company Brain stores (Postgres)', () => {
     expect((await calls.get(id))!.brainShared.map((s) => s.id)).toEqual([mine.id])
   })
 
+  it('a recap is kept per call and person; a newer one replaces it (wish 397dfda6)', async () => {
+    const id = await make()
+    const other = await make()
+    const answers = dbBrainAnswerStore(db)
+    expect(await answers.recapsFor('pg-ann', [id, other])).toEqual(new Map())
+    await answers.saveRecap(id, 'pg-ann', 'Erste Fassung.', at(10))
+    await answers.saveRecap(id, 'pg-ann', 'Zweite Fassung.', at(11))
+    await answers.saveRecap(id, 'pg-ben', 'Bens.', at(12))
+    expect(await answers.recapsFor('pg-ann', [id, other])).toEqual(
+      new Map([[id, 'Zweite Fassung.']]),
+    )
+    expect(await answers.recapsFor('pg-ann', [])).toEqual(new Map())
+  })
+
   it('deleting the call deletes its Brain rows', async () => {
     const id = await make()
     await dbCallsStore(db).mutate(id, (r) => brainOn(r, 'pg-ann', at(1), randomUUID()))

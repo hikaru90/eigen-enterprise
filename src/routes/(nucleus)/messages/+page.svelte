@@ -7,6 +7,7 @@
   import Lock from '@lucide/svelte/icons/lock'
   import Mic from '@lucide/svelte/icons/mic'
   import Paperclip from '@lucide/svelte/icons/paperclip'
+  import Pencil from '@lucide/svelte/icons/pencil'
   import Plus from '@lucide/svelte/icons/plus'
   import SquarePen from '@lucide/svelte/icons/square-pen'
   import Users from '@lucide/svelte/icons/users'
@@ -68,6 +69,7 @@
     upsertConversation,
     type AttachmentView,
     type ConversationView,
+    isGroupChat,
     type MessageFrame,
     type MessageView,
   } from '$lib/messages/view'
@@ -822,6 +824,27 @@
     }
   }
 
+  /** Naming a group chat (wish 2734a371): the header's inline field, null while closed. */
+  let renaming = $state<{ id: string; name: string } | null>(null)
+  let renameSaving = $state(false)
+  async function saveRename(e: SubmitEvent) {
+    e.preventDefault()
+    if (!renaming || renameSaving) return
+    renameSaving = true
+    try {
+      const { conversation } = await api<{ conversation: ConversationView }>(
+        `/api/messages/conversations/${renaming.id}/name`,
+        { method: 'PUT', body: JSON.stringify({ name: renaming.name }) },
+      )
+      setConversations(upsertConversation(conversations, conversation))
+      renaming = null
+    } catch (err) {
+      errorText = failure(err, 'Naming the group chat in Messages')
+    } finally {
+      renameSaving = false
+    }
+  }
+
   async function refreshConversations() {
     const fresh = await api<{ conversations: ConversationView[] }>('/api/messages/conversations')
     setConversations(fresh.conversations)
@@ -1248,7 +1271,39 @@
                   aria-label="Private"
                 />{:else}<Hash class="size-4 shrink-0" aria-hidden="true" />{/if}
             {/if}
-            <span class="truncate">{selected.title}</span>
+            {#if renaming && renaming.id === selected.id}
+              <form class="flex min-w-0 items-center gap-1" onsubmit={saveRename} data-testid="messages-rename-form">
+                <!-- svelte-ignore a11y_autofocus -->
+                <input
+                  class="h-7 min-w-0 rounded-md border border-border bg-background px-2 text-sm font-normal"
+                  aria-label="Group chat name"
+                  placeholder="Name this group chat"
+                  maxlength="80"
+                  autofocus
+                  bind:value={renaming.name}
+                  onkeydown={(e) => {
+                    if (e.key === 'Escape') renaming = null
+                  }}
+                  data-testid="messages-rename-input"
+                />
+                <button type="submit" class="h-7 rounded-md border border-border px-2 text-xs font-semibold" disabled={renameSaving}
+                  >Save</button
+                >
+              </form>
+            {:else}
+              <span class="truncate">{selected.title}</span>
+              {#if isGroupChat(selected)}
+                <button
+                  type="button"
+                  class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.06]"
+                  aria-label="Name this group chat"
+                  title="Name this group chat"
+                  data-testid="messages-rename"
+                  onclick={() => (renaming = { id: selected!.id, name: selected!.named ? selected!.title : '' })}
+                  ><Pencil class="size-3.5" /></button
+                >
+              {/if}
+            {/if}
             {#if selected.kind === 'dm' && dmWith.length === 1 && dmWith[0].kind === 'coworker'}
               <AiMark testid="messages-title-ai" />
               <a

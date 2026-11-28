@@ -51,6 +51,7 @@ export type MessageEventKind =
   | 'message.reacted'
   | 'conversation.created'
   | 'conversation.read'
+  | 'conversation.renamed'
 
 export type MessageEvent = {
   id: number
@@ -106,6 +107,8 @@ export type MessagesStore = {
   listChannels(): Promise<Conversation[]>
   listDmsFor(userId: string): Promise<Conversation[]>
   setPrivate(id: string, isPrivate: boolean): Promise<void>
+  /** A group chat's name (DMs of three or more); null clears it. */
+  setName(id: string, name: string | null): Promise<void>
   addMembers(conversationId: string, userIds: string[]): Promise<void>
   memberIds(conversationId: string): Promise<string[]>
   lastReadAt(conversationId: string, userId: string): Promise<Date | null>

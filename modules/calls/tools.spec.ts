@@ -82,7 +82,7 @@ describe('calls.* tools', () => {
     expect(await tool('calls.list').handler(human('ben'), {})).toMatchObject({
       calls: [{ id: out.call.id }],
     })
-    expect(await tool('calls.list').handler(human('cat'), {})).toEqual({ calls: [] })
+    expect(await tool('calls.list').handler(human('cat'), {})).toEqual({ calls: [], summaries: {} })
     await expect(
       tool('calls.end').handler(human('cat'), { call_id: out.call.id }),
     ).rejects.toMatchObject({ code: 'not_found' })

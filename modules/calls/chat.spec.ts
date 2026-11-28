@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { heardChat, heardTranscriptText, heardTurns } from './brain'
-import { chatTurns, MAX_CHAT_BODY, MemoryChatStore, parseChatBody, type ChatMessage } from './chat'
+import {
+  chatTurns,
+  MAX_CHAT_BODY,
+  MAX_CHAT_IMAGE_BYTES,
+  MemoryChatStore,
+  parseChatBody,
+  type ChatMessage,
+} from './chat'
 import { CallsError } from './errors'
 import { guestIdentity } from './state'
 import { fixture } from './test-fixtures'
@@ -251,5 +258,67 @@ describe('MemoryChatStore', () => {
     expect(await s.get(b.seq)).toEqual(b)
     expect(await s.get(99)).toBeNull()
     expect(await s.countByCall(['c1', 'c2', 'c3'])).toEqual(new Map([['c1', 2], ['c2', 1]]))
+  })
+})
+
+describe('pasting an image in the chat (wish 4fbf9991)', () => {
+  const png = {
+    name: 'screenshot.png',
+    mime: 'image/png',
+    bytes: new Uint8Array([137, 80, 78, 71, 1, 2, 3]),
+  }
+
+  it('a member posts an image line; everyone who reads the chat sees and opens it', async () => {
+    const { f, id } = await liveDm()
+    const line = await f.service.postChatImage('ann', id, png)
+    expect(line).toMatchObject({
+      authorId: 'ann',
+      body: '',
+      image: { name: 'screenshot.png', mime: 'image/png', size: 7 },
+    })
+    expect((await f.service.chat('ben', id)).messages).toEqual([line])
+    const img = await f.service.chatImage('ben', id, line.image!.id)
+    expect(img).toEqual({ mime: 'image/png', bytes: png.bytes })
+    expect(await rejection(f.service.chatImage('cat', id, line.image!.id))).toBe('not_found')
+    expect(
+      await rejection(f.service.chatImage('ben', id, '00000000-0000-4000-8000-000000000000')),
+    ).toBe('not_found')
+  })
+
+  it('only raster images within the limit, only while in the call', async () => {
+    const { f, id } = await liveDm()
+    expect(
+      await rejection(f.service.postChatImage('ann', id, { ...png, mime: 'image/svg+xml' })),
+    ).toBe('invalid')
+    expect(
+      await rejection(f.service.postChatImage('ann', id, { ...png, bytes: new Uint8Array() })),
+    ).toBe('invalid')
+    expect(
+      await rejection(
+        f.service.postChatImage('ann', id, {
+          ...png,
+          bytes: new Uint8Array(MAX_CHAT_IMAGE_BYTES + 1),
+        }),
+      ),
+    ).toBe('invalid')
+    await f.service.end(f.user('ann'), id)
+    expect(await rejection(f.service.postChatImage('ann', id, png))).toBe('conflict')
+  })
+
+  it('a guest in the room pastes one too and opens images through their link', async () => {
+    const { f, id, token } = await meetingWithGuest()
+    const line = await f.service.guestPostChatImage(token, png)
+    expect(line).toMatchObject({
+      authorKind: 'guest',
+      authorName: 'Kim Kunde',
+      image: { mime: 'image/png' },
+    })
+    expect(await f.service.guestChatImage(token, line.image!.id)).toEqual({
+      mime: 'image/png',
+      bytes: png.bytes,
+    })
+    expect((await f.service.chat('ann', id)).messages.map((m) => m.image?.id)).toEqual([
+      line.image!.id,
+    ])
   })
 })

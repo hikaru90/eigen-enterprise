@@ -1,6 +1,6 @@
 import type { BrainAnswer, BrainAnswerStore } from './brain'
-import { and, asc, eq } from 'drizzle-orm'
-import { callBrainAnswers } from '$lib/server/db/calls.schema'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import { callBrainAnswers, callBrainRecaps } from '$lib/server/db/calls.schema'
 import type { AppDatabase } from '$lib/server/db/context'
 
 /**
@@ -27,6 +27,23 @@ export function dbBrainAnswerStore(db: AppDatabase): BrainAnswerStore {
         .from(callBrainAnswers)
         .where(and(eq(callBrainAnswers.callId, callId), eq(callBrainAnswers.askedBy, userId)))
         .orderBy(asc(callBrainAnswers.askedAt), asc(callBrainAnswers.id))) as BrainAnswer[]
+    },
+    async saveRecap(callId, userId, recap, at) {
+      await db
+        .insert(callBrainRecaps)
+        .values({ callId, userId, recap, createdAt: at })
+        .onConflictDoUpdate({
+          target: [callBrainRecaps.callId, callBrainRecaps.userId],
+          set: { recap, createdAt: at },
+        })
+    },
+    async recapsFor(userId, callIds) {
+      if (callIds.length === 0) return new Map()
+      const rows = await db
+        .select({ callId: callBrainRecaps.callId, recap: callBrainRecaps.recap })
+        .from(callBrainRecaps)
+        .where(and(eq(callBrainRecaps.userId, userId), inArray(callBrainRecaps.callId, callIds)))
+      return new Map(rows.map((r) => [r.callId, r.recap]))
     },
   }
 }

@@ -10,6 +10,7 @@ import {
   MessagesError,
   openDm,
   postMessage,
+  renameConversation,
 } from './service'
 import { fixture } from './test-fixtures'
 
@@ -212,5 +213,32 @@ describe('author profile (P-5)', () => {
       ['Bea Member', 'coworker'],
       ['Olga Owner', 'human'],
     ])
+  })
+})
+
+describe('group chat names (wish 2734a371)', () => {
+  it('a member names a group chat; every member sees the name, clearing returns the people', async () => {
+    const { deps, store } = fixture()
+    const g = await openDm(deps, 'bea', ['carl', 'owner'])
+    const renamed = await renameConversation(deps, 'carl', g.id, '  Launch crew ')
+    expect(renamed.title).toBe('Launch crew')
+    expect(renamed.named).toBe(true)
+    expect((await listConversations(deps, 'owner')).find((c) => c.id === g.id)?.title).toBe('Launch crew')
+    const events = await store.eventsAfter(0, 50)
+    expect(events.at(-1)).toMatchObject({ kind: 'conversation.renamed', conversationId: g.id })
+    const cleared = await renameConversation(deps, 'bea', g.id, '')
+    expect(cleared.title).toBe('Carl Member, Olga Owner')
+    expect(cleared.named).toBe(false)
+  })
+
+  it('only members of a group chat (three or more people) may name it', async () => {
+    const { deps } = fixture()
+    const g = await openDm(deps, 'bea', ['carl'])
+    await expect(renameConversation(deps, 'bea', g.id, 'Us')).rejects.toMatchObject({ code: 'invalid' })
+    await expect(renameConversation(deps, 'owner', g.id, 'Us')).rejects.toMatchObject({ code: 'not_found' })
+    const ch = await createChannel(deps, 'bea', { name: 'general', private: false })
+    await expect(renameConversation(deps, 'bea', ch.id, 'x')).rejects.toMatchObject({ code: 'invalid' })
+    const big = await openDm(deps, 'bea', ['carl', 'owner'])
+    await expect(renameConversation(deps, 'bea', big.id, 'x'.repeat(81))).rejects.toMatchObject({ code: 'invalid' })
   })
 })

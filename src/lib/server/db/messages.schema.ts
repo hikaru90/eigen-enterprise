@@ -56,7 +56,7 @@ export const messages = pgTable('messages', {
 export const messageEvents = pgTable('message_events', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
   kind: text('kind', {
-    enum: ['message.created', 'message.edited', 'message.deleted', 'message.reacted', 'conversation.created', 'conversation.read'],
+    enum: ['message.created', 'message.edited', 'message.deleted', 'message.reacted', 'conversation.created', 'conversation.read', 'conversation.renamed'],
   }).notNull(),
   conversationId: uuid('conversation_id')
     .notNull()

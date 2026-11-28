@@ -107,6 +107,17 @@ describe('messages.* write tools (the person acts with their own access)', () =>
     expect(members.members.map((p) => p.id).sort()).toEqual(['bea', 'owner'])
   })
 
+  it('name a group chat (wish 2734a371): its members only', async () => {
+    const { run } = await writeSetup()
+    const { conversation } = (await run('messages.open_dm', 'bea', { user_ids: ['carl', 'owner'] })) as { conversation: { id: string } }
+    const out = (await run('messages.rename_conversation', 'carl', { conversation_id: conversation.id, name: 'Launch' })) as {
+      conversation: { title: string; named: boolean }
+    }
+    expect(out.conversation).toMatchObject({ title: 'Launch', named: true })
+    const list = (await run('messages.list_channels', 'owner', {})) as { conversations: Array<{ id: string; title: string }> }
+    expect(list.conversations.find((c) => c.id === conversation.id)?.title).toBe('Launch')
+  })
+
   it('open a DM, edit, react, mark read, delete own; others cannot edit', async () => {
     const { run } = await writeSetup()
     const { conversation } = (await run('messages.open_dm', 'bea', { user_ids: ['carl'] })) as { conversation: { id: string } }

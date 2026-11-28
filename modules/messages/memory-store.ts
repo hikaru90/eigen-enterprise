@@ -44,6 +44,10 @@ export class MemoryMessagesStore implements MessagesStore {
     const c = this.conversations.get(id)
     if (c) c.private = isPrivate
   }
+  async setName(id: string, name: string | null) {
+    const c = this.conversations.get(id)
+    if (c) c.name = name
+  }
   async addMembers(id: string, userIds: string[]) {
     const rows = this.rows(id)
     for (const u of userIds) if (!rows.has(u)) rows.set(u, { lastReadAt: null, viewingAt: null })

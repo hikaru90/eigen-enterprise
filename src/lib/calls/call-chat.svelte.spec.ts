@@ -28,6 +28,7 @@ const line = (
   authorName:
     kind === 'guest' ? 'Kim Kunde' : `${authorId[0]!.toUpperCase()}${authorId.slice(1)} Example`,
   body,
+  image: null,
   createdAt: new Date(Date.UTC(2026, 10, 23, 10, 0, seq)).toISOString(),
 })
 
@@ -43,6 +44,15 @@ function fakeChatServer(initial: CallChatMessageDto[] = []) {
       lines.push(m)
       return m
     }),
+    postChatImage: vi.fn(async (_id: string, file: File) => {
+      const m: CallChatMessageDto = {
+        ...line((lines.at(-1)?.seq ?? 0) + 1, 'ann', ''),
+        image: { id: 'img-1', name: file.name, mime: file.type, size: file.size },
+      }
+      lines.push(m)
+      return m
+    }),
+    imageUrl: (_id: string, imageId: string) => `data:image/png;base64,iVBORw0KGgo=#${imageId}`,
   }
   return { lines, client }
 }
@@ -151,12 +161,46 @@ describe('the chat in a call', () => {
     await expect.element(page.getByTestId('call-chat-send')).toBeDisabled()
   })
 
+  it('a pasted image is sent as a line of its own and shown inline (wish 4fbf9991)', async () => {
+    const { server } = mount()
+    await connected()
+    await page.getByTestId('call-chat-button').click()
+    const draft = page.getByTestId('call-chat-draft')
+    const file = new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' })
+    const data = new DataTransfer()
+    data.items.add(file)
+    draft
+      .element()
+      .dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+      )
+    await expect.element(page.getByTestId('call-chat-image')).toBeInTheDocument()
+    expect(server.client.postChatImage).toHaveBeenCalledWith('call-1', file)
+    await expect.element(page.getByTestId('call-chat-image')).toHaveAttribute('alt', 'shot.png')
+  })
+
+  it('the message field takes the dark stage tokens, never the page text colour (wish 4fbf9991: black on black)', async () => {
+    // Component specs run without Tailwind (vitest.browser.config.ts): this guards the structure that
+    // decides the colour — the panel re-scopes the tokens dark (.ink-scope, held to AA by
+    // layout.contrast.spec.ts) and the field sets its own light text over the page's text-foreground.
+    mount()
+    await connected()
+    await page.getByTestId('call-chat-button').click()
+    const el = page.getByTestId('call-chat-draft').element()
+    expect(el.closest('.ink-scope')).toBe(page.getByTestId('call-chat-panel').element())
+    expect(el.classList).toContain('text-neutral-50')
+  })
+
   it('a refused line keeps the text and says why', async () => {
     const refusing: ChatClient = {
       readChat: async () => ({ messages: [], hasMore: false }),
       postChat: async () => {
         throw new CallRequestError({ kind: 'failed', message: 'this call is over', agent: null })
       },
+      postChatImage: async () => {
+        throw new CallRequestError({ kind: 'failed', message: 'this call is over', agent: null })
+      },
+      imageUrl: () => '',
     }
     mount({ chat: refusing })
     await connected()
