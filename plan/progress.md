@@ -17,6 +17,15 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 - **e2e:** the journey passes the notice step in a real browser (notice shown, Got it, gone after a reload) and creates the co-worker, its channel and rhythm. It **fails at `coworkers.rhythm_run_now`**: "the AI co-worker turns are not running in this process (boot starts them)" in the dev harness, so the export/withdraw steps are not verified end to end. Unit/component coverage holds them (worker, payload, mock hub, tools, dashboard).
 - **Next:** find out why co-worker turns don't start in the e2e dev process (does coworkers.e2e still pass?), then run the journey to the end; U6 waves still have to call `trace_hub.release_health`.
 
+## 2026-11-28 — Release v0.5.48 (owner: "you cut the release and run the encryption test"; tag on `48331596`, GitHub release run 46162179772)
+
+- **Contents:** the 2026-11-28 make-a-wish round and its open points (entries below). v0.5.47 was bumped on main but never tagged; this release follows v0.5.46.
+- **Release gate:** CI gate green; upgrade rehearsal from v0.5.46 GREEN; e2e 77 passed. Published `eigenenterprise-0.5.48-48331596d81d` (x64 + arm64, signed).
+- **The gate caught, fixed on the way (all test-side, causes fixed, no assertion weakened):** share-dialog spec typed before the dialog's open focus settled (`dcc3d0a0`); the invite "Copy link" click landed before the page hydrated after the form post (the 11-27 flake); the repo sync wait compared "Last synced" at minute resolution — the status row now carries `data-last-synced` (`48331596`).
+- **Machine:** the disk filled up (160 MB free) and took Docker Desktop down mid-gate; 23 merged worktrees of this round removed (14 GB).
+- **Not installed:** `kernel.release_install` runs only as a signed-in owner, the MCP key is not a person. Owner installs from ee-one Settings → Updates, or eCloud /ops › Releases.
+- **Encryption V0 (cloud repo, `5bd021c`):** run in a throwaway Lima VM (Ubuntu 24.04, real ZFS + Incus), not on rs500-1 (production). INCUS_START = `with-host` (a pool locked at boot recovers after `zfs load-key` with no Incus restart). Found: Incus 6.0.0's same-host pool move drops the instance out of project `customers` (6.0.7 works) → version gate + post-move check being built before any migration.
+
 ## 2026-11-28 — Open points of the make-a-wish round fixed, board closed (owner: "fix the open points. also close all contributions that are still in progress")
 
 - **Board:** every in-progress wish on ee-one set to shipped (43). Notes kept; the deck wish's note now names PowerPoint export.
