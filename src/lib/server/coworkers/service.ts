@@ -6,6 +6,7 @@ import {
   type CoworkerAvatarPresetId,
 } from '$lib/coworkers/avatar-presets'
 import { coworkerEmail } from '$lib/coworkers/handle'
+import { EIGENINFERENCE_LABEL } from '$lib/coworkers/model-family'
 import { avatarUrl, isAvatarSha } from '$lib/profile/profile'
 import { isAdminRole, type MemberRole } from '$lib/server/auth/roles'
 import type { UserKind } from '$lib/server/db/auth.schema'
@@ -183,11 +184,15 @@ export type CoworkerView = {
   accountabilities: string[]
   lens: string
   /**
-   * The chat model it runs on: its own pick on the company's own key (bring-your-own-key).
-   * null on eigenInference (owner, 2026-11-28): there it runs on the pool's chat pick and the
-   * model is not named to anyone, it just runs on eigenInference ({@link presentCoworker}).
+   * Its stored chat model pick (deprecated in the contract: show {@link modelLabel}). It runs on
+   * the company's own key only; on eigenInference the pool's chat pick runs instead.
    */
-  modelId: string | null
+  modelId: string
+  /**
+   * What its model shows as (wish 60bd7be2): "eigenInference" on eigenInference, where no model
+   * is named to anyone ({@link presentCoworker}); the model id on the company's own key.
+   */
+  modelLabel: string
   enabled: boolean
   dailyCapUsd: number
   templateId: string | null
@@ -303,10 +308,10 @@ function accountableHumansIn(chart: Chart, coworkerId: string): AccountableHuman
 
 /**
  * A co-worker as people (and the agent, and the turns) see it under the company's AI source:
- * on eigenInference its stored pick neither runs nor shows (modelId null); on its own key it does.
+ * on eigenInference its stored pick neither runs nor shows (modelLabel "eigenInference"); on its own key it does.
  */
 export function presentCoworker(view: CoworkerView, source: SlotSource): CoworkerView {
-  return source === 'eigeninference' ? { ...view, modelId: null } : view
+  return source === 'eigeninference' ? { ...view, modelLabel: EIGENINFERENCE_LABEL } : view
 }
 
 function coworkerView(
@@ -327,6 +332,7 @@ function coworkerView(
     accountabilities: position?.accountabilities ?? [],
     lens: profile.lens,
     modelId: profile.modelId,
+    modelLabel: profile.modelId,
     enabled: profile.enabled,
     dailyCapUsd: profile.dailyCapUsd,
     templateId: profile.templateId,

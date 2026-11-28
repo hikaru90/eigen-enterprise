@@ -11,12 +11,12 @@ export async function loadOrgPeople(run: PersonRunner, user: { id: string }): Pr
     run<{ people: OrgChartEntry[] }>(user, 'org.chart', {}),
     run<{ coworkers: CoworkerView[] }>(user, 'coworkers.list', {}),
   ])
-  const modelOf = new Map(list.coworkers.map((c) => [c.id, c.modelId]))
+  const modelOf = new Map(list.coworkers.map((c) => [c.id, c.modelLabel]))
   return chart.people.map((p) => ({
     ...p,
     image: p.image ?? null,
     reportsToUserIds: p.reportsToUserIds ?? (p.reportsToUserId ? [p.reportsToUserId] : []),
     accountableHumans: p.accountableHumans ?? (p.accountableHuman ? [p.accountableHuman] : []),
-    modelId: p.kind === 'coworker' ? (modelOf.get(p.id) ?? null) : null,
+    modelLabel: p.kind === 'coworker' ? (modelOf.get(p.id) ?? null) : null,
   }))
 }

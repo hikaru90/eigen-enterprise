@@ -134,8 +134,10 @@ export const coworkerViewSchema = z.object({
   title: z.string().nullable(),
   accountabilities: z.array(z.string()),
   lens: z.string(),
-  /** null on eigenInference: it runs on eigenInference, no model is named (BYOK: its pick). */
-  modelId: z.string().nullable(),
+  /** Deprecated (show modelLabel): the stored model pick; it runs only on the company's own key. */
+  modelId: z.string(),
+  /** What its model shows as: "eigenInference" on eigenInference (no model named), else the model id. */
+  modelLabel: z.string(),
   enabled: z.boolean(),
   dailyCapUsd: z.number(),
   templateId: z.string().nullable(),

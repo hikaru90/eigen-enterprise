@@ -19,7 +19,7 @@ const seat = (id: string, over: Partial<DiagramPerson> = {}): DiagramPerson => (
   reportsToUserId: null,
   accountableHuman: null,
   enabled: null,
-  modelId: null,
+  modelLabel: null,
   ...over,
 })
 
@@ -34,7 +34,7 @@ const people: DiagramPerson[] = [
     title: 'Marketing Manager',
     accountabilities: ['Pipeline', 'Launches', 'Messaging', 'Analytics'],
     enabled: true,
-    modelId: 'google/gemini-3.8-flash',
+    modelLabel: 'google/gemini-3.8-flash',
   }),
   seat('dana', {
     name: 'Dana',
@@ -43,7 +43,7 @@ const people: DiagramPerson[] = [
     reportsToUserIds: ['mara', 'ony'],
     title: 'Designer',
     enabled: false,
-    modelId: 'qwen/qwen3.8-flash',
+    modelLabel: 'qwen/qwen3.8-flash',
   }),
 ]
 

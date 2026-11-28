@@ -104,17 +104,23 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', opts: { a
 }
 
 describe('coworkers on eigenInference (wish cd140a7a: no model to pick, none named)', () => {
+  it('the deprecated modelId keeps its old shape: the stored pick, a string', async () => {
+    const { approved, ownerCtx } = setup('allow_all', { source: 'eigeninference' })
+    const cw = (await approved('coworkers.create', { template_id: 'designer' }, ownerCtx)) as { modelId: unknown }
+    expect(cw.modelId).toBe('~deepseek/deepseek-flash-latest')
+  })
+
   it('create refuses a model_id, and without one the co-worker shows no model', async () => {
     const { approved, registry, ownerCtx } = setup('allow_all', { source: 'eigeninference' })
     await expect(approved('coworkers.create', { template_id: 'designer', model_id: 'qwen/qwen3.8-flash' }, ownerCtx)).rejects.toMatchObject({
       code: 'invalid_input',
       message: expect.stringContaining('eigenInference'),
     })
-    const cw = (await approved('coworkers.create', { template_id: 'designer' }, ownerCtx)) as { id: string; modelId: string | null }
-    expect(cw.modelId).toBeNull()
-    const list = (await registry.execute('coworkers.list', {}, ownerCtx)) as { coworkers: Array<{ modelId: string | null }> }
-    expect(list.coworkers.map((c) => c.modelId)).toEqual([null])
-    expect(((await registry.execute('coworkers.get', { user_id: cw.id }, ownerCtx)) as { modelId: unknown }).modelId).toBeNull()
+    const cw = (await approved('coworkers.create', { template_id: 'designer' }, ownerCtx)) as { id: string; modelLabel: string }
+    expect(cw.modelLabel).toBe('eigenInference')
+    const list = (await registry.execute('coworkers.list', {}, ownerCtx)) as { coworkers: Array<{ modelLabel: string }> }
+    expect(list.coworkers.map((c) => c.modelLabel)).toEqual(['eigenInference'])
+    expect(((await registry.execute('coworkers.get', { user_id: cw.id }, ownerCtx)) as { modelLabel: unknown }).modelLabel).toBe('eigenInference')
     await expect(registry.execute('coworkers.update', { user_id: cw.id, model_id: 'qwen/qwen3.8-flash' }, ownerCtx)).rejects.toMatchObject({ code: 'invalid_input' })
   })
 
@@ -126,10 +132,10 @@ describe('coworkers on eigenInference (wish cd140a7a: no model to pick, none nam
 
   it('on the own key the pick shows and can be changed', async () => {
     const { approved, registry, ownerCtx } = setup('allow_all', { source: 'byok' })
-    const cw = (await approved('coworkers.create', { template_id: 'designer', model_id: 'qwen/qwen3.8-flash' }, ownerCtx)) as { id: string; modelId: string }
-    expect(cw.modelId).toBe('qwen/qwen3.8-flash')
-    const up = (await registry.execute('coworkers.update', { user_id: cw.id, model_id: 'google/gemini-3.8-flash' }, ownerCtx)) as { modelId: string }
-    expect(up.modelId).toBe('google/gemini-3.8-flash')
+    const cw = (await approved('coworkers.create', { template_id: 'designer', model_id: 'qwen/qwen3.8-flash' }, ownerCtx)) as { id: string; modelId: string; modelLabel: string }
+    expect(cw).toMatchObject({ modelId: 'qwen/qwen3.8-flash', modelLabel: 'qwen/qwen3.8-flash' })
+    const up = (await registry.execute('coworkers.update', { user_id: cw.id, model_id: 'google/gemini-3.8-flash' }, ownerCtx)) as { modelId: string; modelLabel: string }
+    expect(up).toMatchObject({ modelId: 'google/gemini-3.8-flash', modelLabel: 'google/gemini-3.8-flash' })
   })
 })
 

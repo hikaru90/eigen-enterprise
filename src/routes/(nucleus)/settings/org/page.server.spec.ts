@@ -68,6 +68,7 @@ const coworker = {
   image: '/avatars/coworkers/prism.svg',
   lens: 'Reach first.',
   modelId: 'google/gemini-3.8-flash',
+  modelLabel: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },
@@ -119,12 +120,12 @@ const ev = (form: Record<string, string>) =>
 
 describe('org chart load', () => {
   it('reads org.chart and coworkers.list as the person; each co-worker carries its model', async () => {
-    const data = (await load({ locals } as never)) as { people: { id: string; modelId: string | null }[]; me: unknown }
+    const data = (await load({ locals } as never)) as { people: { id: string; modelLabel: string | null }[]; me: unknown }
     expect(calls.map((c) => [c.user, c.tool])).toEqual([
       ['me', 'org.chart'],
       ['me', 'coworkers.list'],
     ])
-    expect(data.people.map((p) => [p.id, p.modelId])).toEqual([
+    expect(data.people.map((p) => [p.id, p.modelLabel])).toEqual([
       ['owner', null],
       ['me', null],
       ['cw1', 'google/gemini-3.8-flash'],
@@ -219,7 +220,7 @@ describe('profile load', () => {
     expect(data.coworker).toEqual({
       handle: 'mia-mwujrl74',
       lens: 'Reach first.',
-      modelId: 'google/gemini-3.8-flash',
+      modelLabel: 'google/gemini-3.8-flash',
       enabled: true,
       dailyCapUsd: 2,
       accountableHuman: { id: 'owner', name: 'Olga', reason: 'chain' },

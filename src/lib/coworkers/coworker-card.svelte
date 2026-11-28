@@ -2,6 +2,9 @@
   import type { SubmitFunction } from '@sveltejs/kit'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
+  import type { AiBilling } from '$lib/ai-usage/billing'
+  import type { AiAmounts } from '$lib/ai-usage/overview'
+  import type { AiUsagePeriod } from '$lib/ai-usage/view'
   import { Button } from '$lib/components/ui/button'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import { m } from '$lib/paraglide/messages.js'
@@ -10,13 +13,10 @@
   import AiMark from './ai-mark.svelte'
   import { draftFromCoworker, emptyDraft, type CardDraft, type CoworkerLike } from './card-draft'
   import CoworkerFields from './coworker-fields.svelte'
-  import CoworkerUsage from './coworker-usage.svelte'
-  import type { AiBilling } from '$lib/ai-usage/billing'
-  import type { AiAmounts } from '$lib/ai-usage/overview'
-  import type { AiUsagePeriod } from '$lib/ai-usage/view'
   import CoworkerRhythms, { type RhythmItem, type RhythmTargetItem } from './coworker-rhythms.svelte'
+  import CoworkerUsage from './coworker-usage.svelte'
   import MentionHandle from './mention-handle.svelte'
-  import { modelFamily, modelName, type ChatModelOption } from './model-family'
+  import { modelFamily, modelName, shownModel, type ChatModelOption } from './model-family'
 
   /**
    * One AI co-worker in Settings → Co-workers: its role card at a glance, and
@@ -60,7 +60,7 @@
   let confirmingRemove = $state(false)
   let card = $state<CardDraft>(emptyDraft())
 
-  const family = $derived(c.modelId ? modelFamily(c.modelId) : null)
+  const family = $derived(shownModel(c.modelLabel) ? modelFamily(c.modelLabel) : null)
   const managerIds = $derived(
     c.reportsToUserIds && c.reportsToUserIds.length > 0
       ? c.reportsToUserIds
@@ -113,7 +113,7 @@
       </h3>
       <p class="text-sm text-muted-foreground">{c.title ?? ''}</p>
       <p class="text-xs text-muted-foreground">
-        {c.modelId ? modelName(c.modelId) : m.coworkers_runs_on_eigeninference()} · {m.coworkers_daily_cap_value({ amount: c.dailyCapUsd.toFixed(2) })} ·
+        {shownModel(c.modelLabel) ? modelName(c.modelLabel) : m.coworkers_runs_on_eigeninference()} · {m.coworkers_daily_cap_value({ amount: c.dailyCapUsd.toFixed(2) })} ·
         {#if managerNames.length > 0}
           {m.coworkers_reports_to_name({ name: managerNames.join(', ') })}
         {:else}

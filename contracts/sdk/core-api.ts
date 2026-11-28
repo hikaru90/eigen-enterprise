@@ -23,6 +23,70 @@ export type CoreApiTools = {
     input: Record<string, unknown>
     output: unknown
   }
+  "artifacts.create": {
+    input: {
+      "content"?: string
+      "css"?: string
+      "folder_id"?: string | null
+      "kind": "page" | "deck"
+      "name": string
+      "slides"?: Array<({
+        "html": string
+      }) | ({
+        "markdown": string
+      })>
+    }
+    output: unknown
+  }
+  "artifacts.export_pdf": {
+    input: {
+      "file_id": string
+      "folder_id"?: string | null
+    }
+    output: unknown
+  }
+  "artifacts.read": {
+    input: {
+      "file_id": string
+      "view_url"?: boolean
+    }
+    output: unknown
+  }
+  "artifacts.update": {
+    input: {
+      "content"?: string
+      "edits"?: Array<{
+        "find": string
+        "replace": string
+      }>
+      "file_id": string
+      "slide_ops"?: Array<({
+        "index": number
+        "op": "replace"
+        "slide": ({
+          "html": string
+        }) | ({
+          "markdown": string
+        })
+      }) | ({
+        "index": number
+        "op": "insert"
+        "slide": ({
+          "html": string
+        }) | ({
+          "markdown": string
+        })
+      }) | ({
+        "index": number
+        "op": "delete"
+      }) | ({
+        "from": number
+        "op": "move"
+        "to": number
+      })>
+    }
+    output: unknown
+  }
   "assistant.conversation_rename": {
     input: {
       "run_id": number
@@ -485,10 +549,26 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "calls.chat_image": {
+    input: {
+      "call_id": string
+      "image_id": string
+    }
+    output: unknown
+  }
   "calls.chat_post": {
     input: {
       "body": string
       "call_id": string
+    }
+    output: unknown
+  }
+  "calls.chat_post_image": {
+    input: {
+      "call_id": string
+      "content_base64": string
+      "filename": string
+      "mime": string
     }
     output: unknown
   }
@@ -812,6 +892,7 @@ export type CoreApiTools = {
       "image": string | null
       "lens": string
       "modelId": string
+      "modelLabel": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
@@ -848,6 +929,7 @@ export type CoreApiTools = {
       "image": string | null
       "lens": string
       "modelId": string
+      "modelLabel": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
@@ -884,6 +966,7 @@ export type CoreApiTools = {
       "image": string | null
       "lens": string
       "modelId": string
+      "modelLabel": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
@@ -981,6 +1064,7 @@ export type CoreApiTools = {
       "image": string | null
       "lens": string
       "modelId": string
+      "modelLabel": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
@@ -1016,6 +1100,7 @@ export type CoreApiTools = {
         "image": string | null
         "lens": string
         "modelId": string
+        "modelLabel": string
         "name": string
         "removedAt": string | null
         "reportsToUserId": string | null
@@ -1095,6 +1180,7 @@ export type CoreApiTools = {
       "image": string | null
       "lens": string
       "modelId": string
+      "modelLabel": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
@@ -1303,6 +1389,7 @@ export type CoreApiTools = {
       "image": string | null
       "lens": string
       "modelId": string
+      "modelLabel": string
       "name": string
       "removedAt": string | null
       "reportsToUserId": string | null
@@ -1311,6 +1398,46 @@ export type CoreApiTools = {
       "templateId": string | null
       "title": string | null
       "updatedAt": string
+    }
+  }
+  "dashboard.patterns": {
+    input: Record<string, unknown>
+    output: {
+      "createdAt": string | null
+      "digestId": string | null
+      "items": Array<{
+        "count": number
+        "days": number
+        "id": string
+        "kind": "activity" | "recurring"
+        "module": string
+        "moduleLabel": string
+        "personId": string
+        "personName": string
+        "text": string
+      }>
+      "windowEnd": string | null
+      "windowStart": string | null
+    }
+  }
+  "dashboard.patterns_refresh": {
+    input: Record<string, unknown>
+    output: {
+      "createdAt": string | null
+      "digestId": string | null
+      "items": Array<{
+        "count": number
+        "days": number
+        "id": string
+        "kind": "activity" | "recurring"
+        "module": string
+        "moduleLabel": string
+        "personId": string
+        "personName": string
+        "text": string
+      }>
+      "windowEnd": string | null
+      "windowStart": string | null
     }
   }
   "decisions.answer": {
@@ -3966,6 +4093,18 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "memory.route_input": {
+    input: {
+      "as"?: "question" | "remember" | "task" | "document" | "reminder"
+      "decision_id"?: string
+      "replaces"?: {
+        "id": string
+        "route": "remember" | "task" | "document"
+      }
+      "text": string
+    }
+    output: unknown
+  }
   "memory.run_scheduled_task": {
     input: {
       "task_id": string
@@ -4169,6 +4308,13 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "messages.rename_conversation": {
+    input: {
+      "conversation_id": string
+      "name": string
+    }
+    output: unknown
+  }
   "messages.set_do_not_disturb": {
     input: {
       "do_not_disturb": boolean
@@ -4340,6 +4486,38 @@ export type CoreApiTools = {
         "since": string
         "userAgent": string | null
       }>
+    }
+  }
+  "notifications.inbox": {
+    input: Record<string, unknown>
+    output: {
+      "items": Array<{
+        "at": string
+        "detail": string
+        "href": string
+        "key": string
+        "kind": "question" | "task" | "task_update" | "coworker"
+        "title": string
+        "unread": boolean
+      }>
+      "unread": number
+    }
+  }
+  "notifications.mark_read": {
+    input: {
+      "keys": Array<string>
+    }
+    output: {
+      "items": Array<{
+        "at": string
+        "detail": string
+        "href": string
+        "key": string
+        "kind": "question" | "task" | "task_update" | "coworker"
+        "title": string
+        "unread": boolean
+      }>
+      "unread": number
     }
   }
   "notifications.settings_get": {
@@ -4635,6 +4813,7 @@ export type CoreApiTools = {
     input: {
       "from"?: string
       "to"?: string
+      "user_id"?: string
     }
     output: {
       "billing": ({
@@ -4727,6 +4906,7 @@ export type CoreApiTools = {
         "eigenInference": boolean
         "embeddingModel": string | null
         "modelProvider": "openrouter" | "opper"
+        "providerLabel": string
         "providers": Array<{
           "authType": string
           "configured": boolean
@@ -4849,6 +5029,7 @@ export type CoreApiTools = {
         "eigenInference": boolean
         "embeddingModel": string | null
         "modelProvider": "openrouter" | "opper"
+        "providerLabel": string
         "providers": Array<{
           "authType": string
           "configured": boolean
@@ -5294,6 +5475,10 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "agent.disable",
   "agent.enable",
   "agent.list",
+  "artifacts.create",
+  "artifacts.export_pdf",
+  "artifacts.read",
+  "artifacts.update",
   "assistant.conversation_rename",
   "brand.corpus_get",
   "brand.corpus_list",
@@ -5346,7 +5531,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "calls.brain_recap",
   "calls.brain_set",
   "calls.brain_share_answer",
+  "calls.chat_image",
   "calls.chat_post",
+  "calls.chat_post_image",
   "calls.chat_read",
   "calls.end",
   "calls.invite_guests",
@@ -5398,6 +5585,8 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "coworkers.runs",
   "coworkers.templates",
   "coworkers.update",
+  "dashboard.patterns",
+  "dashboard.patterns_refresh",
   "decisions.answer",
   "decisions.kinds",
   "decisions.label",
@@ -5654,6 +5843,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "memory.retrieve_thoughts",
   "memory.retry_enrichment",
   "memory.retry_scheduled_task_step",
+  "memory.route_input",
   "memory.run_scheduled_task",
   "memory.search_text_files",
   "memory.set_project_deadline",
@@ -5681,6 +5871,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "messages.presence",
   "messages.react",
   "messages.read",
+  "messages.rename_conversation",
   "messages.set_do_not_disturb",
   "messages.set_share_where",
   "messages.thread",
@@ -5706,6 +5897,8 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "modules.test",
   "modules.write_file",
   "notifications.devices",
+  "notifications.inbox",
+  "notifications.mark_read",
   "notifications.settings_get",
   "notifications.settings_set",
   "notifications.test",

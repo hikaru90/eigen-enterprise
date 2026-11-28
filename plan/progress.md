@@ -2,6 +2,12 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-28 — Contract gate green again: eigenInference labels are additive, the named fields deprecated (gate failed on wish 60bd7be2's nullable modelId/modelProvider)
+
+- **Shipped:** coworkers.* outputs keep `modelId: string` (the stored pick) and gain `modelLabel` ("eigenInference" on eigenInference, else the model id); settings.get/update keep `ai.modelProvider` (the real provider) and gain `ai.providerLabel` ("eigenInference" or the provider). Every co-worker surface (card, org chart tree + diagram, profile page) renders only the label; nothing on screen changes. coworkers.create/update still refuse model_id on eigenInference.
+- **Decision:** `modelId` (coworkers create/get/list/update/enable/disable/remove) and `ai.modelProvider` (settings get/update) are deprecated in `contracts/deprecations.ts` since 0.5.48 (2026-11-28), replacement = the label fields. Removable from **0.7.0 and on/after 2026-12-28** with a coreApi major bump. Until then the deprecated fields do still carry the real model/provider to API callers on eigenInference — UI never shows them.
+- Lock + SDK regenerated (`npm run contract:lock`).
+
 ## 2026-11-27 — Settings → AI: the Models section only on the company's own key (owner: "the models section has to be deleted … its only relevant on byok")
 
 - **Shipped (`15361d61`, merge `1d605416`):** with "Use eigenInference" on, Settings → AI shows no Models section (role dropdowns + fixed search model). eigenInference always runs on the pool's picks for its provider (Opper: DeepSeek V4.1 Flash, Voxtral, clef-flash); a company's stored picks apply only to its own key (`slots.ts` resolveSlot, `company-ai-settings.ts` view). Picks are checked against OpenRouter's pool (the bring-your-own-key pool), whatever eigenInference runs on.
