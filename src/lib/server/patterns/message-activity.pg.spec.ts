@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { appDbAsyncLocal, type AppDatabase } from '$lib/server/db/context'
 import { getDb } from '$lib/server/db'
+import { appDbAsyncLocal, type AppDatabase } from '$lib/server/db/context'
 import { messageConversations, messages } from '$lib/server/db/messages.schema'
 import { messageActivityEvents } from './message-activity'
 
