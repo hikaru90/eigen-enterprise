@@ -2,6 +2,7 @@ import type { AiTaskId } from '../../ai-usage/tasks'
 import type { EngineContext, EngineToolListing, LoopEngine } from '../engine'
 import type { KernelRegistry } from '../registry'
 import { randomUUID } from 'node:crypto'
+import { artifactOfToolOutcome } from '../../tool-steps/artifact'
 import { summarizeToolInput, summarizeToolResult, toolStepTarget } from '../../tool-steps/summary'
 import { KernelError } from '../errors'
 import { delegatedPrincipal, type PersonDirectory } from '../principals'
@@ -317,12 +318,14 @@ function bridgeExecute(
       (approvalId, tool) => emitSurfaceEvent(ctx, { type: 'approval.required', tool, approvalId }),
     )
     const result = summarizeToolResult(outcome)
+    const artifact = result.failed ? null : artifactOfToolOutcome(target.tool, outcome)
     emitSurfaceEvent(ctx, {
       type: 'tool.finished',
       stepId,
       tool: target.tool,
       failed: result.failed,
       resultSummary: result.summary,
+      ...(artifact ? { artifact } : {}),
     })
     return outcome
   }

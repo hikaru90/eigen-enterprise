@@ -175,6 +175,11 @@ export const DRIVE_WRITE_TOOLS = [
   ...DRIVE_BULK_TOOL_NAMES,
 ] as const
 
+/** Artifacts (./artifact-tools.ts, plan/phase-artifacts.md): HTML pages and slide decks agents write; the artifacts namespace. */
+export const ARTIFACT_TOOL_NAMES = ['artifacts.create', 'artifacts.update', 'artifacts.read', 'artifacts.export_pdf'] as const
+/** The artifact writes: each waits on the approval mode (wired in modules/index.ts). */
+export const ARTIFACT_WRITE_TOOLS = ['artifacts.create', 'artifacts.update', 'artifacts.export_pdf'] as const
+
 export const DRIVE_TOOL_NAMES = [
   'drive.list',
   'drive.shared_with_me',
@@ -195,6 +200,7 @@ export const DRIVE_TOOL_NAMES = [
   ...DRIVE_SHEET_TOOL_NAMES,
   ...DRIVE_SHEET_COPY_TOOL_NAMES,
   ...DRIVE_SHEET_LIVE_TOOL_NAMES,
+  ...ARTIFACT_TOOL_NAMES,
 ] as const
 
 /**
@@ -207,7 +213,8 @@ export const driveManifest: ModuleManifest = {
   name: 'Drive',
   version: '0.3.0',
   description:
-    'Folders and files for the whole company: upload, share, preview; Markdown and CSV keep revisions; Excel workbooks open as an editable grid; archive what is done with (AI suggestions you confirm); run a web app folder and see it live (admins).',
+    'Folders and files for the whole company: upload, share, preview; Markdown and CSV keep revisions; Excel workbooks open as an editable grid; archive what is done with (AI suggestions you confirm); run a web app folder and see it live (admins); artifacts: HTML pages and slide decks the assistant builds, rendered next to the chat.',
+  toolNamespaces: ['drive', 'artifacts'],
   tools: [...DRIVE_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }

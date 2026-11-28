@@ -76,9 +76,15 @@ export function isTextDocument(name: string): boolean {
   return ext === 'md' || ext === 'markdown' || ext === 'csv'
 }
 
-/** Files that keep a revision on every write: the text documents and the office files. */
+/** HTML pages (.html/.htm): rendered sandboxed; an artifact (./artifact.ts) is one. */
+export function isHtmlFile(name: string): boolean {
+  const ext = extensionOf(name)
+  return ext === 'html' || ext === 'htm'
+}
+
+/** Files that keep a revision on every write: the text documents, HTML pages (artifacts) and the office files. */
 export function isRevisioned(name: string): boolean {
-  return isTextDocument(name) || officeKind(name, '') !== null
+  return isTextDocument(name) || isHtmlFile(name) || officeKind(name, '') !== null
 }
 
 /** Files the agent may read as text (drive.read) and write (drive.write_text: revisioned only). */

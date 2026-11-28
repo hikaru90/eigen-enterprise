@@ -63,6 +63,7 @@ import {
   DRIVE_SHEET_COPY_TOOL_NAMES,
   DRIVE_SHEET_LIVE_WRITE_TOOLS,
   DRIVE_SHEET_WRITE_TOOLS,
+  ARTIFACT_WRITE_TOOLS,
   DRIVE_WRITE_TOOLS,
   driveManifest,
 } from './drive/manifest'
@@ -261,6 +262,8 @@ export const APPROVAL_REQUIRED_TOOLS: ReadonlySet<string> = new Set([
   ...DRIVE_SHEET_COPY_TOOL_NAMES,
   // Drive spreadsheets co-edited: a batch of changes into an open workbook's log.
   ...DRIVE_SHEET_LIVE_WRITE_TOOLS,
+  // Drive artifacts: an agent's new or changed page/deck, and its PDF export (a new file).
+  ...ARTIFACT_WRITE_TOOLS,
   // Calls: ringing, booking meetings / inviting guests (external mail), removing a guest and
   // the Company Brain's switch and shares wait on the approval mode.
   ...CALLS_WRITE_TOOLS,

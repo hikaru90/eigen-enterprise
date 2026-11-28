@@ -24,8 +24,11 @@ export type EngineSurfaceEvent =
    * really runs (an `ee tool run <name>` names <name>).
    */
   | { type: 'tool.preview'; stepId: string; tool: string; inputSummary: string | null }
-  /** That tool ended: failed (a structured tool error) or not, and a short result summary. */
-  | { type: 'tool.finished'; stepId: string; tool: string; failed: boolean; resultSummary: string | null }
+  /**
+   * That tool ended: failed (a structured tool error) or not, and a short result summary.
+   * `artifact`: the Drive artifact it wrote (the chat's side panel opens it; tool-steps/artifact.ts).
+   */
+  | { type: 'tool.finished'; stepId: string; tool: string; failed: boolean; resultSummary: string | null; artifact?: { fileId: string } }
   | { type: 'approval.required'; tool: string; approvalId: string }
 
 /**

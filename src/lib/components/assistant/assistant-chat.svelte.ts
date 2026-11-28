@@ -1,5 +1,6 @@
 import type { AssistantAttachment } from './attachments'
 import type { ApprovalModeState, AssistantConversation } from './types'
+import { ArtifactPanel } from './artifact-panel-state.svelte'
 import { SvelteMap } from 'svelte/reactivity'
 import type { AiUsageToday } from '$lib/ai-usage/usage'
 import {
@@ -84,6 +85,9 @@ export class AssistantChat {
   /** The last usage read failed (the meter says so instead of showing a stale amount). */
   usageFailed = $state(false)
 
+  /** The artifact the assistant created or changed, open beside the chat (plan/phase-artifacts.md). */
+  readonly artifact: ArtifactPanel
+
   /** The view's hook for keeping the newest line in view (no effect needed). */
   onchange: (() => void) | null = null
 
@@ -100,6 +104,7 @@ export class AssistantChat {
 
   constructor(deps: AssistantChatDeps) {
     this.#deps = deps
+    this.artifact = new ArtifactPanel(deps.fetch)
   }
 
   #changed(): void {
@@ -272,6 +277,7 @@ export class AssistantChat {
     this.sessionId = null
     this.status = null
     this.approvalErrors = {}
+    this.artifact.close()
     this.generation += 1
     this.#changed()
   }
@@ -351,6 +357,8 @@ export class AssistantChat {
           if (event.type === 'tool.finished') {
             if (generation === this.generation) {
               this.entries = withToolStepFinished(this.entries, event)
+              // An artifact the assistant wrote opens beside the chat (again after each change).
+              if (event.artifact) void this.artifact.show(event.artifact.fileId)
               this.#changed()
             }
             return

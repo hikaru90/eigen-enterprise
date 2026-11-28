@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { buildDocx, p, r } from '$lib/office/docx/test-utils/builder'
 import { ASSISTANT_ATTACHMENT_LIMITS } from '$lib/components/assistant/attachments'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
 import {
@@ -79,7 +80,18 @@ describe('readAssistantAttachment', () => {
     ])
   })
 
-  it('refuses a file it cannot read (binary, e.g. a Word file) with a plain sentence', async () => {
+  it('reads a Word file by its own text, without a model call', async () => {
+    const complete = modelSays('never')
+    const attachment = await readAssistantAttachment(
+      { complete },
+      { userId: 'u1', filename: 'brief.docx', bytes: buildDocx({ body: p(r('Quarterly plan for Acme')) }) },
+    )
+    expect(attachment).toMatchObject({ name: 'brief.docx', kind: 'docx' })
+    expect(attachment.text).toContain('Quarterly plan for Acme')
+    expect(complete).not.toHaveBeenCalled()
+  })
+
+  it('refuses a file it cannot read (binary, e.g. a broken zip) with a plain sentence', async () => {
     const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0xfe, 0x00])
     const err = await readAssistantAttachment(
       { complete: modelSays('x') },
