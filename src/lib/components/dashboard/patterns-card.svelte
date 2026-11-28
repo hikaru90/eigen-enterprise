@@ -67,10 +67,10 @@
       </ul>
     {/if}
     {#if since}
-      <p class="px-2 pb-1 text-[11px] text-black/50">Written {since}</p>
+      <p class="px-2 pb-1 text-[13px] text-black/50">Written {since}</p>
     {/if}
     {#if error}
-      <p class="px-2 pb-1 text-[12px] text-[#a8321a]" role="alert" data-testid="dashboard-patterns-error">{error}</p>
+      <p class="px-2 pb-1 text-[13px] text-[#a8321a]" role="alert" data-testid="dashboard-patterns-error">{error}</p>
     {/if}
   </div>
 </section>

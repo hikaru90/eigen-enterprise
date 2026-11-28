@@ -307,7 +307,7 @@
     <span class="min-w-0 truncate">{item.name}</span>
     {#if (navCounts[item.id] ?? 0) > 0}
       <span
-        class="ml-auto min-w-5 shrink-0 rounded-full bg-coral px-1.5 text-center text-[11px] leading-5 font-semibold tabular-nums text-white"
+        class="ml-auto min-w-5 shrink-0 rounded-full bg-coral px-1.5 text-center text-[13px] leading-5 font-semibold tabular-nums text-white"
         aria-label="{navCounts[item.id]} unread"
         data-testid="shell-nav-count-{item.id}">{navCounts[item.id] > 99 ? '99+' : navCounts[item.id]}</span
       >

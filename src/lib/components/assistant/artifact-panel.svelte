@@ -22,7 +22,7 @@
       <div class="min-w-0 flex-1">
         <p class="truncate text-[13px] font-medium" data-testid="artifact-name">{panel.view?.name ?? 'Opening…'}</p>
         {#if panel.view?.kind === 'deck'}
-          <p class="text-[11px] text-foreground/55">{panel.view.slideCount} {panel.view.slideCount === 1 ? 'slide' : 'slides'}</p>
+          <p class="text-[13px] text-muted-foreground">{panel.view.slideCount} {panel.view.slideCount === 1 ? 'slide' : 'slides'}</p>
         {/if}
       </div>
       {#if panel.view}
@@ -53,11 +53,11 @@
       </button>
     </header>
     {#if panel.exported.status === 'done'}
-      <p class="border-b border-border px-3 py-1.5 text-[12px]" data-testid="artifact-exported">
+      <p class="border-b border-border px-3 py-1.5 text-[13px]" data-testid="artifact-exported">
         Saved <a class="underline" href={resolve('/(nucleus)/drive/file/[id]', { id: panel.exported.fileId })}>{panel.exported.name}</a> in Drive.
       </p>
     {:else if panel.exported.status === 'failed'}
-      <p class="border-b border-border px-3 py-1.5 text-[12px] text-destructive" role="alert">{panel.exported.message}</p>
+      <p class="border-b border-border px-3 py-1.5 text-[13px] text-destructive" role="alert">{panel.exported.message}</p>
     {/if}
     <div class="relative min-h-0 flex-1 bg-muted/30">
       {#if panel.status === 'failed'}
@@ -75,7 +75,7 @@
         {/key}
       {/if}
       {#if panel.status === 'loading'}
-        <p class="absolute right-3 top-2 text-[11px] text-foreground/55" aria-live="polite">Updating…</p>
+        <p class="absolute right-3 top-2 text-[13px] text-muted-foreground" aria-live="polite">Updating…</p>
       {/if}
     </div>
   </section>

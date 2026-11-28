@@ -87,7 +87,7 @@
     <Bell class="size-4" aria-hidden="true" strokeWidth={1.75} />
     {#if count > 0}
       <span
-        class="pointer-events-none absolute -top-0.5 -right-0.5 inline-grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 font-mono text-[10px] leading-none text-white"
+        class="pointer-events-none absolute -top-0.5 -right-0.5 inline-grid h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 font-mono text-[13px] leading-none text-white"
         data-testid="notification-bell-count"
         aria-hidden="true">{count > 99 ? '99+' : count}</span
       >
