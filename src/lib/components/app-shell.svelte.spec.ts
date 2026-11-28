@@ -325,7 +325,7 @@ describe('app-shell.svelte', () => {
 
   describe('my status at the foot of the nav (Contribute e4ef6be1)', () => {
     const dnd = () => {
-      const self = new SelfPresence({ fetch: async () => new Response(null, { status: 500 }) })
+      const self = new SelfPresence({ fetch: async () => new Response(null, { status: 500 }), hidden: () => false })
       self.receive({ userId: 'alex', status: 'dnd', doNotDisturb: true, lastSeenAt: null })
       return self
     }

@@ -20,7 +20,7 @@ const answer = (body: unknown) =>
   })
 
 function keeper(start: PresenceView | null, fetch: SelfPresenceFetch = vi.fn<SelfPresenceFetch>()) {
-  const self = new SelfPresence({ fetch })
+  const self = new SelfPresence({ fetch, hidden: () => false })
   if (start) self.receive(start)
   return self
 }
