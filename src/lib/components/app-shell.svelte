@@ -79,6 +79,7 @@
     presence,
     company = null,
     where = null,
+    navCounts = {},
     inkFrame = true,
     notice,
     children,
@@ -96,6 +97,8 @@
     company?: CompanyPresence | null
     /** Where this tab is (what its heartbeat reports): "Here with you" are the people at the same place. */
     where?: WhereReport | null
+    /** A live count per nav entry id (Messages' unread, wish f397009a): a right-aligned pill, hidden at 0. */
+    navCounts?: Readonly<Record<string, number>>
     /**
      * The app's own style: the board's black frame (sidebar and top bar on
      * ink, the page a light panel inside it). With an active brand style the
@@ -301,7 +304,13 @@
   >
     <Icon class="size-4 shrink-0 {current ? '' : 'text-muted-foreground group-hover:text-foreground'}" aria-hidden="true" strokeWidth={1.75} />
     <span class="min-w-0 truncate">{item.name}</span>
-    {#if current}<span class="ml-auto size-1.5 shrink-0 rounded-full bg-coral" aria-hidden="true"></span>{/if}
+    {#if (navCounts[item.id] ?? 0) > 0}
+      <span
+        class="ml-auto min-w-5 shrink-0 rounded-full bg-coral px-1.5 text-center text-[11px] leading-5 font-semibold tabular-nums text-white"
+        aria-label="{navCounts[item.id]} unread"
+        data-testid="shell-nav-count-{item.id}">{navCounts[item.id] > 99 ? '99+' : navCounts[item.id]}</span
+      >
+    {:else if current}<span class="ml-auto size-1.5 shrink-0 rounded-full bg-coral" aria-hidden="true"></span>{/if}
     {#if dimmed}<span class="chip chip-line ml-auto shrink-0">Off</span>{/if}
   </a>
   {#if here.length > 0}

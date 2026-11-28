@@ -360,6 +360,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/messages/channels POST': tool('messages.create_channel'),
   '/api/messages/conversations/[id]/attachments POST': tool('messages.upload_attachments'),
   '/api/messages/conversations/[id]/messages POST': tool('messages.post'),
+  '/api/messages/conversations/[id]/name PUT': tool('messages.rename_conversation'),
   '/api/messages/conversations/[id]/read POST': tool('messages.mark_read'),
   '/api/messages/dms POST': tool('messages.open_dm'),
   '/api/messages/messages/[id] DELETE': tool('messages.delete'),

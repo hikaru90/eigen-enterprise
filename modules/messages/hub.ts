@@ -72,7 +72,7 @@ export class MessagesHub {
       if (event.userId !== userId) return null
       return { id: event.id, event: 'read', data: { conversationId: c.id, unread: await unreadFor(d, userId, c.id) } }
     }
-    if (event.kind === 'conversation.created') {
+    if (event.kind === 'conversation.created' || event.kind === 'conversation.renamed') {
       return { id: event.id, event: 'conversation', data: { conversation: await summarize(d, userId, c) } }
     }
     if (!event.messageId || !(event.kind in ACTIONS)) return null

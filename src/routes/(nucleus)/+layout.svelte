@@ -8,6 +8,7 @@
   import { LiveCalls, setLiveCalls } from '$lib/calls/live-calls.svelte'
   import AppShell from '$lib/components/app-shell.svelte'
   import { PresenceHeartbeat } from '$lib/messages/presence'
+  import { MessagesUnread } from '$lib/messages/unread-count.svelte'
   import { SelfPresence, setSelfPresence } from '$lib/messages/self-presence.svelte'
   import { CompanyPresence, setCompanyPresence } from '$lib/presence/company-presence.svelte'
   import { PresenceFocus, setPresenceFocus } from '$lib/presence/focus.svelte'
@@ -26,7 +27,11 @@
   // A call runs in its own tab (the call page owns it); every tab knows which
   // call this browser is in — one call at a time across tabs.
   const callPresence = setCallPresence(new CallPresence())
+  // The sidebar's Messages counter (wish f397009a): seeded by the load, live from the messages stream.
+  // svelte-ignore state_referenced_locally
+  const unread = data.user && data.messagesUnread ? new MessagesUnread(data.messagesUnread) : null
   const resume = () => {
+    unread?.resume()
     liveCalls.resume()
     company?.resume()
   }
@@ -77,7 +82,8 @@
     callPresence.connect(browserPresenceChannel)
     // Only for plugins that are on: the plugin gate answers 409 otherwise, and
     // a feed would retry forever. A switch takes effect on the next full load.
-    if (data.liveFeeds?.calls || company) {
+    unread?.connect()
+    if (data.liveFeeds?.calls || company || unread) {
       window.addEventListener('online', resume)
       document.addEventListener('visibilitychange', onVisible)
     }
@@ -98,6 +104,7 @@
 
   onDestroy(() => {
     liveCalls.close()
+    unread?.close()
     company?.close()
     callPresence.close()
     presenceBeat?.stop()
@@ -141,6 +148,7 @@
       presence={selfPresence}
       {company}
       where={myWhere}
+      navCounts={unread ? { messages: unread.total } : {}}
       inkFrame={!brandActive}
     >
       {#snippet notice()}

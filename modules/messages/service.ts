@@ -123,6 +123,8 @@ export type ConversationSummary = {
   unread: number
   /** DM participants (empty for channels). */
   memberIds: string[]
+  /** A group chat its members named (the title is that name, not the people). */
+  named: boolean
 }
 
 const now = (d: MessagesDeps) => (d.now ? d.now() : new Date())
@@ -256,6 +258,7 @@ export async function conversationTitle(
   memberIds?: string[],
 ): Promise<string> {
   if (c.kind !== 'dm') return c.name ?? ''
+  if (c.name) return c.name
   const map = people ?? (await peopleById(d))
   const others = (memberIds ?? (await d.store.memberIds(c.id))).filter((u) => u !== userId)
   return others.length === 0 ? 'Just you' : others.map((u) => displayName(map.get(u))).join(', ')
@@ -276,6 +279,7 @@ export async function summarize(
     private: c.private,
     unread: await unreadFor(d, userId, c.id),
     memberIds,
+    named: c.kind === 'dm' && c.name !== null,
   }
 }
 
@@ -344,6 +348,33 @@ export async function createChannel(
   await d.access.initGrants(actorId, 'channel', c.id, grants)
   await d.store.appendEvent({ kind: 'conversation.created', conversationId: c.id, messageId: null, userId: null })
   return summarize(d, actorId, c, people)
+}
+
+/** The smallest direct message that is a group chat (and so may carry a name). */
+export const GROUP_CHAT_MIN = 3
+export const MAX_GROUP_NAME = 80
+
+/**
+ * Names a group chat (wish 2734a371): any of its members may; an empty name
+ * clears it, and the title is the other people again. Channels keep their
+ * channel name; a two-person DM is just the other person.
+ */
+export async function renameConversation(
+  d: MessagesDeps,
+  actorId: string,
+  conversationId: string,
+  rawName: string,
+): Promise<ConversationSummary> {
+  const c = await visible(d, actorId, conversationId)
+  if (c.kind !== 'dm') throw new MessagesError('invalid', 'only group chats can be renamed here')
+  if ((await d.store.memberIds(c.id)).length < GROUP_CHAT_MIN) {
+    throw new MessagesError('invalid', 'only group chats (three or more people) have a name')
+  }
+  const name = rawName.trim()
+  if (name.length > MAX_GROUP_NAME) throw new MessagesError('invalid', `group chat names are at most ${MAX_GROUP_NAME} characters`)
+  await d.store.setName(c.id, name.length === 0 ? null : name)
+  await d.store.appendEvent({ kind: 'conversation.renamed', conversationId: c.id, messageId: null, userId: null })
+  return summarize(d, actorId, { ...c, name: name.length === 0 ? null : name })
 }
 
 export const dmKeyOf = (userIds: readonly string[]) => [...new Set(userIds)].sort().join(',')

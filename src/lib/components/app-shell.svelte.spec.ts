@@ -67,6 +67,21 @@ describe('app-shell.svelte', () => {
     await expect.element(page.getByText('Page body')).toBeInTheDocument()
   })
 
+  it('shows a live count pill on a nav entry, hidden at 0 (wish f397009a)', async () => {
+    const r = render(AppShell, {
+      shell: { companyName: 'K', companyLogo: null, capabilities, nav, assistant: true },
+      pathname: '/m/website',
+      user: { name: 'Alex', email: 'alex@k.test' },
+      presence: null,
+      navCounts: { email: 4, website: 0 },
+      children,
+    })
+    await expect.element(page.getByTestId('shell-nav-count-email').first()).toHaveTextContent('4')
+    await expect.element(page.getByTestId('shell-nav-count-website')).not.toBeInTheDocument()
+    await r.rerender({ navCounts: { email: 0 } })
+    await expect.element(page.getByTestId('shell-nav-count-email')).not.toBeInTheDocument()
+  })
+
   it('has no Assistant, Overview or Agent entry (the top bar and the company badge replace them)', async () => {
     renderShell()
     for (const id of ['chat', 'overview', 'agent']) {

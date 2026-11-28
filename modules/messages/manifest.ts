@@ -10,6 +10,7 @@ export const MESSAGES_MODULE_ID = 'messages'
 export const MESSAGES_WRITE_TOOLS = [
   'messages.create_channel',
   'messages.open_dm',
+  'messages.rename_conversation',
   'messages.upload_attachments',
   'messages.post',
   'messages.edit',

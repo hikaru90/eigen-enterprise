@@ -6,6 +6,7 @@ import { appKernel } from '$lib/server/boot'
 import { speechToTextReadiness } from '$lib/server/llm/speech-readiness'
 import { companyIdentity } from '$lib/server/overview/sources'
 import { buildShellNav, type ShellData } from '$lib/shell/nav'
+import type { UnreadSeed } from '$lib/messages/unread-count.svelte'
 import { ASSISTANT_MODULE_ID } from '../../../modules/assistant/manifest'
 
 /**
@@ -25,9 +26,23 @@ import { ASSISTANT_MODULE_ID } from '../../../modules/assistant/manifest'
  */
 export type LiveFeeds = { calls: boolean; presence: boolean }
 
+/**
+ * The sidebar's Messages counter (wish f397009a): each conversation's unread
+ * count and the event id they were read at — the shell's messages stream
+ * resumes from it, so nothing committed in between is lost.
+ */
+async function messagesUnread(userId: string): Promise<UnreadSeed> {
+  const { messagesDeps } = await import('../../../modules/messages/live')
+  const { listConversations } = await import('../../../modules/messages/service')
+  const d = await messagesDeps()
+  const cursor = await d.store.latestEventId()
+  const conversations = await listConversations(d, userId)
+  return { cursor, byConversation: Object.fromEntries(conversations.map((c) => [c.id, c.unread])) }
+}
+
 export const load: LayoutServerLoad = async ({
   locals,
-}): Promise<{ shell: ShellData | null; liveFeeds?: LiveFeeds }> => {
+}): Promise<{ shell: ShellData | null; liveFeeds?: LiveFeeds; messagesUnread?: UnreadSeed }> => {
   if (!locals.user) return { shell: null }
   // A page of a switched-off plugin (the plugin gate, src/hooks.server.ts): one
   // clear page instead of the plugin's own, which would fail or work regardless.
@@ -38,7 +53,9 @@ export const load: LayoutServerLoad = async ({
     userCapabilities(locals.user.id),
     kernel.activations.list(),
   ])
+  const messagesOn = activations.get('messages') === true
   return {
+    ...(messagesOn ? { messagesUnread: await messagesUnread(locals.user.id) } : {}),
     liveFeeds: { calls: activations.get('calls') === true, presence: activations.get('messages') === true },
     shell: {
       companyName: identity.name,

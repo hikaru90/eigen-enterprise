@@ -39,6 +39,16 @@ const { readiness } = vi.hoisted(() => ({
 }))
 vi.mock('$lib/server/llm/speech-readiness', () => ({ speechToTextReadiness: readiness }))
 
+vi.mock('../../../modules/messages/live', () => ({
+  messagesDeps: async () => ({ store: { latestEventId: async () => 41 } }),
+}))
+vi.mock('../../../modules/messages/service', () => ({
+  listConversations: async () => [
+    { id: 'c1', unread: 2 },
+    { id: 'c2', unread: 0 },
+  ],
+}))
+
 import { load } from './+layout.server'
 
 async function kernel(active: string[]) {
@@ -85,6 +95,14 @@ describe('(nucleus) layout load', () => {
     kernelHolder.kernel = await kernel(['messages', 'calls'])
     const both = (await load(event({ id: 'owner' }))) as { liveFeeds: { calls: boolean; presence: boolean } }
     expect(both.liveFeeds).toEqual({ calls: true, presence: true })
+  })
+
+  it('seeds the sidebar Messages counter only while Messages is on (wish f397009a)', async () => {
+    kernelHolder.kernel = await kernel(['messages'])
+    const on = (await load(event({ id: 'owner' }))) as { messagesUnread?: unknown }
+    expect(on.messagesUnread).toEqual({ cursor: 41, byConversation: { c1: 2, c2: 0 } })
+    kernelHolder.kernel = await kernel([])
+    expect(((await load(event({ id: 'owner' }))) as { messagesUnread?: unknown }).messagesUnread).toBeUndefined()
   })
 
   it('tells the shell whether the Assistant is on: its top bar and panel exist only then (round 5)', async () => {

@@ -25,6 +25,7 @@ import {
   messagePage,
   openDm,
   postMessage,
+  renameConversation,
   toggleReaction,
   uploadAttachments,
   type MessageDto,
@@ -70,6 +71,7 @@ const createChannelInput = z
     group_ids: z.array(z.string()).optional(),
   })
   .strict()
+const renameInput = z.object({ conversation_id: uuid, name: z.string() }).strict()
 const openDmInput = z.object({ user_ids: z.array(z.string()).min(1) }).strict()
 const uploadInput = z
   .object({
@@ -317,6 +319,13 @@ export function createMessagesTools(
       'Opened a direct message',
       openDmInput,
       async (userId, d, i) => ({ conversation: await openDm(d, userId, i.user_ids) }),
+    ),
+    write(
+      'messages.rename_conversation',
+      'Name a group chat (a direct message with three or more people) you are in; an empty name clears it and the title is the people again. Every member sees the new name.',
+      'Named a group chat',
+      renameInput,
+      async (userId, d, i) => ({ conversation: await renameConversation(d, userId, i.conversation_id, i.name) }),
     ),
     write(
       'messages.upload_attachments',
