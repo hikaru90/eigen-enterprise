@@ -28,6 +28,7 @@ const dashboard: Dashboard = {
   coworkerNotices: [],
   decisionQuestions: [],
   patterns: { digestId: null, createdAt: null, windowStart: null, windowEnd: null, items: [] },
+  questionsForMe: [],
   moduleNotices: [],
   overview: {
     modules: [
@@ -78,6 +79,7 @@ function renderDashboard(
     decisionQuestions?: Dashboard['decisionQuestions']
     update?: Dashboard['update']
     moduleNotices?: Dashboard['moduleNotices']
+    questionsForMe?: Dashboard['questionsForMe']
   } = {},
 ) {
   return render(Harness, {
@@ -92,6 +94,7 @@ function renderDashboard(
       ...(notices.decisionQuestions ? { decisionQuestions: notices.decisionQuestions } : {}),
       ...(notices.update ? { update: notices.update } : {}),
       ...(notices.moduleNotices ? { moduleNotices: notices.moduleNotices } : {}),
+      ...(notices.questionsForMe ? { questionsForMe: notices.questionsForMe } : {}),
     },
     greetingName: 'Alex',
     companyName: 'Kindred',
@@ -283,6 +286,31 @@ describe('dashboard.svelte', () => {
     await expect.element(row.getByTestId('dashboard-coworker-notice-seen')).toHaveTextContent('Got it')
     // 1 approval + 1 co-worker result waiting.
     await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
+  })
+
+  it('shows the team questions asked of me as their own card, answerable there, and counts them as waiting — wish f3fc516e', async () => {
+    renderDashboard(controller(), {}, {
+      questionsForMe: [
+        {
+          id: 'tq-1',
+          text: 'Who has the van key?',
+          tags: [],
+          audience: { kind: 'company', groups: [], people: [] },
+          status: 'open',
+          createdVia: 'person',
+          createdAt: '2026-11-25T09:00:00.000Z',
+          closedAt: null,
+          author: { id: 'ony', name: 'Ony' },
+          answers: [],
+          mine: false,
+          answeredByMe: false,
+          forMe: true,
+        },
+      ],
+    })
+    const card = page.getByTestId('dashboard-questions')
+    await expect.element(card).toHaveTextContent(/Who has the van key\?/)
+    await expect.element(card.getByTestId('dashboard-question-answer')).toHaveAttribute('action', '/m/memory/questions?/answer')
   })
 
   it('Needs you holds a decision question Jev was unsure about: the question, its kind, and one button per choice posting decisions.answer — CB2', async () => {

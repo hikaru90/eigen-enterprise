@@ -1,5 +1,15 @@
-import type { TeamQuestionDeps } from './service'
+import type { QuestionNotification, TeamQuestionDeps } from './service'
 import { dbTeamQuestionStore } from './db-store'
+
+/** Web push to a person asked a question, when they turned notifications on (as assigned tasks do). */
+async function liveNotify(userId: string, n: QuestionNotification): Promise<void> {
+  const { withDbUser } = await import('$lib/server/db')
+  const { listPushSubscriptionsForUser } = await import('$lib/server/push/subscription')
+  const { sendPushToUser } = await import('$lib/server/push/send')
+  await withDbUser(userId, async () => {
+    if ((await listPushSubscriptionsForUser(userId)).length > 0) await sendPushToUser(userId, n)
+  })
+}
 
 /**
  * Live wiring: the Postgres store over the app pool (company-level tables, no
@@ -33,6 +43,7 @@ export async function teamQuestionDeps(): Promise<TeamQuestionDeps> {
         return (await dbMemberStore.listMembers()).map((m) => ({ id: m.id, name: m.name }))
       },
     },
+    notify: liveNotify,
     groups: {
       list: async () => (await dbGroupStore.listGroups()).map((g) => ({ id: g.id, name: g.name, memberIds: g.memberIds })),
     },

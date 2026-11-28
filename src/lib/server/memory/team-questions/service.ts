@@ -32,9 +32,17 @@ export type TeamQuestionDeps = {
   store: TeamQuestionStore
   directory: QuestionDirectory
   groups: { list(): Promise<QuestionGroup[]> }
+  /**
+   * Tells one person asked a new question (wish 3c1481b9: colleagues should not
+   * have to check Memory › Questions to see one). Live: web push when they turned
+   * it on (like assigned tasks). A failed push is logged and never fails the ask.
+   */
+  notify: (userId: string, n: QuestionNotification) => Promise<void>
   now?: () => Date
   newId?: () => string
 }
+
+export type QuestionNotification = { title: string; body: string; url: string; tag: string }
 
 /** Who acts: the person themself, or their assistant on their word in chat. */
 export type QuestionActor = { userId: string; via: QuestionVia }
@@ -211,7 +219,29 @@ export async function askQuestion(
     closedAt: null,
   }
   await d.store.insert(question)
-  return one(d, await viewerOf(d, actor.userId, groups), question, groups)
+  const view = await one(d, await viewerOf(d, actor.userId, groups), question, groups)
+  await notifyAudience(d, question, groups, view.author.name)
+  return view
+}
+
+/** Every person the question is asked of, once, never the asker. */
+async function audienceIds(d: TeamQuestionDeps, q: TeamQuestion, groups: QuestionGroup[]): Promise<string[]> {
+  const ids =
+    q.audienceKind === 'company'
+      ? (await d.directory.list()).map((p) => p.id)
+      : [...groups.filter((g) => q.audienceGroupIds.includes(g.id)).flatMap((g) => g.memberIds), ...q.audienceUserIds]
+  return [...new Set(ids)].filter((id) => id !== q.authorId)
+}
+
+async function notifyAudience(d: TeamQuestionDeps, q: TeamQuestion, groups: QuestionGroup[], authorName: string): Promise<void> {
+  const n: QuestionNotification = { title: `${authorName} asks`, body: q.text, url: QUESTIONS_URL, tag: `question-${q.id}` }
+  for (const userId of await audienceIds(d, q, groups)) {
+    try {
+      await d.notify(userId, n)
+    } catch (err) {
+      console.error('[team-questions] notification failed', { userId, tag: n.tag, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
 }
 
 export async function listQuestions(d: TeamQuestionDeps, userId: string, filter: QuestionFilter): Promise<{ questions: TeamQuestionView[] }> {

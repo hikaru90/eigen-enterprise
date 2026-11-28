@@ -36,9 +36,20 @@ const iphone: NotificationDevice = {
   lastSeen: '2026-11-20T08:00:00.000Z',
 }
 
+const inboxItem = {
+  key: 'question:q1',
+  kind: 'question' as const,
+  title: 'Ony asks',
+  detail: 'Van key?',
+  href: '/m/memory/questions',
+  at: '2026-11-27T10:00:00.000Z',
+  unread: true,
+}
+
 function setup() {
   const sent: Array<{ userId: string; deviceId?: string }> = []
   const saved: Array<{ userId: string; input: NotificationSettings }> = []
+  const marked: Array<{ userId: string; keys: string[] }> = []
   const port: NotificationsPort = {
     devices: async () => [{ ...iphone, endpoint: 'https://secret-capability-url' } as NotificationDevice],
     sendTest: async (userId, deviceId) => {
@@ -50,6 +61,11 @@ function setup() {
       saved.push({ userId, input })
       return { ...input, message: 'Saved.' }
     },
+    inbox: async () => ({ items: [inboxItem], unread: 1 }),
+    markRead: async (userId, keys) => {
+      marked.push({ userId, keys })
+      return { items: [{ ...inboxItem, unread: false }], unread: 0 }
+    },
   }
   const registry = new KernelRegistry({
     eventSink: new InMemoryEventSink(),
@@ -57,18 +73,30 @@ function setup() {
     approvalStore: new InMemoryApprovalStore(),
   })
   for (const tool of createNotificationTools({ port })) registry.register(tool)
-  return { registry, sent, saved }
+  return { registry, sent, saved, marked }
 }
 
 describe('notification tools', () => {
-  it('are exactly notifications.devices, .test, .settings_get and .settings_set', () => {
+  it('are exactly notifications.devices, .test, .settings_get, .settings_set, .inbox and .mark_read', () => {
     const { registry } = setup()
     expect(KERNEL_NOTIFICATION_TOOL_NAMES.map((n) => registry.get(n)?.name)).toEqual([
       'notifications.devices',
       'notifications.test',
       'notifications.settings_get',
       'notifications.settings_set',
+      'notifications.inbox',
+      'notifications.mark_read',
     ])
+  })
+
+  it('reads the person’s own inbox (the bell) and marks items read, as them', async () => {
+    const { registry, marked } = setup()
+    expect(await registry.execute('notifications.inbox', {}, viaBrain)).toEqual({ items: [inboxItem], unread: 1 })
+    const out = await registry.execute('notifications.mark_read', { keys: ['question:q1'] }, person)
+    expect(marked).toEqual([{ userId: 'u1', keys: ['question:q1'] }])
+    expect(out).toMatchObject({ unread: 0 })
+    await expect(registry.execute('notifications.mark_read', { keys: [] }, person)).rejects.toMatchObject({ code: 'invalid_input' })
+    await expect(registry.execute('notifications.inbox', {}, bareAgent)).rejects.toThrow(/person/)
   })
 
   it('lists the person’s own devices, never an endpoint', async () => {

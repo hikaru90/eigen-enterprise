@@ -17,6 +17,8 @@ export const KERNEL_NOTIFICATION_TOOL_NAMES = [
   'notifications.test',
   'notifications.settings_get',
   'notifications.settings_set',
+  'notifications.inbox',
+  'notifications.mark_read',
 ] as const
 
 const deviceSchema = z.object({
@@ -52,7 +54,27 @@ const settingsSetInput = z
   })
   .strict()
 
+/** One item of a person's inbox (src/lib/server/notifications/inbox.ts). */
+const inboxItemSchema = z.object({
+  key: z.string(),
+  kind: z.enum(['question', 'task', 'task_update', 'coworker']),
+  title: z.string(),
+  detail: z.string(),
+  href: z.string(),
+  at: z.string(),
+  unread: z.boolean(),
+})
+const inboxSchema = z.object({ items: z.array(inboxItemSchema), unread: z.number() })
+export type InboxView = z.infer<typeof inboxSchema>
+const markReadInput = z
+  .object({ keys: z.array(z.string().min(1)).min(1).max(200).describe('Item keys from notifications.inbox.') })
+  .strict()
+
 export type NotificationsPort = {
+  /** The person's inbox: what needs them, newest first, each read or unread. */
+  inbox(userId: string): Promise<InboxView>
+  /** Marks items of their own inbox read; fails loud on a key not in it. */
+  markRead(userId: string, keys: string[]): Promise<InboxView>
   loadSettings(userId: string): Promise<NotificationSettings>
   /** Saves exactly as the settings pages do (the same parse and save); fails loud on a bad value. */
   saveSettings(userId: string, input: NotificationSettings): Promise<NotificationSettings & { message: string }>
@@ -121,6 +143,29 @@ export function createNotificationTools(deps: { port: NotificationsPort }): Tool
       outputSchema: settingsSchema.extend({ message: z.string() }),
       permission: { roles: ['admin', 'member'] },
       handler: async (ctx, input) => deps.port.saveSettings(personOf(ctx), settingsSetInput.parse(input)),
+    },
+    {
+      name: 'notifications.inbox',
+      module: 'kernel',
+      summary:
+        'Your inbox (the bell in the top bar): what needs you, newest first — team questions asked of you that you have not answered (kind question), tasks given to you (task), news on tasks you gave out (task_update), and your AI co-workers\' finished results (coworker); each with where to open it (href) and whether you have read it, plus the unread count. An item leaves when its source is done (question answered, task done, result acknowledged); mark it read with notifications.mark_read.',
+      auditClass: 'read',
+      inputSchema: z.object({}),
+      outputSchema: inboxSchema,
+      permission: { roles: ['admin', 'member'] },
+      handler: async (ctx) => deps.port.inbox(personOf(ctx)),
+    },
+    {
+      name: 'notifications.mark_read',
+      module: 'kernel',
+      summary: 'Mark items of your own inbox read (keys from notifications.inbox): they stay until done but no longer count as unread. Returns the inbox.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: { keys: string[] }) => (input.keys.length === 1 ? 'Marked a notification read' : `Marked ${input.keys.length} notifications read`),
+      inputSchema: markReadInput,
+      outputSchema: inboxSchema,
+      permission: { roles: ['admin', 'member'] },
+      handler: async (ctx, input) => deps.port.markRead(personOf(ctx), markReadInput.parse(input).keys),
     },
   ]
 }

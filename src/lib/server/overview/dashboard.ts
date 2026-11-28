@@ -1,25 +1,27 @@
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
+import type { DecisionQuestionView } from '$lib/kernel/decision-tools'
+import type { ModuleNotice } from '$lib/kernel/module-host/notices'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
 import { backupNotice, type BackupNotice } from '$lib/server/backups/health'
-import type { DecisionQuestionView } from '$lib/kernel/decision-tools'
 import { appKernel } from '$lib/server/boot'
 import { needsYouNotices, type CoworkerNotice } from '$lib/server/coworkers/notices'
 import { liveNoticeDeps } from '$lib/server/coworkers/rhythm-live'
 import { getDb } from '$lib/server/db'
-import { needsYouDecisionQuestions } from '$lib/server/decisions/live'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
+import { needsYouDecisionQuestions } from '$lib/server/decisions/live'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { assignedTaskDeps } from '$lib/server/memory/assigned-tasks/live'
 import { needsYouTasks, type NeedsYouTasks } from '$lib/server/memory/assigned-tasks/service'
 import { reminderDeps } from '$lib/server/memory/reminders/live'
 import { needsYouReminders, type ReminderView } from '$lib/server/memory/reminders/service'
-import type { ModuleNotice } from '$lib/kernel/module-host/notices'
+import { teamQuestionDeps } from '$lib/server/memory/team-questions/live'
+import { listQuestions, type TeamQuestionView } from '$lib/server/memory/team-questions/service'
 import { buildOverview, type Overview } from '$lib/server/overview/overview'
 import type { PatternToolView } from '$lib/kernel/pattern-tools'
 import { dashboardPatterns } from '$lib/server/patterns/dashboard-read'
+import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 import { updateNotice, type UpdateNotice } from '$lib/server/settings/update-notice'
 import { liveModuleNotices } from '../../../../modules/company-modules/notices-live'
-import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 
 /** How many recent agent actions the dashboard shows; Assistant › Activity holds the rest. */
 const RECENT_ACTIONS = 10
@@ -42,6 +44,8 @@ export type Dashboard = {
   moduleNotices: ModuleNotice[]
   /** What's happening (wish 75a4e570): the brain's latest activity digest, as this person may see it (dashboard.patterns). */
   patterns: PatternToolView
+  /** Team questions asked of this person that they have not answered yet (questions.list for_me; wish f3fc516e). */
+  questionsForMe: TeamQuestionView[]
 }
 
 /**
@@ -91,6 +95,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     decisionQuestions: await needsYouDecisionQuestions(userId),
     moduleNotices: await liveModuleNotices({ userId, isOwner: role === 'owner', isAdmin }),
     patterns: await dashboardPatterns(userId),
+    questionsForMe: (await listQuestions(await teamQuestionDeps(), userId, { forMe: true })).questions,
   }
 }
 

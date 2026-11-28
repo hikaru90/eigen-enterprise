@@ -17,6 +17,7 @@
   import ContributeButton from '$lib/components/contribute/contribute-button.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import HomeSettingsMenu from '$lib/components/home-settings-menu.svelte'
+  import NotificationBell from '$lib/components/notification-bell.svelte'
   import { motionDuration, panelSlide, prefersReducedMotion } from '$lib/gestures/panel-slide'
   import { peekOffset, sideMove, type SidePanels } from '$lib/gestures/side-swipe'
   import { sideSwipe } from '$lib/gestures/side-swipe-action'
@@ -535,6 +536,8 @@
       {#if hereWithYou.length > 0}
         <PresenceStack people={hereWithYou} title="Here with you" side="bottom" testid="shell-here-with-you" />
       {/if}
+      <!-- What needs me: questions asked of me, tasks, co-worker results (the bell). -->
+      <NotificationBell />
       <!-- Top right: anyone proposes an improvement to the app (the Make a wish board). -->
       <ContributeButton />
     </header>

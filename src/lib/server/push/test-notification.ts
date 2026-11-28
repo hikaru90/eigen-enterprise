@@ -30,7 +30,8 @@ export async function sendTestNotification(userId: string, deviceId?: string): P
   return { sent: r.sent, failed: r.failed, removed: r.removed }
 }
 
-export const liveNotificationsPort: NotificationsPort = {
+/** The devices and settings half of the port; the inbox half is wired in admin-bootstrap.ts. */
+export const liveNotificationsPort: Omit<NotificationsPort, 'inbox' | 'markRead'> = {
   devices: (userId) => withDbUser(userId, () => listPushDevicesForUser(userId)),
   sendTest: sendTestNotification,
   loadSettings: loadNotificationSettings,

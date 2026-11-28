@@ -214,6 +214,8 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'notifications.test',
           'notifications.settings_get',
           'notifications.settings_set',
+          'notifications.inbox',
+          'notifications.mark_read',
           'settings.logo_set',
           'settings.logo_recrop',
           'settings.logo_remove',
