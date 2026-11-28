@@ -206,7 +206,6 @@ export const AUTHENTICATED_SURFACES: AuthenticatedSurface[] = [
   { path: '/m/memory/capture', label: 'What the brain knows' },
   { path: '/m/memory/tasks', label: 'Memory tasks' },
   { path: '/m/memory/projects', label: 'Memory projects' },
-  { path: '/m/memory/notes', label: 'Memory documents' },
   { path: '/', label: 'Dashboard' },
   { path: '/assistant/activity', label: 'Activity' },
   { path: '/settings', label: 'Settings' },
@@ -1668,13 +1667,7 @@ async function exerciseSettingsMenu(page: Page): Promise<void> {
 async function exerciseMemoryUi(page: Page): Promise<void> {
   await page.goto('/m/memory/tasks')
 
-  for (const tab of [
-    'Tasks',
-    'Projects',
-    'Documents',
-    'Reminders',
-    'What the brain knows',
-  ] as const) {
+  for (const tab of ['Tasks', 'Projects', 'Reminders', 'What the brain knows'] as const) {
     await page.getByRole('link', { name: tab, exact: true }).click()
     await expect(page).not.toHaveURL(/\/login/)
   }
@@ -1688,14 +1681,6 @@ async function exerciseMemoryUi(page: Page): Promise<void> {
   }
 
   await page.getByRole('link', { name: 'Projects', exact: true }).click()
-
-  await page.getByRole('link', { name: 'Documents', exact: true }).click()
-  const newNote = page.getByRole('button', { name: 'New document', exact: true })
-  if (await newNote.isVisible().catch(() => false)) {
-    await newNote.click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await dismissOpenOverlays(page)
-  }
 }
 
 async function exerciseBrainKnowsUi(page: Page): Promise<void> {

@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { delegatedPrincipal } from '$lib/kernel/principals'
@@ -7,6 +10,9 @@ import type { BrainIntake } from '$lib/memory/brain-intake'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { createMemoryTools } from '../../../../modules/memory/tools'
 import { ORCHESTRATOR_AGENT_ID } from '../../../../modules/orchestrator/brain'
+
+// Memory documents are Drive files (drizzle/0191): the live Drive keeps their bytes here.
+process.env.DRIVE_STORAGE_DIR ??= mkdtempSync(join(tmpdir(), 'ee-memory-drive-'))
 
 /**
  * memory.intake on the test database, as the app's RLS role (Contribute 30a8d920
@@ -101,7 +107,8 @@ describe.skipIf(!DATABASE_URL)('memory.intake: what the brain took in, per reade
     await operator`
       update thought set created_at = now() - interval '40 days', lifecycle_status = 'completed'
       where id = ${onyTask}`
-  })
+    // Cold imports of Memory and Drive (documents are Drive files) outlast the 10s default.
+  }, 30_000)
 
   afterAll(async () => {
     await operator`delete from "user" where id in (${ony}, ${ben})`

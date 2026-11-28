@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { CoworkerActor, CoworkerView } from './service'
 import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
@@ -6,6 +9,9 @@ import { z } from 'zod'
 import { coworkerPrincipal } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
+
+// Memory documents are Drive files (drizzle/0191): the live Drive keeps their bytes here.
+process.env.DRIVE_STORAGE_DIR ??= mkdtempSync(join(tmpdir(), 'ee-memory-drive-'))
 
 /**
  * AI co-workers on the test database (plan/phase-ai-coworkers.md C1): a
@@ -74,7 +80,8 @@ describe.skipIf(!DATABASE_URL)('AI co-workers on Postgres', () => {
     await db.withDbUser(cw.id, async () => {
       ownNote = (await createTextFile(cw.id, { title: 'Campaign ideas', body: 'three ideas', visibility: 'private' })).id
     })
-  })
+    // Cold imports of Memory and Drive (documents are Drive files) outlast the 10s default.
+  }, 30_000)
 
   afterAll(async () => {
     await operator`delete from "user" where id in ${operator([ana, boss, ...created])}`
@@ -121,8 +128,8 @@ describe.skipIf(!DATABASE_URL)('AI co-workers on Postgres', () => {
             current_setting('app.current_user_id', true) as me,
             (select coalesce(array_agg(id::text order by id), '{}') from canonical_entity where user_id = ${ana}) as projects,
             (select coalesce(array_agg(id::text order by id), '{}') from thought where user_id = ${ana}) as thoughts,
-            (select coalesce(array_agg(id::text order by id), '{}') from text_file where user_id = ${ana}) as notes,
-            (select coalesce(array_agg(id::text order by id), '{}') from text_file where user_id = ${cw.id}) as own_notes`,
+            (select coalesce(array_agg(drive_file_id order by drive_file_id), '{}') from memory_document where user_id = ${ana}) as notes,
+            (select coalesce(array_agg(drive_file_id order by drive_file_id), '{}') from memory_document where user_id = ${cw.id}) as own_notes`,
         )
         return [...rows][0]
       },
@@ -143,7 +150,7 @@ describe.skipIf(!DATABASE_URL)('AI co-workers on Postgres', () => {
     expect(seen.own_notes).toEqual([ownNote])
     // And the person never sees the co-worker's private note.
     const ana_ = await db.withDbUser(ana, (scoped) =>
-      scoped.execute(sql`select coalesce(array_agg(id::text), '{}') as ids from text_file where user_id = ${cw.id}`),
+      scoped.execute(sql`select coalesce(array_agg(drive_file_id), '{}') as ids from memory_document where user_id = ${cw.id}`),
     )
     expect(([...ana_][0] as { ids: string[] }).ids).toEqual([])
   })
@@ -207,7 +214,7 @@ describe.skipIf(!DATABASE_URL)('AI co-workers on Postgres', () => {
     expect(removed.removedAt).not.toBeNull()
     const [row] = await operator`select kind from "user" where id = ${cw.id}`
     expect(row!.kind).toBe('coworker')
-    const [{ n: notes }] = await operator`select count(*)::int as n from text_file where user_id = ${cw.id}`
+    const [{ n: notes }] = await operator`select count(*)::int as n from memory_document where user_id = ${cw.id}`
     expect(notes).toBe(1)
     const { dbMemberStore } = await import('$lib/server/members/db-store')
     expect((await dbMemberStore.listMembers()).map((m) => m.id)).not.toContain(cw.id)

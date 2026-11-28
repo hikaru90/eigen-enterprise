@@ -94,7 +94,6 @@ test('Memory is one module page: nav → Tasks → sub-pages → what the brain 
   for (const [tab, path, title] of [
     ['tasks', '/m/memory/tasks', /^Tasks · Memory · eigenEnterprise$/],
     ['projects', '/m/memory/projects', /^Projects · Memory · eigenEnterprise$/],
-    ['documents', '/m/memory/notes', /^Documents · Memory · eigenEnterprise$/],
     ['reminders', '/m/memory/reminders', /^Reminders · Memory · eigenEnterprise$/],
     ['questions', '/m/memory/questions', /^Questions · Memory · eigenEnterprise$/],
     ['knows', '/m/memory/capture', /^What the brain knows · Memory · eigenEnterprise$/],

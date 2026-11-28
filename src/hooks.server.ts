@@ -270,6 +270,10 @@ export const init: ServerInit = () => {
   void import('$lib/server/memory/shared-memory-keys')
     .then(({ reconcileSharedMemoryKeysAtStartup }) => reconcileSharedMemoryKeysAtStartup())
     .catch((err: unknown) => console.error('[shared-memory-keys] startup re-key failed', err))
+  // Memory's documents are Drive files (drizzle/0191): copy the text files not copied yet.
+  void import('$lib/server/text-files/drive-backfill')
+    .then(({ copyTextFilesToDriveAtStartup }) => copyTextFilesToDriveAtStartup())
+    .catch((err: unknown) => console.error('[memory-documents] startup copy into Drive failed', err))
   // Company export (plan/phase-export.md X1): a build this restart cut off is failed, said plainly.
   void import('$lib/server/export/company/live')
     .then(async ({ failInterruptedExports }) => {

@@ -7,6 +7,10 @@ const { loadProjectDetail, resolveProjectAccess } = vi.hoisted(() => ({
 }))
 vi.mock('$lib/server/memory/project-detail', () => ({ loadProjectDetail }))
 vi.mock('$lib/server/memory/memory-visibility', () => ({ resolveProjectAccess }))
+const { listProjectDocuments } = vi.hoisted(() => ({
+  listProjectDocuments: vi.fn(async (): Promise<unknown[]> => []),
+}))
+vi.mock('$lib/server/text-files/service', () => ({ listProjectDocuments }))
 vi.mock('$lib/server/memory/user-timezone', () => ({
   getUserPreferredTimezone: vi.fn(async () => 'UTC'),
 }))
@@ -56,5 +60,28 @@ describe('/m/memory/projects/[entityId]', () => {
       unknown
     >
     expect(data).toMatchObject({ owner: { id: 'u2', name: 'Ana' }, editable: false })
+  })
+
+  it('shows the project’s documents: the Drive files linked to its thoughts', async () => {
+    resolveProjectAccess.mockResolvedValueOnce({ systemKey: null })
+    loadProjectDetail.mockResolvedValueOnce({
+      project: { entityId: 'p1', label: 'Launch' },
+      items: [],
+      owner: { id: 'u1', name: 'Me' },
+      editable: true,
+    })
+    const doc = {
+      id: 'drive-1',
+      title: 'Launch plan',
+      preview: 'Steps',
+      updatedAt: '2026-11-28T10:00:00.000Z',
+    }
+    listProjectDocuments.mockResolvedValueOnce([doc])
+    const data = (await load(event('7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f63'))) as Record<
+      string,
+      unknown
+    >
+    expect(listProjectDocuments).toHaveBeenCalledWith('u1', '7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f63')
+    expect(data.documents).toEqual([doc])
   })
 })

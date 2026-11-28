@@ -827,6 +827,8 @@ export async function runGetProjectTimelineTool(context: McpToolContext, args: u
     : await loadProjectForReader(context.userId, access.ownerId, projectEntityId)
   if (!project) throw new Error('Project not found')
   const milestones = await listMilestonesForProject(access.ownerId, projectEntityId)
+  const { listProjectDocuments } = await import('$lib/server/text-files/service')
+  const documents = await listProjectDocuments(context.userId, projectEntityId)
   return sanitizeMcpToolResult({
     project: {
       entityId: project.entityId,
@@ -841,6 +843,8 @@ export async function runGetProjectTimelineTool(context: McpToolContext, args: u
       nextAction: project.nextAction,
       tasks: project.tasks,
       milestones,
+      // Drive files linked to the project's thoughts (Memory documents, drizzle/0191).
+      documents: documents.map((d) => ({ driveFileId: d.id, title: d.title, preview: d.preview, updatedAt: d.updatedAt, href: `/drive/file/${d.id}` })),
     },
   })
 }

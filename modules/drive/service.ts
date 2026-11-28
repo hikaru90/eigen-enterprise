@@ -126,6 +126,8 @@ export type DriveDeps = {
   locks: EditLockStore
   lockTtlMs?: number
   now?: () => Date
+  /** Told after a file's content was saved (Memory re-indexes its documents, src/lib/server/text-files). */
+  onContentSaved?: (file: { id: string; ownerId: string }) => Promise<void>
 }
 
 /** What an editor session learns about a file's edit lock. */
@@ -385,6 +387,7 @@ export function createDriveService(deps: DriveDeps) {
       })
       revision = { ...ongoing, sha256: blob.sha256, size: blob.size, createdAt: at }
     } else revision = await storeRevision(file.id, blob.sha256, blob.size, actor, at)
+    if (deps.onContentSaved) await deps.onContentSaved({ id: file.id, ownerId: file.ownerId })
     return { file: await view('file', file.id), revision }
   }
 

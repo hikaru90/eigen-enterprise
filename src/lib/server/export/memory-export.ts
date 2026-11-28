@@ -6,10 +6,10 @@ import {
   canonicalEntity,
   entityAlias,
   temporalEvent,
-  textFile,
+  memoryDocument,
   thoughtEntity,
   thoughtRelation,
-  thoughtTextFile,
+  thoughtMemoryDocument,
 } from '$lib/server/db/schema'
 import { buildCsv, formatTimestamp } from './csv'
 import { buildGraphExportJson } from './graph-export'
@@ -216,37 +216,33 @@ async function buildTemporalEventsCsv(userId: string): Promise<string> {
   )
 }
 
+/** The person's documents (Drive files since drizzle/0191): their index rows, the text read from Drive. */
 async function buildTextFilesCsv(userId: string): Promise<string> {
   const rows = await getDb()
     .select({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      createdAt: textFile.createdAt,
-      updatedAt: textFile.updatedAt,
+      id: memoryDocument.driveFileId,
+      title: memoryDocument.title,
+      createdAt: memoryDocument.createdAt,
+      updatedAt: memoryDocument.updatedAt,
     })
-    .from(textFile)
-    .where(eq(textFile.userId, userId))
-    .orderBy(asc(textFile.createdAt), asc(textFile.id))
+    .from(memoryDocument)
+    .where(eq(memoryDocument.userId, userId))
+    .orderBy(asc(memoryDocument.createdAt), asc(memoryDocument.driveFileId))
 
   const dataRows: string[][] = []
-  for (const row of rows) {
-    const bodyText = row.bodyTextEncrypted
-      ? await decryptTenantValue({
-          userId,
-          table: 'text_file',
-          column: 'body_text',
-          ciphertext: row.bodyTextEncrypted,
-        })
-      : row.bodyText
-    dataRows.push([
-      row.id,
-      row.title,
-      bodyText,
-      formatTimestamp(row.createdAt),
-      formatTimestamp(row.updatedAt),
-    ])
+  if (rows.length > 0) {
+    const { driveService } = await import('../../../../modules/drive')
+    const drive = await driveService()
+    for (const row of rows) {
+      const { content } = await drive.readText({ kind: 'user', userId }, row.id)
+      dataRows.push([
+        row.id,
+        row.title,
+        content,
+        formatTimestamp(row.createdAt),
+        formatTimestamp(row.updatedAt),
+      ])
+    }
   }
 
   return buildCsv(TEXT_FILES_CSV_HEADERS, dataRows)
@@ -255,16 +251,16 @@ async function buildTextFilesCsv(userId: string): Promise<string> {
 async function buildThoughtTextFileCsv(userId: string): Promise<string> {
   const rows = await getDb()
     .select({
-      thoughtId: thoughtTextFile.thoughtId,
-      textFileId: thoughtTextFile.textFileId,
-      createdAt: thoughtTextFile.createdAt,
+      thoughtId: thoughtMemoryDocument.thoughtId,
+      textFileId: thoughtMemoryDocument.driveFileId,
+      createdAt: thoughtMemoryDocument.createdAt,
     })
-    .from(thoughtTextFile)
-    .where(eq(thoughtTextFile.userId, userId))
+    .from(thoughtMemoryDocument)
+    .where(eq(thoughtMemoryDocument.userId, userId))
     .orderBy(
-      asc(thoughtTextFile.createdAt),
-      asc(thoughtTextFile.thoughtId),
-      asc(thoughtTextFile.textFileId),
+      asc(thoughtMemoryDocument.createdAt),
+      asc(thoughtMemoryDocument.thoughtId),
+      asc(thoughtMemoryDocument.driveFileId),
     )
 
   return buildCsv(
@@ -294,7 +290,7 @@ export async function buildMemoryExportZip(userId: string): Promise<MemoryExport
     thoughtRelationsCsv,
     temporalEventsCsv,
     textFilesCsv,
-    thoughtTextFileCsv,
+    thoughtMemoryDocumentCsv,
     graphJson,
   ] = await Promise.all([
     buildThoughtsCsv(userId),
@@ -320,7 +316,7 @@ export async function buildMemoryExportZip(userId: string): Promise<MemoryExport
       'thought_relations.csv': countCsvDataRows(thoughtRelationsCsv),
       'temporal_events.csv': countCsvDataRows(temporalEventsCsv),
       'text_files.csv': countCsvDataRows(textFilesCsv),
-      'thought_text_file.csv': countCsvDataRows(thoughtTextFileCsv),
+      'thought_text_file.csv': countCsvDataRows(thoughtMemoryDocumentCsv),
       'graph.json': Object.values(graphJson.counts).reduce((sum, n) => sum + n, 0),
     },
   }
@@ -336,7 +332,7 @@ export async function buildMemoryExportZip(userId: string): Promise<MemoryExport
     'thought_relations.csv': strToU8(thoughtRelationsCsv),
     'temporal_events.csv': strToU8(temporalEventsCsv),
     'text_files.csv': strToU8(textFilesCsv),
-    'thought_text_file.csv': strToU8(thoughtTextFileCsv),
+    'thought_text_file.csv': strToU8(thoughtMemoryDocumentCsv),
     'graph.json': strToU8(graphJsonStr),
     'manifest.json': strToU8(manifestStr),
   }

@@ -628,6 +628,31 @@ CREATE POLICY text_file_shared_read ON text_file
     AND visibility = 'company'
   );
 
+-- ─── Memory documents in Drive (drizzle/0191_memory_documents_in_drive.sql; keep identical) ──
+ALTER TABLE memory_document ENABLE ROW LEVEL SECURITY;
+ALTER TABLE memory_document FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS memory_document_isolation ON memory_document;
+CREATE POLICY memory_document_isolation ON memory_document
+  FOR ALL
+  USING (user_id = current_setting('app.current_user_id', true))
+  WITH CHECK (user_id = current_setting('app.current_user_id', true));
+
+DROP POLICY IF EXISTS memory_document_shared_read ON memory_document;
+CREATE POLICY memory_document_shared_read ON memory_document
+  FOR SELECT
+  USING (
+    coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND visibility = 'company'
+  );
+
+ALTER TABLE thought_memory_document ENABLE ROW LEVEL SECURITY;
+ALTER TABLE thought_memory_document FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS thought_memory_document_isolation ON thought_memory_document;
+CREATE POLICY thought_memory_document_isolation ON thought_memory_document
+  FOR ALL
+  USING (user_id = current_setting('app.current_user_id', true))
+  WITH CHECK (user_id = current_setting('app.current_user_id', true));
+
 -- ─── AI co-workers' thoughts (drizzle/0171_coworker_thoughts.sql; keep identical) ──
 -- A co-worker's thoughts are readable by every signed-in member (it works out loud);
 -- writes stay owner-only through thought_isolation. A person's thoughts are untouched.

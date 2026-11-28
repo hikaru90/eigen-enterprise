@@ -27,6 +27,10 @@ export async function driveService(env: Record<string, string | undefined> = pro
     access: await liveDriveAccess(),
     maxUploadBytes: resolveMaxUploadBytes(env),
     locks: dbEditLockStore,
+    onContentSaved: async (file) => {
+      const { reindexMemoryDocument } = await import('$lib/server/text-files/service')
+      await reindexMemoryDocument(file.id, file.ownerId)
+    },
   })
   return live
 }

@@ -5,6 +5,7 @@ import { parseProjectViewMode } from '$lib/memory/project-view-mode'
 import { resolveProjectAccess } from '$lib/server/memory/memory-visibility'
 import { loadProjectDetail } from '$lib/server/memory/project-detail'
 import { getUserPreferredTimezone } from '$lib/server/memory/user-timezone'
+import { listProjectDocuments } from '$lib/server/text-files/service'
 
 /** Project entity ids are uuids; anything else cannot exist (and would 500 in the query). */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -34,7 +35,11 @@ export const load: PageServerLoad = async (event) => {
 
   const view = parseProjectViewMode(event.url.searchParams.get('view'))
   const statusFilter = parseProjectTaskStatusFilter(event.url.searchParams.get('status'))
-  const preferredTimezone = await getUserPreferredTimezone(event.locals.user.id)
+  const [preferredTimezone, documents] = await Promise.all([
+    getUserPreferredTimezone(event.locals.user.id),
+    // The project's documents are Drive files (wish f3fc516e): the ones linked to its thoughts.
+    listProjectDocuments(event.locals.user.id, entityId),
+  ])
 
   return {
     user: event.locals.user,
@@ -45,5 +50,6 @@ export const load: PageServerLoad = async (event) => {
     items: detail.items,
     owner: detail.owner,
     editable: detail.editable,
+    documents,
   }
 }

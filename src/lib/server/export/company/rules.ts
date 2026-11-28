@@ -50,10 +50,12 @@ const inDm = (conversationIdExpr: string) =>
   `EXISTS (SELECT 1 FROM message_conversations c WHERE c.id = ${conversationIdExpr} AND c.kind = 'dm')`
 const dmMessage = (messageIdExpr: string) =>
   `EXISTS (SELECT 1 FROM messages m JOIN message_conversations c ON c.id = m.conversation_id WHERE m.id = ${messageIdExpr} AND c.kind = 'dm')`
-/** A Drive file attached to a DM (Messages hides DMs from the owner; its attachments follow). */
+/** A private Drive file: attached to a DM (Messages hides DMs from the owner; its attachments follow) or a private Memory document. */
 export const DM_FILE = (fileIdExpr: string) =>
-  `EXISTS (SELECT 1 FROM message_attachments ma JOIN messages m ON m.id = ma.message_id ` +
-  `JOIN message_conversations c ON c.id = m.conversation_id WHERE ma.file_id = ${fileIdExpr} AND c.kind = 'dm')`
+  `(EXISTS (SELECT 1 FROM message_attachments ma JOIN messages m ON m.id = ma.message_id ` +
+  `JOIN message_conversations c ON c.id = m.conversation_id WHERE ma.file_id = ${fileIdExpr} AND c.kind = 'dm')` +
+  // A private Memory document (drizzle/0191) is its owner's alone, as its text_file was.
+  ` OR EXISTS (SELECT 1 FROM memory_document md WHERE md.drive_file_id = ${fileIdExpr} AND md.visibility = 'private'))`
 const personalMailbox = (mailboxIdExpr: string) =>
   `EXISTS (SELECT 1 FROM mailboxes mb WHERE mb.id = ${mailboxIdExpr} AND mb.kind = 'personal')`
 const personalMail = (messageIdExpr: string) =>
@@ -182,6 +184,12 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   thought_entity: full,
   thought_relation: full,
   thought_text_file: full,
+  thought_memory_document: full,
+  memory_document: meta(
+    `t.visibility = 'private'`,
+    ['drive_file_id', 'user_id', 'text_file_id', 'created_at', 'updated_at', ...AUTHOR, 'visibility'],
+    ['title', 'lexical_text', 'lexical_tsv'],
+  ),
   text_file: meta(
     `t.visibility = 'private'`,
     ['id', 'user_id', 'created_at', 'updated_at', ...AUTHOR, 'visibility'],
