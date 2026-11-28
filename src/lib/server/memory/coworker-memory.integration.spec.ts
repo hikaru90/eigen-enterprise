@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { eq, sql } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -8,6 +11,9 @@ import type { CoworkerActor, CoworkerView } from '$lib/server/coworkers/service'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { createMemoryTools } from '../../../../modules/memory/tools'
 import { ORCHESTRATOR_AGENT_ID } from '../../../../modules/orchestrator/brain'
+
+// Memory documents are Drive files (drizzle/0191): the live Drive keeps their bytes here.
+process.env.DRIVE_STORAGE_DIR ??= mkdtempSync(join(tmpdir(), 'ee-memory-drive-'))
 
 /**
  * AI co-workers in Memory (plan/phase-ai-coworkers.md §3, §7, C4) on the test
@@ -136,7 +142,8 @@ describe.skipIf(!DATABASE_URL)('AI co-workers in Memory', () => {
     benPrivate = await db.withDbUser(ben, async () =>
       (await queueCapture(ben, `My own ${secretWord} plan stays with me`, { skipWorker: true })).thoughtId,
     )
-  })
+    // Cold imports of Memory and Drive (documents are Drive files) outlast the 10s default.
+  }, 30_000)
 
   afterAll(async () => {
     await operator`delete from "user" where id in ${operator([ana, ben, boss, ...[mara, gus].filter(Boolean).map((c) => c.id)])}`

@@ -2,7 +2,7 @@ import type { BrainIntakeStore, IntakeSince } from './brain-intake'
 import { desc, eq, or, sql } from 'drizzle-orm'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
-import { textFile, thought } from '$lib/server/db/schema'
+import { memoryDocument, thought } from '$lib/server/db/schema'
 import { ownerNamesOf } from '$lib/server/memory/memory-owners'
 
 /**
@@ -16,7 +16,7 @@ import { ownerNamesOf } from '$lib/server/memory/memory-owners'
  * UTC ISO string cast to timestamp, so both sides are the same UTC wall time.
  */
 const countsSince = (
-  column: typeof thought.createdAt | typeof textFile.createdAt,
+  column: typeof thought.createdAt | typeof memoryDocument.createdAt,
   since: IntakeSince,
 ) => {
   const from = (d: Date) => sql`${d.toISOString()}::timestamp`
@@ -30,7 +30,7 @@ const countsSince = (
 
 /** The reader's own documents and colleagues' shared ones: the same rule as the RLS read policies. */
 const readableDocument = (readerId: string) =>
-  or(eq(textFile.userId, readerId), eq(textFile.visibility, 'company'))!
+  or(eq(memoryDocument.userId, readerId), eq(memoryDocument.visibility, 'company'))!
 
 export const liveBrainIntakeStore: BrainIntakeStore = {
   async thoughtGroups(readerId, since) {
@@ -48,10 +48,10 @@ export const liveBrainIntakeStore: BrainIntakeStore = {
   },
 
   async documentGroups(readerId, since) {
-    const own = sql<boolean>`(${textFile.userId} = ${readerId})`
+    const own = sql<boolean>`(${memoryDocument.userId} = ${readerId})`
     const rows = await getDb()
-      .select({ own, ...countsSince(textFile.createdAt, since) })
-      .from(textFile)
+      .select({ own, ...countsSince(memoryDocument.createdAt, since) })
+      .from(memoryDocument)
       .where(readableDocument(readerId))
       // By the first column: the same expression with its own parameter would not match.
       .groupBy(sql`1`)
@@ -98,14 +98,14 @@ export const liveBrainIntakeStore: BrainIntakeStore = {
   async recentDocuments(readerId, limit) {
     const rows = await getDb()
       .select({
-        id: textFile.id,
-        ownerId: textFile.userId,
-        title: textFile.title,
-        createdAt: textFile.createdAt,
+        id: memoryDocument.driveFileId,
+        ownerId: memoryDocument.userId,
+        title: memoryDocument.title,
+        createdAt: memoryDocument.createdAt,
       })
-      .from(textFile)
+      .from(memoryDocument)
       .where(readableDocument(readerId))
-      .orderBy(desc(textFile.createdAt), desc(textFile.id))
+      .orderBy(desc(memoryDocument.createdAt), desc(memoryDocument.driveFileId))
       .limit(limit)
     const names = await ownerNamesOf(rows.map((r) => r.ownerId))
     return rows.map((r) => ({

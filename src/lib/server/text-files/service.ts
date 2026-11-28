@@ -1,7 +1,12 @@
 import { and, desc, eq, inArray, lt, ne, or, sql, type SQL } from 'drizzle-orm'
-import { encryptTenantValue, decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
-import { textFile, thought, thoughtTextFile, type MemoryVisibility } from '$lib/server/db/schema'
+import {
+  memoryDocument,
+  thought,
+  thoughtEntity,
+  thoughtMemoryDocument,
+  type MemoryVisibility,
+} from '$lib/server/db/schema'
 import type { MemoryAuthorship } from '$lib/server/memory/authorship'
 import {
   authorshipInsertValues,
@@ -11,16 +16,25 @@ import {
 import { computeLexicalText } from '$lib/server/memory/lexical-text'
 import { MemoryReadOnlyError } from '$lib/server/memory/memory-read-only'
 import { buildLexicalTsQuery } from '$lib/server/retrieval/lexical'
+import type { DriveService } from '../../../../modules/drive/service'
+
+/**
+ * Memory's documents are Drive files (wish f3fc516e, drizzle/0191): each one a
+ * Markdown file in its owner's My drive, shared with the whole company (a
+ * company `view` grant, the default) or private (its owner alone). The brain
+ * keeps an index row per document (`memory_document`: owner, authorship, the
+ * shared/private switch, the lexical text it searches) under the same RLS as
+ * the old text_file table, so a private document stays its owner's alone in
+ * the brain — no admin or owner override. The text itself is read from Drive.
+ *
+ * The function names and record shapes stay those of the text-file API, so
+ * the memory.*text_file* tools, the brain and the routes keep working; `id`
+ * is now the Drive file id (an old text_file id still resolves to its copy).
+ */
 
 export const MAX_TEXT_FILE_BODY_BYTES = 512 * 1024
 export const TEXT_FILE_PREVIEW_LEN = 200
 
-/**
- * A note as one person sees it (plan/shared-memory-voice-agent-tools.md §1):
- * notes are shared with every member by default ('company'); 'private' ones
- * reach only their owner (RLS, drizzle/0164). `editable` = the reader owns it;
- * a colleague's note is read-only.
- */
 export type TextFileRecord = {
   id: string
   title: string
@@ -35,7 +49,7 @@ export type TextFileRecord = {
   updatedAt: string
 }
 
-/** Whose notes a list or search covers: the reader's, colleagues' shared ones, or both. */
+/** Whose documents a list or search covers: the reader's, colleagues' shared ones, or both. */
 export type TextFileScope = 'mine' | 'team' | 'all'
 
 export type TextFileAttachmentPreview = {
@@ -64,6 +78,14 @@ export type TextFileLinkedThought = {
   normalizedText: string
 }
 
+/** The live Drive (tests swap it with `vi.mock`). */
+async function drive(): Promise<DriveService> {
+  const { driveService } = await import('../../../../modules/drive')
+  return driveService()
+}
+
+const asUser = (userId: string) => ({ kind: 'user' as const, userId })
+
 function assertBodyWithinLimit(body: string): string {
   const trimmed = body.trim()
   const bytes = new TextEncoder().encode(trimmed).byteLength
@@ -87,57 +109,83 @@ function toPreview(body: string): string {
   return body.slice(0, TEXT_FILE_PREVIEW_LEN)
 }
 
-/** Shared notes are sealed with the company key, private ones with their owner's (shared-memory-keys.ts). */
-function scopeOf(visibility: MemoryVisibility): 'company' | 'person' {
-  return visibility === 'company' ? 'company' : 'person'
+/**
+ * The Drive file name for a document title: Drive names cannot hold / or \
+ * and are at most 255 characters (structural, the title itself is kept as is
+ * in the index). An untitled document is “Untitled document.md”.
+ */
+export function driveNameForTitle(title: string): string {
+  const base = title.replace(/[/\\]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 240)
+  return `${base && base !== '.' && base !== '..' ? base : 'Untitled document'}.md`
 }
 
-const RECORD_COLUMNS = {
-  id: textFile.id,
-  userId: textFile.userId,
-  title: textFile.title,
-  bodyText: textFile.bodyText,
-  bodyTextEncrypted: textFile.bodyTextEncrypted,
-  author: textFile.author,
-  authorLabel: textFile.authorLabel,
-  authorKeyId: textFile.authorKeyId,
-  visibility: textFile.visibility,
-  createdAt: textFile.createdAt,
-  updatedAt: textFile.updatedAt,
+/** The document's Drive grants: its owner manages; shared = every member may read it. */
+async function applyVisibility(
+  ownerId: string,
+  fileId: string,
+  visibility: MemoryVisibility,
+): Promise<void> {
+  const entries: Parameters<DriveService['setGrants']>[3] = [
+    { subject: { kind: 'user', userId: ownerId }, level: 'manage' },
+  ]
+  if (visibility === 'company') entries.push({ subject: { kind: 'company' }, level: 'view' })
+  await (await drive()).setGrants(asUser(ownerId), 'file', fileId, entries)
 }
 
-/** The reader's notes, colleagues' shared notes, or both: the same rule as the RLS read policies. */
+const INDEX_COLUMNS = {
+  id: memoryDocument.driveFileId,
+  userId: memoryDocument.userId,
+  title: memoryDocument.title,
+  author: memoryDocument.author,
+  authorLabel: memoryDocument.authorLabel,
+  authorKeyId: memoryDocument.authorKeyId,
+  visibility: memoryDocument.visibility,
+  createdAt: memoryDocument.createdAt,
+  updatedAt: memoryDocument.updatedAt,
+}
+
+type IndexRow = {
+  id: string
+  userId: string
+  title: string
+  author: 'user' | 'agent'
+  authorLabel: string | null
+  authorKeyId: string | null
+  visibility: MemoryVisibility
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** The reader's documents, colleagues' shared ones, or both: the same rule as the RLS read policies. */
 function scopeCondition(readerId: string, scope: TextFileScope): SQL {
-  if (scope === 'mine') return eq(textFile.userId, readerId)
-  if (scope === 'team') return and(ne(textFile.userId, readerId), eq(textFile.visibility, 'company'))!
-  return or(eq(textFile.userId, readerId), eq(textFile.visibility, 'company'))!
+  if (scope === 'mine') return eq(memoryDocument.userId, readerId)
+  if (scope === 'team')
+    return and(ne(memoryDocument.userId, readerId), eq(memoryDocument.visibility, 'company'))!
+  return or(eq(memoryDocument.userId, readerId), eq(memoryDocument.visibility, 'company'))!
 }
 
-async function decryptTextFileRow<
-  T extends {
-    title: string
-    bodyText: string
-    bodyTextEncrypted?: string | null
-    author: 'user' | 'agent'
-    authorLabel: string | null
-    authorKeyId: string | null
-    createdAt: Date
-    updatedAt: Date
-    id: string
-    userId?: string
-    visibility?: MemoryVisibility
-  },
->(readerId: string, row: T): Promise<TextFileRecord> {
-  // The note's owner seals its body; the reader is whoever asked.
-  const ownerId = row.userId ?? readerId
-  const body = row.bodyTextEncrypted
-    ? await decryptTenantValue({
-        userId: ownerId,
-        table: 'text_file',
-        column: 'body_text',
-        ciphertext: row.bodyTextEncrypted,
-      })
-    : row.bodyText
+/** A document id as given: its Drive file id, or the text_file id it was copied from. */
+function idCondition(id: string): SQL {
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  return uuidLike
+    ? or(eq(memoryDocument.driveFileId, id), sql`${memoryDocument.textFileId} = ${id}::uuid`)!
+    : eq(memoryDocument.driveFileId, id)
+}
+
+/**
+ * The document's text as the reader may read it in Drive; null when Drive no
+ * longer shows it to them (trashed, deleted or unshared there).
+ */
+async function readBody(readerId: string, fileId: string): Promise<string | null> {
+  try {
+    return (await (await drive()).readText(asUser(readerId), fileId)).content
+  } catch (err) {
+    if ((err as { code?: string }).code === 'not_found') return null
+    throw err
+  }
+}
+
+function toRecord(readerId: string, row: IndexRow, body: string): TextFileRecord {
   return {
     id: row.id,
     title: row.title,
@@ -145,30 +193,55 @@ async function decryptTextFileRow<
     author: row.author,
     authorLabel: row.authorLabel,
     authorKeyId: row.authorKeyId,
-    ownerId,
-    visibility: row.visibility ?? 'company',
-    editable: ownerId === readerId,
+    ownerId: row.userId,
+    visibility: row.visibility,
+    editable: row.userId === readerId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
 }
 
+async function withBodies(readerId: string, rows: IndexRow[]): Promise<TextFileRecord[]> {
+  const out = await Promise.all(
+    rows.map(async (row) => {
+      const body = await readBody(readerId, row.id)
+      return body === null ? null : toRecord(readerId, row, body)
+    }),
+  )
+  return out.filter((r): r is TextFileRecord => r !== null)
+}
+
+/** The reader's own index row for a document id (Drive id or old text_file id). */
+async function ownRow(userId: string, fileId: string): Promise<IndexRow | null> {
+  const [row] = await getDb()
+    .select(INDEX_COLUMNS)
+    .from(memoryDocument)
+    .where(and(idCondition(fileId), eq(memoryDocument.userId, userId)))
+    .limit(1)
+  return row ?? null
+}
+
 /**
- * The note exists for this reader but is a colleague's (shared): writes are
- * refused loud. Returns normally when the note is not visible at all (the
+ * The document exists for this reader but is a colleague's (shared): writes
+ * are refused loud. Returns normally when it is not visible at all (the
  * caller answers "not found").
  */
 async function refuseColleagueNote(readerId: string, fileId: string): Promise<void> {
   const [row] = await getDb()
-    .select({ userId: textFile.userId })
-    .from(textFile)
-    .where(and(eq(textFile.id, fileId), ne(textFile.userId, readerId)))
+    .select({ userId: memoryDocument.userId })
+    .from(memoryDocument)
+    .where(and(idCondition(fileId), ne(memoryDocument.userId, readerId)))
     .limit(1)
   if (!row) return
   const { ownerNameOf } = await import('$lib/server/memory/memory-owners')
   throw new MemoryReadOnlyError('note', await ownerNameOf(row.userId))
 }
 
+/**
+ * Writes a new document: a Markdown file in the owner's My drive, its Drive
+ * sharing set from `visibility`, and its brain index row. `at` and
+ * `textFileId` are the startup backfill's (the copied text file's own time).
+ */
 export async function createTextFile(
   userId: string,
   input: {
@@ -177,38 +250,53 @@ export async function createTextFile(
     authorship?: MemoryAuthorship
     /** Default 'company': every member reads it. */
     visibility?: MemoryVisibility
+    textFileId?: string
+    at?: { createdAt: Date; updatedAt: Date }
   },
 ): Promise<TextFileRecord> {
   const visibility = input.visibility ?? 'company'
   const title = normalizeTitle(input.title)
   const body = assertBodyWithinLimit(typeof input.body === 'string' ? input.body : '')
   assertTitleOrBody(title, body)
-  const lexicalText = computeLexicalText(`${title} ${body}`)
-  const authorValues = authorshipInsertValues(input.authorship ?? USER_AUTHORSHIP)
-  const bodyTextEncrypted = await encryptTenantValue({
-    userId,
-    table: 'text_file',
-    column: 'body_text',
-    plaintext: body,
-    scope: scopeOf(visibility),
-  })
-
+  const d = await drive()
+  const file = await d.createDocument(asUser(userId), null, 'md', driveNameForTitle(title), body)
+  await applyVisibility(userId, file.id, visibility)
   const [row] = await getDb()
-    .insert(textFile)
+    .insert(memoryDocument)
     .values({
+      driveFileId: file.id,
       userId,
+      textFileId: input.textFileId ?? null,
       title,
-      bodyText: '',
-      bodyTextEncrypted,
-      lexicalText,
+      lexicalText: computeLexicalText(`${title} ${body}`),
       visibility,
-      ...authorValues,
+      ...authorshipInsertValues(input.authorship ?? USER_AUTHORSHIP),
+      ...(input.at ?? {}),
     })
-    .returning({
-      ...RECORD_COLUMNS,
-    })
+    .returning(INDEX_COLUMNS)
+  return toRecord(userId, row, body)
+}
 
-  return decryptTextFileRow(userId, row)
+async function saveDocument(
+  userId: string,
+  current: IndexRow,
+  next: { title: string; body: string },
+  previousTitle: string,
+): Promise<TextFileRecord> {
+  const d = await drive()
+  await d.writeText(asUser(userId), current.id, next.body)
+  if (next.title !== previousTitle)
+    await d.rename(asUser(userId), 'file', current.id, driveNameForTitle(next.title))
+  const [row] = await getDb()
+    .update(memoryDocument)
+    .set({
+      title: next.title,
+      lexicalText: computeLexicalText(`${next.title} ${next.body}`),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(memoryDocument.driveFileId, current.id), eq(memoryDocument.userId, userId)))
+    .returning(INDEX_COLUMNS)
+  return toRecord(userId, row, next.body)
 }
 
 export async function updateTextFile(
@@ -216,52 +304,23 @@ export async function updateTextFile(
   fileId: string,
   input: { title?: string; body?: string },
 ): Promise<TextFileRecord | null> {
-  const [existing] = await getDb()
-    .select({
-      ...RECORD_COLUMNS,
-    })
-    .from(textFile)
-    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
-    .limit(1)
-
+  const existing = await ownRow(userId, fileId)
   if (!existing) {
     await refuseColleagueNote(userId, fileId)
     return null
   }
-
-  const current = await decryptTextFileRow(userId, existing)
-  const nextTitle = input.title !== undefined ? normalizeTitle(input.title) : current.title
-  const nextBody = input.body !== undefined ? assertBodyWithinLimit(input.body) : current.body
+  const body = await readBody(userId, existing.id)
+  if (body === null) return null
+  const nextTitle = input.title !== undefined ? normalizeTitle(input.title) : existing.title
+  const nextBody = input.body !== undefined ? assertBodyWithinLimit(input.body) : body
   assertTitleOrBody(nextTitle, nextBody)
-  const lexicalText = computeLexicalText(`${nextTitle} ${nextBody}`)
-  const bodyTextEncrypted = await encryptTenantValue({
-    userId,
-    table: 'text_file',
-    column: 'body_text',
-    plaintext: nextBody,
-    scope: scopeOf(current.visibility),
-  })
-
-  const [row] = await getDb()
-    .update(textFile)
-    .set({
-      title: nextTitle,
-      bodyText: '',
-      bodyTextEncrypted,
-      lexicalText,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
-    .returning({
-      ...RECORD_COLUMNS,
-    })
-
-  return decryptTextFileRow(userId, row)
+  return saveDocument(userId, existing, { title: nextTitle, body: nextBody }, existing.title)
 }
 
 /**
- * Append text to an existing note body (deterministic concat).
- * Default separator is a single newline when the current body is non-empty and does not already end with a newline.
+ * Append text to an existing document (deterministic concat). Default
+ * separator is a single newline when the current body is non-empty and does
+ * not already end with a newline.
  */
 export async function appendTextFile(
   userId: string,
@@ -272,99 +331,80 @@ export async function appendTextFile(
   if (!appendText) {
     throw new Error('text is required')
   }
-
-  const [existing] = await getDb()
-    .select({
-      ...RECORD_COLUMNS,
-    })
-    .from(textFile)
-    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
-    .limit(1)
-
+  const existing = await ownRow(userId, fileId)
   if (!existing) {
     await refuseColleagueNote(userId, fileId)
     return null
   }
-
-  const current = await decryptTextFileRow(userId, existing)
+  const body = await readBody(userId, existing.id)
+  if (body === null) return null
   const separator =
     input.separator !== undefined
       ? input.separator
-      : current.body.length === 0 || current.body.endsWith('\n')
+      : body.length === 0 || body.endsWith('\n')
         ? ''
         : '\n'
-  const nextBody = assertBodyWithinLimit(`${current.body}${separator}${appendText}`)
-  assertTitleOrBody(current.title, nextBody)
-  const lexicalText = computeLexicalText(`${current.title} ${nextBody}`)
-  const bodyTextEncrypted = await encryptTenantValue({
-    userId,
-    table: 'text_file',
-    column: 'body_text',
-    plaintext: nextBody,
-    scope: scopeOf(current.visibility),
-  })
-
-  const [row] = await getDb()
-    .update(textFile)
-    .set({
-      bodyText: '',
-      bodyTextEncrypted,
-      lexicalText,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
-    .returning({
-      ...RECORD_COLUMNS,
-    })
-
-  return decryptTextFileRow(userId, row)
+  const nextBody = assertBodyWithinLimit(`${body}${separator}${appendText}`)
+  assertTitleOrBody(existing.title, nextBody)
+  return saveDocument(userId, existing, { title: existing.title, body: nextBody }, existing.title)
 }
 
+/**
+ * Deletes a document from Memory: its Drive file goes to the owner's Drive
+ * trash (restorable there for a while) and the brain forgets it.
+ */
 export async function deleteTextFile(userId: string, fileId: string): Promise<boolean> {
+  const existing = await ownRow(userId, fileId)
+  if (!existing) {
+    await refuseColleagueNote(userId, fileId)
+    return false
+  }
+  try {
+    await (await drive()).moveToTrash(asUser(userId), 'file', existing.id)
+  } catch (err) {
+    // Already trashed or deleted in Drive: the brain still forgets it.
+    if ((err as { code?: string }).code !== 'not_found') throw err
+  }
   const deleted = await getDb()
-    .delete(textFile)
-    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
-    .returning({ id: textFile.id })
-  if (deleted.length === 0) await refuseColleagueNote(userId, fileId)
+    .delete(memoryDocument)
+    .where(and(eq(memoryDocument.driveFileId, existing.id), eq(memoryDocument.userId, userId)))
+    .returning({ id: memoryDocument.driveFileId })
   return deleted.length > 0
 }
 
 /**
- * Make a note private (its owner only, no override) or share it with every
- * member. Only its owner may; the body is re-sealed with the matching key in
- * the same step, so it opens for colleagues exactly while it is shared.
+ * Make a document private (its owner only) or share it with every member.
+ * Only its owner may; the Drive grants change in the same step.
  */
 export async function setTextFileVisibility(
   userId: string,
   fileId: string,
   visibility: MemoryVisibility,
 ): Promise<{ textFileId: string; visibility: MemoryVisibility } | null> {
-  const [row] = await getDb()
-    .update(textFile)
-    .set({ visibility })
-    .where(and(eq(textFile.id, fileId), eq(textFile.userId, userId)))
-    .returning({ id: textFile.id, visibility: textFile.visibility })
-  if (!row) {
+  const existing = await ownRow(userId, fileId)
+  if (!existing) {
     await refuseColleagueNote(userId, fileId)
     return null
   }
-  const { reconcileTextFileKey } = await import('$lib/server/memory/shared-memory-keys')
-  await reconcileTextFileKey(userId, fileId)
+  await applyVisibility(userId, existing.id, visibility)
+  const [row] = await getDb()
+    .update(memoryDocument)
+    .set({ visibility })
+    .where(and(eq(memoryDocument.driveFileId, existing.id), eq(memoryDocument.userId, userId)))
+    .returning({ id: memoryDocument.driveFileId, visibility: memoryDocument.visibility })
   return { textFileId: row.id, visibility: row.visibility }
 }
 
-/** One note the reader may read: their own, or a colleague's shared one (read-only). */
+/** One document the reader may read: their own, or a colleague's shared one (read-only). */
 export async function getTextFile(userId: string, fileId: string): Promise<TextFileRecord | null> {
   const [row] = await getDb()
-    .select({
-      ...RECORD_COLUMNS,
-    })
-    .from(textFile)
-    .where(and(eq(textFile.id, fileId), scopeCondition(userId, 'all')))
+    .select(INDEX_COLUMNS)
+    .from(memoryDocument)
+    .where(and(idCondition(fileId), scopeCondition(userId, 'all')))
     .limit(1)
-
   if (!row) return null
-  return decryptTextFileRow(userId, row)
+  const [record] = await withBodies(userId, [row])
+  return record ?? null
 }
 
 export async function listTextFiles(
@@ -373,7 +413,7 @@ export async function listTextFiles(
     limit?: number
     cursor?: { updatedAt: Date; id: string }
     authorLayerKey?: string | null
-    /** Default 'all': the reader's notes and colleagues' shared ones. */
+    /** Default 'all': the reader's documents and colleagues' shared ones. */
     scope?: TextFileScope
   },
 ): Promise<TextFileRecord[]> {
@@ -382,35 +422,36 @@ export async function listTextFiles(
   const authorSql = options?.authorLayerKey
     ? resolveAuthorSqlCondition(
         {
-          author: textFile.author,
-          authorKeyId: textFile.authorKeyId,
-          authorLabel: textFile.authorLabel,
+          author: memoryDocument.author,
+          authorKeyId: memoryDocument.authorKeyId,
+          authorLabel: memoryDocument.authorLabel,
         },
         { authorLayerKey: options.authorLayerKey },
       )
     : undefined
 
   const rows = await getDb()
-    .select({
-      ...RECORD_COLUMNS,
-    })
-    .from(textFile)
+    .select(INDEX_COLUMNS)
+    .from(memoryDocument)
     .where(
       and(
         scopeCondition(userId, options?.scope ?? 'all'),
         authorSql,
         cursor
           ? or(
-              lt(textFile.updatedAt, cursor.updatedAt),
-              and(eq(textFile.updatedAt, cursor.updatedAt), lt(textFile.id, cursor.id)),
+              lt(memoryDocument.updatedAt, cursor.updatedAt),
+              and(
+                eq(memoryDocument.updatedAt, cursor.updatedAt),
+                lt(memoryDocument.driveFileId, cursor.id),
+              ),
             )
           : undefined,
       ),
     )
-    .orderBy(desc(textFile.updatedAt), desc(textFile.id))
+    .orderBy(desc(memoryDocument.updatedAt), desc(memoryDocument.driveFileId))
     .limit(limit)
 
-  return Promise.all(rows.map((row) => decryptTextFileRow(userId, row)))
+  return withBodies(userId, rows)
 }
 
 export async function searchTextFiles(
@@ -428,32 +469,30 @@ export async function searchTextFiles(
   const tsQueryString = buildLexicalTsQuery(input.query)
   if (tsQueryString.length === 0) return []
 
-  const lexicalVector = sql`to_tsvector('simple', coalesce(${textFile.lexicalText}, ''))`
   const tsQueryExpr = sql`to_tsquery('simple', ${tsQueryString})`
-  const rankExpr = sql<number>`ts_rank_cd(${lexicalVector}, ${tsQueryExpr})`
-  const matchExpr = sql<boolean>`${lexicalVector} @@ ${tsQueryExpr}`
+  const rankExpr = sql<number>`ts_rank_cd(${memoryDocument.lexicalTsv}, ${tsQueryExpr})`
+  const matchExpr = sql<boolean>`${memoryDocument.lexicalTsv} @@ ${tsQueryExpr}`
   const authorSql = resolveAuthorSqlCondition(
     {
-      author: textFile.author,
-      authorKeyId: textFile.authorKeyId,
-      authorLabel: textFile.authorLabel,
+      author: memoryDocument.author,
+      authorKeyId: memoryDocument.authorKeyId,
+      authorLabel: memoryDocument.authorLabel,
     },
     { author: input.authorFilter, authorLayerKey: input.authorLayerKey },
   )
 
   const rows = await getDb()
-    .select({
-      ...RECORD_COLUMNS,
-      lexicalScore: rankExpr,
-    })
-    .from(textFile)
+    .select({ ...INDEX_COLUMNS, lexicalScore: rankExpr })
+    .from(memoryDocument)
     .where(and(scopeCondition(userId, input.scope ?? 'all'), matchExpr, authorSql))
     .orderBy(desc(rankExpr))
     .limit(limit)
 
-  return Promise.all(
+  const hits = await Promise.all(
     rows.map(async (row) => {
-      const file = await decryptTextFileRow(userId, row)
+      const body = await readBody(userId, row.id)
+      if (body === null) return null
+      const file = toRecord(userId, row, body)
       return {
         id: file.id,
         title: file.title,
@@ -466,9 +505,10 @@ export async function searchTextFiles(
         ownerId: file.ownerId,
         visibility: file.visibility,
         editable: file.editable,
-      }
+      } satisfies TextFileSearchHit
     }),
   )
+  return hits.filter((h): h is TextFileSearchHit => h !== null)
 }
 
 async function assertOwnedThought(userId: string, thoughtId: string): Promise<boolean> {
@@ -485,18 +525,18 @@ export async function linkTextFileToThought(
   thoughtId: string,
   textFileId: string,
 ): Promise<{ linked: boolean; reason?: 'thought_not_found' | 'text_file_not_found' }> {
-  const [thoughtOk, fileOk] = await Promise.all([
+  const [thoughtOk, own] = await Promise.all([
     assertOwnedThought(userId, thoughtId),
-    // Only the person's own notes: a colleague's shared note is read-only for them.
-    getTextFile(userId, textFileId).then((file) => file?.editable === true),
+    // Only the person's own documents: a colleague's shared one is read-only for them.
+    ownRow(userId, textFileId),
   ])
 
   if (!thoughtOk) return { linked: false, reason: 'thought_not_found' }
-  if (!fileOk) return { linked: false, reason: 'text_file_not_found' }
+  if (!own) return { linked: false, reason: 'text_file_not_found' }
 
   await getDb()
-    .insert(thoughtTextFile)
-    .values({ userId, thoughtId, textFileId })
+    .insert(thoughtMemoryDocument)
+    .values({ userId, thoughtId, driveFileId: own.id })
     .onConflictDoNothing()
 
   return { linked: true }
@@ -507,16 +547,18 @@ export async function unlinkTextFileFromThought(
   thoughtId: string,
   textFileId: string,
 ): Promise<boolean> {
+  const own = await ownRow(userId, textFileId)
+  if (!own) return false
   const deleted = await getDb()
-    .delete(thoughtTextFile)
+    .delete(thoughtMemoryDocument)
     .where(
       and(
-        eq(thoughtTextFile.userId, userId),
-        eq(thoughtTextFile.thoughtId, thoughtId),
-        eq(thoughtTextFile.textFileId, textFileId),
+        eq(thoughtMemoryDocument.userId, userId),
+        eq(thoughtMemoryDocument.thoughtId, thoughtId),
+        eq(thoughtMemoryDocument.driveFileId, own.id),
       ),
     )
-    .returning({ thoughtId: thoughtTextFile.thoughtId })
+    .returning({ thoughtId: thoughtMemoryDocument.thoughtId })
 
   return deleted.length > 0
 }
@@ -525,37 +567,7 @@ export async function listTextFilesForThought(
   userId: string,
   thoughtId: string,
 ): Promise<TextFileAttachmentPreview[]> {
-  const rows = await getDb()
-    .select({
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      updatedAt: textFile.updatedAt,
-    })
-    .from(thoughtTextFile)
-    .innerJoin(textFile, eq(thoughtTextFile.textFileId, textFile.id))
-    .where(and(eq(thoughtTextFile.userId, userId), eq(thoughtTextFile.thoughtId, thoughtId)))
-    .orderBy(desc(textFile.updatedAt), desc(textFile.id))
-
-  return Promise.all(
-    rows.map(async (row) => {
-      const body = row.bodyTextEncrypted
-        ? await decryptTenantValue({
-            userId,
-            table: 'text_file',
-            column: 'body_text',
-            ciphertext: row.bodyTextEncrypted,
-          })
-        : row.bodyText
-      return {
-        id: row.id,
-        title: row.title,
-        preview: toPreview(body),
-        updatedAt: row.updatedAt.toISOString(),
-      }
-    }),
-  )
+  return (await listTextFilesForThoughtIds(userId, [thoughtId])).get(thoughtId) ?? []
 }
 
 export async function listTextFilesForThoughtIds(
@@ -567,29 +579,21 @@ export async function listTextFilesForThoughtIds(
   if (uniqueIds.length === 0) return result
 
   const rows = await getDb()
-    .select({
-      thoughtId: thoughtTextFile.thoughtId,
-      id: textFile.id,
-      title: textFile.title,
-      bodyText: textFile.bodyText,
-      bodyTextEncrypted: textFile.bodyTextEncrypted,
-      updatedAt: textFile.updatedAt,
-    })
-    .from(thoughtTextFile)
-    .innerJoin(textFile, eq(thoughtTextFile.textFileId, textFile.id))
-    .where(and(eq(thoughtTextFile.userId, userId), inArray(thoughtTextFile.thoughtId, uniqueIds)))
-    .orderBy(desc(textFile.updatedAt), desc(textFile.id))
+    .select({ thoughtId: thoughtMemoryDocument.thoughtId, ...INDEX_COLUMNS })
+    .from(thoughtMemoryDocument)
+    .innerJoin(memoryDocument, eq(thoughtMemoryDocument.driveFileId, memoryDocument.driveFileId))
+    .where(
+      and(
+        eq(thoughtMemoryDocument.userId, userId),
+        inArray(thoughtMemoryDocument.thoughtId, uniqueIds),
+      ),
+    )
+    .orderBy(desc(memoryDocument.updatedAt), desc(memoryDocument.driveFileId))
 
   const previews = await Promise.all(
     rows.map(async (row) => {
-      const body = row.bodyTextEncrypted
-        ? await decryptTenantValue({
-            userId,
-            table: 'text_file',
-            column: 'body_text',
-            ciphertext: row.bodyTextEncrypted,
-          })
-        : row.bodyText
+      const body = await readBody(userId, row.id)
+      if (body === null) return null
       return {
         thoughtId: row.thoughtId,
         file: {
@@ -602,10 +606,11 @@ export async function listTextFilesForThoughtIds(
     }),
   )
 
-  for (const { thoughtId, file } of previews) {
-    const list = result.get(thoughtId) ?? []
-    list.push(file)
-    result.set(thoughtId, list)
+  for (const entry of previews) {
+    if (!entry) continue
+    const list = result.get(entry.thoughtId) ?? []
+    list.push(entry.file)
+    result.set(entry.thoughtId, list)
   }
 
   return result
@@ -615,25 +620,68 @@ export async function listThoughtsForTextFile(
   userId: string,
   textFileId: string,
 ): Promise<TextFileLinkedThought[]> {
-  const [file] = await getDb()
-    .select({ id: textFile.id })
-    .from(textFile)
-    .where(and(eq(textFile.id, textFileId), eq(textFile.userId, userId)))
-    .limit(1)
-  if (!file) return []
+  const own = await ownRow(userId, textFileId)
+  if (!own) return []
 
   const rows = await getDb()
     .select({
       id: thought.id,
       normalizedText: thought.normalizedText,
     })
-    .from(thoughtTextFile)
-    .innerJoin(thought, eq(thoughtTextFile.thoughtId, thought.id))
-    .where(and(eq(thoughtTextFile.userId, userId), eq(thoughtTextFile.textFileId, textFileId)))
+    .from(thoughtMemoryDocument)
+    .innerJoin(thought, eq(thoughtMemoryDocument.thoughtId, thought.id))
+    .where(
+      and(eq(thoughtMemoryDocument.userId, userId), eq(thoughtMemoryDocument.driveFileId, own.id)),
+    )
     .orderBy(desc(thought.createdAt), desc(thought.id))
 
   return rows.map((row) => ({
     id: row.id,
     normalizedText: row.normalizedText,
   }))
+}
+
+/**
+ * Re-reads a document's text after it changed in Drive (its editor, an
+ * upload over it) so the brain searches what it says now. Runs as the
+ * document's owner (their RLS session); a Drive file that is no Memory
+ * document is left alone.
+ */
+export async function reindexMemoryDocument(fileId: string, ownerId: string): Promise<void> {
+  const { withDbUser } = await import('$lib/server/db')
+  await withDbUser(ownerId, async (scoped) => {
+    const [row] = await scoped
+      .select({ title: memoryDocument.title })
+      .from(memoryDocument)
+      .where(and(eq(memoryDocument.driveFileId, fileId), eq(memoryDocument.userId, ownerId)))
+      .limit(1)
+    if (!row) return
+    const body = await readBody(ownerId, fileId)
+    if (body === null) return
+    await scoped
+      .update(memoryDocument)
+      .set({ lexicalText: computeLexicalText(`${row.title} ${body}`), updatedAt: new Date() })
+      .where(and(eq(memoryDocument.driveFileId, fileId), eq(memoryDocument.userId, ownerId)))
+  })
+}
+
+/**
+ * A Memory project's documents: the Drive files linked to the thoughts of
+ * that project (the reader's own links; newest first).
+ */
+export async function listProjectDocuments(
+  userId: string,
+  projectEntityId: string,
+): Promise<TextFileAttachmentPreview[]> {
+  const rows = await getDb()
+    .select({ thoughtId: thoughtEntity.thoughtId })
+    .from(thoughtEntity)
+    .where(and(eq(thoughtEntity.entityId, projectEntityId), eq(thoughtEntity.userId, userId)))
+  const byThought = await listTextFilesForThoughtIds(
+    userId,
+    rows.map((r) => r.thoughtId),
+  )
+  const seen = new Map<string, TextFileAttachmentPreview>()
+  for (const files of byThought.values()) for (const f of files) seen.set(f.id, f)
+  return [...seen.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }

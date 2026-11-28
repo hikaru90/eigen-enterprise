@@ -3,6 +3,7 @@
   import type { PageData } from './$types'
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left'
   import FolderKanbanIcon from '@lucide/svelte/icons/folder-kanban'
+  import FileTextIcon from '@lucide/svelte/icons/file-text'
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle'
   import PencilLine from '@lucide/svelte/icons/pencil-line'
   import SparklesIcon from '@lucide/svelte/icons/sparkles'
@@ -287,6 +288,26 @@
             })}
           {/if}
         </p>
+        {#if data.documents.length > 0}
+          <!-- The project's documents are Drive files (wish f3fc516e). -->
+          <nav
+            class="mt-2 flex flex-wrap items-center gap-1.5 text-xs"
+            data-testid="project-documents"
+            aria-label={m.memory_tab_notes()}
+          >
+            <span class="text-muted-foreground">{m.memory_tab_notes()}:</span>
+            {#each data.documents as doc (doc.id)}
+              <a
+                href={resolve(`/drive/file/${doc.id}`)}
+                class="border-border hover:bg-muted inline-flex max-w-56 items-center gap-1 rounded-full border px-2 py-0.5"
+                data-testid="project-document-link"
+              >
+                <FileTextIcon class="size-3 shrink-0" aria-hidden="true" />
+                <span class="truncate">{doc.title || doc.preview || doc.id}</span>
+              </a>
+            {/each}
+          </nav>
+        {/if}
       </div>
       <div class="flex shrink-0 items-center gap-1" class:hidden={readOnly}>
         {#if project.status === 'active'}

@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -7,6 +10,9 @@ import type { ToolContext } from '$lib/kernel/types'
 import { livePrincipalScope } from '$lib/server/kernel/principal-scope'
 import { createMemoryTools } from '../../../../modules/memory/tools'
 import { ORCHESTRATOR_AGENT_ID } from '../../../../modules/orchestrator/brain'
+
+// Memory documents are Drive files (drizzle/0191): the live Drive keeps their bytes here.
+process.env.DRIVE_STORAGE_DIR ??= mkdtempSync(join(tmpdir(), 'ee-memory-drive-'))
 
 /**
  * Pins the access facts the Memory page's "Who can see your Memory" note
@@ -52,10 +58,12 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
       )
     ).thoughtId
     // Notes are shared by default (plan/shared-memory-voice-agent-tools.md §1); this one is Private.
-    await operator`
-      insert into text_file (user_id, title, body_text, lexical_text, visibility)
-      values (${member}, 'Private note', 'my private note', 'my private note', 'private')`
-  })
+    const { createTextFile } = await import('$lib/server/text-files/service')
+    await db.withDbUser(member, () =>
+      createTextFile(member, { title: 'Private note', body: 'my private note', visibility: 'private' }),
+    )
+    // Cold imports of Memory and Drive (documents are Drive files) outlast the 10s default.
+  }, 30_000)
 
   afterAll(async () => {
     await operator`delete from "user" where id in (${member}, ${owner}, ${admin})`
@@ -70,7 +78,7 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
           sql`select
             (select count(*) from thought where user_id = ${member})::int as thoughts,
             (select count(*) from capture_session where user_id = ${member})::int as captures,
-            (select count(*) from text_file where user_id = ${member})::int as notes`,
+            (select count(*) from memory_document where user_id = ${member})::int as notes`,
         ),
       )
       expect([...rows][0]).toEqual({ thoughts: 0, captures: 0, notes: 0 })
@@ -168,7 +176,7 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
       })
     }
     const [none] = await operator`
-      select (select count(*) from text_file where user_id = ${ORCHESTRATOR_AGENT_ID})::int as notes`
+      select (select count(*) from memory_document where user_id = ${ORCHESTRATOR_AGENT_ID})::int as notes`
     expect(none).toEqual({ notes: 0 })
   })
 
@@ -180,7 +188,7 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
     )) as { textFileId: string; title: string }
     expect(created).toEqual({ textFileId: expect.any(String), title: 'Packing list' })
     const [note] = await operator`
-      select user_id, author, author_label, author_key_id from text_file where id = ${created.textFileId}`
+      select user_id, author, author_label, author_key_id from memory_document where drive_file_id = ${created.textFileId}`
     expect(note).toEqual({
       user_id: member,
       author: 'agent',
@@ -198,11 +206,11 @@ describe.skipIf(!DATABASE_URL)('who can read a person’s Memory', () => {
     expect(JSON.stringify(updated)).not.toContain('passport')
 
     const [own] = await operator`
-      select id from text_file where user_id = ${member} and author = 'user' limit 1`
+      select drive_file_id as id from memory_document where user_id = ${member} and author = 'user' limit 1`
     await expect(
       registry.execute('memory.update_text_file', { text_file_id: own.id, body: 'overwritten' }, asAssistant),
     ).rejects.toMatchObject({ code: 'permission_denied' })
-    const [kept] = await operator`select title from text_file where id = ${own.id}`
+    const [kept] = await operator`select title from memory_document where drive_file_id = ${own.id}`
     expect(kept).toEqual({ title: 'Private note' })
   })
 })
