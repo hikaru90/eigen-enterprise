@@ -161,6 +161,8 @@ export const CORE_ROUTES: readonly string[] = [
   '/api/claim',
   '/api/company',
   '/api/contribute',
+  // A co-worker's profile (the /coworkers page is core).
+  '/api/coworkers',
   // The company's domains (buy, connect): Settings › Domains and the onboarding's Domain act (plan/managed-domains.md).
   '/api/domains',
   // The company export download (plan/phase-export.md): the kernel's, owner only.
@@ -177,6 +179,8 @@ export const CORE_ROUTES: readonly string[] = [
   '/api/keys',
   '/api/log',
   '/api/mcp',
+  // The top bar's bell: notifications.inbox / mark_read, part of the shell, not a plugin.
+  '/api/notifications',
   '/api/onboarding',
   '/api/people',
   '/api/profile',
