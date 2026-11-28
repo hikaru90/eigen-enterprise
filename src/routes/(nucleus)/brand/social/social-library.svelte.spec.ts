@@ -148,19 +148,49 @@ describe('brand social: library', () => {
     await expect.element(page.getByRole('alert')).toHaveTextContent('no AI provider set up yet')
   })
 
-  it('an uploaded carousel offers each file for download', async () => {
+  it('an uploaded carousel pages through its images; clicking an image never downloads, the Download button does', async () => {
     const p = post({
       source: 'upload',
       format: null,
       graphic: null,
       media: [
-        { id: 'm1', postId: 'x', position: 0, name: 'one.jpg', mime: 'image/jpeg', size: 3, sha256: 'a'.repeat(64) },
-        { id: 'm2', postId: 'x', position: 1, name: 'two.jpg', mime: 'image/jpeg', size: 3, sha256: 'b'.repeat(64) },
+        { id: 'm1', postId: 'x', position: 0, name: 'one.png', mime: 'image/png', size: 3, sha256: 'a'.repeat(64) },
+        { id: 'm2', postId: 'x', position: 1, name: 'two.png', mime: 'image/png', size: 3, sha256: 'b'.repeat(64) },
       ],
     })
     setup({ posts: [p], selected: p.id })
-    await expect.element(page.getByRole('link', { name: 'Download two.jpg' })).toHaveAttribute('href', '/api/brand/social/media/m2?download=1')
-    await expect.element(page.getByRole('list', { name: 'Carousel' })).toBeVisible()
+    const slide = page.getByTestId('social-slide')
+    await expect.element(slide).toHaveAttribute('src', '/api/brand/social/media/m1')
+    expect(slide.element().closest('a')).toBeNull()
+    await expect.element(page.getByTestId('social-slide-count')).toHaveTextContent('1 / 2')
+    await expect.element(page.getByRole('button', { name: 'Previous slide', exact: true })).toBeDisabled()
+    await slide.click()
+    await expect.element(slide).toHaveAttribute('src', '/api/brand/social/media/m2')
+    await expect.element(page.getByTestId('social-slide-count')).toHaveTextContent('2 / 2')
+    await expect.element(page.getByRole('link', { name: 'Download two.png' })).toHaveAttribute('href', '/api/brand/social/media/m2?download=1')
+    await page.getByRole('button', { name: 'Previous slide', exact: true }).click()
+    await expect.element(slide).toHaveAttribute('src', '/api/brand/social/media/m1')
+    await page.getByRole('button', { name: 'Slide 2' }).click()
+    await expect.element(slide).toHaveAttribute('src', '/api/brand/social/media/m2')
+    expect(document.querySelectorAll('a[download]')).toHaveLength(1)
+  })
+
+  it('a PDF post shows its pages as the carousel and downloads the PDF', async () => {
+    const p = post({
+      source: 'upload',
+      format: null,
+      graphic: null,
+      media: [{ id: 'd1', postId: 'x', position: 0, name: 'deck.pdf', mime: 'application/pdf', size: 3, sha256: 'c'.repeat(64) }],
+    })
+    const pdfPages = vi.fn(async () => ['data:image/png;base64,AAA1', 'data:image/png;base64,AAA2', 'data:image/png;base64,AAA3'])
+    setup({ posts: [p], selected: p.id, pdfPages })
+    const slide = page.getByTestId('social-slide')
+    await expect.element(slide).toHaveAttribute('src', 'data:image/png;base64,AAA1')
+    expect(pdfPages).toHaveBeenCalledWith('/api/brand/social/media/d1')
+    await expect.element(page.getByTestId('social-slide-count')).toHaveTextContent('1 / 3')
+    await page.getByRole('button', { name: 'Next slide', exact: true }).click()
+    await expect.element(slide).toHaveAttribute('src', 'data:image/png;base64,AAA2')
+    await expect.element(page.getByRole('link', { name: 'Download deck.pdf' })).toHaveAttribute('href', '/api/brand/social/media/d1?download=1')
   })
 
   it('new graphic creates a draft and opens it', async () => {

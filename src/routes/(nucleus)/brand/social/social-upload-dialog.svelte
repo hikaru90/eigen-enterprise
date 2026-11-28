@@ -8,6 +8,7 @@
   import { Textarea } from '$lib/components/ui/textarea'
   import type { ShownError } from '$lib/errors/agent-report'
   import {
+    SOCIAL_DOCUMENT_TYPES,
     SOCIAL_IMAGE_TYPES,
     SOCIAL_MAX_IMAGES,
     SOCIAL_NETWORK_LABELS,
@@ -41,7 +42,7 @@
   let busy = $state(false)
   let error = $state<ShownError | null>(null)
 
-  const accept = [...SOCIAL_IMAGE_TYPES, ...SOCIAL_VIDEO_TYPES].join(',')
+  const accept = [...SOCIAL_IMAGE_TYPES, ...SOCIAL_VIDEO_TYPES, ...SOCIAL_DOCUMENT_TYPES].join(',')
 
   function pick(e: Event & { currentTarget: HTMLInputElement }) {
     files = [...(e.currentTarget.files ?? [])]
@@ -89,7 +90,7 @@
       <Dialog.Header>
         <Dialog.Title>Upload a post</Dialog.Title>
         <Dialog.Description>
-          Images for a single post or a carousel (up to {SOCIAL_MAX_IMAGES}), or one video.
+          Images for a single post or a carousel (up to {SOCIAL_MAX_IMAGES}), one video, or one PDF (LinkedIn shows its pages as a carousel).
         </Dialog.Description>
       </Dialog.Header>
       <div class="flex flex-col gap-1.5">

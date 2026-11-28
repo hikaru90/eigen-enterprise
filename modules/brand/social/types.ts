@@ -51,6 +51,8 @@ const formatIds = SOCIAL_FORMATS.map((f) => f.id) as [SocialFormatId, ...SocialF
 export const SOCIAL_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 export const SOCIAL_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'] as const
 export const SOCIAL_MAX_IMAGES = 10
+/** A document post (LinkedIn's PDF carousel): exactly one PDF, each page a slide. */
+export const SOCIAL_DOCUMENT_TYPES = ['application/pdf'] as const
 
 export const CAPTION_MAX = 3000
 export const TITLE_MAX = 120

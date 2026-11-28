@@ -1,5 +1,6 @@
 import type { SocialPostStore } from './store'
 import {
+  SOCIAL_DOCUMENT_TYPES,
   SOCIAL_IMAGE_TYPES,
   SOCIAL_MAX_IMAGES,
   SOCIAL_VIDEO_TYPES,
@@ -14,7 +15,8 @@ import {
  * Uploaded social posts (Brand › Social): the files' bytes go to a
  * content-addressed blob store (wired in $lib/server/brand/social: on disk next
  * to the Drive, like the company logo), the post and its media rows to Postgres. A post is images (one, or a carousel
- * of up to SOCIAL_MAX_IMAGES) or exactly one video. The type is the browser's
+ * of up to SOCIAL_MAX_IMAGES), exactly one video, or exactly one PDF (a
+ * LinkedIn document carousel, its pages the slides). The type is the browser's
  * declared MIME type, checked against the allowed formats; anything else is
  * refused loud.
  */
@@ -30,19 +32,27 @@ export type SocialBlobStore = {
 
 const IMAGES: readonly string[] = SOCIAL_IMAGE_TYPES
 const VIDEOS: readonly string[] = SOCIAL_VIDEO_TYPES
+const DOCUMENTS: readonly string[] = SOCIAL_DOCUMENT_TYPES
+/** Every PDF starts with these bytes; a file that only claims the type is refused. */
+const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d] // %PDF-
 
 export function validateUploadFiles(files: readonly UploadFile[], maxBytes: number): void {
   if (files.length === 0) throw new SocialPostError('invalid', 'Add at least one image or a video.')
   for (const f of files) {
     if (!f.name.trim()) throw new SocialPostError('invalid', 'Every file needs a name.')
-    if (!IMAGES.includes(f.mime) && !VIDEOS.includes(f.mime)) {
-      throw new SocialPostError('invalid', `“${f.name}” isn’t a supported image (PNG, JPEG, WebP, GIF) or video (MP4, MOV, WebM).`)
+    if (!IMAGES.includes(f.mime) && !VIDEOS.includes(f.mime) && !DOCUMENTS.includes(f.mime)) {
+      throw new SocialPostError('invalid', `“${f.name}” isn’t a supported image (PNG, JPEG, WebP, GIF), video (MP4, MOV, WebM) or PDF.`)
     }
     if (f.bytes.byteLength === 0) throw new SocialPostError('invalid', `“${f.name}” is empty.`)
+    if (DOCUMENTS.includes(f.mime) && !PDF_MAGIC.every((b, i) => f.bytes[i] === b)) {
+      throw new SocialPostError('invalid', `“${f.name}” isn’t a PDF.`)
+    }
     if (f.bytes.byteLength > maxBytes) {
       throw new SocialPostError('invalid', `“${f.name}” is larger than ${Math.round(maxBytes / (1024 * 1024))} MB.`)
     }
   }
+  const documents = files.filter((f) => DOCUMENTS.includes(f.mime)).length
+  if (documents > 0 && files.length > 1) throw new SocialPostError('invalid', 'A PDF post has exactly one PDF and no other files.')
   const videos = files.filter((f) => VIDEOS.includes(f.mime)).length
   if (videos > 0 && files.length > 1) throw new SocialPostError('invalid', 'A video post has exactly one video and no images.')
   if (files.length > SOCIAL_MAX_IMAGES) throw new SocialPostError('invalid', `A carousel has at most ${SOCIAL_MAX_IMAGES} images.`)
