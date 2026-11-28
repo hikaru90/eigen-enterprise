@@ -66,3 +66,31 @@ describe('Tasks drawer (what the Overview tab showed: the project, one click awa
     await expect.element(page.getByTestId('temporal-event-project')).not.toBeInTheDocument()
   })
 })
+
+describe('Tasks drawer: the source thought is editable (wish 2f296da6)', () => {
+  it('edits the source thought in place and hands the new text on, verbatim', async () => {
+    const onEditThought = vi.fn()
+    render(Detail, { item: task(), ...handlers, onEditThought })
+    await page.getByTestId('temporal-event-thought-edit').click()
+    const box = page.getByTestId('temporal-event-thought-text')
+    await expect.element(box).toHaveValue('Ship the invoice')
+    await box.fill('Ship the invoice to Acme on Friday')
+    await page.getByTestId('temporal-event-thought-save').click()
+    expect(onEditThought).toHaveBeenCalledWith('t1', 'Ship the invoice to Acme on Friday')
+    await expect.element(page.getByTestId('temporal-event-thought-text')).not.toBeInTheDocument()
+  })
+
+  it('cancel leaves the thought as it was', async () => {
+    const onEditThought = vi.fn()
+    render(Detail, { item: task(), ...handlers, onEditThought })
+    await page.getByTestId('temporal-event-thought-edit').click()
+    await page.getByTestId('temporal-event-thought-cancel').click()
+    expect(onEditThought).not.toHaveBeenCalled()
+    await expect.element(page.getByText('Ship the invoice', { exact: true }).last()).toBeInTheDocument()
+  })
+
+  it('offers no Edit where no editor is wired', async () => {
+    render(Detail, { item: task(), ...handlers })
+    await expect.element(page.getByTestId('temporal-event-thought-edit')).not.toBeInTheDocument()
+  })
+})

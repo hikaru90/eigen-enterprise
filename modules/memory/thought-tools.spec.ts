@@ -116,9 +116,17 @@ describe('memory thought / graph / note tools', () => {
   it('acts as the person: every call runs with the writer’s user id', async () => {
     const { svc, run } = setup({ kind: 'assistant', userId: 'bea' })
     await run('memory.edit_thought', { thought_id: 't1', change: 'make it Friday' })
-    expect(svc.editThought).toHaveBeenCalledWith('bea', 't1', 'make it Friday')
+    expect(svc.editThought).toHaveBeenCalledWith('bea', 't1', 'make it Friday', { verbatim: false })
     await run('memory.clean_up_graph')
     expect(svc.cleanUpGraph).toHaveBeenCalledWith('bea')
+  })
+
+  it('edit_thought takes either a change in plain words or the new text verbatim, exactly one (wish 2f296da6)', async () => {
+    const { svc, run } = setup({ kind: 'assistant', userId: 'bea' })
+    await run('memory.edit_thought', { thought_id: 't1', text: 'Call Acme on Friday' })
+    expect(svc.editThought).toHaveBeenCalledWith('bea', 't1', 'Call Acme on Friday', { verbatim: true })
+    await expect(run('memory.edit_thought', { thought_id: 't1' })).rejects.toThrow()
+    await expect(run('memory.edit_thought', { thought_id: 't1', change: 'a', text: 'b' })).rejects.toThrow()
   })
 
   it('fails loud when the run works for no one', async () => {

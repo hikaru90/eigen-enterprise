@@ -7,6 +7,7 @@
   import { Button } from '$lib/components/ui/button'
   import * as Drawer from '$lib/components/ui/drawer'
   import { Input } from '$lib/components/ui/input'
+  import { Textarea } from '$lib/components/ui/textarea'
   import { graphKindLabel } from '$lib/graph/graph-i18n'
   import { m } from '$lib/paraglide/messages.js'
   import TemporalEventDeleteButton from './temporal-event-delete-button.svelte'
@@ -30,6 +31,8 @@
     onQuickAction: (eventId: string, action: 'mark_done' | 'reopen' | 'archive') => void
     onInstruction: (eventId: string, instruction: string) => void
     onDelete: (eventId: string) => void
+    /** Store a new text for the task's source thought, verbatim (memory.edit_thought text). */
+    onEditThought?: (thoughtId: string, text: string) => void
     onAssignAgent?: () => void
     showAssignAgent?: boolean
     onClose?: () => void
@@ -46,12 +49,19 @@
     onQuickAction,
     onInstruction,
     onDelete,
+    onEditThought,
     onAssignAgent,
     showAssignAgent = false,
     onClose,
   }: Props = $props()
 
   let instruction = $state('')
+  let thoughtDraft = $state<string | null>(null)
+  // The draft belongs to one thought: picking another task shows that one's text, not this draft.
+  let draftThoughtId = $state<string | null>(null)
+  const editingThought = $derived(
+    thoughtDraft !== null && item !== null && draftThoughtId === item.thoughtId,
+  )
 
   const drawerOpen = $derived(item !== null)
   const completed = $derived(item ? isTemporalEventCompleted(item) : false)
@@ -61,7 +71,18 @@
   )
 
   function onDrawerOpenChange(open: boolean) {
-    if (!open) onClose?.()
+    if (!open) {
+      thoughtDraft = null
+      onClose?.()
+    }
+  }
+
+  function saveThought() {
+    if (!item || !editingThought || thoughtDraft === null || busy || !onEditThought) return
+    const text = thoughtDraft.trim()
+    if (!text) return
+    thoughtDraft = null
+    if (text !== item.thoughtText.trim()) onEditThought(item.thoughtId, text)
   }
 
   function submitInstruction() {
@@ -279,10 +300,67 @@
           </div>
         {/if}
         <div class="sm:col-span-2">
-          <dt class="text-muted-foreground text-xs uppercase">
+          <dt class="text-muted-foreground flex items-center gap-2 text-xs uppercase">
             {m.graph_temporal_source_thought()}
+            {#if onEditThought && !editingThought}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="h-6 px-2 text-xs normal-case"
+                disabled={busy}
+                data-testid="temporal-event-thought-edit"
+                onclick={() => {
+                  draftThoughtId = item.thoughtId
+                  thoughtDraft = item.thoughtText
+                }}
+              >
+                {m.graph_temporal_thought_edit()}
+              </Button>
+            {/if}
           </dt>
-          <dd class="text-foreground font-sans text-xs leading-relaxed">{item.thoughtText}</dd>
+          {#if editingThought && thoughtDraft !== null}
+            <dd>
+              <form
+                class="flex flex-col gap-2"
+                onsubmit={(e) => {
+                  e.preventDefault()
+                  saveThought()
+                }}
+              >
+                <Textarea
+                  bind:value={thoughtDraft}
+                  rows={4}
+                  class="font-sans text-xs"
+                  aria-label={m.graph_temporal_source_thought()}
+                  data-testid="temporal-event-thought-text"
+                />
+                <div class="flex gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    class="h-8 text-xs"
+                    disabled={busy || !thoughtDraft.trim()}
+                    data-testid="temporal-event-thought-save"
+                  >
+                    {m.graph_temporal_thought_save()}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="h-8 text-xs"
+                    data-testid="temporal-event-thought-cancel"
+                    onclick={() => (thoughtDraft = null)}
+                  >
+                    {m.graph_temporal_thought_cancel()}
+                  </Button>
+                </div>
+              </form>
+            </dd>
+          {:else}
+            <dd class="text-foreground font-sans text-xs leading-relaxed">{item.thoughtText}</dd>
+          {/if}
         </div>
       </dl>
     </div>

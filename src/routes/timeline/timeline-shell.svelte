@@ -332,6 +332,26 @@
     void postEventAction(eventId, { instruction })
   }
 
+  /** The source thought's new text, stored verbatim (memory.edit_thought via /api/capture/edit). */
+  async function onEditThought(thoughtId: string, text: string) {
+    actionError = null
+    actionBusy = true
+    try {
+      const res = await fetch('/api/capture/edit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ thoughtId, text }),
+      })
+      if (!res.ok) throw await requestErrorOf(res)
+      await data.load({ silent: true })
+      lastActionSummary = m.graph_temporal_thought_saved()
+    } catch (err) {
+      actionError = shownOf(err)
+    } finally {
+      actionBusy = false
+    }
+  }
+
   function onReschedule(eventId: string, startAt: string, endAt: string) {
     void postEventAction(eventId, { action: 'reschedule', startAt, endAt })
   }
@@ -622,6 +642,7 @@
     {onQuickAction}
     {onInstruction}
     {onDelete}
+    {onEditThought}
     showAssignAgent={selectedItem
       ? !isTemporalEventCompleted(selectedItem) &&
         (isTaskListItem(selectedItem) || selectedItem.projectEntityId !== null)

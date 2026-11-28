@@ -3794,7 +3794,8 @@ export type CoreApiTools = {
   }
   "memory.edit_thought": {
     input: {
-      "change": string
+      "change"?: string
+      "text"?: string
       "thought_id": string
     }
     output: unknown

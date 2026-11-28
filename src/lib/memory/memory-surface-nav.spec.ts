@@ -2,19 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { activeMemorySurfaceTab, MEMORY_TABS } from './memory-surface-nav'
 
 describe('MEMORY_TABS', () => {
-  it('is the one sub-navigation of the Memory page: Tasks · Projects · Documents · Reminders · Questions · Handover · What the brain knows (plan/concept-memory-one-door.md §2.2)', () => {
+  it('is the one sub-navigation of the Memory page: What the brain knows · Tasks · Projects · Documents · Reminders · Questions (plan/concept-memory-one-door.md §2.2; Handover is gone, wish f3fc516e)', () => {
     expect(MEMORY_TABS.map((t) => [t.id, t.label(), t.href])).toEqual([
+      ['knows', 'What the brain knows', '/m/memory/capture'],
       ['tasks', 'Tasks', '/m/memory/tasks'],
       ['projects', 'Projects', '/m/memory/projects'],
       ['documents', 'Documents', '/m/memory/notes'],
       ['reminders', 'Reminders', '/m/memory/reminders'],
       ['questions', 'Questions', '/m/memory/questions'],
-      ['handover', 'Handover', '/m/memory/handover'],
-      ['knows', 'What the brain knows', '/m/memory/capture'],
     ])
   })
 
-  it('has no Overview tab any more (/m/memory lands on Tasks)', () => {
+  it('has no Overview tab any more (/m/memory lands on What the brain knows)', () => {
     expect(MEMORY_TABS.some((t) => t.href === '/m/memory')).toBe(false)
   })
 
@@ -25,7 +24,6 @@ describe('MEMORY_TABS', () => {
       documents: 'Kept as you wrote it. The brain reads it, but doesn’t rewrite it.',
       reminders: 'Comes back on the weekdays you pick, until you stop it.',
       questions: 'Short questions for colleagues, answered right here.',
-      handover: 'Where things stand, one line per topic. Everyone in the company reads it.',
       knows: 'Everything the brain took in, and whether it’s indexed yet.',
     })
     for (const tab of MEMORY_TABS) expect(tab.description()).not.toContain('\n')
@@ -37,7 +35,6 @@ describe('activeMemorySurfaceTab', () => {
     ['/m/memory/tasks', 'tasks'],
     ['/m/memory/reminders', 'reminders'],
     ['/m/memory/questions', 'questions'],
-    ['/m/memory/handover', 'handover'],
     ['/m/memory/projects', 'projects'],
     ['/m/memory/projects/7f1c2a9e-3b4d-4c5e-8f6a-1b2c3d4e5f60', 'projects'],
     ['/m/memory/notes', 'documents'],
@@ -48,7 +45,7 @@ describe('activeMemorySurfaceTab', () => {
   })
 
   it('has no tab outside the tabs (the bare /m/memory redirects; settings is no tab)', () => {
-    for (const path of ['/m/memory', '/m/memory/settings', '/memory', '/capture', '/m/memoryx', '/m/website'])
+    for (const path of ['/m/memory', '/m/memory/handover', '/m/memory/settings', '/memory', '/capture', '/m/memoryx', '/m/website'])
       expect(activeMemorySurfaceTab(path)).toBeNull()
   })
 })

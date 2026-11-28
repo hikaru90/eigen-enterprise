@@ -359,6 +359,33 @@ describe('editStoredThought', () => {
     expect(loadThoughtCaptureResultMock).toHaveBeenCalledWith('u1', 't1')
   })
 
+  it('stores a verbatim text as the new thought body, without the model rewriting it (wish 2f296da6)', async () => {
+    const existing = { id: 't1', userId: 'u1', rawText: 'hello', metadata: {}, category: 'task', normalizedText: 'hello', lexicalText: 'hello' }
+    const updated = { ...existing, rawText: 'Call Acme on Friday', normalizedText: 'Call Acme on Friday', lexicalText: 'call acme on friday' }
+    const db = {
+      select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(async () => [existing]) })) })) })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn(async () => [updated]) })) })) })),
+    }
+    getDbMock.mockReturnValue(db)
+
+    const result = await editStoredThought('u1', 't1', 'Call Acme on Friday', { verbatim: true })
+    expect(result.ok).toBe(true)
+    expect(applyThoughtEditRequestMock).not.toHaveBeenCalled()
+    expect(resolveThoughtCategoryMock).toHaveBeenCalledWith({ userId: 'u1', normalized: 'Call Acme on Friday', rawText: 'Call Acme on Friday' })
+    expect(reenrichThoughtMock).toHaveBeenCalledWith('u1', 't1', 'Call Acme on Friday', expect.anything())
+  })
+
+  it('a verbatim text that reads like "done" is still text, not a status change', async () => {
+    const existing = { id: 't1', userId: 'u1', rawText: 'hello', metadata: {}, category: 'task', normalizedText: 'hello', lexicalText: 'hello' }
+    const db = {
+      select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(async () => [existing]) })) })) })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(() => ({ returning: vi.fn(async () => [{ ...existing, rawText: 'done', normalizedText: 'done', lexicalText: 'done' }]) })) })) })),
+    }
+    getDbMock.mockReturnValue(db)
+    await editStoredThought('u1', 't1', 'done', { verbatim: true })
+    expect(reenrichThoughtMock).toHaveBeenCalledWith('u1', 't1', 'done', expect.anything())
+  })
+
   it('merges metadata when existing row has null decrypted metadata', async () => {
     const existing = {
       id: 't1',

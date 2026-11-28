@@ -31,8 +31,33 @@ export type Deprecation = {
   howToMigrate: string
 }
 
-/** Empty today: core-api 1.0.0 has no deprecations. */
-export const DEPRECATIONS: readonly Deprecation[] = []
+/**
+ * Handover is gone (owner wish f3fc516e, 2026-11-28): its page, tab and Memory
+ * nav entry are removed; the handover.* tools keep working until their window
+ * ends, then they go with a major bump. Its tables stay (expand/contract).
+ */
+const HANDOVER_GONE =
+  'Handover was removed from eigenEnterprise; nothing replaces it. Stop calling handover.* — ' +
+  'keep "where things stand" as a Memory document (memory.create_text_file {title, content}) ' +
+  'and hand work over with tasks.assign {title, assignee_id}.'
+
+export const DEPRECATIONS: readonly Deprecation[] = [
+  'handover.create',
+  'handover.list',
+  'handover.get',
+  'handover.add_entry',
+  'handover.update_entry',
+  'handover.remove_entry',
+  'handover.delete',
+  'handover.assign_entry',
+  'handover.draft_entry',
+].map((name) => ({
+  item: `tool:${name}`,
+  since: '0.5.48',
+  sinceDate: '2026-11-28',
+  replacement: null,
+  howToMigrate: HANDOVER_GONE,
+}))
 
 /** Minimum number of minor releases a deprecated item keeps working. */
 export const DEPRECATION_MIN_MINOR_RELEASES = 2

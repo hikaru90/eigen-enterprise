@@ -47,9 +47,9 @@ describe('/m/memory layout', () => {
   })
 })
 
-describe('/m/memory (no Overview any more: it lands on Tasks)', () => {
-  it('redirects to /m/memory/tasks, where the open tasks are (plan/concept-memory-one-door.md, decision 1)', () => {
-    expect(() => load(signedIn as never)).toThrow(expect.objectContaining({ status: 307, location: '/m/memory/tasks' }))
+describe('/m/memory (its front page is What the brain knows, wish f3fc516e)', () => {
+  it('redirects to /m/memory/capture, What the brain knows (plan/concept-memory-one-door.md)', () => {
+    expect(() => load(signedIn as never)).toThrow(expect.objectContaining({ status: 307, location: '/m/memory/capture' }))
   })
 
   it('has no form actions left (the Overview’s Delete is the Tasks drawer’s, memory.delete_task)', async () => {

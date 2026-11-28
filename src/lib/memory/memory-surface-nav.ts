@@ -1,14 +1,14 @@
 import type { Pathname } from '$app/types'
 import { m } from '$lib/paraglide/messages.js'
 
-export type MemorySurfaceTab = 'tasks' | 'projects' | 'documents' | 'reminders' | 'questions' | 'handover' | 'knows'
+export type MemorySurfaceTab = 'tasks' | 'projects' | 'documents' | 'reminders' | 'questions' | 'knows'
 
 /**
  * The Memory module page's sub-navigation (phase-cohesion §3): one page under
  * /m/memory, every section its own URL (rule 5). Memory shows what the brain
  * holds (plan/concept-memory-one-door.md §2.2, decision 1): nothing is typed
  * in here — the Ask bar is the one door. There is no Overview tab: /m/memory
- * lands on Tasks. Documents keeps its /m/memory/notes URL and "What the brain
+ * lands on What the brain knows, its front page (wish f3fc516e). Documents keeps its /m/memory/notes URL and "What the brain
  * knows" keeps /m/memory/capture, so links already sent out (check-in pushes,
  * bookmarks) still land.
  * `label` and `description` are messages (en + de), read at render time;
@@ -20,6 +20,12 @@ export const MEMORY_TABS: ReadonlyArray<{
   href: Pathname
   description: () => string
 }> = [
+  {
+    id: 'knows',
+    label: () => m.memory_tab_knows(),
+    href: '/m/memory/capture',
+    description: () => m.memory_tab_knows_line(),
+  },
   {
     id: 'tasks',
     label: () => m.memory_tab_tasks(),
@@ -49,18 +55,6 @@ export const MEMORY_TABS: ReadonlyArray<{
     label: () => m.memory_tab_questions(),
     href: '/m/memory/questions',
     description: () => m.memory_tab_questions_line(),
-  },
-  {
-    id: 'handover',
-    label: () => m.memory_tab_handover(),
-    href: '/m/memory/handover',
-    description: () => m.memory_tab_handover_line(),
-  },
-  {
-    id: 'knows',
-    label: () => m.memory_tab_knows(),
-    href: '/m/memory/capture',
-    description: () => m.memory_tab_knows_line(),
   },
 ]
 

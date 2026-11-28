@@ -170,6 +170,11 @@ export async function captureThought(
 
 export type EditStoredThoughtOptions = {
   onProgress?: (event: CaptureProgressEvent) => Promise<void>
+  /**
+   * The edit request IS the new thought body (the task drawer's Source thought
+   * editor, wish 2f296da6): stored as written, no model rewrite, no status read.
+   */
+  verbatim?: boolean
 }
 
 export async function editStoredThought(
@@ -222,7 +227,7 @@ async function editStoredThoughtUnsealed(
       decryptThoughtRow(userId, existing),
     )
 
-    const lifecycleStatus = parseLifecycleEditRequest(editRequest)
+    const lifecycleStatus = options?.verbatim ? null : parseLifecycleEditRequest(editRequest)
     if (lifecycleStatus) {
       console.info('[capture.edit] lifecycle fast path', { ...logCtx, lifecycleStatus })
       const lifecycleResult = await timer.time('lifecycle_status', async () =>
@@ -252,7 +257,9 @@ async function editStoredThoughtUnsealed(
       }
     }
 
-    const applied = await timer.time('llm_apply_edit', async () =>
+    const applied = options?.verbatim
+      ? { rawText: editRequest.trim(), status: null, summary: 'Text edited' }
+      : await timer.time('llm_apply_edit', async () =>
       applyThoughtEditRequest({
         userId,
         existingRawText: decryptedExisting.rawText,

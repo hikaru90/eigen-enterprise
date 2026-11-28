@@ -69,6 +69,25 @@ describe('POST /api/capture/edit', () => {
     ).rejects.toMatchObject({ status: 404 })
   })
 
+  it('stores a new text verbatim when given text instead of editRequest (the task drawer, wish 2f296da6)', async () => {
+    editStoredThoughtMock.mockResolvedValue({ ok: true, thought: { id: 't1' } })
+    const res = await POST({
+      locals: { user: { id: 'u1' } },
+      request: { json: vi.fn(async () => ({ thoughtId: 't1', text: 'Call Acme on Friday' })), headers: { get: () => '' } },
+    } as never)
+    expect(res.status).toBe(200)
+    expect(editStoredThoughtMock).toHaveBeenCalledWith('u1', 't1', 'Call Acme on Friday', { verbatim: true })
+  })
+
+  it('refuses both text and editRequest at once', async () => {
+    await expect(
+      POST({
+        locals: { user: { id: 'u1' } },
+        request: { json: vi.fn(async () => ({ thoughtId: 't1', text: 'a', editRequest: 'b' })) },
+      } as never),
+    ).rejects.toMatchObject({ status: 400 })
+  })
+
   it('returns updated thought', async () => {
     editStoredThoughtMock.mockResolvedValue({ ok: true, thought: { id: 't1' } })
     const res = await POST({
