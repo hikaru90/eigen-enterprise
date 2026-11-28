@@ -547,6 +547,10 @@ export const activityCallLog = pgTable(
     cachedTokens: integer('cached_tokens'),
     /** Prompt tokens written to the provider's prompt cache (OpenRouter prompt_tokens_details.cache_write_tokens). */
     cacheWriteTokens: integer('cache_write_tokens'),
+    /** Which attempt of a model call the row is (1-based); null for non-model rows and rows before 0200. */
+    attempt: integer('attempt'),
+    /** How the attempt ended (ok · error · cut_short, log-call.ts); null for non-model rows and rows before 0200. */
+    outcome: text('outcome'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (t) => [

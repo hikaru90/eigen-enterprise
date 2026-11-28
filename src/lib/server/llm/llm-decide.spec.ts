@@ -1,3 +1,4 @@
+import { getCurrentTraceGroupId, runWithTrace } from '$lib/server/activity/trace-context'
 import type { SlotTarget } from './slots'
 import { describe, expect, it, vi } from 'vitest'
 import { mockDecision } from '../../../../scripts/mock-gateway-decisions.mjs'
@@ -93,8 +94,21 @@ describe('llmDecide', () => {
         gatewayHost: 'inference.example',
         baseCostUsd: 0.000014,
         operation: 'llm.decide.success(attempt=1,model=typesafe/jev-1.13)',
+        attempt: 1,
+        outcome: 'ok',
       }),
     ])
+  })
+
+  it('runs in its own trace when no run started one, and inside the caller\'s trace when one did', async () => {
+    const seen: Array<string | undefined> = []
+    const d = deps({ logCall: async () => void seen.push(getCurrentTraceGroupId()) })
+    await llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, d)
+    await runWithTrace('11111111-1111-4111-8111-111111111111', () =>
+      llmDecide({ userId: 'u', state: 's', questions, task: 'decisions.judge', kindId: 'k' }, d),
+    )
+    expect(seen[0]).toMatch(/^[0-9a-f-]{36}$/)
+    expect(seen[1]).toBe('11111111-1111-4111-8111-111111111111')
   })
 
   it('never logs the state (it may be a private mail) or the key: the cost row names the kind and the count only', async () => {

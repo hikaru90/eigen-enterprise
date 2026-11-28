@@ -1,3 +1,4 @@
+import { runWithTrace } from '$lib/server/activity/trace-context'
 import type { ToolContext, ToolDescriptor } from './types'
 import type { VcsCommitter } from './vcs'
 import { describe, expect, it } from 'vitest'
@@ -107,6 +108,19 @@ describe('KernelRegistry.execute permission + validation', () => {
     })
     expect(handlerCalls).toHaveLength(0)
     expect(sink.events).toHaveLength(0)
+  })
+})
+
+describe('KernelRegistry audit carries the run (plan/traces-phone-home.md T0)', () => {
+  it('names the trace of the run a tool call ran in on tool.executed, and none outside a run', async () => {
+    const sink = new InMemoryEventSink()
+    const registry = new KernelRegistry({ eventSink: sink })
+    registry.register(makeTool())
+    const trace = '22222222-2222-4222-8222-222222222222'
+    await runWithTrace(trace, () => registry.execute('memory.echo', { value: 'x' }, makeCtx()))
+    await registry.execute('memory.echo', { value: 'y' }, makeCtx())
+    expect(sink.events[0]!.payload).toMatchObject({ traceId: trace })
+    expect(sink.events[1]!.payload).not.toHaveProperty('traceId')
   })
 })
 

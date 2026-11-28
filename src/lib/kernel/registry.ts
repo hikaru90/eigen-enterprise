@@ -2,6 +2,7 @@ import type { AuditClass, ToolContext, ToolDescriptor, ToolPrincipal } from './t
 import type { VcsCommitter } from './vcs'
 import type { ZodType } from 'zod'
 import { randomUUID } from 'node:crypto'
+import { getCurrentTraceGroupId } from '../server/activity/trace-context'
 import { redactForLog } from '../server/observability/redact-for-log'
 import {
   InMemoryApprovalStore,
@@ -344,11 +345,17 @@ export class KernelRegistry {
         ...(activity === undefined ? {} : { activity }),
         ...(activityError === undefined ? {} : { activityError }),
         durationMs,
+        // The run this call belongs to (plan/traces-phone-home.md T0): joins it to the run's model calls.
+        ...traceIdOf(getCurrentTraceGroupId()),
         // Provenance: the actor is the person (principalId); `via` says the brain carried the call.
         ...provenanceOf(ctx.principal),
       },
     })
   }
+}
+
+function traceIdOf(traceId: string | undefined): { traceId?: string } {
+  return traceId === undefined ? {} : { traceId }
 }
 
 /** Shared instance; collaborators are wired wherever tools get registered. */

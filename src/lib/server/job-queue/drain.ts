@@ -1,3 +1,4 @@
+import { runWithTrace } from '$lib/server/activity/trace-context'
 import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
 import { withDbUser } from '$lib/server/db'
@@ -241,9 +242,8 @@ export async function drainUserJobQueue(input?: {
       // Webhook decrypt + onboarding grounding use getDb(); overnight scopes
       // itself too — nested withDbUser is fine. Without this ALS, background
       // drain throws "getDb() was called outside an active request".
-      await withDbUser(job.userId, async () => {
-        await dispatchJob(job)
-      })
+      // Each job is one run: its model calls and tool calls share the job's trace (traces T0).
+      await withDbUser(job.userId, () => runWithTrace(job.id, () => dispatchJob(job)))
       await finishJob(job.id, 'completed')
       completed += 1
     } catch (err) {

@@ -184,6 +184,8 @@ describe('llm client retries', () => {
       'u1',
       expect.objectContaining({
         operation: 'llm.chat.chat.success(attempt=1)',
+        attempt: 1,
+        outcome: 'ok',
         baseCostUsd: 0,
         gatewayHost: 'example.test',
       }),
@@ -333,7 +335,7 @@ describe('llm client retries', () => {
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
-      expect.objectContaining({ operation: 'llm.chat.chat.cut_short(attempt=1)' }),
+      expect.objectContaining({ operation: 'llm.chat.chat.cut_short(attempt=1)', attempt: 1, outcome: 'cut_short' }),
     )
     expect(logActivityCallMock).not.toHaveBeenCalledWith(
       expect.anything(),
