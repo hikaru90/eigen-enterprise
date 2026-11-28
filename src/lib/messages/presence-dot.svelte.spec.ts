@@ -39,14 +39,28 @@ describe('presence-dot.svelte', () => {
 
   it('AI co-workers never show offline: available, writing, paused each have their own glyph and words (Contribute 14aea69d)', async () => {
     const want = {
-      available: ['spark', 'AI co-worker · always available'],
+      available: ['spark', 'AI co-worker · available, AI budget left today'],
+      capped: ['spark', 'AI co-worker · today’s AI budget is used up'],
       busy: ['dots', 'Writing a reply'],
       paused: ['pause', 'Paused (switched off)'],
     } as const
-    for (const status of ['available', 'busy', 'paused'] as const) {
+    for (const status of ['available', 'capped', 'busy', 'paused'] as const) {
       const { unmount } = render(PresenceDot, { presence: view({ status }), now: NOW })
       const dot = page.getByRole('img', { name: want[status][1] })
       await expect.element(dot).toHaveAttribute('data-glyph', want[status][0])
+      unmount()
+    }
+  })
+
+  it('wish 32162c64: the co-worker spark is green with budget left today and red when it is used up, never colour alone', async () => {
+    for (const [status, fill] of [
+      ['available', 'bg-emerald-600'],
+      ['capped', 'bg-red-600'],
+    ] as const) {
+      const { unmount } = render(PresenceDot, { presence: view({ status }), now: NOW })
+      const dot = page.getByTestId('presence-dot')
+      await expect.element(dot).toHaveClass(fill)
+      await expect.element(dot).toHaveAttribute('title')
       unmount()
     }
   })

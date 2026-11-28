@@ -25,6 +25,7 @@
   import { Label } from '$lib/components/ui/label'
   import UserAvatar from '$lib/components/user-avatar.svelte'
   import AiMark from '$lib/coworkers/ai-mark.svelte'
+  import CoworkerProfilePanel from '$lib/coworkers/coworker-profile-panel.svelte'
   import { mentionNamesOf } from '$lib/coworkers/handle'
   import type { ShownError } from '$lib/errors/agent-report'
   import { createDrafts } from '$lib/messages/drafts'
@@ -168,6 +169,8 @@
   let threadError = $state<PageError | null>(null)
   let threadListEl = $state<HTMLDivElement | null>(null)
   let editingId = $state<string | null>(null)
+  /** The AI co-worker whose profile panel is open (wish 7c6db153). */
+  let profileFor = $state<string | null>(null)
   let pickerFor = $state<string | null>(null)
   let deleteTarget = $state<MessageView | null>(null)
   let deleteError = $state<PageError | null>(null)
@@ -1429,6 +1432,7 @@
                 {mentions}
                 {now}
                 {returnHref}
+                onopenprofile={(id) => (profileFor = id)}
                 highlighted={highlightId === m.id}
                 onquote={() => startQuote(m, 'log')}
                 onopenquote={() => m.replyTo && jumpToQuote(m.replyTo)}
@@ -1693,6 +1697,7 @@
     {mentions}
     {now}
     {returnHref}
+    onopenprofile={(id) => (profileFor = id)}
     highlighted={highlightId === m.id}
     onquote={() => startQuote(m, 'thread')}
     onopenquote={() => m.replyTo && jumpToQuote(m.replyTo)}
@@ -1915,3 +1920,7 @@
     </form>
   </Dialog.Content>
 </Dialog.Root>
+
+{#if profileFor}
+  <CoworkerProfilePanel coworkerId={profileFor} onclose={() => (profileFor = null)} />
+{/if}

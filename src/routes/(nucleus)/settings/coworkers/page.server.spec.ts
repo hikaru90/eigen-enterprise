@@ -46,6 +46,14 @@ beforeEach(() => {
     if (tool === 'coworkers.list') return { coworkers: [coworker, { ...coworker, id: 'gone', removedAt: '2026-11-23T11:00:00.000Z' }] }
     if (tool === 'coworkers.templates') return { templates: [{ id: 'designer', title: 'Designer', accountabilities: ['Look'], lens: 'l', suggestedModelId: 'qwen/qwen3.8-flash', suggestedDailyCapUsd: 1 }] }
     if (tool === 'org.chart') return { people: [{ id: 'owner', name: 'Olga', kind: 'human' }, { id: 'cw1', name: 'Mara', kind: 'coworker' }] }
+    if (tool === 'settings.ai_usage_overview')
+      return {
+        billing: null,
+        people: [
+          { userId: 'cw1', name: 'Mara', kind: 'coworker', costUsd: 0.5, calls: 4, promptTokens: 900, completionTokens: 100, cachedTokens: 0, products: [] },
+          { userId: 'owner', name: 'Olga', kind: 'person', costUsd: 9, calls: 9, promptTokens: 9, completionTokens: 9, cachedTokens: 0, products: [] },
+        ],
+      }
     if (tool === 'coworkers.rhythm_list') return { rhythms: [], targets: [{ id: 'c1', title: '#marketing', kind: 'channel' }] }
     return coworker
   }
@@ -68,14 +76,15 @@ const ev = (form: Record<string, string> = {}) =>
 
 describe('load', () => {
   it('reads the co-workers (removed ones left out), the templates and the seats through the registry, plus the pool chat models', async () => {
-    const data = (await load({ locals } as never)) as Record<string, unknown>
+    const data = (await load({ locals, url: new URL('http://x/settings/coworkers') } as never)) as Record<string, unknown>
     expect(calls.map((c) => [c.user, c.tool])).toEqual([
       ['admin1', 'coworkers.list'],
       ['admin1', 'coworkers.templates'],
       ['admin1', 'org.chart'],
+      ['admin1', 'settings.ai_usage_overview'],
       ['admin1', 'coworkers.rhythm_list'],
     ])
-    expect(calls[3]!.input).toEqual({ user_id: 'cw1' })
+    expect(calls[4]!.input).toEqual({ user_id: 'cw1' })
     expect(data.rhythms).toEqual({ cw1: { rhythms: [], targets: [{ id: 'c1', title: '#marketing', kind: 'channel' }] } })
     expect(data.timeZone).toBe('Europe/Berlin')
     expect((data.coworkers as { id: string }[]).map((c) => c.id)).toEqual(['cw1'])
@@ -86,9 +95,21 @@ describe('load', () => {
     expect((data.models as { family: string }[])[0]!.family).toBe('Google')
   })
 
+  it('wish acdb941e: each co-worker\'s AI usage of the period (?usage=, 30 days by default) from settings.ai_usage_overview', async () => {
+    const data = (await load({ locals, url: new URL('http://x/settings/coworkers?usage=7') } as never)) as Record<string, unknown>
+    const read = calls.find((c) => c.tool === 'settings.ai_usage_overview')!
+    expect(Object.keys(read.input as object).sort()).toEqual(['from', 'to'])
+    expect(data.usagePeriod).toBe('7')
+    expect(data.usage).toEqual({
+      billing: null,
+      byCoworker: { cw1: { costUsd: 0.5, calls: 4, promptTokens: 900, completionTokens: 100, cachedTokens: 0 } },
+    })
+    await expect(load({ locals, url: new URL('http://x/settings/coworkers?usage=week') } as never)).rejects.toMatchObject({ status: 400 })
+  })
+
   it('refuses a member (403) without reading anything', async () => {
     roleMock.mockResolvedValue('member')
-    await expect(load({ locals } as never)).rejects.toMatchObject({ status: 403 })
+    await expect(load({ locals, url: new URL('http://x/settings/coworkers') } as never)).rejects.toMatchObject({ status: 403 })
     expect(calls).toEqual([])
   })
 

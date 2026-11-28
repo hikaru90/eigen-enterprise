@@ -12,6 +12,7 @@ describe('coworkerPresencePort (Contribute 14aea69d)', () => {
       list: async () => [view('ada', {}), view('max', { enabled: false }), view('gone', { enabled: false, removedAt: '2026-11-01T00:00:00Z' })],
       board,
       onCoworkersChanged: () => () => {},
+      spentToday: async () => 0,
     })
     expect(await port.statuses()).toEqual(
       new Map([
@@ -28,5 +29,22 @@ describe('coworkerPresencePort (Contribute 14aea69d)', () => {
     unsubscribe()
     board.start({ conversationId: 'c', threadRootId: null, userId: 'ada' })
     expect(told).toBe(2)
+  })
+
+  it('wish 32162c64: a switched-on co-worker whose daily AI budget is used up today is capped; budget left stays available', async () => {
+    const spent: Record<string, number> = { ada: 5, max: 1.5, off: 9 }
+    const port = coworkerPresencePort({
+      list: async () => [view('ada', { dailyCapUsd: 5 }), view('max', { dailyCapUsd: 2 }), view('off', { enabled: false, dailyCapUsd: 1 })],
+      board: new TypingBoard(),
+      onCoworkersChanged: () => () => {},
+      spentToday: async (id) => spent[id] ?? 0,
+    })
+    expect(await port.statuses()).toEqual(
+      new Map([
+        ['ada', 'capped'],
+        ['max', 'available'],
+        ['off', 'paused'],
+      ]),
+    )
   })
 })

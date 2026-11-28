@@ -20,6 +20,8 @@ const inputSchema = z
     from: z.iso.date().optional(),
     /** Last day included (YYYY-MM-DD, UTC); omitted: up to now. */
     to: z.iso.date().optional(),
+    /** Only this principal's usage (a person or an AI co-worker, wish acdb941e); omitted: everyone. */
+    user_id: z.string().min(1).optional(),
   })
   .strict()
 
@@ -39,18 +41,18 @@ export function createAiUsageTools(deps: AiUsageToolDeps): ToolDescriptor[] {
       name: 'settings.ai_usage_overview',
       module: KERNEL_AI_USAGE_MODULE_ID,
       summary:
-        'Where the company’s AI money went: totals, every AI product with its tasks, every person and AI co-worker with their per-product split, every model, and the spend of each day. Optional {from, to} as YYYY-MM-DD (UTC, both included); without them everything on record. costUsd is the USD the gateway logged. On the hosted plan with eigenInference, billing names the markup and the USD→EUR rate with its day, and every amount also has providerUsd (what the provider reported for the eigenInference calls) and invoicedEur (what the company is invoiced: providerUsd × markup × usdToEur). Owner and admins; for your own usage use settings.my_ai_usage.',
+        'Where the company’s AI money went: totals, every AI product with its tasks, every person and AI co-worker with their per-product split, every model, and the spend of each day. Optional {from, to} as YYYY-MM-DD (UTC, both included); without them everything on record. Optional user_id narrows every fold to one person or AI co-worker (e.g. a co-worker\'s token usage and cost). costUsd is the USD the gateway logged. On the hosted plan with eigenInference, billing names the markup and the USD→EUR rate with its day, and every amount also has providerUsd (what the provider reported for the eigenInference calls) and invoicedEur (what the company is invoiced: providerUsd × markup × usdToEur). Owner and admins; for your own usage use settings.my_ai_usage.',
       auditClass: 'read',
       inputSchema,
       outputSchema: overviewSchema,
       permission: { roles: ['admin'] },
       handler: async (_ctx, input) => {
-        const { from = null, to = null } = inputSchema.parse(input ?? {})
+        const { from = null, to = null, user_id: userId } = inputSchema.parse(input ?? {})
         if (from !== null && to !== null && from > to) {
           throw new KernelError('invalid_input', `The period ends (${to}) before it starts (${from}).`)
         }
         const [rows, billing] = await Promise.all([deps.port.rows({ from, to }), deps.port.billing()])
-        return foldAiUsage(rows, { from, to }, billing)
+        return foldAiUsage(userId === undefined ? rows : rows.filter((r) => r.userId === userId), { from, to }, billing)
       },
     },
   ]

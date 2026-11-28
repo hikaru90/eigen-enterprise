@@ -62,6 +62,7 @@
     onopenquote,
     highlighted = false,
     returnHref,
+    onopenprofile,
   }: {
     message: MessageView
     grouped?: boolean
@@ -91,7 +92,11 @@
     highlighted?: boolean
     /** Current Messages URL passed as `?from=` so closing the Drive preview returns here. */
     returnHref?: string
+    /** An AI co-worker's name or avatar was clicked: show its profile (wish 7c6db153). */
+    onopenprofile?: (userId: string) => void
   } = $props()
+
+  const profileOpenable = $derived(m.authorKind === 'coworker' && onopenprofile !== undefined)
 
   function fileHref(fileId: string): string {
     const base = resolve(`/drive/file/${fileId}`)
@@ -214,14 +219,36 @@
         data-testid="messages-gutter-time">{timeFmt.format(at)}</time
       >
     {:else}
-      <UserAvatar name={m.authorName} image={m.authorImage} size="md" class="mt-0.5" testid="messages-avatar" />
+      {#if profileOpenable}
+        <button
+          type="button"
+          class="rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          tabindex="-1"
+          aria-hidden="true"
+          onclick={() => onopenprofile?.(m.authorId)}
+          data-testid="messages-avatar-profile"
+          ><UserAvatar name={m.authorName} image={m.authorImage} size="md" class="mt-0.5" testid="messages-avatar" /></button
+        >
+      {:else}
+        <UserAvatar name={m.authorName} image={m.authorImage} size="md" class="mt-0.5" testid="messages-avatar" />
+      {/if}
     {/if}
   </div>
 
   <div class="min-w-0 flex-1">
     {#if !grouped}
       <p class="flex items-baseline gap-2 leading-5">
-        <span class="text-[15px] font-bold" data-testid="messages-author">{m.authorName}</span>
+        {#if profileOpenable}
+          <button
+            type="button"
+            class="rounded-sm text-[15px] font-bold underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            aria-label="{m.authorName}: {msg.coworkers_profile()}"
+            onclick={() => onopenprofile?.(m.authorId)}
+            data-testid="messages-author">{m.authorName}</button
+          >
+        {:else}
+          <span class="text-[15px] font-bold" data-testid="messages-author">{m.authorName}</span>
+        {/if}
         {#if m.authorKind === 'coworker'}<AiMark class="self-center" testid="messages-author-ai" />{/if}
         <time class="text-xs text-muted-foreground" datetime={m.createdAt} title={fullFmt.format(at)}>{timeFmt.format(at)}</time>
       </p>

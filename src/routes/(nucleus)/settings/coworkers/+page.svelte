@@ -34,7 +34,9 @@
     {:else}
       <ul class="space-y-2">
         {#each data.coworkers as c (c.id)}
-          <CoworkerCard coworker={c} models={data.models} seats={data.seats} {form} rhythms={data.rhythms[c.id]!} timeZone={data.timeZone} />
+          <CoworkerCard coworker={c} models={data.models} seats={data.seats} {form} rhythms={data.rhythms[c.id]!} timeZone={data.timeZone}
+            usage={{ amounts: data.usage.byCoworker[c.id] ?? null, billing: data.usage.billing, period: data.usagePeriod }}
+          />
         {/each}
       </ul>
     {/if}
