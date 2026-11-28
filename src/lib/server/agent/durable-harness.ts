@@ -1,5 +1,4 @@
 import type { DurableConversationIndex } from './conversation-index'
-import { EmptyReplyError, emptyReplyCause, type FinalMessageStop } from '$lib/server/llm/empty-reply'
 import { mkdirSync, openSync, readFileSync, unlinkSync, writeSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AiTaskId } from '$lib/ai-usage/tasks'
@@ -17,6 +16,7 @@ import type {
 } from '$lib/kernel/engines/durable'
 import { DurableRunError } from '$lib/kernel/engines/durable'
 import { KernelError } from '$lib/kernel/errors'
+import { EmptyReplyError, emptyReplyCause, type FinalMessageStop } from '$lib/server/llm/empty-reply'
 import { assertPoolModel } from '$lib/server/llm/model-pool'
 import { dbScopedGatewayComplete } from './db-scoped-complete'
 import {

@@ -1,9 +1,9 @@
 import type { StreamFrame } from '../../../../modules/messages/hub'
-import { presentCoworker, type CoworkerView } from './service'
-import type { SlotSource } from '$lib/server/llm/slots'
 import type { CoworkerTurns, HeardMessage, TurnPrompts } from './turns'
 import type { AgentConfig, CoworkerSource } from '$lib/kernel/agent'
 import { coworkerPrincipal } from '$lib/kernel/principals'
+import type { SlotSource } from '$lib/server/llm/slots'
+import { presentCoworker, type CoworkerView } from './service'
 
 /**
  * The company's enabled AI co-workers as runtime agents (plan/phase-ai-coworkers.md

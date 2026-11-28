@@ -1,7 +1,7 @@
 import type { Actions, RequestEvent } from '@sveltejs/kit'
-import { EIGEN_INFERENCE } from '$lib/ai/eigen-inference'
 import { fail, redirect } from '@sveltejs/kit'
 import { and, eq } from 'drizzle-orm'
+import { EIGEN_INFERENCE } from '$lib/ai/eigen-inference'
 import { isUserAdmin } from '$lib/server/auth/user-role'
 import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'

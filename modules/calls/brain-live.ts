@@ -1,6 +1,6 @@
 import type { AiTaskId } from '$lib/ai-usage/tasks'
-import { brainAnswerMessages, brainRecapMessages, type CallBrain } from './brain'
 import { assertOutputScript } from '$lib/server/llm/output-language'
+import { brainAnswerMessages, brainRecapMessages, type CallBrain } from './brain'
 
 /**
  * The live Company Brain (./brain.ts): the assistant's server-side answer

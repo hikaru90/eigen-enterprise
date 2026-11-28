@@ -65,12 +65,7 @@ export type CoworkerProfileRow = {
   userId: string
   slug: string
   lens: string
-  /**
-   * The chat model it runs on: its own pick on the company's own key (bring-your-own-key).
-   * null on eigenInference (owner, 2026-11-28): there it runs on the pool's chat pick and the
-   * model is not named to anyone, it just runs on eigenInference ({@link presentCoworker}).
-   */
-  modelId: string | null
+  modelId: string
   enabled: boolean
   dailyCapUsd: number
   templateId: string | null
@@ -187,7 +182,12 @@ export type CoworkerView = {
   title: string | null
   accountabilities: string[]
   lens: string
-  modelId: string
+  /**
+   * The chat model it runs on: its own pick on the company's own key (bring-your-own-key).
+   * null on eigenInference (owner, 2026-11-28): there it runs on the pool's chat pick and the
+   * model is not named to anyone, it just runs on eigenInference ({@link presentCoworker}).
+   */
+  modelId: string | null
   enabled: boolean
   dailyCapUsd: number
   templateId: string | null

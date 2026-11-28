@@ -14,8 +14,8 @@ import {
   setCompanyUseEigenInference,
 } from '$lib/server/llm/company-ai-settings'
 import { companyOwnerId, onCompanyProvider } from '$lib/server/llm/company-provider'
-import { describeChatModel } from '$lib/server/llm/llm-client'
 import { facingChatModel } from '$lib/server/llm/eigen-inference-facing'
+import { describeChatModel } from '$lib/server/llm/llm-client'
 import { companyIdentity } from '$lib/server/overview/sources'
 import { getProfile } from '$lib/server/profile/service'
 import { isByokUiEnabled } from '$lib/server/settings/byok-ui'

@@ -1,6 +1,6 @@
 import type postgres from 'postgres'
-import { EIGEN_INFERENCE } from '$lib/ai/eigen-inference'
 import type { AiUsageRow } from '$lib/ai-usage/overview'
+import { EIGEN_INFERENCE } from '$lib/ai/eigen-inference'
 import type { AiUsagePort } from '$lib/kernel/ai-usage-tools'
 import { ACTIVITY_PAGE_LLM_PROVIDERS, PLATFORM_AI_ACTIVITY_PROVIDER } from '$lib/server/activity/gateway-providers'
 import type { FleetAiUsageDay } from '$lib/server/fleet/ai-usage'

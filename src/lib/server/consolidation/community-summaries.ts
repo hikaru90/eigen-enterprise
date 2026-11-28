@@ -6,8 +6,6 @@
  * JSON batch call; embeddings are batched via createThoughtEmbeddings.
  */
 
-import { assertOutputScript, outputLanguageInstruction } from '$lib/server/llm/output-language'
-import { userOutputLanguage } from '$lib/server/llm/user-language'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getDb } from '$lib/server/db'
 import {
@@ -20,6 +18,8 @@ import {
 } from '$lib/server/db/schema'
 import { createThoughtEmbeddings } from '$lib/server/llm/embedding'
 import { llmChatCompletion } from '$lib/server/llm/llm-client'
+import { assertOutputScript, outputLanguageInstruction } from '$lib/server/llm/output-language'
+import { userOutputLanguage } from '$lib/server/llm/user-language'
 import { loadCommunityThoughtIds } from './community-bundles'
 import { COMMUNITY_MID_LEVEL } from './community-levels'
 
