@@ -81,7 +81,9 @@
     const files = imagesOf(event.clipboardData)
     if (files.length === 0) return
     event.preventDefault()
-    void chat.sendImages(files).then((sent) => sent && follow(true))
+    void chat.sendImages(files).then((sent) => {
+      if (sent) void follow(true)
+    })
   }
 
   function ondragover(event: DragEvent) {
@@ -92,7 +94,9 @@
     const files = imagesOf(event.dataTransfer)
     if (files.length === 0) return
     event.preventDefault()
-    void chat.sendImages(files).then((sent) => sent && follow(true))
+    void chat.sendImages(files).then((sent) => {
+      if (sent) void follow(true)
+    })
   }
 
   const onkeydown = enterSends(() => void sendDraft())
