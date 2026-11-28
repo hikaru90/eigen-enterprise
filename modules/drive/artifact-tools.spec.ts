@@ -23,6 +23,15 @@ async function setup() {
   const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir, Buffer.alloc(32, 7)), access, maxUploadBytes: 4 << 20, locks: memoryEditLockStore() })
   const pdf = vi.fn(async () => Buffer.from('%PDF-1.7 fake'))
   const setContent = vi.fn(async () => {})
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+  const screenshot = vi.fn(async () => PNG)
+  const pptxPage = {
+    route: async () => {},
+    setContent,
+    emulateMedia: async () => {},
+    evaluate: async () => ['Acme\nWe ship', 'Problem'],
+    locator: () => ({ nth: () => ({ screenshot }) }),
+  }
   const tools = createDriveTools({
     service: async () => drive,
     viewUrl: async (s) => `/api/drive/view/TOKEN-${s.userId}/${s.fileName}`,
@@ -30,11 +39,15 @@ async function setup() {
       browser: { executablePath: () => '/bin/chrome', isExecutable: async () => true },
       launch: async () => ({ newPage: async () => ({ route: async () => {}, setContent, pdf }), close: async () => {} }),
     },
+    pptxDeps: {
+      browser: { executablePath: () => '/bin/chrome', isExecutable: async () => true },
+      launch: async () => ({ newPage: async () => pptxPage, close: async () => {} }),
+    },
   })
   const tool = (n: string) => tools.find((t) => t.name === n)!
   const human = (id: string) => ({ principal: { id, kind: 'human' as const, roles: ['member'] }, requestId: 'r' })
   const agent = { principal: { id: 'agent:1', kind: 'agent' as const, roles: ['agent'] }, requestId: 'r' }
-  return { drive, tool, human, agent, setContent }
+  return { drive, tool, human, agent, setContent, screenshot }
 }
 
 type Out = { artifact: { id: string; name: string; kind: string; slideCount: number | null } }
@@ -104,5 +117,30 @@ describe('artifacts.* tools', () => {
     const out = (await tool('artifacts.export_pdf').handler(ctx, { file_id: artifact.id })) as { file: { name: string; mime: string } }
     expect(out.file).toMatchObject({ name: 'Pitch.pdf', mime: 'application/pdf' })
     expect(setContent).toHaveBeenCalledWith(expect.stringContaining('<p>a</p>'), expect.anything())
+  })
+
+  it('exports a deck to PowerPoint next to it: each slide a full-bleed image, its text the speaker notes', async () => {
+    const { tool, human, drive, screenshot } = await setup()
+    const ctx = human('alice')
+    const { artifact } = (await tool('artifacts.create').handler(ctx, { kind: 'deck', name: 'Pitch', slides: [{ html: '<h1>Acme</h1><p>We ship</p>' }, { html: '<h1>Problem</h1>' }] })) as Out
+    const out = (await tool('artifacts.export_pptx').handler(ctx, { file_id: artifact.id })) as { file: { id: string; name: string; mime: string } }
+    expect(out.file).toMatchObject({ name: 'Pitch.pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' })
+    expect(screenshot).toHaveBeenCalledTimes(2)
+    const { bytes } = await drive.readFile({ kind: 'user', userId: 'alice' }, out.file.id)
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(bytes)
+    const slides = Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+    expect(slides).toHaveLength(2)
+    expect(Object.keys(zip.files).some((n) => n.startsWith('ppt/media/'))).toBe(true)
+    const notes = await Promise.all(Object.keys(zip.files).filter((n) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n)).map((n) => zip.file(n)!.async('string')))
+    expect(notes.join()).toContain('We ship')
+    expect(notes.join()).toContain('Problem')
+  })
+
+  it('refuses to export a page to PowerPoint', async () => {
+    const { tool, human } = await setup()
+    const ctx = human('alice')
+    const { artifact } = (await tool('artifacts.create').handler(ctx, { kind: 'page', name: 'P', content: '<p>x</p>' })) as Out
+    await expect(tool('artifacts.export_pptx').handler(ctx, { file_id: artifact.id })).rejects.toThrow(/deck/)
   })
 })

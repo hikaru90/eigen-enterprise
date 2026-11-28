@@ -254,6 +254,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   // Wish 7478dbe4: artifacts (pages + decks in Drive) for every member.
   'artifacts.create',
   'artifacts.export_pdf',
+  'artifacts.export_pptx',
   'artifacts.read',
   'artifacts.update',
   // Wishes 4fbf9991, 2734a371: images in the call chat; naming a group chat.

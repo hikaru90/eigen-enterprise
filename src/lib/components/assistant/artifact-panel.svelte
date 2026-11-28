@@ -41,6 +41,18 @@
           <FileDown class="size-4" aria-hidden="true" strokeWidth={1.75} />
           {panel.exported.status === 'exporting' ? 'Exporting…' : 'Export PDF'}
         </button>
+        {#if panel.view.kind === 'deck'}
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-foreground/70 hover:bg-primary/[0.06] hover:text-foreground disabled:opacity-50"
+            disabled={panel.exported.status === 'exporting'}
+            onclick={() => panel.exportPptx()}
+            data-testid="artifact-export-pptx"
+          >
+            <FileDown class="size-4" aria-hidden="true" strokeWidth={1.75} />
+            Export PowerPoint
+          </button>
+        {/if}
       {/if}
       <button
         type="button"
