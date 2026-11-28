@@ -93,7 +93,9 @@ async function run(
             ? 409
             : err.code === 'forbidden'
               ? 403
-              : 400,
+              : err.code === 'brain_failed'
+                ? 502
+                : 400,
         {
           questionId,
           ...report(),

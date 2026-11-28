@@ -33,7 +33,8 @@ type SealedField = (typeof THOUGHT_SEALED_COLUMNS)[number]['field']
 /**
  * SQL: every member may read this thought row, so it is company-sealed — a task of
  * a shared project of its owner (the thought_shared_read policy, 0164), or any
- * thought of an AI co-worker (the thought_coworker_read policy, 0171).
+ * thought of an AI co-worker (the thought_coworker_read policy, 0171), or an answer to a team
+ * question (thought_team_question_read, 0203: its readers are the question's audience).
  */
 export function thoughtIsSharedSql(): SQL<boolean> {
   return sql<boolean>`(("thought"."category" = 'task' AND EXISTS (
@@ -45,7 +46,8 @@ export function thoughtIsSharedSql(): SQL<boolean> {
       AND ce.visibility = 'company'
       AND ce.project_status IS NOT NULL
       AND ce.project_status <> 'dismissed'))
-    OR EXISTS (SELECT 1 FROM "user" cw WHERE cw.id = "thought"."user_id" AND cw.kind = 'coworker'))`
+    OR EXISTS (SELECT 1 FROM "user" cw WHERE cw.id = "thought"."user_id" AND cw.kind = 'coworker')
+    OR "thought"."team_question_id" IS NOT NULL)`
 }
 
 async function reseal(

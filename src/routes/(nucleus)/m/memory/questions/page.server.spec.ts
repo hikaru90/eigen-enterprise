@@ -61,6 +61,7 @@ function setup() {
       list: async () => MEMBERS,
     },
     groups: { list: async () => [{ id: 'g-sales', name: 'Sales', memberIds: ['alex'] }] },
+    brain: { rememberAnswer: async () => ({ thoughtId: 't-1' }) },
     now: () => new Date((t += 60_000)),
   }
   holder.deps = deps

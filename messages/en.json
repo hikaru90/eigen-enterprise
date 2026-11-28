@@ -1414,5 +1414,18 @@
   "drive_sheet_allow_autoFilter": "Use AutoFilter",
   "drive_sheet_allow_pivotTables": "Use PivotTables",
   "drive_sheet_allow_objects": "Edit objects",
-  "drive_sheet_allow_scenarios": "Edit scenarios"
+  "drive_sheet_allow_scenarios": "Edit scenarios",
+  "one_door_routing": "Filing…",
+  "one_door_filed": "Saved as {route}",
+  "one_door_open": "Open",
+  "one_door_change": "Change",
+  "one_door_unsure": "What is this?",
+  "one_door_failed": "Not saved: {error}",
+  "one_door_retry": "Try again",
+  "one_door_dismiss": "Dismiss",
+  "one_door_route_question": "question",
+  "one_door_route_remember": "something to remember",
+  "one_door_route_task": "task",
+  "one_door_route_document": "document",
+  "one_door_route_reminder": "reminder"
 }

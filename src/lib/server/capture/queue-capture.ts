@@ -78,6 +78,8 @@ export type QueueCaptureOptions = {
    * keeps it. Must be an active thought category of their ontology.
    */
   category?: string
+  /** This thought is an answer to that team question (drizzle/0203): readable by the question's audience. */
+  teamQuestionId?: string
 }
 
 async function resolvePlaceholderOntologyKindId(userId: string): Promise<string> {
@@ -206,6 +208,7 @@ export async function queueCapture(
         metadataEncrypted,
         enrichQueueStatus,
         captureSource: source,
+        ...(options?.teamQuestionId ? { teamQuestionId: options.teamQuestionId } : {}),
         ...authorValues,
         ...(capturedAt ? { createdAt: capturedAt, updatedAt: capturedAt } : {}),
       })

@@ -18,6 +18,7 @@ function setup(writer: Writer = { kind: 'assistant', userId: 'ony' }) {
     notify: async () => {},
     directory: { get: async (id) => members.find((m) => m.id === id) ?? null, list: async () => members },
     groups: { list: async () => [{ id: 'g-sales', name: 'Sales', memberIds: ['alex'] }] },
+    brain: { rememberAnswer: async () => ({ thoughtId: 't-1' }) },
   }
   const writerOf = vi.fn(async (): Promise<Writer> => writer)
   const tools = createQuestionTools({ deps: async () => deps, writerOf })

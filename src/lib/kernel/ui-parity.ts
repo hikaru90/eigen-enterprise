@@ -404,6 +404,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   // ─── Assistant ────────────────────────────────────────────────────────────
   '/api/chat POST': transport(CHAT),
   '/api/assistant/attachments POST': transport(CHAT),
+  '/api/assistant/route POST': tool('memory.route_input'),
   '/api/agent/runs/[id] PATCH': tool('assistant.conversation_rename'),
   '/api/tts POST': transport(SPEECH),
   '/api/voice/transcribe POST': transport(SPEECH),

@@ -29,6 +29,8 @@ let conversation: Record<string, unknown>
 let usageToday: Record<string, unknown> | null
 /** Scripted /api/chat replies, one per request (empty: the echo reply below). */
 let chatReplies: Array<(signal: AbortSignal | null | undefined) => Response> = []
+/** Scripted /api/assistant/route answers (the one door), one per request; empty: a question (to the chat). */
+let routeReplies: Array<() => Response> = []
 /** What the speech-to-text endpoint hears in a dictation test. */
 let voiceTranscript = ''
 
@@ -65,6 +67,11 @@ function stubFetch(): void {
         return Response.json({
           attachment: { name: file.name, kind: 'text', sizeBytes: file.size, text: await file.text() },
         })
+      }
+      if (url === '/api/assistant/route') {
+        const scripted = routeReplies.shift()
+        if (scripted) return scripted()
+        return Response.json({ outcome: 'chat', route: 'question', decisionId: 'd-q', confidence: 0.9, source: 'jev' })
       }
       if (url === '/api/chat') {
         const scripted = chatReplies.shift()
@@ -132,6 +139,7 @@ const spotlightBackdrop = () => page.getByTestId('assistant-spotlight-backdrop')
 beforeEach(() => {
   calls = []
   chatReplies = []
+  routeReplies = []
   conversation = {
     sessionId: 's-1',
     turns: [{ role: 'assistant', content: 'Welcome back — your website next?' }],
@@ -189,6 +197,53 @@ describe('assistant top bar', () => {
     expect(chat?.body).toEqual({ message: 'What is new?', sessionId: 's-1' })
     // Asking closes the spotlight; the answer is in the panel.
     await expect.element(spotlightBackdrop()).not.toBeInTheDocument()
+  })
+
+  it('the one door: Jev routes first; a question goes on to the chat', async () => {
+    renderShell()
+    await barInput().fill('What is new?')
+    await barInput().element().closest('form')!.requestSubmit()
+    await expect.element(page.getByText('You said: What is new?')).toBeInTheDocument()
+    const urls = calls.map((c) => c.url)
+    expect(urls.indexOf('/api/assistant/route')).toBeLessThan(urls.indexOf('/api/chat'))
+    expect(calls.find((c) => c.url === '/api/assistant/route')?.body).toEqual({ text: 'What is new?' })
+  })
+
+  it('the one door: a task is filed with no chat turn; the chip says so and change refiles it', async () => {
+    routeReplies.push(
+      () => Response.json({ outcome: 'filed', route: 'task', id: 't1', url: '/m/memory/tasks', decisionId: 'd1', confidence: 0.9, source: 'jev' }),
+      () => Response.json({ outcome: 'filed', route: 'remember', id: 'th1', url: '/m/memory/capture?thought=th1', decisionId: 'd1', confidence: null, source: 'person' }),
+    )
+    renderShell()
+    await barInput().fill('Send Acme the deck')
+    await barInput().element().closest('form')!.requestSubmit()
+    const chip = page.getByTestId('one-door-chip')
+    await expect.element(chip).toHaveTextContent('Saved as task')
+    await expect.element(panel()).not.toBeInTheDocument()
+    expect(calls.some((c) => c.url === '/api/chat')).toBe(false)
+    await page.getByTestId('one-door-change').click()
+    await page.getByTestId('one-door-choice-remember').click()
+    await expect.element(chip).toHaveTextContent('Saved as something to remember')
+    expect(calls.filter((c) => c.url === '/api/assistant/route').at(-1)?.body).toEqual({
+      text: 'Send Acme the deck',
+      as: 'remember',
+      decision_id: 'd1',
+      replaces: { route: 'task', id: 't1' },
+    })
+  })
+
+  it('the one door: unsure asks instead of guessing; a failure keeps the words and says why', async () => {
+    routeReplies.push(
+      () => Response.json({ outcome: 'unsure', decisionId: 'd2', choices: ['task', 'remember', 'question', 'document', 'reminder'] }),
+      () => Response.json({ error: 'The brain could not take this in: jev down' }, { status: 502 }),
+    )
+    renderShell()
+    await barInput().fill('Acme renewal')
+    await barInput().element().closest('form')!.requestSubmit()
+    await expect.element(page.getByTestId('one-door-chip')).toHaveTextContent('What is this?')
+    await page.getByTestId('one-door-choice-task').click()
+    await expect.element(page.getByTestId('one-door-error')).toHaveTextContent('Not saved: The brain could not take this in: jev down')
+    expect(calls.some((c) => c.url === '/api/chat')).toBe(false)
   })
 })
 
