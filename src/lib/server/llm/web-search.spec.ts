@@ -39,7 +39,7 @@ describe('llmWebSearch', () => {
       results: [{ url: 'https://kindred.example/', title: 'Kindred', snippet: 'We build.' }],
     })
     const call = complete.mock.calls[0]![0]
-    expect(call.task).toBe('web.search')
+    expect(call.task).toBe('assistant.web_search')
     expect(call.plugins).toEqual([{ id: 'web', max_results: 10 }])
   })
 

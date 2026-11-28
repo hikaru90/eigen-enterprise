@@ -2933,6 +2933,13 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "drive.view_image": {
+    input: {
+      "file_id": string
+      "question"?: string
+    }
+    output: unknown
+  }
   "drive.write_text": {
     input: {
       "content": string
@@ -5189,6 +5196,20 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "web.fetch": {
+    input: {
+      "question"?: string
+      "url": string
+    }
+    output: unknown
+  }
+  "web.search": {
+    input: {
+      "max_results"?: number
+      "query": string
+    }
+    output: unknown
+  }
   "website.activity": {
     input: {
       "limit"?: number
@@ -5695,6 +5716,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "drive.trash_many",
   "drive.unarchive",
   "drive.upload",
+  "drive.view_image",
   "drive.write_text",
   "email.contact_add",
   "email.contact_lists",
@@ -5962,6 +5984,8 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "traces.settings_get",
   "traces.settings_set",
   "traces.withdraw",
+  "web.fetch",
+  "web.search",
   "website.activity",
   "website.app_auto_deploy",
   "website.app_deploy",

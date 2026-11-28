@@ -19,7 +19,7 @@ export type WebSearchDeps = {
     messages: ChatMessage[]
     maxTokens?: number
     temperature?: number
-    task: 'web.search'
+    task: 'assistant.web_search'
     plugins: unknown[]
   }) => Promise<unknown>
 }
@@ -64,7 +64,7 @@ export async function llmWebSearch(
     ],
     temperature: 0,
     maxTokens: 1_500,
-    task: 'web.search',
+    task: 'assistant.web_search',
     plugins: [{ id: 'web', max_results: maxResults }],
   })
   const message = (response as { choices?: Array<{ message?: { content?: unknown; annotations?: unknown } }> })?.choices?.[0]?.message

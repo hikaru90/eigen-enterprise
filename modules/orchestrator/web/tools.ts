@@ -76,7 +76,7 @@ async function openUrl(ports: WebToolPorts, ctx: ToolContext, input: z.infer<typ
     const base64 = page.body.toString('base64')
     const attachment: ChatAttachment = image ? { type: 'image', mime: image, base64 } : { type: 'pdf', filename: name, base64 }
     const seen = await ports
-      .lookAt({ userId: ctx.principal.id, task: 'web.image_read', name, attachment, ...(input.question ? { question: input.question } : {}) })
+      .lookAt({ userId: ctx.principal.id, task: 'assistant.web_image_read', name, attachment, ...(input.question ? { question: input.question } : {}) })
       .catch(asKernelError)
     return { ...base, kind: image ? 'image' : 'pdf', title: name, text: seen.text, truncated: false }
   }

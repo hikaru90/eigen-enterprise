@@ -53,7 +53,7 @@ describe('vision', () => {
 
   it('fails loud on an empty or cut-short look', async () => {
     const a = { type: 'image', mime: 'image/png', base64: 'AAA' } as const
-    await expect(llmLookAt({ userId: 'u', task: 'web.image_read', name: 'x.png', attachment: a }, deps(target(null, null), '  '))).rejects.toBeInstanceOf(VisionReadError)
-    await expect(llmLookAt({ userId: 'u', task: 'web.image_read', name: 'x.png', attachment: a }, deps(target(null, null), 'x', 'length'))).rejects.toBeInstanceOf(VisionReadError)
+    await expect(llmLookAt({ userId: 'u', task: 'assistant.web_image_read', name: 'x.png', attachment: a }, deps(target(null, null), '  '))).rejects.toBeInstanceOf(VisionReadError)
+    await expect(llmLookAt({ userId: 'u', task: 'assistant.web_image_read', name: 'x.png', attachment: a }, deps(target(null, null), 'x', 'length'))).rejects.toBeInstanceOf(VisionReadError)
   })
 })

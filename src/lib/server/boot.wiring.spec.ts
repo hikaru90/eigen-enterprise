@@ -251,6 +251,15 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'org.chart',
   'org.set_position',
   'assistant.conversation_rename',
+  // Wish 7478dbe4: artifacts (pages + decks in Drive) for every member.
+  'artifacts.create',
+  'artifacts.export_pdf',
+  'artifacts.read',
+  'artifacts.update',
+  // Wishes 4fbf9991, 2734a371: images in the call chat; naming a group chat.
+  'calls.chat_image',
+  'calls.chat_post_image',
+  'messages.rename_conversation',
   'brand.material_export',
   'brand.material_text_suggest',
   'brand.social_caption_suggest',

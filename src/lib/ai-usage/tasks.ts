@@ -8,7 +8,7 @@
  */
 
 export const AI_PRODUCTS = {
-  assistant: { label: 'Assistant', description: 'The company assistant’s replies and the files it reads.' },
+  assistant: { label: 'Assistant', description: 'The company assistant’s replies, the files it reads and its web searches.' },
   coworkers: { label: 'AI co-workers', description: 'The turns of the company’s AI co-workers.' },
   memory: { label: 'Memory', description: 'Capturing and enriching notes, tasks and projects.' },
   brain: { label: 'Brain', description: 'Retrieval, answers, grounding and the knowledge graph.' },
@@ -21,7 +21,6 @@ export const AI_PRODUCTS = {
   branding: { label: 'Branding', description: 'Brand extraction, captions and material texts.' },
   website: { label: 'Website', description: 'Page audience checks and app deploy help.' },
   drive: { label: 'Drive', description: 'Archive suggestions and looking at images.' },
-  web: { label: 'Web', description: 'Web searches and the images and PDFs the AI opens on the web.' },
   contribute: { label: 'Contribute', description: 'Judging, scrubbing and summarising wishes and modules.' },
   email: { label: 'Email', description: 'Email’s own model calls (its routing decisions count under Decisions).' },
   speech: { label: 'Speech', description: 'Speech to text and the assistant’s voice.' },
@@ -45,6 +44,8 @@ type AiTaskDef = {
 export const AI_TASKS = {
   'assistant.turn': { product: 'assistant', label: 'Assistant replies', op: 'durable_agent' },
   'assistant.attachment_read': { product: 'assistant', label: 'Reading attachments', op: 'assistant_attachment_read' },
+  'assistant.web_search': { product: 'assistant', label: 'Web searches' },
+  'assistant.web_image_read': { product: 'assistant', label: 'Images and PDFs on the web' },
 
   'coworkers.turn': { product: 'coworkers', label: 'Co-worker turns', op: 'durable_agent' },
 
@@ -115,8 +116,6 @@ export const AI_TASKS = {
   'drive.archive_suggest': { product: 'drive', label: 'Archive suggestions', op: 'drive_archive_suggest' },
   'drive.image_read': { product: 'drive', label: 'Looking at images and PDFs' },
 
-  'web.search': { product: 'web', label: 'Web searches' },
-  'web.image_read': { product: 'web', label: 'Images and PDFs on the web' },
 
   'contribute.judge': { product: 'contribute', label: 'Judging wishes', op: 'contribute_judge' },
   'contribute.scrub': { product: 'contribute', label: 'Removing private details', op: 'contribute_scrub' },

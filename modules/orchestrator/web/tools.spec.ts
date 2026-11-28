@@ -58,7 +58,7 @@ describe('web tools', () => {
     expect(out).toMatchObject({ kind: 'image', title: 'logo.png', text: 'A logo.' })
     expect(ports.lookAt).toHaveBeenCalledWith({
       userId: 'cw1',
-      task: 'web.image_read',
+      task: 'assistant.web_image_read',
       name: 'logo.png',
       attachment: { type: 'image', mime: 'image/png', base64: PNG.toString('base64') },
       question: 'colour?',
