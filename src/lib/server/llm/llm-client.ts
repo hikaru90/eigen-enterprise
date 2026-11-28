@@ -678,6 +678,11 @@ export async function llmChatCompletion(input: {
   tools?: unknown[]
   /** OpenAI `tool_choice`, passed through verbatim when tools are sent. */
   toolChoice?: unknown
+  /**
+   * OpenRouter plugins (e.g. `[{ id: 'web' }]`, web-search.ts), passed through verbatim. Only an
+   * OpenRouter-served call may send them: on any other provider the call fails loud before a request.
+   */
+  plugins?: unknown[]
 }): Promise<unknown> {
   // The company's daily AI cap per member (DC3): refused before any provider call or retry.
   await assertGatewayCallWithinMemberDailyCap(input.userId)
@@ -700,9 +705,15 @@ async function llmChatCompletionInner(input: {
   contentOrigin?: LlmContentOrigin
   tools?: unknown[]
   toolChoice?: unknown
+  plugins?: unknown[]
 }): Promise<unknown> {
   assertAttachmentsOnUserMessages(input.messages)
   const target = await resolveSlot('chat', input.userId)
+  if (input.plugins !== undefined && target.pool !== 'openrouter') {
+    throw new LlmNotConfiguredError(
+      `OpenRouter plugins were asked for, but the company's chat runs on ${target.pool ?? target.config.provider}, which has none.`,
+    )
+  }
   const config = target.config
   const activityProvider = activityProviderForLlmConfig(config.provider)
   const gatewayHost = gatewayHostFromBaseUrl(config.baseUrl)
@@ -771,6 +782,7 @@ async function llmChatCompletionInner(input: {
             ...(input.tools !== undefined ? { tools: input.tools } : {}),
             ...(input.toolChoice !== undefined ? { tool_choice: input.toolChoice } : {}),
             ...(providerSessionId ? { session_id: providerSessionId } : {}),
+            ...(input.plugins !== undefined ? { plugins: input.plugins } : {}),
           }),
         })
       } finally {

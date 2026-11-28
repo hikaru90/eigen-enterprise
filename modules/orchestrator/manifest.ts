@@ -1,12 +1,14 @@
 import type { ModuleManifest } from '$lib/kernel/modules'
 import { REPO_TOOL_NAMES } from './repo/manifest'
 import { ROADMAP_TOOL_NAMES } from './roadmap/manifest'
+import { WEB_TOOL_NAMES } from './web/manifest'
 
 export const ORCHESTRATOR_MODULE_ID = 'orchestrator'
 
 /**
  * The agent's own machinery (plan/phase-platform.md step 1): repo hands
- * (namespace `repo`) and the build log / roadmap (`roadmap`). Internal: no owner-facing module card or page; the
+ * (namespace `repo`), the build log / roadmap (`roadmap`) and the browser
+ * (`web`: open a link, search the web — for people, co-workers and agents). Internal: no owner-facing module card or page; the
  * tools stay available to the agent under their existing names.
  */
 export const orchestratorManifest: ModuleManifest = {
@@ -15,7 +17,7 @@ export const orchestratorManifest: ModuleManifest = {
   version: '0.1.0',
   description: "The agent's own hands: repo worktrees and the build log.",
   internal: true,
-  toolNamespaces: [ORCHESTRATOR_MODULE_ID, 'repo', 'roadmap'],
-  tools: [...REPO_TOOL_NAMES, ...ROADMAP_TOOL_NAMES],
+  toolNamespaces: [ORCHESTRATOR_MODULE_ID, 'repo', 'roadmap', 'web'],
+  tools: [...REPO_TOOL_NAMES, ...ROADMAP_TOOL_NAMES, ...WEB_TOOL_NAMES],
   permissions: { roles: ['owner', 'admin', 'agent'] },
 }

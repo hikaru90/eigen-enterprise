@@ -17,6 +17,7 @@ describe('AI task catalog', () => {
       'branding',
       'website',
       'drive',
+      'web',
       'contribute',
       'email',
       'speech',

@@ -2,6 +2,9 @@ import type { ModuleManifest } from '$lib/kernel/modules'
 
 export const DRIVE_MODULE_ID = 'drive'
 
+/** Looking at images and PDFs through a vision model (./image-tools.ts): a read. */
+export const DRIVE_IMAGE_TOOL_NAMES = ['drive.view_image'] as const
+
 /** PDF page organisation (plan/phase-office-files.md P2, ./pdf-tools.ts): every one writes, so each waits on the approval mode. */
 export const DRIVE_PDF_TOOL_NAMES = [
   'drive.pdf_rotate',
@@ -196,6 +199,7 @@ export const DRIVE_TOOL_NAMES = [
   ...DRIVE_FILE_TOOL_NAMES,
   ...DRIVE_BULK_TOOL_NAMES,
   ...DRIVE_PDF_TOOL_NAMES,
+  ...DRIVE_IMAGE_TOOL_NAMES,
   ...DRIVE_PDF_ANNOTATE_TOOL_NAMES,
   ...DRIVE_SHEET_TOOL_NAMES,
   ...DRIVE_SHEET_COPY_TOOL_NAMES,

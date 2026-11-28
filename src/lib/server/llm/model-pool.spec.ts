@@ -168,3 +168,23 @@ describe('the model pool', () => {
     expect(ttsSendsVoice('qwen/qwen-audio-3.0-tts-flash')).toBe(true)
   })
 })
+
+describe('vision (images and PDFs, vision.ts)', () => {
+  it('names exactly one vision pick per provider, a chat model that reads images and is served there', async () => {
+    const { MODEL_POOL: pool, POOL_PROVIDERS: providers } = await import('./model-pool')
+    for (const provider of providers) {
+      const picks = pool.filter((m) => m.slot === 'chat' && m.visionPickOn?.includes(provider))
+      expect(picks, provider).toHaveLength(1)
+      expect(picks[0]!.readsImages).toBe(true)
+      expect(picks[0]!.routes[provider]).toBeDefined()
+    }
+  })
+
+  it('keeps a chat model that reads images; routes a text-only one to the pick', async () => {
+    const { visionModel } = await import('./model-pool')
+    expect(visionModel('openai/gpt-5-mini', 'openrouter')).toBe('openai/gpt-5-mini')
+    expect(visionModel('~deepseek/deepseek-flash-latest', 'openrouter')).toBe('google/gemini-3.8-flash')
+    expect(visionModel('~deepseek/deepseek-flash-latest', 'opper')).toBe('google/gemini-3.8-flash')
+    expect(visionModel('qwen/qwen3.8-flash', 'opper')).toBe('google/gemini-3.8-flash')
+  })
+})

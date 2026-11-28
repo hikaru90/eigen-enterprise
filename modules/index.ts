@@ -94,6 +94,7 @@ import { createRepoEngine } from './orchestrator/repo/index'
 import { createRepoTools, type RepoEngine } from './orchestrator/repo/tools'
 import { provideConnectedReposPort } from './orchestrator/repos-context'
 import { createRoadmapTools } from './orchestrator/roadmap/tools'
+import { createWebTools } from './orchestrator/web/tools'
 import { createRecapModule, type RecapBoot } from './recap'
 import { RECAP_MODULE_ID } from './recap/types'
 import { provideReposPorts, reposService } from './repos/live'
@@ -458,6 +459,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
       engine: options.repoEngine ?? createRepoEngine({ eventSink }),
     }),
     ...createRoadmapTools(),
+    ...createWebTools(),
     ...createSubstrateTools(),
     ...createGitHubTools(),
     ...createGitHubConnectTools(),

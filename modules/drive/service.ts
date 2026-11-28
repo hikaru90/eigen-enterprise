@@ -1410,7 +1410,7 @@ export function createDriveService(deps: DriveDeps) {
         return { file: fileView(file), content }
       }
       if (!isTextFile(file.name, file.mime))
-        throw new DriveError('invalid', `“${file.name}” is not a text file.`)
+        throw new DriveError('invalid', `“${file.name}” is not a text file; look at an image or a PDF with drive.view_image.`)
       if (opts.maxBytes !== undefined && file.size > opts.maxBytes) throw tooLarge()
       return {
         file: fileView(file),

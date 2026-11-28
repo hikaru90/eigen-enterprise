@@ -43,6 +43,13 @@ export type PoolModel = {
   supportsTemperature?: false
   /** Maximum number of tool declarations the upstream model accepts per request (e.g. OpenAI's 128-tool cap). */
   maxTools?: number
+  /** Chat models only: reads images and PDFs sent as content parts (llm-client ChatAttachment). */
+  readsImages?: true
+  /**
+   * Chat models only: the providers on which this is THE model that reads images when the
+   * company's chat model does not (vision.ts). Exactly one per provider (pinned by the spec).
+   */
+  visionPickOn?: readonly PoolProvider[]
   /** Text to speech: 'model-default' = send no voice (the model speaks in its own; the app's voice setting names another model's voices). */
   ttsVoice?: 'model-default'
 }
@@ -64,6 +71,7 @@ export const MODEL_POOL: readonly PoolModel[] = [
     note: 'The hosted platform AI chat model the control plane provisions today.',
     supportsTemperature: false,
     maxTools: 128,
+    readsImages: true,
   },
   // AI Co-workers (plan/phase-ai-coworkers.md §5): different model families, so co-workers in
   // different seats do not all think alike. Pinned ids (no moving `~…-latest` aliases). Vetted on
@@ -76,6 +84,8 @@ export const MODEL_POOL: readonly PoolModel[] = [
     routes: { openrouter: 'google/gemini-3.8-flash', opper: 'vertexai/gemini-3.8-flash-eu' },
     vettedOn: '2026-11-23',
     note: 'Google family for co-workers: fast and mid-priced, 1M context; reads images, PDFs, audio and video.',
+    readsImages: true,
+    visionPickOn: ['openrouter', 'opper'],
   },
   {
     id: 'qwen/qwen3.8-flash',
@@ -285,4 +295,23 @@ export function modelMaxTools(modelId: string): number | null {
 /** Whether a text-to-speech call sends the app's voice for this model (false: the model's default voice). */
 export function ttsSendsVoice(modelId: string): boolean {
   return MODEL_POOL.find((m) => m.id === modelId)?.ttsVoice !== 'model-default'
+}
+
+/**
+ * The pool chat model that reads an image or PDF for a company running `chatModel` on `provider`
+ * (vision.ts): the chat model itself when it reads images and the provider serves it, else the
+ * provider's vision pick. Never a model outside the pool or one the provider does not serve.
+ */
+export function visionModel(chatModel: string, provider: PoolProvider): string {
+  const own = MODEL_POOL.find((m) => m.slot === 'chat' && m.id === chatModel)
+  if (own?.readsImages && own.routes[provider] !== undefined) return own.id
+  const picks = MODEL_POOL.filter((m) => m.slot === 'chat' && m.visionPickOn?.includes(provider))
+  if (picks.length !== 1) {
+    throw new Error(`The model pool must name exactly one vision pick on ${PROVIDER_LABEL[provider]} (found ${picks.length}).`)
+  }
+  const pick = picks[0]!
+  if (!pick.readsImages || pick.routes[provider] === undefined) {
+    throw new Error(`The model pool's vision pick ${pick.id} must read images and be served on ${PROVIDER_LABEL[provider]}.`)
+  }
+  return pick.id
 }

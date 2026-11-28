@@ -14,6 +14,7 @@ import { appStatus, PREVIEW_ID, runApp, stopApp, type AppPreviewDeps } from './a
 import { liveSuggestChat, SUGGEST_DEFAULT_DAYS, SUGGEST_MAX_DAYS, SUGGEST_MIN_DAYS, suggestArchive, type SuggestChat } from './archive-suggest'
 import { createArtifactTools } from './artifact-tools'
 import { createDriveFileTools } from './file-tools'
+import { createDriveImageTools } from './image-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
 import { createDrivePdfAnnotateTools } from './pdf-tools-annotate'
@@ -343,6 +344,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     },
     ...createDriveFileTools({ service }),
     ...createDrivePdfTools({ service }),
+    ...createDriveImageTools({ service }),
     ...createDrivePdfAnnotateTools({ service }),
     ...createDriveSheetTools({ service, sheetLive }),
     ...createDriveSheetFormatTools({ service, sheetLive }),

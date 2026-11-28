@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const completeMock = vi.hoisted(() => vi.fn())
 vi.mock('$lib/server/agent/db-scoped-complete', () => ({ dbScopedGatewayComplete: completeMock }))
+const visionMock = vi.hoisted(() => vi.fn(async () => 'google/gemini-3.8-flash'))
+vi.mock('$lib/server/llm/vision', () => ({ resolveVisionModel: visionMock }))
 
 function upload(files: File[]) {
   const form = new FormData()
@@ -47,7 +49,8 @@ describe('POST /api/assistant/attachments', () => {
     const res = await POST({ locals: { user: { id: 'u1' } }, request: upload([pdf]) } as never)
     expect(res.status).toBe(200)
     expect((await res.json()).attachment).toMatchObject({ kind: 'pdf', text: 'Revenue grew 12%.' })
-    expect(completeMock.mock.calls[0]![0]).toMatchObject({ userId: 'u1' })
+    expect(completeMock.mock.calls[0]![0]).toMatchObject({ userId: 'u1', modelOverride: 'google/gemini-3.8-flash' })
+    expect(visionMock).toHaveBeenCalledWith('u1')
   })
 
   it('a refusal is a plain sentence with its status', async () => {
