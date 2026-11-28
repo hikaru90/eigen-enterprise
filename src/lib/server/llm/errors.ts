@@ -32,6 +32,14 @@ export class LlmCutShortError extends Error {
   }
 }
 
+export function isLlmCutShortError(e: unknown): boolean {
+  return inCauseChain(e, LlmCutShortError)
+}
+
+/** What a person reads when the provider cut every attempt of a reply short (wish 377f4843). */
+export const LLM_CUT_SHORT_MESSAGE =
+  'The AI provider stopped my answer partway, on every try, so I have no complete answer. Send the message again in a minute; if it keeps happening, ask for a shorter answer — the team has the details.'
+
 /**
  * Missing/incomplete LLM gateway configuration (no base URL, no API key, no routing
  * rule/model). Thrown typed so user-facing surfaces (chat error terminal payload,

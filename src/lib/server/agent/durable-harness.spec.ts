@@ -35,7 +35,7 @@ import { FileIndex } from './test-fixtures/file-index'
  * scripted (never a real LLM). Proves the engine ↔ harness ↔ kernel bridge.
  */
 
-type Turn = { text?: string; call?: { name: string; args: Record<string, unknown> } }
+type Turn = { text?: string; call?: { name: string; args: Record<string, unknown> }; finish?: string }
 
 /** Scripted gateway: per billing user, a queue of assistant turns (OpenAI response shape). */
 function scriptedGateway(scripts: Record<string, Turn[]>) {
@@ -52,7 +52,7 @@ function scriptedGateway(scripts: Record<string, Turn[]>) {
         }
       : { role: 'assistant', content: turn.text ?? '' }
     return {
-      choices: [{ message, finish_reason: turn.call ? 'tool_calls' : 'stop' }],
+      choices: [{ message, finish_reason: turn.finish ?? (turn.call ? 'tool_calls' : 'stop') }],
       usage: { prompt_tokens: 1, completion_tokens: 1 },
     }
   }
@@ -339,6 +339,13 @@ describe('durable engine over real pi-durable', () => {
       instructions: 'You are a test agent.',
     })
     await expect(engine.run('s1', 'hi', engineCtx('alice', 'alice', []))).rejects.toThrow('durable storage unavailable')
+  })
+
+  it('an answer without text fails with its cause, never a stock sentence (wish c37fcfe6)', async () => {
+    const { complete } = scriptedGateway({ alice: [{ text: '', finish: 'length' }], bob: [{ text: '   ' }] })
+    const { engine } = engineFor(complete)
+    await expect(engine.run('s1', 'hi', engineCtx('alice', 'alice', []))).rejects.toMatchObject({ name: 'EmptyReplyError', emptyCause: 'output_limit' })
+    await expect(engine.run('s2', 'hi', engineCtx('bob', 'bob', []))).rejects.toMatchObject({ name: 'EmptyReplyError', emptyCause: 'no_text' })
   })
 
   it('a gateway failure mid-turn still fails the run (not a tool result)', async () => {

@@ -148,6 +148,22 @@ describe('a turn that cannot answer says so and is not retried', () => {
     expect((await fx.thread(message.id)).map((m) => m.authorId)).toEqual(['bea', 'cw-gtm'])
   })
 
+  it('an empty reply with a cause: the note says why and what to change (wish c37fcfe6)', async () => {
+    const { EmptyReplyError, emptyReplySentence } = await import('$lib/server/llm/empty-reply')
+    const fx = turnsFixture({
+      script: () => {
+        throw new EmptyReplyError('tool_loop_limit')
+      },
+    })
+    await fx.handle.reload()
+    const general = await createChannel(fx.deps, 'owner', { name: 'general', private: false })
+    const { message } = await postMessage(fx.deps, 'bea', general.id, '@gtm price it')
+    await fx.settle()
+    const note = (await fx.thread(message.id)).at(-1)!
+    expect(note.body).toContain(emptyReplySentence('tool_loop_limit').slice(0, 60))
+    expect(note.body).not.toContain('did not produce a response')
+  })
+
   it('a turn whose process died is recovered as interrupted (with a note); the turn behind it runs', async () => {
     const fx = turnsFixture({ script: (call) => `answer to ${lastLine(call.input)}`, staleAfterMs: 60_000 })
     await fx.handle.reload()

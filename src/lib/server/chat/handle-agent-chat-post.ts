@@ -1,4 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit'
+import { EmptyReplyError, emptyReplyReport, emptyReplySentence, findEmptyReplyError } from '$lib/server/llm/empty-reply'
+import type { AgentReport } from '$lib/errors/agent-report'
+import { errorReport } from '$lib/server/errors/report'
 import { error, json } from '@sveltejs/kit'
 import { and, eq, sql } from 'drizzle-orm'
 import type { ReplyCost } from '$lib/ai-usage/usage'
@@ -25,8 +28,10 @@ import { chatSession, chatMessage, type ChatSessionMode } from '$lib/server/db/b
 import { tenantUserAsyncLocal } from '$lib/server/db/tenant-context'
 import {
   dailyCapErrorMessage,
+  isLlmCutShortError,
   isLlmDailyCapError,
   isLlmNotConfiguredError,
+  LLM_CUT_SHORT_MESSAGE,
   LLM_DAILY_CAP_MESSAGE,
 } from '$lib/server/llm/errors'
 import { requestAiContextAsyncLocal } from '$lib/server/llm/request-context'
@@ -102,8 +107,28 @@ export type ChatTurnFailureRecord = {
   logTag: string
   sessionId: string
   userId: string
-  code: 'llm_not_configured' | 'turn_failed'
+  code: 'llm_not_configured' | 'empty_reply' | 'turn_failed'
   details: string[]
+  /** The agent report (src/lib/server/errors/report.ts): what was attempted, the cause chain, next steps. */
+  agent?: AgentReport
+}
+
+/** The server-side agent report of a turn that ended without the agent's answer. */
+export function chatTurnFailureReport(err: unknown): AgentReport {
+  const attempted = 'Answering a message in the assistant chat (the kernel harness turn, src/lib/server/chat/handle-agent-chat-post.ts)'
+  const empty = findEmptyReplyError(err)
+  if (empty) return emptyReplyReport(empty, attempted).agent
+  return errorReport(err, {
+    attempted,
+    nextSteps: [
+      ...(isLlmCutShortError(err)
+        ? [
+            'Every attempt of the model call ended on finish_reason length below our max_tokens (LlmCutShortError, src/lib/server/llm/llm-client.ts cutShortBelowBudget): the provider capped the output. Check the provider\'s output limit for the routed model against DEFAULT_CHAT_MAX_TOKENS, and the AI usage rows of the trace (completion tokens per attempt).',
+          ]
+        : []),
+      'The harness turn threw before the agent could answer; `cause` is the chain. Find the failing layer by the first message: the gateway (src/lib/server/llm/llm-client.ts), the durable engine (src/lib/server/agent/durable-harness.ts), or this entry\'s own bookkeeping (session, persist, cost read).',
+    ],
+  }).agent
 }
 
 export function chatErrorTerminalPayload(err: unknown): {
@@ -121,6 +146,16 @@ export function chatErrorTerminalPayload(err: unknown): {
   if (isLlmDailyCapError(err)) {
     return { type: 'error', error: dailyCapErrorMessage(err) ?? LLM_DAILY_CAP_MESSAGE, code: 'llm_daily_cap' }
   }
+  // Wish c37fcfe6: a turn without an answer says why (length limit, filter, provider error, step limit…).
+  const empty = findEmptyReplyError(err)
+  if (empty) {
+    return { type: 'error', error: emptyReplySentence(empty.emptyCause), code: 'empty_reply' }
+  }
+  // Wish 377f4843: since v0.5.44 a reply the provider cuts short is retried, and the last cut
+  // fails the turn; that is the provider, not "something on my side" — say so.
+  if (isLlmCutShortError(err)) {
+    return { type: 'error', error: LLM_CUT_SHORT_MESSAGE, code: 'llm_cut_short' }
+  }
   return { type: 'error', error: CHAT_TURN_FAILED_MESSAGE }
 }
 
@@ -135,8 +170,9 @@ async function reportTurnFailure(
     logTag,
     sessionId: input.sessionId,
     userId: input.userId,
-    code: isLlmNotConfiguredError(input.err) ? 'llm_not_configured' : 'turn_failed',
+    code: isLlmNotConfiguredError(input.err) ? 'llm_not_configured' : findEmptyReplyError(input.err) ? 'empty_reply' : 'turn_failed',
     details,
+    agent: chatTurnFailureReport(input.err),
   }
   console.error(`[${logTag}] harness turn failed`, redactForLog(record))
   try {
@@ -579,9 +615,8 @@ export async function handleAgentChatPost(
         const reply = measured.value
         const usage = await readReplyCost(scopedDb, user.id, measured)
 
-        const responseText = sanitizeFinalAnswerText(
-          reply.trim().length > 0 ? reply : 'The assistant did not produce a response.',
-        )
+        if (reply.trim().length === 0) throw new EmptyReplyError('no_text')
+        const responseText = sanitizeFinalAnswerText(reply)
         const { messageId } = await persistStreamedAssistantTurn({
           db: scopedDb,
           sessionId,
@@ -648,9 +683,8 @@ export async function handleAgentChatPost(
     const reply = measured.value
     const usage = await readReplyCost(db, user.id, measured)
 
-    const responseText = sanitizeFinalAnswerText(
-      reply.trim().length > 0 ? reply : 'The assistant did not produce a response.',
-    )
+    if (reply.trim().length === 0) throw new EmptyReplyError('no_text')
+    const responseText = sanitizeFinalAnswerText(reply)
     const messageId = await persistAssistantMessage(db, sessionId, user.id, responseText, {
       ...(userMessageId ? { turnOf: userMessageId } : {}),
       usage,

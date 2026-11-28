@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { EmptyReplyError } from './empty-reply'
 import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { ChatStreamEvent } from '$lib/chat/chat-stream-types'
 import { isUnpresentableFinalAnswer } from '$lib/chat/chat-stream-types'
@@ -443,7 +444,8 @@ export async function agentChat(input: {
 
     if (!content) {
       console.error('[agent-loop] LLM returned empty content')
-      return { response: 'The assistant did not produce a response.', messages }
+      const finish = (raw as { choices?: Array<{ finish_reason?: string }> })?.choices?.[0]?.finish_reason
+      throw new EmptyReplyError(finish === 'length' ? 'output_limit' : finish === 'content_filter' ? 'content_filter' : 'no_text')
     }
 
     console.error('[agent-loop] LLM raw response', { chars: content.length })
@@ -559,8 +561,5 @@ export async function agentChat(input: {
   }
 
   console.error('[agent-loop] max iterations reached')
-  return {
-    response: 'The assistant took too many steps to answer. Please try rephrasing your question.',
-    messages,
-  }
+  throw new EmptyReplyError('tool_loop_limit')
 }

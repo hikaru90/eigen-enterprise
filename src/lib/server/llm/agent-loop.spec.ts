@@ -375,15 +375,15 @@ describe('agentChat', () => {
     expect(result.response).toMatch(/done/i)
   })
 
-  it('returns a fallback message when the model returns empty content', async () => {
-    llmChatCompletionMock.mockResolvedValue({ choices: [{ message: { content: '   ' } }] })
+  it('empty content is an EmptyReplyError with its cause, never a stock sentence (wish c37fcfe6)', async () => {
+    llmChatCompletionMock.mockResolvedValue({ choices: [{ message: { content: '   ' }, finish_reason: 'length' }] })
 
-    const result = await agentChat({
-      userId: 'u1',
-      messages: [{ role: 'user', content: 'Hello' }],
-    })
-
-    expect(result.response).toMatch(/did not produce a response/i)
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'Hello' }],
+      }),
+    ).rejects.toMatchObject({ name: 'EmptyReplyError', emptyCause: 'output_limit' })
   })
 
   it('fails deterministically when the model returns invalid JSON', async () => {
@@ -570,18 +570,18 @@ describe('agentChat', () => {
     expect(result.response).toBe('Recovered after tool error.')
   })
 
-  it('returns the max-iteration fallback after too many tool loops', async () => {
+  it('too many tool loops end in EmptyReplyError tool_loop_limit (wish c37fcfe6)', async () => {
     retrieveThoughtsMock.mockResolvedValue({ results: [] })
     llmChatCompletionMock.mockResolvedValue(
       llmJson({ tool: 'retrieve_thoughts', arguments: { order: 'created_at' } }),
     )
 
-    const result = await agentChat({
-      userId: 'u1',
-      messages: [{ role: 'user', content: 'Loop forever' }],
-    })
-
-    expect(result.response).toMatch(/too many steps/i)
+    await expect(
+      agentChat({
+        userId: 'u1',
+        messages: [{ role: 'user', content: 'Loop forever' }],
+      }),
+    ).rejects.toMatchObject({ name: 'EmptyReplyError', emptyCause: 'tool_loop_limit' })
   })
 
   it('parses brace-matched JSON embedded in prose', async () => {

@@ -1,4 +1,5 @@
 import type { DurableConversationIndex } from './conversation-index'
+import { EmptyReplyError, emptyReplyCause, type FinalMessageStop } from '$lib/server/llm/empty-reply'
 import { mkdirSync, openSync, readFileSync, unlinkSync, writeSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AiTaskId } from '$lib/ai-usage/tasks'
@@ -401,7 +402,13 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
         .filter((block) => block.type === 'text')
         .map((block) => (block.type === 'text' ? block.text : ''))
         .join('')
-      if (!text) return 'The assistant did not produce a response.'
+      // Wish c37fcfe6: no text is an error with its cause (the message's own stop reason), never a stock sentence.
+      if (!text.trim()) {
+        throw new EmptyReplyError(
+          emptyReplyCause(message as FinalMessageStop),
+          (message as FinalMessageStop).errorMessage,
+        )
+      }
       return text
     })()
   }

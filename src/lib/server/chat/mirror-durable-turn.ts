@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm'
+import { emptyReplySentence } from '$lib/server/llm/empty-reply'
 import { sanitizeFinalAnswerText } from '$lib/chat/chat-stream-types'
 import { sessionIdOfConversationKey } from '$lib/kernel/engines/durable'
 import type { ResumedChatTurn } from '$lib/server/agent/durable-harness'
@@ -32,7 +33,7 @@ export async function mirrorResumedChatTurn(
       .limit(1)
     if (!session) return 'not_a_chat'
     const content = sanitizeFinalAnswerText(
-      turn.reply.trim().length > 0 ? turn.reply : 'The assistant did not produce a response.',
+      turn.reply.trim().length > 0 ? turn.reply : emptyReplySentence('no_text'),
     )
     const inserted = await db
       .insert(chatMessage)

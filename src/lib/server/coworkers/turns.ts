@@ -1,5 +1,6 @@
 import type { MessageDto, MessagesDeps } from '../../../../modules/messages/service'
 import { facingErrorMessage } from '$lib/server/llm/eigen-inference-facing'
+import { emptyReplySentence, findEmptyReplyError } from '$lib/server/llm/empty-reply'
 import type { SlotSource } from '$lib/server/llm/slots'
 import type { Conversation, Person } from '../../../../modules/messages/store'
 import type { RhythmRow } from './rhythms'
@@ -159,6 +160,12 @@ export function stopNote(input: {
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+/** What the note says about a failed turn: an empty reply's cause and what to change (wish c37fcfe6), else the error. */
+const noteText = (err: unknown) => {
+  const empty = findEmptyReplyError(err)
+  return empty ? emptyReplySentence(empty.emptyCause) : errorText(err)
+}
 
 type ThreadView = { messages: MessageDto[]; hasOlder: boolean; lastHumanAt: Date | null }
 
@@ -411,13 +418,13 @@ export class CoworkerTurns {
         const capped = err instanceof KernelError && err.code === 'budget_exceeded'
         const reason: StopNoteReason = capped ? 'daily_cap' : 'model_error'
         await this.finish(run, { status: capped ? 'stopped' : 'failed', stopReason: reason, costUsd, error: errorText(err) })
-        await this.postNote(run, reason, capped ? undefined : errorText(err), view)
+        await this.postNote(run, reason, capped ? undefined : noteText(err), view)
         return
       }
       const costUsd = await this.deps.turnCost(run.coworkerUserId, run.id)
       if (!reply.trim()) {
         await this.finish(run, { status: 'failed', stopReason: 'model_error', costUsd, error: 'the model answered with no text' })
-        await this.postNote(run, 'model_error', 'the model answered with no text', view)
+        await this.postNote(run, 'model_error', emptyReplySentence('no_text'), view)
         return
       }
       try {
@@ -639,12 +646,12 @@ export class CoworkerTurns {
         const capped = err instanceof KernelError && err.code === 'budget_exceeded'
         const reason: StopNoteReason = capped ? 'daily_cap' : 'model_error'
         await this.finish(run, { status: capped ? 'stopped' : 'failed', stopReason: reason, costUsd, error: errorText(err) })
-        return await this.afterWork(run, view, reason, capped ? undefined : errorText(err))
+        return await this.afterWork(run, view, reason, capped ? undefined : noteText(err))
       }
       const costUsd = await this.deps.turnCost(run.coworkerUserId, run.id)
       if (!reply.trim()) {
         await this.finish(run, { status: 'failed', stopReason: 'model_error', costUsd, error: 'the model answered with no text' })
-        return await this.afterWork(run, view, 'model_error', 'the model answered with no text')
+        return await this.afterWork(run, view, 'model_error', emptyReplySentence('no_text'))
       }
       let posted: { id: string } | null = null
       try {
