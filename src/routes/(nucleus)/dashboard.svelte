@@ -8,6 +8,7 @@
   import { resolve } from '$app/paths'
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { assistantIfOn } from '$lib/components/assistant/context'
+  import DashboardQuestionsCard from '$lib/components/dashboard-questions-card.svelte'
   import DotMatrix from '$lib/components/dot-matrix.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import ModuleCard from '$lib/components/module-card.svelte'
@@ -107,7 +108,8 @@
       reminders.length +
       coworkerNotices.length +
       decisionQuestions.length +
-      moduleNotices.length,
+      moduleNotices.length +
+      dashboard.questionsForMe.length,
   )
   const warnings = $derived((dashboard.backup ? 1 : 0) + (dashboard.update ? 1 : 0))
   const needsYou = $derived(overview.approvals.length + taskCount + warnings)
@@ -450,6 +452,13 @@
           </div>
         </section>
         {@render close('activity')}
+      </div>
+    {/if}
+
+    <!-- Questions colleagues asked me, answerable here (wish f3fc516e); hidden when none is open for me. -->
+    {#if dashboard.questionsForMe.length > 0}
+      <div class="min-w-0 {assistant ? 'md:col-span-2' : ''} xl:col-span-2">
+        <DashboardQuestionsCard questions={dashboard.questionsForMe} />
       </div>
     {/if}
 

@@ -13,6 +13,7 @@ import {
 } from './admin-tools'
 import { createAiUsageTools, KERNEL_AI_USAGE_TOOL_NAMES, type AiUsagePort } from './ai-usage-tools'
 import { createDecisionTools, KERNEL_DECISION_TOOL_NAMES, type DecisionsPort } from './decision-tools'
+import { KernelError } from './errors'
 import { createExportTools, KERNEL_EXPORT_TOOL_NAMES, type ExportPort } from './export-tools'
 import {
   createMemberAiCapTools,
@@ -132,8 +133,24 @@ function liveNotificationsPort(): NotificationsPort {
     sendTest: async (userId, deviceId) => (await live()).sendTest(userId, deviceId),
     loadSettings: async (userId) => (await live()).loadSettings(userId),
     saveSettings: async (userId, input) => (await live()).saveSettings(userId, input),
+    // The inbox (the bell): its own service over the same sources the dashboard's Needs you reads.
+    inbox: async (userId) => {
+      const [{ loadInbox }, { liveInboxDeps }] = await Promise.all([inboxService(), inboxLive()])
+      return loadInbox(await liveInboxDeps(), userId)
+    },
+    markRead: async (userId, keys) => {
+      const [{ markInboxRead, InboxError }, { liveInboxDeps }] = await Promise.all([inboxService(), inboxLive()])
+      try {
+        return await markInboxRead(await liveInboxDeps(), userId, keys)
+      } catch (e) {
+        if (e instanceof InboxError) throw new KernelError('invalid_input', e.message)
+        throw e
+      }
+    },
   }
 }
+const inboxService = () => import('$lib/server/notifications/inbox')
+const inboxLive = () => import('$lib/server/notifications/inbox-sources')
 
 /** The live daily-AI-cap-per-member port (DC3), loaded on first use (like the settings port). */
 function liveMemberAiCapPort(): MemberAiCapPort {

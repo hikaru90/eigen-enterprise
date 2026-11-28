@@ -497,6 +497,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/approvals/mode PUT': human(APPROVAL_MODE),
   '/api/settings/dashboard-tiles PUT': noEffect(VIEW_STATE),
   '/api/settings/notifications PUT': tool('notifications.settings_set'),
+  '/api/notifications POST': tool('notifications.mark_read'),
   '/api/activity POST': noEffect('A read: the person’s own model-call log and spend.'),
   '/api/keys POST': human(API_KEYS),
   '/api/keys/[id] DELETE': human(API_KEYS),

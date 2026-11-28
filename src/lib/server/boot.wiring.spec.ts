@@ -496,6 +496,8 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'modules.list',
   'modules.source',
   'notifications.devices',
+  'notifications.inbox',
+  'notifications.mark_read',
   'notifications.settings_get',
   'notifications.settings_set',
   'notifications.test',

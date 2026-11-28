@@ -15,6 +15,7 @@ function setup(writer: Writer = { kind: 'assistant', userId: 'ony' }) {
   ]
   const deps: TeamQuestionDeps = {
     store: memoryTeamQuestionStore(),
+    notify: async () => {},
     directory: { get: async (id) => members.find((m) => m.id === id) ?? null, list: async () => members },
     groups: { list: async () => [{ id: 'g-sales', name: 'Sales', memberIds: ['alex'] }] },
   }

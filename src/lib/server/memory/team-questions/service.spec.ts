@@ -29,6 +29,7 @@ function setup() {
   ]
   const deps: TeamQuestionDeps = {
     store: memoryTeamQuestionStore(),
+    notify: async () => {},
     directory: {
       async get(id) {
         return MEMBERS.find((m) => m.id === id) ?? null
@@ -45,6 +46,42 @@ function setup() {
 }
 
 const person = (userId: string) => ({ userId, via: 'person' as const })
+
+describe('team questions: a push to the people asked', () => {
+  it('a company question notifies every member but the asker, with the questions page as the link', async () => {
+    const { deps } = setup()
+    const sent: Array<{ userId: string; title: string; body: string; url: string; tag: string }> = []
+    deps.notify = async (userId, n) => {
+      sent.push({ userId, ...n })
+    }
+    const q = await askQuestion(deps, person('ony'), { text: 'Who has the van key?', tags: [], audience: { kind: 'company' } })
+    expect(sent.map((s) => s.userId).sort()).toEqual(['alex', 'kim', 'sam'])
+    expect(sent[0]).toMatchObject({ title: 'Ony asks', body: 'Who has the van key?', url: '/m/memory/questions', tag: `question-${q.id}` })
+  })
+
+  it('a chosen question notifies the chosen groups and people once each, never the asker', async () => {
+    const { deps } = setup()
+    const sent: string[] = []
+    deps.notify = async (userId) => {
+      sent.push(userId)
+    }
+    await askQuestion(deps, person('alex'), {
+      text: 'Demo on Friday?',
+      tags: [],
+      audience: { kind: 'chosen', groupIds: ['g-sales', 'g-dev'], userIds: ['kim', 'alex', 'sam'] },
+    })
+    expect(sent.sort()).toEqual(['kim', 'sam'])
+  })
+
+  it('a failed push does not fail the question', async () => {
+    const { deps } = setup()
+    deps.notify = async () => {
+      throw new Error('push service down')
+    }
+    const q = await askQuestion(deps, person('ony'), { text: 'Still asked?', tags: [], audience: { kind: 'company' } })
+    expect(q.status).toBe('open')
+  })
+})
 
 describe('team questions', () => {
   it('asks the whole company: every member reads it, it is open for them until they answer', async () => {

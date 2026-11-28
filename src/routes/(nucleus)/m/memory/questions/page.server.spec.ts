@@ -55,6 +55,7 @@ function setup() {
   let t = Date.parse('2026-11-25T09:00:00Z')
   const deps: TeamQuestionDeps = {
     store: memoryTeamQuestionStore(),
+    notify: async () => {},
     directory: {
       get: async (id) => MEMBERS.find((m) => m.id === id) ?? null,
       list: async () => MEMBERS,

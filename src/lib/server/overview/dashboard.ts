@@ -1,23 +1,25 @@
 import { and, desc, eq, ne, sql } from 'drizzle-orm'
+import type { DecisionQuestionView } from '$lib/kernel/decision-tools'
+import type { ModuleNotice } from '$lib/kernel/module-host/notices'
 import { getUserRole, isAdminRole } from '$lib/server/auth/user-role'
 import { backupNotice, type BackupNotice } from '$lib/server/backups/health'
-import type { DecisionQuestionView } from '$lib/kernel/decision-tools'
 import { appKernel } from '$lib/server/boot'
 import { needsYouNotices, type CoworkerNotice } from '$lib/server/coworkers/notices'
 import { liveNoticeDeps } from '$lib/server/coworkers/rhythm-live'
 import { getDb } from '$lib/server/db'
-import { needsYouDecisionQuestions } from '$lib/server/decisions/live'
 import { kernelEvents } from '$lib/server/db/kernel.schema'
+import { needsYouDecisionQuestions } from '$lib/server/decisions/live'
 import { EeClient, SubstrateUnavailableError } from '$lib/server/ee/client'
 import { assignedTaskDeps } from '$lib/server/memory/assigned-tasks/live'
 import { needsYouTasks, type NeedsYouTasks } from '$lib/server/memory/assigned-tasks/service'
 import { reminderDeps } from '$lib/server/memory/reminders/live'
 import { needsYouReminders, type ReminderView } from '$lib/server/memory/reminders/service'
-import type { ModuleNotice } from '$lib/kernel/module-host/notices'
+import { teamQuestionDeps } from '$lib/server/memory/team-questions/live'
+import { listQuestions, type TeamQuestionView } from '$lib/server/memory/team-questions/service'
 import { buildOverview, type Overview } from '$lib/server/overview/overview'
+import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 import { updateNotice, type UpdateNotice } from '$lib/server/settings/update-notice'
 import { liveModuleNotices } from '../../../../modules/company-modules/notices-live'
-import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 
 /** How many recent agent actions the dashboard shows; Assistant › Activity holds the rest. */
 const RECENT_ACTIONS = 10
@@ -38,6 +40,8 @@ export type Dashboard = {
   decisionQuestions: DecisionQuestionView[]
   /** The company's own modules: a failed one (owner + admins), a deploy waiting for an admin's click, the owner's one-time sharing OK (U2). */
   moduleNotices: ModuleNotice[]
+  /** Team questions asked of this person that they have not answered yet (questions.list for_me; wish f3fc516e). */
+  questionsForMe: TeamQuestionView[]
 }
 
 /**
@@ -86,6 +90,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     coworkerNotices: await needsYouNotices(await liveNoticeDeps(), userId),
     decisionQuestions: await needsYouDecisionQuestions(userId),
     moduleNotices: await liveModuleNotices({ userId, isOwner: role === 'owner', isAdmin }),
+    questionsForMe: (await listQuestions(await teamQuestionDeps(), userId, { forMe: true })).questions,
   }
 }
 
