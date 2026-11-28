@@ -16,6 +16,7 @@
   import { DASHBOARD_AREA } from '$lib/presence/where'
   import NotificationsBanner from '$lib/pwa/notifications-banner.svelte'
   import { shellVisible } from '$lib/shell/nav'
+  import { ShellFeeds } from '$lib/shell/shell-feeds'
 
   let { data, children } = $props()
 
@@ -75,20 +76,25 @@
         })
       : null,
   )
-  afterNavigate(() => presenceBeat?.moved())
+  // The shell's own feeds (unread counter, everyone's presence) open once the
+  // shell shows — not in a full-screen call tab (lib/shell/shell-feeds.ts).
+  const shellFeeds = new ShellFeeds([unread && { connect: () => unread.connect(), close: () => unread.close() }, company])
+  afterNavigate(() => {
+    presenceBeat?.moved()
+    shellFeeds.sync(withShell)
+  })
 
   onMount(() => {
     if (!data.user) return
     callPresence.connect(browserPresenceChannel)
     // Only for plugins that are on: the plugin gate answers 409 otherwise, and
     // a feed would retry forever. A switch takes effect on the next full load.
-    unread?.connect()
     if (data.liveFeeds?.calls || company || unread) {
       window.addEventListener('online', resume)
       document.addEventListener('visibilitychange', onVisible)
     }
     if (data.liveFeeds?.calls) liveCalls.connect(() => new EventSource('/api/calls/stream'))
-    company?.connect()
+    shellFeeds.sync(withShell)
     if (selfPresence) {
       presenceBeat = new PresenceHeartbeat({
         clientId: crypto.randomUUID(),
@@ -104,8 +110,7 @@
 
   onDestroy(() => {
     liveCalls.close()
-    unread?.close()
-    company?.close()
+    shellFeeds.close()
     callPresence.close()
     presenceBeat?.stop()
     if (typeof window === 'undefined') return
