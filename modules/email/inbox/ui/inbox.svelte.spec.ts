@@ -303,6 +303,24 @@ describe('compose-form.svelte (S5)', () => {
     await expect.element(page.getByRole('button', { name: 'Sending…' })).toBeDisabled()
   })
 
+  it('opens as a compose window: a dialog that grows to a large window, minimises without losing text, closes via Discard', async () => {
+    render(ComposeForm, { draft: draft(), ...props })
+    const win = page.getByRole('dialog', { name: 'New mail' })
+    await expect.element(win).toBeVisible()
+    await expect.element(win).toHaveAttribute('data-size', 'normal')
+    await page.getByRole('button', { name: 'Expand' }).click()
+    await expect.element(win).toHaveAttribute('data-size', 'large')
+    await page.getByRole('button', { name: 'Shrink' }).click()
+    await expect.element(win).toHaveAttribute('data-size', 'normal')
+    await page.getByLabelText('To', { exact: true }).fill('kept@x.co')
+    await page.getByRole('button', { name: 'Minimise' }).click()
+    await expect.element(win).toHaveAttribute('data-size', 'minimised')
+    await expect.element(page.getByLabelText('To', { exact: true })).not.toBeVisible()
+    await page.getByRole('button', { name: 'Restore' }).click()
+    await expect.element(page.getByLabelText('To', { exact: true })).toHaveValue('kept@x.co')
+    await expect.element(page.getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/m/email/inbox')
+  })
+
   it('a blocked draft says why and Send is off; a forward lists what it carries and what it can’t', async () => {
     render(ComposeForm, {
       draft: draft({

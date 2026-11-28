@@ -91,6 +91,7 @@ export default defineConfig({
       'src/routes/(nucleus)/brand/material/merch-preview.svelte.spec.ts',
       'src/routes/(nucleus)/brand/material/material-workbench.svelte.spec.ts',
       'src/routes/(nucleus)/brand/social/social-library.svelte.spec.ts',
+      'src/routes/(nucleus)/brand/social/social-pdf.svelte.spec.ts',
       'src/routes/(nucleus)/brand/extract/source-options.svelte.spec.ts',
       'src/lib/components/capture-onboarding-overlay.svelte.spec.ts',
       'src/lib/components/provider-onboarding.svelte.spec.ts',

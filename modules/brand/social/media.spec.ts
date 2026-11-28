@@ -7,6 +7,13 @@ const person = { kind: 'user' as const, userId: 'ana' }
 const bytes = (s: string) => new TextEncoder().encode(s)
 
 describe('validateUploadFiles', () => {
+  const pdf = (name: string, content = '%PDF-1.7\n…') => ({ name, mime: 'application/pdf', bytes: bytes(content) })
+  it('takes exactly one PDF (a LinkedIn document carousel), alone, and only a real PDF', () => {
+    expect(() => validateUploadFiles([pdf('deck.pdf')], 1000)).not.toThrow()
+    expect(() => validateUploadFiles([pdf('a.pdf'), pdf('b.pdf')], 1000)).toThrow(/exactly one PDF/)
+    expect(() => validateUploadFiles([pdf('a.pdf'), { name: 'b.jpg', mime: 'image/jpeg', bytes: bytes('j') }], 1000)).toThrow(/exactly one PDF/)
+    expect(() => validateUploadFiles([pdf('fake.pdf', 'not a pdf')], 1000)).toThrow(/isn’t a PDF/)
+  })
   const img = (name: string) => ({ name, mime: 'image/jpeg', bytes: bytes(name) })
   it('takes images (a carousel) or exactly one video', () => {
     expect(() => validateUploadFiles([img('a.jpg'), img('b.jpg')], 1000)).not.toThrow()
@@ -14,7 +21,7 @@ describe('validateUploadFiles', () => {
   })
   it('refuses nothing, unknown types, mixes, too many, empty and too large files', () => {
     expect(() => validateUploadFiles([], 1000)).toThrow(/at least one/)
-    expect(() => validateUploadFiles([{ name: 'a.pdf', mime: 'application/pdf', bytes: bytes('x') }], 1000)).toThrow(/supported/)
+    expect(() => validateUploadFiles([{ name: 'a.txt', mime: 'text/plain', bytes: bytes('x') }], 1000)).toThrow(/supported/)
     expect(() => validateUploadFiles([img('a.jpg'), { name: 'c.mp4', mime: 'video/mp4', bytes: bytes('x') }], 1000)).toThrow(/exactly one video/)
     expect(() => validateUploadFiles(Array.from({ length: 11 }, (_, i) => img(`${i}.jpg`)), 1000)).toThrow(/at most 10/)
     expect(() => validateUploadFiles([{ name: 'e.png', mime: 'image/png', bytes: new Uint8Array() }], 1000)).toThrow(/empty/)

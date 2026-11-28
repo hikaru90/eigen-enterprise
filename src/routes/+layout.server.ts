@@ -44,9 +44,15 @@ export const load: LayoutServerLoad = async ({ locals, cookies, route, url }) =>
       .where(eq(userPreference.userId, locals.user.id))
       .limit(1)
 
-    preferredUiLocale = normalizeUiLocale(pref?.preferredUiLocale ?? 'en')
     preferredLanguage = pref?.preferredLanguage ?? 'en'
     const currentCookie = cookies.get(cookieName)
+    // The shared demo seat (one teammate for every visitor) speaks each
+    // visitor's language — their cookie, set by ?lang= from the website —
+    // so one visitor's choice never flips the others' (wish fd96580a).
+    const demoGuest = await (await import('$lib/server/demo/guest-access-db')).isActiveDemoGuestUser(locals.user.id)
+    preferredUiLocale = normalizeUiLocale(
+      demoGuest ? (currentCookie ?? 'en') : (pref?.preferredUiLocale ?? 'en'),
+    )
     if (currentCookie !== preferredUiLocale) {
       cookies.set(cookieName, preferredUiLocale, {
         path: '/',

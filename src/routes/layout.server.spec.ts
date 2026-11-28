@@ -87,6 +87,32 @@ describe('layout server load', () => {
     })
   })
 
+  it('the shared demo guest seat speaks the visitor’s language (their cookie), never the seat’s stored preference', async () => {
+    findActiveVisualSetMock.mockResolvedValue(null)
+    isActiveDemoGuestUserMock.mockResolvedValue(true)
+    getDbMock.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{ preferredUiLocale: 'en', preferredLanguage: 'en' }]),
+            then(onFulfilled?: (value: unknown) => unknown, onRejected?: (error: unknown) => unknown) {
+              return Promise.resolve([]).then(onFulfilled, onRejected)
+            },
+          }),
+        }),
+      }),
+      selectDistinct: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+    })
+    const cookies = { get: vi.fn(() => 'de'), set: vi.fn() }
+    try {
+      const result = (await load({ locals: { user: { id: 'guest' } }, cookies } as never)) as { preferredUiLocale: string }
+      expect(result.preferredUiLocale).toBe('de')
+      expect(cookies.set).not.toHaveBeenCalled()
+    } finally {
+      isActiveDemoGuestUserMock.mockResolvedValue(false)
+    }
+  })
+
   it('exposes the active visual set tokens when one is active (phase-2d M5/V9)', async () => {
     findActiveVisualSetMock.mockResolvedValue({
       id: '6a000000-0000-4000-8000-00000000000a',

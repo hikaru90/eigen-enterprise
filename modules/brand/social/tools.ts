@@ -1,12 +1,13 @@
-import { actsAsMember } from '$lib/kernel/principals'
+import type { SocialMediaService } from './media'
 import { z } from 'zod'
+import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import { defaultBrandStore } from '../store'
 import { liveCaptionChat, suggestCaptions, type CaptionChat, type VoiceSource } from './captions'
-import type { SocialMediaService } from './media'
 import { defaultSocialPostStore, type SocialPostStore } from './store'
 import {
   createGraphicPostInputSchema,
+  SOCIAL_DOCUMENT_TYPES,
   SOCIAL_IMAGE_TYPES,
   SOCIAL_MAX_IMAGES,
   SOCIAL_VIDEO_TYPES,
@@ -74,7 +75,7 @@ const b64 = z
 const uploadFile = z
   .object({
     filename: z.string().min(1).max(255),
-    mime: z.string().min(1).describe(`one of ${[...SOCIAL_IMAGE_TYPES, ...SOCIAL_VIDEO_TYPES].join(', ')}`),
+    mime: z.string().min(1).describe(`one of ${[...SOCIAL_IMAGE_TYPES, ...SOCIAL_VIDEO_TYPES, ...SOCIAL_DOCUMENT_TYPES].join(', ')}`),
     dataB64: b64.describe('the file bytes, standard base64'),
   })
   .strict()
@@ -153,7 +154,7 @@ export function createBrandSocialTools(deps: BrandSocialToolDeps = {}): ToolDesc
     {
       name: 'brand.social_post_upload',
       module: 'brand',
-      summary: `Add a social media post from uploaded files (Brand › Social): up to ${SOCIAL_MAX_IMAGES} images (a carousel) or exactly one video, each as { filename, mime, dataB64 } — the same types and size limit as the tab — plus title, networks, optional captions per network, status (default draft) and plannedFor (YYYY-MM-DD). Nothing is posted to the networks.`,
+      summary: `Add a social media post from uploaded files (Brand › Social): up to ${SOCIAL_MAX_IMAGES} images (a carousel) exactly one video, or exactly one PDF (a LinkedIn document carousel, its pages the slides), each as { filename, mime, dataB64 } — the same types and size limit as the tab — plus title, networks, optional captions per network, status (default draft) and plannedFor (YYYY-MM-DD). Nothing is posted to the networks.`,
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: { title?: string }) => `Uploaded the social post “${input.title ?? 'untitled'}”`,

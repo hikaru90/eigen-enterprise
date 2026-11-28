@@ -646,7 +646,7 @@
           class="grid min-h-[28rem] overflow-hidden rounded-lg border border-border md:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]"
         >
           <section
-            class="min-w-0 border-border md:border-r {inbox.reader || inbox.compose
+            class="min-w-0 border-border md:border-r {inbox.reader
               ? 'hidden md:block'
               : ''}"
             aria-label={`${folderLabel} list`}
@@ -699,23 +699,12 @@
             />
           </section>
           <section
-            class="min-w-0 {inbox.reader || inbox.compose
+            class="min-w-0 {inbox.reader
               ? ''
               : 'hidden md:flex md:items-center md:justify-center'}"
-            aria-label={inbox.compose ? 'Compose' : 'Reading pane'}
+            aria-label="Reading pane"
           >
-            {#if inbox.compose}
-              {#key composeKey}
-                <ComposeForm
-                  draft={inbox.compose}
-                  submit={sendSubmit}
-                  {discardHref}
-                  busy={sending}
-                  error={sendError?.error ?? null}
-                  agent={sendError?.agent ?? null}
-                />
-              {/key}
-            {:else if inbox.reader}
+            {#if inbox.reader}
               {#if inbox.proposal && proposalLinks}
                 <div class="border-b border-border p-3">
                   <ProposalCard
@@ -744,6 +733,19 @@
             {/if}
           </section>
         </div>
+        {#if inbox.compose}
+          <!-- The compose window floats over the inbox (wish 498da734), so the list and the mail you're answering stay in view. -->
+          {#key composeKey}
+            <ComposeForm
+              draft={inbox.compose}
+              submit={sendSubmit}
+              {discardHref}
+              busy={sending}
+              error={sendError?.error ?? null}
+              agent={sendError?.agent ?? null}
+            />
+          {/key}
+        {/if}
       </div>
     </div>
   </div>

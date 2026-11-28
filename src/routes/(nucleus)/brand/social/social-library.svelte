@@ -14,6 +14,7 @@
   import { brandShownError } from '../brand-errors'
   import { ASSISTANT_PREFILL, mediaUrl, socialApi, type SocialApi } from './social-api'
   import SocialGraphicView from './social-graphic.svelte'
+  import { renderPdfPages, type PdfPages } from './social-pdf'
   import SocialPostEditor from './social-post-editor.svelte'
   import SocialUploadDialog from './social-upload-dialog.svelte'
 
@@ -36,6 +37,7 @@
     assistantOn,
     selected: initialSelected = null,
     api = socialApi(),
+    pdfPages = renderPdfPages,
   }: {
     posts: SocialPost[]
     style: Style | null
@@ -43,6 +45,7 @@
     assistantOn: boolean
     selected?: string | null
     api?: SocialApi
+    pdfPages?: PdfPages
   } = $props()
 
   // svelte-ignore state_referenced_locally
@@ -201,6 +204,8 @@
                   </div>
                 {:else if post.media[0]?.mime.startsWith('video/')}
                   <span class="text-xs text-muted-foreground">Video</span>
+                {:else if post.media[0]?.mime === 'application/pdf'}
+                  <span class="text-xs text-muted-foreground">PDF</span>
                 {:else if post.media[0]}
                   <img class="size-full object-cover" src={mediaUrl(post.media[0].id)} alt="" />
                 {:else}
@@ -240,6 +245,7 @@
             {style}
             {activeLocales}
             {api}
+            {pdfPages}
             onSaved={replace}
             onDeleted={(id) => {
               posts = posts.filter((p) => p.id !== id)

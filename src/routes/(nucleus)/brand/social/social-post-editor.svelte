@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PdfPages } from './social-pdf'
   import { resolve } from '$app/paths'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import { Button } from '$lib/components/ui/button'
@@ -25,6 +26,7 @@
   import { mediaUrl, type CaptionSuggestions, type SocialApi } from './social-api'
   import { fileStem, renderGraphicPng, saveBlob } from './social-export'
   import SocialGraphicView from './social-graphic.svelte'
+  import SocialMediaViewer from './social-media-viewer.svelte'
 
   /**
    * One social post, editable: its media (the branded graphic drawn in the
@@ -46,6 +48,7 @@
     api,
     onSaved,
     onDeleted,
+    pdfPages,
   }: {
     post: SocialPost
     style: Style | null
@@ -53,6 +56,8 @@
     api: SocialApi
     onSaved: (post: SocialPost) => void
     onDeleted: (postId: string) => void
+    /** Draws a PDF post's pages as slides (the library passes pdf.js; tests a fake). */
+    pdfPages: PdfPages
   } = $props()
 
   // svelte-ignore state_referenced_locally
@@ -219,35 +224,16 @@
         preload="metadata"
       ></video>
     {:else}
-      <img
-        class="w-full rounded-lg border border-border object-contain"
-        src={mediaUrl(post.media[0].id)}
-        alt={post.title}
-      />
-      {#if post.media.length > 1}
-        <ul class="flex gap-2 overflow-x-auto" aria-label="Carousel">
-          {#each post.media as m (m.id)}
-            <li class="shrink-0">
-              <img
-                class="size-16 rounded-md border border-border object-cover"
-                src={mediaUrl(m.id)}
-                alt={m.name}
-              />
-            </li>
-          {/each}
-        </ul>
-      {/if}
+      <SocialMediaViewer media={post.media} title={post.title} {pdfPages} />
     {/if}
-    {#if !isGraphic}
-      <ul class="flex flex-wrap gap-2" aria-label="Files">
-        {#each post.media as m (m.id)}
-          <li>
-            <Button variant="outline" size="sm" href={mediaUrl(m.id, true)} download={m.name}
-              >Download {m.name}</Button
-            >
-          </li>
-        {/each}
-      </ul>
+    {#if isVideo}
+      <Button
+        class="w-fit"
+        variant="outline"
+        size="sm"
+        href={mediaUrl(post.media[0].id, true)}
+        download={post.media[0].name}>Download {post.media[0].name}</Button
+      >
     {/if}
   </div>
 
