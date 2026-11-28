@@ -6,7 +6,10 @@ import { memoryTraceStore } from './memory-store'
 import { createTracesTools } from './tools'
 import { TRACE_PATHS, type TraceHub } from './worker'
 
-const ctx = (roles: string[], kind: 'human' | 'agent' = 'human') => ({ principal: { id: 'p1', kind, roles } }) as unknown as ToolContext
+/** Kernel roles never carry `owner` (an owner is an admin to the registry): the tools read the person's company role. */
+const ctx = (roles: string[], kind: 'human' | 'agent' = 'human') =>
+  ({ principal: { id: roles.includes('owner') ? 'owner-1' : 'admin-1', kind, roles: ['admin', 'member'] } }) as unknown as ToolContext
+const roleOf = async (id: string) => (id === 'owner-1' ? 'owner' : 'admin')
 const BATCH = '00000000-0000-4000-8000-000000000001'
 
 function setup(status = 200) {
@@ -14,7 +17,7 @@ function setup(status = 200) {
   const send = vi.fn(async () => ({ status, text: '' }))
   const hub: TraceHub = { config: () => ({ ok: true }), ready: async () => ({ ok: true }), send, unauthorized: async () => {} }
   const d: TracesDeps = { store, hub, now: () => new Date('2026-11-21T00:00:00Z') }
-  const tools = new Map(createTracesTools({ deps: async () => d }).map((t) => [t.name, t]))
+  const tools = new Map(createTracesTools({ deps: async () => d, roleOf }).map((t) => [t.name, t]))
   return { store, send, tools }
 }
 
@@ -52,7 +55,7 @@ describe('traces.* tools (plan/traces-phone-home.md §4)', () => {
     const { store, send, tools } = setup()
     await seed(store)
     const set = tools.get('traces.settings_set')!
-    expect(set.permission.roles).toEqual(['owner'])
+    expect(set.permission.roles).toEqual(['owner', 'admin'])
     await expect(set.handler(ctx(['admin']), { enabled: false })).rejects.toThrow(/Only the owner/)
     const out = (await set.handler(ctx(['owner']), { enabled: false, withdraw: true })) as { enabled: boolean; withdrawn: string[] }
     expect(out).toMatchObject({ enabled: false, withdrawn: [BATCH] })
@@ -74,5 +77,19 @@ describe('traces.* tools (plan/traces-phone-home.md §4)', () => {
   it('the agent on its own cannot switch or withdraw', async () => {
     const { tools } = setup()
     await expect(tools.get('traces.settings_set')!.handler(ctx(['owner'], 'agent'), { enabled: false })).rejects.toThrow(/not the agent/)
+  })
+
+  it('the one-time Needs you notice: the owner sees what is shared and where the switch is, until they mark it seen', async () => {
+    const { tools } = setup()
+    const get = tools.get('traces.notice_get')!
+    const seen = tools.get('traces.notice_seen')!
+    const n = (await get.handler(ctx(['owner']), {})) as { notice: { sentence: string; href: string } | null }
+    expect(n.notice).toMatchObject({ href: '/settings/company' })
+    expect(n.notice!.sentence).toMatch(/usage statistics/i)
+    expect(((await get.handler(ctx(['admin']), {})) as { notice: unknown }).notice).toBeNull()
+    expect(seen.permission.roles).toEqual(['owner', 'admin'])
+    await expect(seen.handler(ctx(['admin']), {})).rejects.toThrow(/Only the owner/)
+    expect(await seen.handler(ctx(['owner']), {})).toEqual({ seen: true })
+    expect(((await get.handler(ctx(['owner']), {})) as { notice: unknown }).notice).toBeNull()
   })
 })

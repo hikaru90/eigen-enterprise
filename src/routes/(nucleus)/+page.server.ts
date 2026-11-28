@@ -144,6 +144,28 @@ export const actions: Actions = {
       })
     }
   },
+  /** The owner's one-time product signals notice: "Got it" is traces.notice_seen as the person, through the registry. */
+  signalsNoticeSeen: async ({ locals }) => {
+    const user = locals.user
+    if (!user) throw redirect(302, '/login')
+    try {
+      await _dashboardDeps.run(user, 'traces.notice_seen', {})
+      return { action: 'signalsNoticeSeen' as const, ok: true as const }
+    } catch (err) {
+      const refused = err instanceof KernelError
+      if (!refused) console.error('[dashboard] traces.notice_seen failed', err)
+      return fail(refused ? 400 : 500, {
+        action: 'signalsNoticeSeen' as const,
+        ...errorReport(err, {
+          attempted: 'Marking the product signals notice seen (Needs you)',
+          tool: 'traces.notice_seen',
+          input: {},
+          plain: (e) => (e instanceof KernelError ? e.message : 'That could not be saved. Try again.'),
+          nextSteps: ['traces.notice_seen (modules/traces/tools.ts → modules/traces/service.ts noticeSeen) refused or failed.'],
+        }),
+      })
+    }
+  },
   /** What's happening's Refresh (wish 75a4e570): dashboard.patterns_refresh as the person, through the registry. */
   patternsRefresh: async ({ locals }) => {
     const user = locals.user

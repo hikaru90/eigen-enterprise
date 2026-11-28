@@ -85,3 +85,21 @@ describe('mock hub: module endpoints (the real module-hub service, TEST-ONLY rec
     expect(hub.requests.at(-1)).toMatchObject({ method: 'POST', path, status: 201, body: expect.stringMatching(/^\(\d+ bytes\)$/) })
   })
 })
+
+describe('mock hub: product signals (plan/traces-phone-home.md T4)', () => {
+  const BATCH = '22222222-2222-4222-8222-222222222222'
+  const span = {
+    trace_id: '11111111-1111-4111-8111-111111111111', span_id: '33333333-3333-4333-8333-333333333333', parent_id: null, kind: 'tool_call', run_kind: null,
+    tool: 'memory.list_tasks', log_context: null, model: null, provider_kind: null, tokens_in: null, tokens_out: null, cost_usd: null, duration_ms: 3,
+    attempt: null, start_offset_ms: 0, outcome: 'ok', error_code: null, audit_class: 'read', via: 'person', app_version: '0.5.47', ee_version: null, day: '2026-11-13',
+  }
+  it('takes a signed strict batch, refuses an extra key, and withdraws on DELETE', () => {
+    const { hub, reg, signed } = setup()
+    hub.receive('POST', HUB_PATHS.register, {}, reg)
+    expect(signed('POST', '/api/hub/traces', JSON.stringify({ v: 1, batch_id: BATCH, spans: [{ ...span, context: 'Jane' }] })).status).toBe(400)
+    expect(signed('POST', '/api/hub/traces', JSON.stringify({ v: 1, batch_id: BATCH, spans: [span] })).status).toBe(201)
+    expect(hub.traceBatches.size).toBe(1)
+    expect(signed('DELETE', '/api/hub/traces', '')).toMatchObject({ status: 200, answer: { deleted: 1 } })
+    expect(hub.traceBatches.size).toBe(0)
+  })
+})
