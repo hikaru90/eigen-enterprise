@@ -9,9 +9,6 @@
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { assistantIfOn } from '$lib/components/assistant/context'
   import DashboardQuestionsCard from '$lib/components/dashboard-questions-card.svelte'
-      </div>
-    {/if}
-
   import PatternsCard from '$lib/components/dashboard/patterns-card.svelte'
   import DotMatrix from '$lib/components/dot-matrix.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'

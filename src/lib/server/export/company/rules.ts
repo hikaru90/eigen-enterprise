@@ -140,7 +140,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   llm_active_provider: full,
   activity_call_log: meta(
     always,
-    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host', 'task', 'model'],
+    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host', 'task', 'model', 'prompt_tokens', 'completion_tokens', 'cached_tokens', 'cache_write_tokens'],
     ['context'],
   ),
   // CB2 (0175): Jev's decisions next to the current judge's and people's answers. The owner
@@ -159,7 +159,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
       'access_count', 'last_accessed_at', 'enriched_at', 'enrichment_version', 'primary_community_ids',
       'entity_centrality_max', 'specificity_score', 'recency_bucket', 'bundle_rank', 'enrich_queue_status',
       'capture_source', ...AUTHOR, 'lifecycle_status', 'lifecycle_updated_at', 'lifecycle_completed_at',
-      'task_kind', 'task_started_at', 'task_position',
+      'task_kind', 'task_started_at', 'task_position', 'team_question_id',
     ],
     [
       'raw_text', 'normalized_text', 'lexical_text', 'lexical_tsv', 'metadata', 'embedding', 'cues',
@@ -391,9 +391,13 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   ),
   call_chat_message: meta(
     dmCall('t.call_id'),
-    ['seq', 'call_id', 'author_id', 'author_kind', 'created_at'],
+    ['seq', 'call_id', 'author_id', 'author_kind', 'created_at', 'image_id'],
     ['author_name', 'body'],
   ),
+  // Images pasted into a call's chat (0198): content like the chat line they belong to.
+  call_chat_image: meta(dmCall('t.call_id'), ['id', 'call_id', 'uploaded_by', 'mime', 'size', 'created_at'], ['name', 'bytes']),
+  // A person's own saved call summary (0198): theirs alone, like an unshared brain answer.
+  call_brain_recap: meta(always, ['call_id', 'user_id', 'created_at'], ['recap']),
   call_brain_answer: meta('t.shared_at IS NULL', ['id', 'call_id', 'asked_by', 'asked_at', 'shared_at'], ['question', 'answer']),
   call_brain_listen: full,
 
@@ -407,6 +411,23 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   // --- Team questions to the company or chosen groups and people (work: full) --
   team_questions: full,
   team_question_answers: full,
+
+  // --- Notifications, dashboard digest, reminders (0192, 0193) ----------------
+  // Which inbox items a person has seen: keys and times only.
+  notification_reads: full,
+  // The brain's company digest every member reads (observations, counts per person × module).
+  pattern_digest: full,
+  calendar_reminders_sent: full,
+
+  // --- Mail reputation (0189): sending health the owner reads in the app -----
+  mail_reputation_checks: full,
+  mail_reputation_ledger: full,
+  mail_reputation_resets: full,
+
+  // --- Live sheet editing: op log of a Drive file follows that file's rule ----
+  sheet_live_entry: meta(DM_FILE('t.file_id'), ['file_id', 'seq', 'client_id', 'op_id', 'author', 'at'], ['body']),
+  sheet_live_session: full,
+  sheet_live_peer: excluded('who has a sheet open right now (live presence, rebuilt on reconnect)'),
 
   // --- Brand, website, repos, GitHub, contribute --------------------------------
   brand_assets: full,
