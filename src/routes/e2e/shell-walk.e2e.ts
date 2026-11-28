@@ -72,10 +72,10 @@ test('every navigation entry and settings section renders inside the one shell',
   const entries: Array<[string, RegExp, RegExp]> = [
     ['messages', /\/messages$/, /^Messages · eigenEnterprise$/],
     ['website', /\/m\/website$/, / · Website · eigenEnterprise$/],
-    // Email opens your inbox (58201e6c); Memory lands on Tasks (92ae9c93, plan/concept-memory-one-door.md).
+    // Email opens your inbox (58201e6c); Memory lands on What the brain knows (wish f3fc516e).
     ['email', /\/m\/email\/inbox$/, /^Inbox · Email · eigenEnterprise$/],
     ['brand', /\/brand$/, /^Brand · eigenEnterprise$/],
-    ['memory', /\/m\/memory\/tasks$/, /^Tasks · Memory · eigenEnterprise$/],
+    ['memory', /\/m\/memory\/capture$/, /^What the brain knows · Memory · eigenEnterprise$/],
     ['settings', /\/settings$/, /^Account · Settings · eigenEnterprise$/],
   ]
   await page.goto('/settings')
