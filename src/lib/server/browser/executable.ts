@@ -8,26 +8,8 @@ import { access } from 'node:fs/promises'
  * shared server lib so no module reaches into another module's code.
  */
 
-export const BROWSER_UNAVAILABLE_MESSAGE =
-  "Capturing a website needs a browser on the server, and this install doesn't have one. Upload your brand guide instead."
-
-/**
- * The headless browser is not installed on this server (releases install
- * node_modules with --ignore-scripts and ship no browser). Detected by
- * checking the executable before the launch, never by reading a launch
- * error's text. Callers outside brand capture rewrap it with their own wording.
- */
-export class BrowserUnavailableError extends Error {
-  readonly code = 'browser_unavailable' as const
-  /** Where the browser was expected; null when none is configured. */
-  readonly executablePath: string | null
-
-  constructor(executablePath: string | null) {
-    super(BROWSER_UNAVAILABLE_MESSAGE)
-    this.name = 'BrowserUnavailableError'
-    this.executablePath = executablePath
-  }
-}
+export { BROWSER_UNAVAILABLE_MESSAGE, BrowserUnavailableError } from './errors'
+import { BrowserUnavailableError } from './errors'
 
 /** Where the headless browser lives and whether it can run (injectable for tests). */
 export type BrowserProbe = {
