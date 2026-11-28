@@ -1373,6 +1373,13 @@
       "when": 1795200000203,
       "tag": "0203_team_question_answer_thoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1795200000205,
+      "tag": "0205_message_mentions",
+      "breakpoints": true
     }
   ]
 }

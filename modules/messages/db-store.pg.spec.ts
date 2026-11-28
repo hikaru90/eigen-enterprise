@@ -143,6 +143,24 @@ describe.skipIf(!url)('message_events × interleaved transactions (Postgres)', (
     await expect(store.insertMessage({ ...base, id: randomUUID(), body: 'dangling', replyToId: randomUUID(), createdAt: new Date() })).rejects.toThrow()
   })
 
+  it('mentions (0205): set replaces who a message names; mentionsOf lists the person\'s newest first, deleted ones dropped', async () => {
+    const store = dbMessagesStore(db)
+    const user = `pg-mention-${randomUUID()}`
+    const base = { conversationId, authorId: 'bea', parentId: null, replyToId: null, editedAt: null, deletedAt: null, call: null }
+    const older = { ...base, id: randomUUID(), body: 'a', createdAt: new Date(Date.now() - 1000) }
+    const newer = { ...base, id: randomUUID(), body: 'b', createdAt: new Date() }
+    await store.insertMessage(older)
+    await store.insertMessage(newer)
+    await store.setMentions(older.id, [user, user])
+    await store.setMentions(newer.id, ['someone-else'])
+    await store.setMentions(newer.id, [user])
+    expect((await store.mentionsOf(user, 10)).map((m) => m.id)).toEqual([newer.id, older.id])
+    expect((await store.mentionsOf(user, 1)).map((m) => m.id)).toEqual([newer.id])
+    await store.updateMessage(newer.id, { deletedAt: new Date() })
+    await store.setMentions(older.id, [])
+    expect(await store.mentionsOf(user, 10)).toEqual([])
+  })
+
   it('voice recordings (0156): an attachment keeps its recording length; ordinary files have none', async () => {
     const store = dbMessagesStore(db)
     const m = { id: randomUUID(), conversationId, authorId: 'bea', body: 'Treffen um drei', parentId: null, replyToId: null, createdAt: new Date(), editedAt: null, deletedAt: null, call: null }

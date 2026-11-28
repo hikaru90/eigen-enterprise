@@ -1,5 +1,6 @@
 import type { Conversation, Person } from './store'
-import { coworkerSlugFromEmail, mentionHandleOf } from '$lib/coworkers/handle'
+import { mentionHandleOf } from '$lib/coworkers/handle'
+import { mentionedIds } from './handles'
 import { canUse, listConversations, type MessageDto, type MessagesDeps } from './service'
 
 /**
@@ -15,28 +16,12 @@ import { canUse, listConversations, type MessageDto, type MessagesDeps } from '.
  * "Their push settings" = whether they turned push on (have a subscription).
  */
 
+export { handlesOf, mentionedIds } from './handles'
+
 export const VIEWING_WINDOW_MS = 60_000
 
 /** The one handle people write to reach someone: a co-worker's slug, a person's email local part. */
 export const primaryHandle = (p: Person): string => mentionHandleOf(p)
-
-export function handlesOf(p: Person): string[] {
-  if (p.kind === 'coworker') return [coworkerSlugFromEmail(p.email, p.id)]
-  const out = new Set<string>()
-  const local = p.email.split('@')[0]?.toLowerCase()
-  if (local) out.add(local)
-  const compact = p.name.replace(/\s+/g, '').toLowerCase()
-  if (compact) out.add(compact)
-  const first = p.name.trim().split(/\s+/)[0]?.toLowerCase()
-  if (first) out.add(first)
-  return [...out]
-}
-
-export function mentionedIds(body: string, people: readonly Person[]): string[] {
-  const tokens = new Set([...body.matchAll(/(?:^|[^\w@])@([\w.+-]+)/g)].map((m) => m[1].toLowerCase().replace(/[.]+$/, '')))
-  if (tokens.size === 0) return []
-  return people.filter((p) => handlesOf(p).some((h) => tokens.has(h))).map((p) => p.id)
-}
 
 export type PushPort = {
   hasSubscription(userId: string): Promise<boolean>

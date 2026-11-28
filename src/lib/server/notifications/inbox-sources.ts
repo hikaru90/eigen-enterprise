@@ -16,6 +16,8 @@ export type InboxSourceData = {
   tasks: { assignedToMe: TaskLike[]; updates: TaskLike[] }
   /** AI co-workers' finished or stopped runs (coworkers.needs_you). */
   notices: Array<{ run: { id: string; status: string }; coworker: Person; at: string; href: string }>
+  /** Mentions of the person in channels they may see (modules/messages/mentions.ts). */
+  mentions: Array<{ messageId: string; conversationId: string; parentId: string | null; where: string; author: Person; body: string; at: string }>
 }
 
 const QUESTIONS_HREF = '/m/memory/questions'
@@ -49,7 +51,15 @@ export function inboxItemsFrom(data: InboxSourceData): InboxSourceItem[] {
     href: n.href,
     at: n.at,
   }))
-  return [...questions, ...given, ...news, ...notices]
+  const mentions = data.mentions.map((m) => ({
+    key: `mention:${m.messageId}`,
+    kind: 'mention' as const,
+    title: `${m.author.name} mentioned you in ${m.parentId ? 'a thread in ' : ''}${m.where}`,
+    detail: m.body.replace(/\s+/g, ' ').trim(),
+    href: `/messages?c=${encodeURIComponent(m.conversationId)}${m.parentId ? `&t=${encodeURIComponent(m.parentId)}` : ''}`,
+    at: m.at,
+  }))
+  return [...questions, ...given, ...news, ...notices, ...mentions]
 }
 
 /** The live sources: the same services the dashboard's Needs you and Memory › Questions read. */
@@ -62,12 +72,14 @@ export async function liveInboxSources(userId: string): Promise<InboxSourceItem[
     import('$lib/server/coworkers/notices'),
     import('$lib/server/coworkers/rhythm-live'),
   ])
-  const [questions, tasks, notices] = await Promise.all([
+  const [{ mentionsOf }, { messagesDeps }] = await Promise.all([import('../../../../modules/messages/mentions'), import('../../../../modules/messages/live')])
+  const [questions, tasks, notices, mentions] = await Promise.all([
     listQuestions(await teamQuestionDeps(), userId, { forMe: true }),
     needsYouTasks(await assignedTaskDeps(), userId),
     needsYouNotices(await liveNoticeDeps(), userId),
+    mentionsOf(await messagesDeps(), userId),
   ])
-  return inboxItemsFrom({ questions: questions.questions, tasks, notices })
+  return inboxItemsFrom({ questions: questions.questions, tasks, notices, mentions })
 }
 
 export async function liveInboxDeps(): Promise<InboxDeps> {

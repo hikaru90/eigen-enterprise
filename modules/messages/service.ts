@@ -4,6 +4,7 @@ import { mentionHandleOf } from '$lib/coworkers/handle'
 import type { CoreEventType } from '$lib/kernel/event-catalog'
 import { isSingleEmoji } from '$lib/messages/emoji'
 import { attachmentMarker, quoteSnippet, type ReplyQuote } from '$lib/messages/quote'
+import { mentionedIds } from './handles'
 import { CALL_OUTCOMES, type Attachment, type CallSummary, type Conversation, type Directory, type Message, type MessagesStore, type Person } from './store'
 
 /**
@@ -485,6 +486,7 @@ export async function postMessage(
     call: null,
   }
   await d.store.insertMessage(m)
+  await recordMentions(d, c, m.id, body)
   // The recording comes first (it is played above the transcript), then the ordinary files.
   const durationOf = new Map(voiceClips.map((v) => [v.fileId, v.durationMs]))
   await d.store.insertAttachments(
@@ -702,12 +704,20 @@ async function ownMessage(d: MessagesDeps, actorId: string, messageId: string): 
   return m
 }
 
+/** Who a channel message names, for the bell (message_mentions); a DM records none. */
+async function recordMentions(d: MessagesDeps, c: Conversation, messageId: string, body: string): Promise<void> {
+  if (c.kind !== 'channel') return
+  await d.store.setMentions(messageId, mentionedIds(body, await d.directory.listPeople()))
+}
+
 export async function editMessage(d: MessagesDeps, actorId: string, messageId: string, rawBody: string) {
   const m = await ownMessage(d, actorId, messageId)
   if (m.call) throw new MessagesError('invalid', 'a call line cannot be edited')
   const hasFiles = (await d.store.attachmentsFor([m.id])).length > 0
   const body = hasFiles && rawBody.trim() === '' ? '' : normalizeBody(rawBody)
   await d.store.updateMessage(m.id, { body, editedAt: now(d) })
+  const c = await d.store.getConversation(m.conversationId)
+  if (c) await recordMentions(d, c, m.id, body)
   await d.store.appendEvent({ kind: 'message.edited', conversationId: m.conversationId, messageId: m.id, userId: null })
 }
 

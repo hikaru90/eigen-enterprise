@@ -4507,6 +4507,15 @@ export type CoreApiTools = {
         "title": string
         "unread": boolean
       }>
+      "mentions": Array<{
+        "at": string
+        "detail": string
+        "href": string
+        "key": string
+        "kind": "mention"
+        "title": string
+        "unread": boolean
+      }>
       "unread": number
     }
   }
@@ -4521,6 +4530,15 @@ export type CoreApiTools = {
         "href": string
         "key": string
         "kind": "question" | "task" | "task_update" | "coworker"
+        "title": string
+        "unread": boolean
+      }>
+      "mentions": Array<{
+        "at": string
+        "detail": string
+        "href": string
+        "key": string
+        "kind": "mention"
         "title": string
         "unread": boolean
       }>

@@ -11,6 +11,7 @@ export class MemoryMessagesStore implements MessagesStore {
   reactions: Reaction[] = []
   attachments: Attachment[] = []
   folders = new Map<string, string>()
+  mentions = new Map<string, string[]>()
   onEvent: ((id: number) => void) | null = null
 
   private rows(id: string) {
@@ -90,6 +91,19 @@ export class MemoryMessagesStore implements MessagesStore {
       const m = this.messages.get(id)
       return m ? [m] : []
     })
+  }
+  async setMentions(messageId: string, userIds: string[]) {
+    this.mentions.set(messageId, [...new Set(userIds)])
+  }
+  async mentionsOf(userId: string, limit: number) {
+    return [...this.mentions]
+      .filter(([, ids]) => ids.includes(userId))
+      .flatMap(([id]) => {
+        const m = this.messages.get(id)
+        return m && !m.deletedAt ? [m] : []
+      })
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id))
+      .slice(0, limit)
   }
   async updateMessage(id: string, patch: Partial<Pick<Message, 'body' | 'editedAt' | 'deletedAt'>>) {
     const m = this.messages.get(id)

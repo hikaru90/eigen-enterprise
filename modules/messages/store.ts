@@ -123,6 +123,10 @@ export type MessagesStore = {
   getMessage(id: string): Promise<Message | null>
   /** The messages with these ids that exist (any order). */
   getMessages(ids: string[]): Promise<Message[]>
+  /** Replaces the people a message mentions (the composer's @handles, resolved against the member list at post/edit). */
+  setMentions(messageId: string, userIds: string[]): Promise<void>
+  /** Messages (not deleted) that mention the person, newest first, at most `limit`. */
+  mentionsOf(userId: string, limit: number): Promise<Message[]>
   updateMessage(id: string, patch: Partial<Pick<Message, 'body' | 'editedAt' | 'deletedAt'>>): Promise<void>
   /** Newest-first page of TOP-LEVEL messages strictly older than `before` (by createdAt, then id). */
   listMessagesBefore(conversationId: string, before: Message | null, limit: number): Promise<Message[]>

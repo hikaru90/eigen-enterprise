@@ -37,6 +37,18 @@ describe('notification inbox', () => {
     expect((await loadInbox(d, 'other')).unread).toBe(2)
   })
 
+  it('mentions come in their own list (the items keep their kinds), count as unread and mark read like the rest', async () => {
+    const mention: InboxSourceItem = { key: 'mention:m1', kind: 'mention', title: 'Kim mentioned you in #general', detail: 'hey', href: '/messages?c=c1', at: '2026-11-03T00:00:00Z' }
+    const d = setup([item('a', '2026-11-01T00:00:00Z'), mention])
+    const inbox = await loadInbox(d, 'u')
+    expect(inbox.items.map((i) => i.key)).toEqual(['a'])
+    expect(inbox.mentions.map((i) => [i.key, i.unread])).toEqual([['mention:m1', true]])
+    expect(inbox.unread).toBe(2)
+    const after = await markInboxRead(d, 'u', ['mention:m1'])
+    expect(after.mentions[0].unread).toBe(false)
+    expect(after.unread).toBe(1)
+  })
+
   it('refuses keys that are not in the person’s inbox, and an empty list', async () => {
     const d = setup([item('a', '2026-11-01T00:00:00Z')])
     await expect(markInboxRead(d, 'u', ['nope'])).rejects.toThrow(InboxError)
