@@ -12,6 +12,7 @@ import type { CoworkerActor, CoworkerDeps, CoworkerView, OrgChartEntry } from '$
 import { COWORKER_TEMPLATE_IDS, COWORKER_TEMPLATES } from '$lib/server/coworkers/templates'
 import { COWORKER_EVENT_KINDS, COWORKER_EVENT_OUTCOMES } from '$lib/server/db/coworker-events.schema'
 import { COWORKER_RUN_STATUSES, COWORKER_STOP_REASONS, COWORKER_TRIGGER_KINDS } from '$lib/server/db/coworkers.schema'
+import type { SlotSource } from '$lib/server/llm/slots'
 import type { AvatarStage } from '$lib/server/profile/avatar'
 import { COWORKERS_CREATE_TOOL, COWORKERS_MODULE_ID, COWORKERS_REMOVE_TOOL } from './manifest'
 
@@ -56,6 +57,8 @@ export type CoworkersToolDeps = {
   rhythms?: () => Promise<RhythmDeps>
   notices?: () => Promise<NoticeDeps>
   events?: () => Promise<EventSubscriptionDeps>
+  /** Where the company's calls go (eigenInference or its own key): it decides whether a co-worker's model shows and may be picked. */
+  aiSource?: () => Promise<SlotSource>
   /** Where coworkers.avatar_upload stores a picture (default: the avatar blob store). */
   avatarStore?: () => Promise<AvatarStage>
 }
@@ -131,7 +134,8 @@ export const coworkerViewSchema = z.object({
   title: z.string().nullable(),
   accountabilities: z.array(z.string()),
   lens: z.string(),
-  modelId: z.string(),
+  /** null on eigenInference: it runs on eigenInference, no model is named (BYOK: its pick). */
+  modelId: z.string().nullable(),
   enabled: z.boolean(),
   dailyCapUsd: z.number(),
   templateId: z.string().nullable(),
@@ -300,6 +304,21 @@ const liveRunLocations: RunLocationAccess = async (reader, ids) =>
   (await import('$lib/server/coworkers/run-log')).liveRunLocations(reader, ids)
 
 /** A change to the co-workers took effect: tell this process (the turns reload their agents). */
+const liveAiSource = async (): Promise<SlotSource> => (await import('$lib/server/llm/slots')).companySlotSource(null)
+
+/**
+ * Wish cd140a7a (2026-11-28): on eigenInference nobody picks a co-worker's model, it runs on the
+ * pool's chat pick (DeepSeek). A model_id given there is refused, loud, never silently dropped.
+ * A new co-worker stores the pool's chat pick, which applies once the company runs on its own key.
+ */
+function eigenInferenceModelRefusal(modelId: string | undefined): KernelError | null {
+  if (modelId === undefined) return null
+  return new KernelError(
+    'invalid_input',
+    "This company runs on eigenInference, which picks the co-workers' model itself; leave model_id out. A co-worker's model can be picked only on the company's own key (Settings → AI).",
+  )
+}
+
 async function announced<T>(change: Promise<T>): Promise<T> {
   const out = await change
   notifyCoworkersChanged()
@@ -314,6 +333,11 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
   const rhythms = opts.rhythms ?? liveRhythms
   const notices = opts.notices ?? liveNotices
   const events = opts.events ?? liveEvents
+  const aiSource = opts.aiSource ?? liveAiSource
+  const presented = async (view: Promise<CoworkerView>): Promise<CoworkerView> => {
+    const [v, source] = await Promise.all([view, aiSource()])
+    return (await service()).presentCoworker(v, source)
+  }
   const avatarStore = opts.avatarStore ?? (async () => (await import('$lib/server/profile/avatar')).avatarBlobs())
   const eventService = () => import('$lib/server/coworkers/event-subscriptions')
   const service = () => import('$lib/server/coworkers/service')
@@ -340,7 +364,10 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       inputSchema: emptyInput,
       outputSchema: z.object({ coworkers: z.array(coworkerViewSchema) }),
       permission: { roles: READ_ROLES },
-      handler: async () => ({ coworkers: await (await service()).listCoworkers((await deps()).store) }),
+      handler: async () => {
+        const [list, source, svc] = await Promise.all([(await service()).listCoworkers((await deps()).store), aiSource(), service()])
+        return { coworkers: list.map((c) => svc.presentCoworker(c, source)) }
+      },
     },
     {
       name: 'coworkers.get',
@@ -350,13 +377,13 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       inputSchema: byIdInput,
       outputSchema: coworkerViewSchema,
       permission: { roles: READ_ROLES },
-      handler: async (_ctx, input) => (await service()).getCoworker((await deps()).store, byIdInput.parse(input).user_id),
+      handler: async (_ctx, input) => presented((await service()).getCoworker((await deps()).store, byIdInput.parse(input).user_id)),
     },
     {
       name: COWORKERS_CREATE_TOOL,
       module: COWORKERS_MODULE_ID,
       summary:
-        'Create an AI co-worker: from template_id (coworkers.templates), with any field overridden, or from explicit name/title/lens/accountabilities/model_id/daily_cap_usd. model_id must be a chat model of the vetted pool. Optional reports_to_user_id / reports_to_user_ids places it in the org chart (default: answers to the owner), and avatar_preset / avatar_sha256 sets its picture. It joins as a member and never signs in. Waits for a person’s approval in every approval mode.',
+        'Create an AI co-worker: from template_id (coworkers.templates), with any field overridden, or from explicit name/title/lens/accountabilities/model_id/daily_cap_usd. model_id must be a chat model of the vetted pool, and only on the company’s own key (on eigenInference it is refused: eigenInference picks the model). Optional reports_to_user_id / reports_to_user_ids places it in the org chart (default: answers to the owner), and avatar_preset / avatar_sha256 sets its picture. It joins as a member and never signs in. Waits for a person’s approval in every approval mode.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       approvalAlways: true,
@@ -367,7 +394,11 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) => {
         const i = createInput.parse(input)
-        return announced(
+        const onEigenInference = (await aiSource()) === 'eigeninference'
+        const refusal = onEigenInference ? eigenInferenceModelRefusal(i.model_id) : null
+        if (refusal) throw refusal
+        const { recommendedModel } = await import('$lib/server/llm/model-pool')
+        return presented(announced(
           (await service()).createCoworker(
             await actor(ctx),
             {
@@ -376,7 +407,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
               title: i.title,
               lens: i.lens,
               accountabilities: i.accountabilities,
-              modelId: i.model_id,
+              modelId: onEigenInference ? recommendedModel('chat', 'openrouter') : i.model_id,
               reportsToUserId: i.reports_to_user_id,
               reportsToUserIds: i.reports_to_user_ids,
               dailyCapUsd: i.daily_cap_usd,
@@ -385,7 +416,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
             },
             await deps(),
           ),
-        )
+        ))
       },
     },
     {
@@ -412,7 +443,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       name: 'coworkers.update',
       module: COWORKERS_MODULE_ID,
       summary:
-        "Change an AI co-worker (only the fields given): name, title, lens, accountabilities, model_id (a chat model of the vetted pool), daily_cap_usd, reports_to_user_id / reports_to_user_ids ([] or null = answers to the owner), avatar_preset / avatar_sha256 (null clears). Refuses a reporting cycle.",
+        "Change an AI co-worker (only the fields given): name, title, lens, accountabilities, model_id (a chat model of the vetted pool; only on the company's own key, refused on eigenInference), daily_cap_usd, reports_to_user_id / reports_to_user_ids ([] or null = answers to the owner), avatar_preset / avatar_sha256 (null clears). Refuses a reporting cycle.",
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (_input: z.infer<typeof updateInput>, output: unknown) => `Changed the AI co-worker ${nameOf(output) ?? ''}`.trim(),
@@ -421,7 +452,9 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) => {
         const i = updateInput.parse(input)
-        return announced(
+        const refusal = (await aiSource()) === 'eigeninference' ? eigenInferenceModelRefusal(i.model_id) : null
+        if (refusal) throw refusal
+        return presented(announced(
           (await service()).updateCoworker(
             await actor(ctx),
             {
@@ -439,7 +472,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
             },
             await deps(),
           ),
-        )
+        ))
       },
     },
     {
@@ -453,9 +486,9 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       outputSchema: coworkerViewSchema,
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) =>
-        announced(
+        presented(announced(
           (await service()).setCoworkerEnabled(await actor(ctx), { userId: byIdInput.parse(input).user_id, enabled: true }, await deps()),
-        ),
+        )),
     },
     {
       name: 'coworkers.disable',
@@ -468,9 +501,9 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       outputSchema: coworkerViewSchema,
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) =>
-        announced(
+        presented(announced(
           (await service()).setCoworkerEnabled(await actor(ctx), { userId: byIdInput.parse(input).user_id, enabled: false }, await deps()),
-        ),
+        )),
     },
     {
       name: COWORKERS_REMOVE_TOOL,
@@ -485,7 +518,7 @@ export function createCoworkersTools(opts: CoworkersToolDeps = {}): ToolDescript
       outputSchema: coworkerViewSchema,
       permission: { roles: ADMIN_ROLES },
       handler: async (ctx, input) =>
-        announced((await service()).removeCoworker(await actor(ctx), { userId: byIdInput.parse(input).user_id }, await deps())),
+        presented(announced((await service()).removeCoworker(await actor(ctx), { userId: byIdInput.parse(input).user_id }, await deps()))),
     },
     {
       name: 'coworkers.runs',

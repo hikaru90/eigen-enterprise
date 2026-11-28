@@ -458,6 +458,7 @@
   "coworkers_lens_hint": "Worauf dieser Platz achtet und wo er widerspricht. Er argumentiert daraus, nicht um zuzustimmen.",
   "coworkers_accountabilities_hint": "Eine pro Zeile, 1 bis 8.",
   "coworkers_field_model": "Modell",
+  "coworkers_runs_on_eigeninference": "Läuft auf eigenInference",
   "coworkers_pick_model": "Modell wählen",
   "coworkers_model_recommended": "empfohlen",
   "coworkers_field_daily_cap": "Tageslimit (USD)",

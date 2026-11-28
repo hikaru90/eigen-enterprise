@@ -1,5 +1,6 @@
 import type { StreamFrame } from '../../../../modules/messages/hub'
-import type { CoworkerView } from './service'
+import { presentCoworker, type CoworkerView } from './service'
+import type { SlotSource } from '$lib/server/llm/slots'
 import type { CoworkerTurns, HeardMessage, TurnPrompts } from './turns'
 import type { AgentConfig, CoworkerSource } from '$lib/kernel/agent'
 import { coworkerPrincipal } from '$lib/kernel/principals'
@@ -21,7 +22,8 @@ export function coworkerAgentConfig(view: CoworkerView, prompts: TurnPrompts): A
     memoryScope: 'company',
     verificationPolicy: 'none',
     instructions: (turn) => prompts.get(turn.sessionId),
-    modelId: view.modelId,
+    // null = eigenInference: the pool's chat pick (the company's chat slot), never a stored pick.
+    ...(view.modelId !== null ? { modelId: view.modelId } : {}),
     task: 'coworkers.turn',
     actsAs: {
       kind: 'self',
@@ -32,9 +34,20 @@ export function coworkerAgentConfig(view: CoworkerView, prompts: TurnPrompts): A
   }
 }
 
-export function coworkerAgentSource(deps: { listEnabled: () => Promise<CoworkerView[]>; prompts: TurnPrompts }): CoworkerSource {
+/**
+ * The agents as the company's AI source runs them, read before every turn: on eigenInference a
+ * co-worker's stored pick (a Sonnet chosen before, say) no longer runs (wish cd140a7a, 2026-11-28).
+ */
+export function coworkerAgentSource(deps: {
+  listEnabled: () => Promise<CoworkerView[]>
+  prompts: TurnPrompts
+  aiSource: () => Promise<SlotSource>
+}): CoworkerSource {
   return {
-    listAgentConfigs: async () => (await deps.listEnabled()).map((view) => coworkerAgentConfig(view, deps.prompts)),
+    listAgentConfigs: async () => {
+      const [views, source] = await Promise.all([deps.listEnabled(), deps.aiSource()])
+      return views.map((view) => coworkerAgentConfig(presentCoworker(view, source), deps.prompts))
+    },
   }
 }
 

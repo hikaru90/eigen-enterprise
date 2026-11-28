@@ -22,7 +22,7 @@
 
   const p = $derived(data.person)
   const c = $derived(data.coworker)
-  const family = $derived(c ? modelFamily(c.modelId) : null)
+  const family = $derived(c?.modelId ? modelFamily(c.modelId) : null)
   const accountables = $derived(
     c ? (c.accountableHumans.length > 0 ? c.accountableHumans : c.accountableHuman ? [c.accountableHuman] : []) : [],
   )
@@ -116,7 +116,9 @@
         </dd>
 
         <dt class="font-medium">{m.coworkers_field_model()}</dt>
-        <dd data-testid="profile-model">{family} · <span class="font-mono text-xs">{modelName(c.modelId)}</span></dd>
+        <dd data-testid="profile-model">
+          {#if c.modelId}{family} · <span class="font-mono text-xs">{modelName(c.modelId)}</span>{:else}{m.coworkers_runs_on_eigeninference()}{/if}
+        </dd>
 
         <dt class="font-medium">{m.coworkers_field_daily_cap()}</dt>
         <dd>{m.coworkers_daily_cap_value({ amount: c.dailyCapUsd.toFixed(2) })}</dd>

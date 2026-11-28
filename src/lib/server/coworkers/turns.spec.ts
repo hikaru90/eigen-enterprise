@@ -202,6 +202,16 @@ describe('a turn that cannot answer says so and is not retried', () => {
 })
 
 describe('what a turn carries', () => {
+  it('on eigenInference a stored pick (a Sonnet chosen before) does not run: the turn names no model, so the pool’s chat pick runs', async () => {
+    const fx = turnsFixture({ script: () => 'On it.', extra: { aiSource: async () => 'eigeninference' } })
+    await fx.handle.reload()
+    const launch = await createChannel(fx.deps, 'owner', { name: 'launch', private: false })
+    await postMessage(fx.deps, 'bea', launch.id, '@marketing plan the launch')
+    await fx.settle()
+    expect(fx.calls.length).toBeGreaterThan(0)
+    expect(fx.calls[0]!.modelId).toBeUndefined()
+  })
+
   it('its own model, its own prompt with the thread, the cost of its trace on the run; agents reloaded each turn', async () => {
     const fx = turnsFixture({ script: (call) => (call.agentId === 'coworker-cw-mkt' ? 'Story first. @gtm what price?' : '$12 per seat. @marketing') })
     await fx.handle.reload()

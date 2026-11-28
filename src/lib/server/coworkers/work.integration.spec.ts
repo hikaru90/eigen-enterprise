@@ -129,6 +129,7 @@ describe.skipIf(!DATABASE_URL)('co-worker rhythms and assignments on Postgres wi
         spentUsdToday: ledgerSpentUsdToday,
       })
       const handle = composeCoworkerTurns({
+        aiSource: async () => 'byok' as const,
         typing: new (await import('../../../../modules/messages/typing')).TypingBoard(),
         registry,
         runtime,

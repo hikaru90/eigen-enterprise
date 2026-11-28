@@ -10,6 +10,7 @@ import { avatarUrl, isAvatarSha } from '$lib/profile/profile'
 import { isAdminRole, type MemberRole } from '$lib/server/auth/roles'
 import type { UserKind } from '$lib/server/db/auth.schema'
 import { assertPoolModel, ModelNotInPoolError } from '$lib/server/llm/model-pool'
+import type { SlotSource } from '$lib/server/llm/slots'
 import { coworkerTemplate, type CoworkerTemplate } from './templates'
 
 /**
@@ -64,7 +65,12 @@ export type CoworkerProfileRow = {
   userId: string
   slug: string
   lens: string
-  modelId: string
+  /**
+   * The chat model it runs on: its own pick on the company's own key (bring-your-own-key).
+   * null on eigenInference (owner, 2026-11-28): there it runs on the pool's chat pick and the
+   * model is not named to anyone, it just runs on eigenInference ({@link presentCoworker}).
+   */
+  modelId: string | null
   enabled: boolean
   dailyCapUsd: number
   templateId: string | null
@@ -293,6 +299,14 @@ function accountableHumansIn(chart: Chart, coworkerId: string): AccountableHuman
   if (humans.length > 0) return humans
   const owner = ownerOf(chart)
   return [{ id: owner.id, name: owner.name, reason: 'owner' }]
+}
+
+/**
+ * A co-worker as people (and the agent, and the turns) see it under the company's AI source:
+ * on eigenInference its stored pick neither runs nor shows (modelId null); on its own key it does.
+ */
+export function presentCoworker(view: CoworkerView, source: SlotSource): CoworkerView {
+  return source === 'eigeninference' ? { ...view, modelId: null } : view
 }
 
 function coworkerView(

@@ -157,6 +157,7 @@ export function turnsFixture(opts: { script: Script; budget?: number; staleAfter
   const hub = new MessagesHub(f.deps)
   const typing = new TypingBoard()
   const handle = composeCoworkerTurns({
+    aiSource: async () => 'byok' as const,
     typing,
     registry,
     runtime,

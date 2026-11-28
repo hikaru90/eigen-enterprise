@@ -5,9 +5,8 @@ import type { CoworkerView } from '$lib/server/coworkers/service'
 import type { CoworkerTemplate } from '$lib/server/coworkers/templates'
 import type { PersonRunner } from '$lib/server/org/person-run'
 import { redirect } from '@sveltejs/kit'
-import { chatModelOption } from '$lib/coworkers/model-family'
 import { requireCapability } from '$lib/server/auth/require-capability'
-import { chatModels } from '$lib/server/llm/model-pool'
+import { liveCoworkerModelOptions } from '$lib/server/coworkers/model-options'
 import { cardInput, seatInput } from '$lib/server/org/form-input'
 import { loadOrgPeople } from '$lib/server/org/org-people'
 import { field, runAction } from '$lib/server/org/page-actions'
@@ -19,12 +18,13 @@ const REASON = 'Only the owner or an admin manages the AI co-workers.'
 export const _coworkersPageDeps: {
   run: PersonRunner
   role: (userId: string) => Promise<string | null>
-  chatModels: () => ChatModelOption[]
+  chatModels: () => ChatModelOption[] | Promise<ChatModelOption[]>
   timeZone: (userId: string) => Promise<string>
 } = {
   run: personRun,
   role: async (userId) => (await import('$lib/server/auth/user-role')).getUserRole(userId),
-  chatModels: () => chatModels().map(chatModelOption),
+  // None on eigenInference: it picks the co-workers' model (wish cd140a7a).
+  chatModels: liveCoworkerModelOptions,
   timeZone: async (userId) => {
     const [{ withDbUser }, { getUserPreferredTimezone }] = await Promise.all([
       import('$lib/server/db'),
@@ -93,7 +93,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     rhythms,
     timeZone,
     templates: templates.templates,
-    models: _coworkersPageDeps.chatModels(),
+    models: await _coworkersPageDeps.chatModels(),
     seats: people.map((p): SeatOption => ({ id: p.id, name: p.name, kind: p.kind })),
   }
 }

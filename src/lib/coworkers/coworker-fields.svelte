@@ -87,8 +87,14 @@
     <p id="{idPrefix}-lens-hint" class="text-xs text-muted-foreground">{m.coworkers_lens_hint()}</p>
   </div>
   <div class="space-y-1">
-    <label class="text-sm font-medium" for="{idPrefix}-model">{m.coworkers_field_model()}</label>
-    <ModelSelect id="{idPrefix}-model" {models} bind:value={card.modelId} testid="{idPrefix}-model" />
+    <!-- No models offered = eigenInference: it picks the model, there is nothing to choose (wish cd140a7a). -->
+    {#if models.length > 0}
+      <label class="text-sm font-medium" for="{idPrefix}-model">{m.coworkers_field_model()}</label>
+      <ModelSelect id="{idPrefix}-model" {models} bind:value={card.modelId} testid="{idPrefix}-model" />
+    {:else}
+      <p class="text-sm font-medium">{m.coworkers_field_model()}</p>
+      <p class="text-sm text-muted-foreground" data-testid="{idPrefix}-model-eigeninference">{m.coworkers_runs_on_eigeninference()}</p>
+    {/if}
   </div>
   <div class="space-y-1">
     <label class="text-sm font-medium" for="{idPrefix}-cap">{m.coworkers_field_daily_cap()}</label>
