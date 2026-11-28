@@ -1,5 +1,5 @@
 import { eq, isNull, and } from 'drizzle-orm'
-import { getDb } from '$lib/server/db'
+import { companyDb } from '$lib/server/db'
 import { companyAi } from '$lib/server/db/company.schema'
 import { assertPoolModel, type ChoosableSlot } from './model-pool'
 
@@ -36,7 +36,7 @@ export type CompanyAiStore = {
 export function companyAiStore(): CompanyAiStore {
   return {
     async read() {
-      const [row] = await getDb().select().from(companyAi).where(eq(companyAi.id, ROW)).limit(1)
+      const [row] = await companyDb().select().from(companyAi).where(eq(companyAi.id, ROW)).limit(1)
       if (!row) {
         throw new Error('The company AI settings row is missing (migration 0160_company_ai did not run).')
       }
@@ -53,7 +53,7 @@ export function companyAiStore(): CompanyAiStore {
     },
 
     async setUseEigenInference(on, by) {
-      const updated = await getDb()
+      const updated = await companyDb()
         .update(companyAi)
         .set({ useEigenInference: on, updatedBy: by, updatedAt: new Date() })
         .where(eq(companyAi.id, ROW))
@@ -63,7 +63,7 @@ export function companyAiStore(): CompanyAiStore {
 
     async setPick(slot, model, by) {
       if (model !== null) assertPoolModel(slot, model)
-      const updated = await getDb()
+      const updated = await companyDb()
         .update(companyAi)
         .set({ [PICK_COLUMN[slot]]: model, updatedBy: by, updatedAt: new Date() })
         .where(eq(companyAi.id, ROW))
@@ -73,11 +73,11 @@ export function companyAiStore(): CompanyAiStore {
 
     async pinEmbeddingModel(model) {
       assertPoolModel('embedding', model)
-      await getDb()
+      await companyDb()
         .update(companyAi)
         .set({ embeddingModel: model, updatedBy: 'system:embedding-pin', updatedAt: new Date() })
         .where(and(eq(companyAi.id, ROW), isNull(companyAi.embeddingModel)))
-      const [row] = await getDb()
+      const [row] = await companyDb()
         .select({ embeddingModel: companyAi.embeddingModel })
         .from(companyAi)
         .where(eq(companyAi.id, ROW))

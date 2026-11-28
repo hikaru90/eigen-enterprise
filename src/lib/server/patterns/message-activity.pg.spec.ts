@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { getDb } from '$lib/server/db'
+import { closeAppDbPool, getDb } from '$lib/server/db'
 import { appDbAsyncLocal, type AppDatabase } from '$lib/server/db/context'
 import { messageConversations, messages } from '$lib/server/db/messages.schema'
 import { messageActivityEvents } from './message-activity'
@@ -26,6 +26,7 @@ describe.skipIf(!url)('messageActivityEvents (Postgres)', () => {
   })
 
   afterAll(async () => {
+    await closeAppDbPool()
     await sql.end()
   })
 
@@ -37,6 +38,11 @@ describe.skipIf(!url)('messageActivityEvents (Postgres)', () => {
       }),
     ).rejects.toBeInstanceOf(Rollback)
   }
+
+  it('reads outside any request (the job-queue tick builds the digest)', async () => {
+    expect(appDbAsyncLocal.getStore()).toBeUndefined()
+    await expect(messageActivityEvents(new Date())).resolves.toEqual([])
+  })
 
   it('a DM-only author gets no message count; a public-channel message counts', async () => {
     await inRolledBackTx(async () => {
