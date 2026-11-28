@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock, rhythmsTickMock, calendarTickMock, patternsTickMock } = vi.hoisted(() => ({
+const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, tracesTickMock, domainsTickMock, rhythmsTickMock, calendarTickMock, patternsTickMock } = vi.hoisted(() => ({
   patternsTickMock: vi.fn(async () => {}),
   calendarTickMock: vi.fn(async () => {}),
   domainsTickMock: vi.fn(async () => {}),
   rhythmsTickMock: vi.fn(async () => {}),
   shareTickMock: vi.fn(async () => {}),
+  tracesTickMock: vi.fn(async () => {}),
   recoverMock: vi.fn(),
   ensureMock: vi.fn(),
   drainMock: vi.fn(),
@@ -37,6 +38,9 @@ vi.mock('./drive-blobs-tick', () => ({
 }))
 vi.mock('./contribute-share-tick', () => ({
   tickContributeShare: shareTickMock,
+}))
+vi.mock('./traces-tick', () => ({
+  tickTraces: tracesTickMock,
 }))
 vi.mock('./calendar-reminders-tick', () => ({
   tickCalendarReminders: calendarTickMock,
@@ -110,6 +114,8 @@ describe('tickGlobalJobQueue', () => {
     expect(drainMock).toHaveBeenCalledOnce()
     // Contribute is a system module: its sharing runs on every tick (its own switch is in Settings).
     expect(shareTickMock).toHaveBeenCalledOnce()
+    // Product signals run on every tick too (their own switch is in Settings → Company).
+    expect(tracesTickMock).toHaveBeenCalledOnce()
     // AI co-workers are core: their rhythms run on every tick, whatever plugins are off (C6).
     expect(rhythmsTickMock).toHaveBeenCalledOnce()
     // What's happening is core: its daily digest check runs on every tick (wish 75a4e570).

@@ -30,7 +30,7 @@ vi.mock('$lib/server/llm/member-daily-cap-store', () => ({
   },
 }))
 
-const { mockEnv, logActivityCallMock, getDbMock, decryptTenantValueMock, captureServerEventMock } =
+const { mockEnv, logActivityCallMock, getDbMock, decryptTenantValueMock, PostHogCtor } =
   vi.hoisted(() => {
     function makeDbMock() {
       // Returns a chainable Drizzle-style builder that resolves to [] (no DB rows).
@@ -62,7 +62,7 @@ const { mockEnv, logActivityCallMock, getDbMock, decryptTenantValueMock, capture
       logActivityCallMock: vi.fn(),
       getDbMock: vi.fn(() => makeDbMock()),
       decryptTenantValueMock: vi.fn(async () => 'decrypted-key'),
-      captureServerEventMock: vi.fn(),
+      PostHogCtor: vi.fn(),
     }
   })
 
@@ -80,9 +80,8 @@ vi.mock('$lib/server/activity/log-call', () => ({
   logActivityCall: logActivityCallMock,
 }))
 
-vi.mock('$lib/server/analytics/posthog-server', () => ({
-  captureServerEvent: captureServerEventMock,
-}))
+// Box PostHog capture is retired (plan/traces-phone-home.md T6): no model call may make a PostHog client.
+vi.mock('posthog-node', () => ({ PostHog: PostHogCtor }))
 
 vi.mock('$lib/server/llm/preferences', () => ({
   isByokBilling: vi.fn(async () => true),
@@ -184,6 +183,8 @@ describe('llm client retries', () => {
       'u1',
       expect.objectContaining({
         operation: 'llm.chat.chat.success(attempt=1)',
+        attempt: 1,
+        outcome: 'ok',
         baseCostUsd: 0,
         gatewayHost: 'example.test',
       }),
@@ -226,7 +227,8 @@ describe('llm client retries', () => {
     )
   })
 
-  it('captures ai generation on successful chat completion', async () => {
+  it('sends nothing to PostHog, even with POSTHOG_API_KEY set — retired on boxes (traces T6)', async () => {
+    mockEnv.POSTHOG_API_KEY = 'phc_test'
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -236,32 +238,13 @@ describe('llm client retries', () => {
         }),
       ),
     )
-
-    await llmChatCompletion({
-      task: 'memory.split_capture',
-      userId: 'u1',
-      messages: [{ role: 'user', content: 'hello observability' }],
-      aiSessionId: 'session-1',
-      aiTraceId: 'trace-1',
-    })
-
-    expect(captureServerEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        distinctId: 'u1',
-        event: '$ai_generation',
-        properties: expect.objectContaining({
-          $ai_session_id: 'session-1',
-          $ai_trace_id: 'trace-1',
-          $ai_model: 'gpt-test',
-          $ai_provider: 'eurouter',
-          $ai_input_tokens: 12,
-          $ai_output_tokens: 34,
-          $ai_stop_reason: 'stop',
-          $ai_latency: expect.any(Number),
-        }),
-      }),
-    )
+    await llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }], aiSessionId: 'session-1' })
+    vi.stubGlobal('fetch', vi.fn(async () => response(false, 500, { error: 'down' })))
+    await expect(llmChatCompletion({ task: 'memory.split_capture', userId: 'u1', messages: [{ role: 'user', content: 'hello' }] })).rejects.toThrow(/LLM HTTP 500/)
+    expect(PostHogCtor).not.toHaveBeenCalled()
+    delete mockEnv.POSTHOG_API_KEY
   })
+
 
   it('chat includes temperature when provided', async () => {
     const fetchMock = vi.fn(async () =>
@@ -333,7 +316,7 @@ describe('llm client retries', () => {
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
-      expect.objectContaining({ operation: 'llm.chat.chat.cut_short(attempt=1)' }),
+      expect.objectContaining({ operation: 'llm.chat.chat.cut_short(attempt=1)', attempt: 1, outcome: 'cut_short' }),
     )
     expect(logActivityCallMock).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -369,38 +352,7 @@ describe('llm client retries', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('captures ai generation error when all chat retries fail', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => response(false, 500, { error: 'down' })),
-    )
 
-    await expect(
-      llmChatCompletion({
-        task: 'memory.split_capture',
-        userId: 'u1',
-        messages: [{ role: 'user', content: 'hello' }],
-        aiSessionId: 'session-error',
-        aiTraceId: 'trace-error',
-      }),
-    ).rejects.toThrow(/LLM HTTP 500/)
-
-    expect(captureServerEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        distinctId: 'u1',
-        event: '$ai_generation',
-        properties: expect.objectContaining({
-          $ai_session_id: 'session-error',
-          $ai_trace_id: 'trace-error',
-          $ai_model: 'gpt-test',
-          $ai_provider: 'eurouter',
-          $ai_http_status: 500,
-          $ai_is_error: true,
-          $ai_error: expect.any(String),
-        }),
-      }),
-    )
-  })
 
   it('fails when chat api key is missing', async () => {
     mockEnv.LLM_API_KEY = ''
@@ -1104,23 +1056,8 @@ describe('llmChatCompletion attachments (files the model reads)', () => {
         },
       ],
     })
-    const captured = JSON.stringify(captureServerEventMock.mock.calls)
     const logged = JSON.stringify(logActivityCallMock.mock.calls)
-    expect(captured).not.toContain(PDF_B64)
     expect(logged).not.toContain(PDF_B64)
-    expect(captureServerEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        properties: expect.objectContaining({
-          $ai_input: [
-            {
-              role: 'user',
-              content: 'Here is the guide.',
-              attachments: [{ type: 'pdf', filename: 'guide.pdf', bytes: 18 }],
-            },
-          ],
-        }),
-      }),
-    )
   })
 
   it('refuses attachments on a non-user message before any request (fail loud)', async () => {
@@ -1751,11 +1688,6 @@ describe('eigenInference on Opper (PLATFORM_LLM_PROVIDER=opper)', () => {
       expect.anything(),
       'u1',
       expect.objectContaining({ provider: 'platform', gatewayHost: 'api.opper.ai', baseCostUsd: 0.0002 }),
-    )
-    expect(captureServerEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        properties: expect.objectContaining({ $ai_model: 'mistral/deepseek-v4-1-flash-1017', eigen_inference_provider: 'opper' }),
-      }),
     )
   })
 
@@ -2647,8 +2579,6 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
     expect(logged()).not.toContain(WORRY)
     expect(logged()).not.toContain(ANSWER)
     expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
-    expect(JSON.stringify(captureServerEventMock.mock.calls)).not.toContain(WORRY)
-    expect(JSON.stringify(captureServerEventMock.mock.calls)).not.toContain(ANSWER)
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
@@ -2658,19 +2588,6 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
         context: undefined,
       }),
     )
-    const [event] = captureServerEventMock.mock.calls[0] as [
-      { event: string; properties: Record<string, unknown> },
-    ]
-    expect(event.event).toBe('$ai_generation')
-    expect(event.properties).toMatchObject({
-      $ai_model: 'gpt-test',
-      $ai_input_tokens: 12,
-      $ai_output_tokens: 34,
-      $ai_stop_reason: 'stop',
-      $ai_latency: expect.any(Number),
-    })
-    expect(event.properties).not.toHaveProperty('$ai_input')
-    expect(event.properties).not.toHaveProperty('$ai_output_choices')
   })
 
   it('a failing memory chat keeps the error but no prompt text', async () => {
@@ -2690,22 +2607,14 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
 
     expect(logged()).not.toContain(WORRY)
     expect(JSON.stringify(logActivityCallMock.mock.calls)).not.toContain(WORRY)
-    expect(JSON.stringify(captureServerEventMock.mock.calls)).not.toContain(WORRY)
     expect(logActivityCallMock).toHaveBeenCalledWith(
       expect.anything(),
       'u1',
       expect.objectContaining({ operation: 'llm.chat.chat.error(attempt=3)', context: undefined }),
     )
-    expect(captureServerEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        properties: expect.objectContaining({ $ai_is_error: true, $ai_model: 'gpt-test' }),
-      }),
-    )
-    const [event] = captureServerEventMock.mock.calls[0] as [{ properties: object }]
-    expect(event.properties).not.toHaveProperty('$ai_input')
   })
 
-  it('other chats still keep their text for observability', async () => {
+  it('other chats keep their preview in the activity log', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -2719,13 +2628,6 @@ describe('memory content stays out of logs, the AI usage log and PostHog', () =>
       expect.anything(),
       'u1',
       expect.objectContaining({ context: 'hello' }),
-    )
-    expect(captureServerEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        properties: expect.objectContaining({
-          $ai_input: [{ role: 'user', content: 'hello' }],
-        }),
-      }),
     )
   })
 

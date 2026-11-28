@@ -7,6 +7,10 @@ import type { CallTokens } from '$lib/server/llm/gateway-cost'
 import { priceCall } from '$lib/server/pricing'
 import { getCurrentTraceGroupId } from './trace-context'
 
+/** The closed outcomes of one model-call attempt (activity_call_log.outcome). */
+export const ACTIVITY_CALL_OUTCOMES = ['ok', 'error', 'cut_short'] as const
+export type ActivityCallOutcome = (typeof ACTIVITY_CALL_OUTCOMES)[number]
+
 /** activity_call_log.group_id is uuid — non-UUID trace ids must not fail the caller. */
 function resolveActivityGroupId(explicit?: string): string | undefined {
   const candidate = explicit?.trim() || getCurrentTraceGroupId()?.trim()
@@ -33,8 +37,15 @@ export async function logActivityCall(
     durationMs?: number
     /** Token counts the gateway reported (billable model calls), cache reads and writes included. */
     tokens?: CallTokens
+    /** Which attempt of a model call this row is (1-based); absent for rows that are no model call. */
+    attempt?: number
+    /** How the attempt ended; absent for rows that are no model call. */
+    outcome?: ActivityCallOutcome
   },
 ): Promise<void> {
+  if (input.attempt !== undefined && (!Number.isInteger(input.attempt) || input.attempt < 1)) {
+    throw new Error(`A model call's attempt must be a positive integer, got ${input.attempt}`)
+  }
   const priced = priceCall(input.baseCostUsd)
   const contextParts: string[] = []
   if (input.context?.trim()) {
@@ -69,5 +80,7 @@ export async function logActivityCall(
     completionTokens: input.tokens?.completion ?? null,
     cachedTokens: input.tokens?.cacheRead ?? null,
     cacheWriteTokens: input.tokens?.cacheWrite ?? null,
+    attempt: input.attempt ?? null,
+    outcome: input.outcome ?? null,
   })
 }

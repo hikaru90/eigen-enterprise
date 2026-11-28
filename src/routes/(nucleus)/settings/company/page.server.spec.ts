@@ -5,11 +5,12 @@ import { sha256Hex, type BlobStore } from '../../../../../modules/drive/storage'
 
 const { roleMock, storage } = vi.hoisted(() => ({
   roleMock: vi.fn(async (_id: string): Promise<string | null> => 'admin'),
-  storage: { store: null as unknown, blobs: null as unknown, share: null as unknown },
+  storage: { store: null as unknown, blobs: null as unknown, share: null as unknown, traces: null as unknown },
 }))
 vi.mock('../../../../../modules/contribute/share/live', () => ({
   shareDeps: async () => storage.share,
 }))
+vi.mock('$lib/server/traces/live', () => ({ liveTracesDeps: async () => storage.traces }))
 vi.mock('$lib/server/auth/user-role', () => ({ getUserRole: roleMock }))
 vi.mock('$lib/server/company/live', () => ({ companyStorage: () => storage }))
 vi.mock('$lib/server/company/store', async (importOriginal) => ({
@@ -31,6 +32,7 @@ import type { ShareDeps } from '../../../../../modules/contribute/share/service'
 import { HUB_NOT_CONFIGURED } from '../../../../../modules/contribute/share/hub'
 import { memoryInstallKeyStore } from '../../../../../modules/contribute/share/identity'
 import { fixture } from '../../../../../modules/contribute/test-fixtures'
+import { memoryTraceStore } from '../../../../../modules/traces/memory-store'
 import { actions, load } from './+page.server'
 
 function shareFixture() {
@@ -115,6 +117,11 @@ describe('Settings → Company (owner and admins)', () => {
     storage.store = memoryCompanyProfileStore()
     storage.blobs = memoryBlobs()
     storage.share = shareFixture().deps
+    storage.traces = {
+      store: memoryTraceStore(),
+      hub: { config: () => ({ ok: false, message: HUB_NOT_CONFIGURED }), ready: async () => ({ ok: true }), send: async () => ({ status: 200, text: '' }), unauthorized: async () => {} },
+      now: () => new Date('2026-11-21T00:00:00Z'),
+    }
   })
 
   it.each(['member', null])(
@@ -143,6 +150,7 @@ describe('Settings → Company (owner and admins)', () => {
     expect(await load(ev() as never)).toEqual({
       company: { name: 'Founding Name', logo: null },
       share: null,
+      signals: { status: expect.objectContaining({ enabled: true }), canSwitch: false },
     })
   })
 
@@ -316,5 +324,16 @@ describe('Settings → Company (owner and admins)', () => {
       action: 'setSharing',
       ok: true,
     })
+  })
+
+  it('product signals: owner and admins see them; only the owner switches (traces.settings_set)', async () => {
+    const signals = async () => ((await load(ev() as never)) as { signals: { status: { enabled: boolean }; canSwitch: boolean } }).signals
+    expect(await signals()).toMatchObject({ status: { enabled: true }, canSwitch: false })
+    expect(await actions.setSignals!(ev(sharingForm('off')))).toMatchObject({ status: 403, data: { action: 'setSignals' } })
+    roleMock.mockResolvedValue('owner')
+    expect(await signals()).toMatchObject({ canSwitch: true })
+    expect(await actions.setSignals!(ev(sharingForm('off')))).toEqual({ action: 'setSignals', ok: true })
+    expect((await signals()).status.enabled).toBe(false)
+    expect(await actions.setSignals!(ev(sharingForm('maybe')))).toMatchObject({ status: 400 })
   })
 })

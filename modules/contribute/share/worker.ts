@@ -109,7 +109,8 @@ export async function installKey(d: Pick<ShareWorkerDeps, 'share' | 'keys' | 'no
 }
 
 /** Register with the hub when not yet registered. Returns the key, or null when sending must wait (the reason is stored). */
-async function ensureRegistered(d: ShareWorkerDeps, settings: ShareSettings, hub: HubTransport): Promise<InstallKey | null> {
+/** Exported for the traces phone-home, which shares this install's identity and registration (plan/traces-phone-home.md §3). */
+export async function ensureRegistered(d: ShareWorkerDeps, settings: ShareSettings, hub: HubTransport): Promise<InstallKey | null> {
   let key: InstallKey
   try {
     key = await installKey(d, settings)

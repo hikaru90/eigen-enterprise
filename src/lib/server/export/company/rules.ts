@@ -140,7 +140,7 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   llm_active_provider: full,
   activity_call_log: meta(
     always,
-    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host', 'task', 'model', 'prompt_tokens', 'completion_tokens', 'cached_tokens', 'cache_write_tokens'],
+    ['id', 'user_id', 'provider', 'operation', 'base_cost_usd', 'markup_usd', 'total_cost_usd', 'markup_rate', 'created_at', 'group_id', 'duration_ms', 'gateway_host', 'task', 'model', 'prompt_tokens', 'completion_tokens', 'cached_tokens', 'cache_write_tokens', 'attempt', 'outcome'],
     ['context'],
   ),
   // CB2 (0175): Jev's decisions next to the current judge's and people's answers. The owner
@@ -467,6 +467,17 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
   hub_modules: full,
   hub_module_versions: full,
   hub_module_runs: full,
+
+  // --- Product signals (traces phone-home, 0201/0202) --------------------------
+  // What this box sent and how: the owner reads every batch in Settings → Company.
+  trace_batch: full,
+  trace_export_cursor: full,
+  trace_share_settings: full,
+  trace_value_verdict: full,
+  // The hub's copy of every install's usage statistics (only on the hub install).
+  hub_trace_batches: full,
+  hub_trace_spans: full,
+  hub_trace_daily: full,
 }
 
 /**

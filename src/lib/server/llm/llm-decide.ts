@@ -1,6 +1,8 @@
 import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
+import { randomUUID } from 'node:crypto'
 import { logActivityCall } from '$lib/server/activity/log-call'
+import { getCurrentTraceGroupId, runWithTrace } from '$lib/server/activity/trace-context'
 import { getDb } from '$lib/server/db'
 import { LlmHttpError, LlmNotConfiguredError } from './errors'
 import { gatewayReportedCostUsdForLog } from './gateway-cost'
@@ -82,7 +84,7 @@ export type LlmDecideDeps = {
   fetch: typeof fetch
   logCall: (
     userId: string,
-    entry: { provider: string; gatewayHost: string; operation: string; task: AiTaskId; model: string; baseCostUsd: number; context: string; errorMessage?: string; durationMs: number },
+    entry: { provider: string; gatewayHost: string; operation: string; task: AiTaskId; model: string; baseCostUsd: number; context: string; errorMessage?: string; durationMs: number; attempt: number; outcome: 'ok' | 'error' },
   ) => Promise<void>
   now: () => number
 }
@@ -188,6 +190,16 @@ export async function llmDecide(
   },
   deps: LlmDecideDeps = liveLlmDecideDeps,
 ): Promise<LlmDecideResult> {
+  // A decision belongs to the run that asked it; one asked outside any run is a run of its own
+  // (plan/traces-phone-home.md T0), so its cost rows still share one trace.
+  if (getCurrentTraceGroupId() === undefined) return runWithTrace(randomUUID(), () => llmDecideInTrace(input, deps))
+  return llmDecideInTrace(input, deps)
+}
+
+async function llmDecideInTrace(
+  input: Parameters<typeof llmDecide>[0],
+  deps: LlmDecideDeps,
+): Promise<LlmDecideResult> {
   assertQuestions(input.questions)
   await deps.capCheck(input.userId)
   const target = await deps.resolve(input.userId)
@@ -245,6 +257,8 @@ export async function llmDecide(
         task: input.task,
         model,
         operation: `llm.decide.success(attempt=${attempt},model=${model})`,
+        attempt,
+        outcome: 'ok',
         baseCostUsd: costUsd,
         context: costUsd === 0 ? `${context} (usage cost missing from gateway)` : context,
         durationMs,
@@ -258,6 +272,8 @@ export async function llmDecide(
         task: input.task,
         model,
         operation: `llm.decide.error(attempt=${attempt},model=${model})`,
+        attempt,
+        outcome: 'error',
         baseCostUsd: 0,
         context,
         errorMessage: err instanceof Error ? err.message : String(err),

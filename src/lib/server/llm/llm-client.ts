@@ -1,10 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { randomUUID } from 'node:crypto'
 import { aiTaskOperation, type AiTaskId } from '$lib/ai-usage/tasks'
 import { activityProviderForLlmConfig } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
 import { addTraceTokens } from '$lib/server/activity/trace-context'
-import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { getDb } from '$lib/server/db'
 import { env } from '$lib/server/env/private-env'
 import { LlmCutShortError, LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
@@ -94,29 +92,6 @@ function assertAttachmentsOnUserMessages(messages: ChatMessage[]): void {
   }
 }
 
-function base64ByteLength(base64: string): number {
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
-  return Math.floor((base64.length * 3) / 4) - padding
-}
-
-/** Messages as analytics sees them: attachments described (type, name, size), never their bytes. */
-function messagesForObservability(messages: ChatMessage[]): unknown[] {
-  return messages.map((message) => {
-    if (!message.attachments || message.attachments.length === 0) return message
-    return {
-      ...message,
-      attachments: message.attachments.map((attachment) =>
-        attachment.type === 'image'
-          ? { type: 'image', mime: attachment.mime, bytes: base64ByteLength(attachment.base64) }
-          : {
-              type: 'pdf',
-              filename: attachment.filename,
-              bytes: base64ByteLength(attachment.base64),
-            },
-      ),
-    }
-  })
-}
 /** Providers with no embeddings endpoint — memory features need a different provider. */
 const NO_EMBEDDING_PROVIDERS = new Set(['github_copilot'])
 
@@ -128,8 +103,6 @@ export {
 
 /** model = the id sent; poolModel = the pool id it routes (its traits: temperature, Matryoshka), when it is one. */
 type RoutingConfig = { ruleId?: string; model: string; poolModel?: string; provider?: Record<string, unknown> }
-type AiMessageRole = 'system' | 'user' | 'assistant'
-type AiOutputChoice = { role: AiMessageRole; content: string }
 
 export type { LlmContentOrigin, LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
 import type { LlmContentOrigin, LlmProviderKind, ResolvedLlmConfig } from '$lib/server/llm/types'
@@ -145,39 +118,7 @@ function normalizeAiIdentifier(value: string | undefined, fallback: string): str
   return normalized || fallback
 }
 
-function messageContentText(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (part && typeof part === 'object' && 'text' in part) {
-        const text = (part as { text?: unknown }).text
-        return typeof text === 'string' ? text : ''
-      }
-      return ''
-    })
-    .filter(Boolean)
-    .join('')
-}
 
-function extractAiOutputChoices(body: unknown): AiOutputChoice[] {
-  if (!body || typeof body !== 'object') return []
-  const choices = (body as { choices?: unknown }).choices
-  if (!Array.isArray(choices)) return []
-  return choices
-    .map((choice): AiOutputChoice | null => {
-      if (!choice || typeof choice !== 'object') return null
-      const message = (choice as { message?: { role?: unknown; content?: unknown } }).message
-      if (!message || typeof message !== 'object') return null
-      const role = message.role === 'system' || message.role === 'user' ? message.role : 'assistant'
-      return {
-        role,
-        content: messageContentText(message.content),
-      }
-    })
-    .filter((choice): choice is AiOutputChoice => choice !== null)
-}
 
 /** Hostname from gateway base URL for activity logs (handles missing `https://`). */
 export function gatewayHostFromBaseUrl(baseUrl: string): string {
@@ -724,10 +665,8 @@ export async function llmChatCompletion(input: {
   modelOverride?: string
   /** OpenAI-compatible JSON object mode — gateway must support response_format. */
   responseFormat?: 'json_object'
-  /** Optional conversation-level identifier for PostHog AI observability session grouping. */
+  /** A conversation's id: on OpenRouter it pins the session to one provider endpoint (warm prompt cache). */
   aiSessionId?: string
-  /** Optional turn-level identifier for PostHog AI observability trace grouping. */
-  aiTraceId?: string
   /** `'memory'` when the messages carry a person's Memory: its text is never logged or analysed. */
   contentOrigin?: LlmContentOrigin
   /**
@@ -758,7 +697,6 @@ async function llmChatCompletionInner(input: {
   modelOverride?: string
   responseFormat?: 'json_object'
   aiSessionId?: string
-  aiTraceId?: string
   contentOrigin?: LlmContentOrigin
   tools?: unknown[]
   toolChoice?: unknown
@@ -775,16 +713,11 @@ async function llmChatCompletionInner(input: {
   // sanitizeChatMessages spreads each message, so tool calls and attachments pass through it.
   const messages = sanitizeChatMessages(input.messages) as ChatMessage[]
   const origin = input.contentOrigin
-  // Memory calls send PostHog the call's shape (model, tokens, latency), never its text.
-  const observedText = keepsText(origin) ? { $ai_input: messagesForObservability(messages) } : {}
   const aiSessionId = normalizeAiIdentifier(input.aiSessionId, `user-${input.userId}`)
-  const aiTraceId = normalizeAiIdentifier(input.aiTraceId, randomUUID())
   // OpenRouter pins a session's calls to one provider endpoint, so its prompt cache stays warm
   // across an agent's steps and turns. Only a caller's own session, never the per-user fallback.
   const providerSessionId =
     input.aiSessionId?.trim() && target.pool === 'openrouter' ? aiSessionId.slice(0, 256) : null
-  // Which provider serves eigenInference, for PostHog (Activity names it by its gateway host).
-  const inferenceProvider = config.eigenInferenceProvider ? { eigen_inference_provider: config.eigenInferenceProvider } : {}
 
   const maxTokens = input.maxTokens ?? DEFAULT_CHAT_MAX_TOKENS
   const maxAttempts = 3
@@ -898,39 +831,13 @@ async function llmChatCompletionInner(input: {
         task,
         model: routing.model,
         operation: `llm.chat.${operation}.${cutShort ? 'cut_short' : 'success'}(attempt=${attempt})`,
+        attempt,
+        outcome: cutShort ? 'cut_short' : 'ok',
         baseCostUsd: baseCost,
         context: chatActivityPreview(input.messages, origin),
         durationMs: attemptMs,
         tokens: reportedCallTokens(usage),
       })
-      captureServerEvent({
-        distinctId: input.userId,
-        event: '$ai_generation',
-        properties: {
-          $ai_trace_id: aiTraceId,
-          $ai_session_id: aiSessionId,
-          $ai_model: routing.model,
-          $ai_provider: config.provider,
-          ...inferenceProvider,
-          ...observedText,
-          $ai_input_tokens: usage?.prompt_tokens,
-          $ai_cache_read_input_tokens: usage?.prompt_tokens_details?.cached_tokens,
-          $ai_cache_creation_input_tokens: usage?.prompt_tokens_details?.cache_write_tokens,
-          ...(keepsText(origin) ? { $ai_output_choices: extractAiOutputChoices(json) } : {}),
-          $ai_output_tokens: usage?.completion_tokens,
-          $ai_latency: attemptMs / 1000,
-          $ai_http_status: res.status,
-          $ai_base_url: config.baseUrl,
-          $ai_request_url: url,
-          $ai_stop_reason:
-            typeof (json as { choices?: Array<{ finish_reason?: unknown }> })?.choices?.[0]
-              ?.finish_reason === 'string'
-              ? ((json as { choices: Array<{ finish_reason: string }> }).choices[0].finish_reason ??
-                undefined)
-              : undefined,
-        },
-      })
-
       if (cutShort) throw cutShort
       return json
     } catch (err) {
@@ -952,26 +859,6 @@ async function llmChatCompletionInner(input: {
           context: chatActivityPreview(input.messages, origin),
           errorMessage: msg,
           durationMs: Date.now() - attemptStart,
-        })
-      }
-      if (attempt === maxAttempts) {
-        captureServerEvent({
-          distinctId: input.userId,
-          event: '$ai_generation',
-          properties: {
-            $ai_trace_id: aiTraceId,
-            $ai_session_id: aiSessionId,
-            $ai_model: routing.model,
-            $ai_provider: config.provider,
-            ...inferenceProvider,
-            ...observedText,
-            $ai_is_error: true,
-            $ai_error: msg,
-            $ai_http_status: err instanceof LlmHttpError ? err.status : undefined,
-            $ai_latency: (Date.now() - attemptStart) / 1000,
-            $ai_base_url: config.baseUrl,
-            $ai_request_url: url,
-          },
         })
       }
       if (attempt === maxAttempts) break
@@ -1079,6 +966,8 @@ async function llmCreateEmbeddingsInner(input: {
         task: input.task,
         model: routing.model,
         operation: `llm.embedding.success(attempt=${attempt})`,
+        attempt,
+        outcome: 'ok',
         baseCostUsd: baseCost,
         context: embeddingActivityPreview(input.input, input.contentOrigin),
         durationMs: Date.now() - attemptStart,
@@ -1095,6 +984,8 @@ async function llmCreateEmbeddingsInner(input: {
         task: input.task,
         model: routing.model,
         operation: `llm.embedding.error(attempt=${attempt})`,
+        attempt,
+        outcome: 'error',
         baseCostUsd: 0,
         context: embeddingActivityPreview(input.input, input.contentOrigin),
         errorMessage: message,
@@ -1266,6 +1157,8 @@ async function llmCreateTranscriptionDedicated(
         task: input.task,
         model: input.model,
         operation: `llm.stt.success(attempt=${attempt},model=${input.model})`,
+        attempt,
+        outcome: 'ok',
         baseCostUsd: sttCost,
         context:
           (keepsText(input.contentOrigin) ? sttTranscriptPreview(json) : '') ||
@@ -1283,6 +1176,8 @@ async function llmCreateTranscriptionDedicated(
         task: input.task,
         model: input.model,
         operation: `llm.stt.error(attempt=${attempt},model=${input.model})`,
+        attempt,
+        outcome: 'error',
         baseCostUsd: 0,
         context: `format=${input.audio.format}`,
         errorMessage: message,
@@ -1388,6 +1283,8 @@ async function llmCreateSpeechDedicated(
           task: input.task,
           model: input.model,
           operation: `llm.tts.success(attempt=${attempt},model=${input.model})`,
+          attempt,
+          outcome: 'ok',
           baseCostUsd: cost,
           context: `tts:${input.model}${cost === 0 ? ' (usage cost missing from gateway)' : ''}`,
           durationMs: Date.now() - attemptStart,
@@ -1409,6 +1306,8 @@ async function llmCreateSpeechDedicated(
         task: input.task,
         model: input.model,
         operation: `llm.tts.success(attempt=${attempt},model=${input.model})`,
+        attempt,
+        outcome: 'ok',
         baseCostUsd: 0,
         context: `tts:${input.model} (usage cost not reported for /audio/speech)`,
         durationMs: Date.now() - attemptStart,
@@ -1423,6 +1322,8 @@ async function llmCreateSpeechDedicated(
         task: input.task,
         model: input.model,
         operation: `llm.tts.error(attempt=${attempt},model=${input.model})`,
+        attempt,
+        outcome: 'error',
         baseCostUsd: 0,
         context: `tts:${input.model}`,
         errorMessage: message,

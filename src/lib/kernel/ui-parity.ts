@@ -400,6 +400,9 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/hub/contributions/[remoteId] PUT': transport(HUB),
   '/api/hub/installs/[installId] DELETE': transport(HUB),
   '/api/hub/register POST': transport(HUB),
+  '/api/hub/traces DELETE': transport(HUB),
+  '/api/hub/traces POST': transport(HUB),
+  '/api/hub/traces/[batchId] DELETE': transport(HUB),
   // The module hub (plan/phase-upgrades-u2.md §6.2): other installs publish and report runs, signed.
   '/api/hub/modules/publish POST': transport(HUB),
   '/api/hub/modules/[moduleId]/run PUT': transport(HUB),
@@ -470,6 +473,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/company ?/removeLogo': tool('settings.logo_remove'),
   '/(nucleus)/settings/company ?/saveName': tool('settings.update'),
   '/(nucleus)/settings/company ?/setSharing': human(CONSENT_HUB),
+  '/(nucleus)/settings/company ?/setSignals': tool('traces.settings_set'),
+  '/(nucleus)/settings/company/signals ?/withdraw': tool('traces.withdraw'),
   '/(nucleus)/settings/company ?/uploadLogo': tool('settings.logo_set'),
   '/(nucleus)/settings/domains ?/addHost': tool('domains.set_target'),
   '/(nucleus)/settings/domains ?/recheck': tool('domains.recheck'),

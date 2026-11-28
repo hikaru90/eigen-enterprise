@@ -37,14 +37,12 @@ describe('/m/memory layout', () => {
     expect(data.memory).toEqual({ name: 'Memory', description: 'Notes and tasks.', active: true })
   })
 
-  it('tells the privacy note whether AI requests also go to product analytics (POSTHOG_API_KEY)', async () => {
-    privateEnv.POSTHOG_API_KEY = ''
-    const off = (await layoutLoad(signedIn as never)) as { privacy: { analyticsSeesAi: boolean } }
-    expect(off.privacy).toEqual({ analyticsSeesAi: false })
+  it('tells the privacy note nothing about product analytics: the server sends PostHog nothing (traces T6)', async () => {
     privateEnv.POSTHOG_API_KEY = 'phc_test'
-    const on = (await layoutLoad(signedIn as never)) as { privacy: { analyticsSeesAi: boolean } }
-    expect(on.privacy).toEqual({ analyticsSeesAi: true })
+    const data = (await layoutLoad(signedIn as never)) as Record<string, unknown>
+    expect(data).not.toHaveProperty('privacy')
   })
+
 })
 
 describe('/m/memory (its front page is What the brain knows, wish f3fc516e)', () => {

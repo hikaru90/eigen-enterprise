@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // `building` keeps the module's boot side effects (tickers, bootApp) from running on import.
 vi.mock('$app/environment', () => ({ building: true, dev: false, browser: false, version: 'test' }))
 
-const { captureServerException } = vi.hoisted(() => ({ captureServerException: vi.fn() }))
-vi.mock('$lib/server/analytics/posthog-server', () => ({ captureServerException }))
+const { PostHogCtor } = vi.hoisted(() => ({ PostHogCtor: vi.fn() }))
+// Box PostHog capture is retired (plan/traces-phone-home.md T6): nothing may make a server client.
+vi.mock('posthog-node', () => ({ PostHog: PostHogCtor }))
 vi.mock('$lib/server/auth', () => ({ auth: { api: {} } }))
 vi.mock('$lib/server/db', () => ({
   appSql: {},
@@ -46,7 +47,7 @@ function logged(spy: ReturnType<typeof vi.spyOn>): string {
 describe('handleError — unexpected server errors reach the server log', () => {
   afterEach(() => {
     vi.restoreAllMocks()
-    captureServerException.mockClear()
+    PostHogCtor.mockClear()
   })
 
   it('logs the error with its stack, the status, the route id and the path', async () => {
@@ -89,22 +90,17 @@ describe('handleError — unexpected server errors reach the server log', () => 
     expect(line).not.toContain('hunter2')
   })
 
-  it('keeps capturing to PostHog', async () => {
+  it('sends a server error to no third party: box PostHog capture is retired (traces T6)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const error = new Error('boom')
-    await handleError(input(error, 500))
-    expect(captureServerException).toHaveBeenCalledWith(error, 'u1', {
-      status: 500,
-      path: '/settings/passkeys',
-      route_id: '/(nucleus)/settings/passkeys',
-    })
+    await handleError(input(new Error('boom'), 500))
+    expect(PostHogCtor).not.toHaveBeenCalled()
   })
 
   it('stays quiet for 404s (unmatched paths are not server faults)', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     await handleError(input(new Error('Not found: /nope'), 404))
     expect(spy).not.toHaveBeenCalled()
-    expect(captureServerException).not.toHaveBeenCalled()
+    expect(PostHogCtor).not.toHaveBeenCalled()
   })
 })
 

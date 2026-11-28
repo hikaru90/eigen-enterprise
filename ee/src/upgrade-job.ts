@@ -51,6 +51,24 @@ export const outcomeSchema = z
   })
   .strict()
 
+/**
+ * An update's end as the product signals report it (plan/traces-phone-home.md T5): the step, ok,
+ * rolledBack and the release — never `reason` (free text with hosts and paths) or `from` (a
+ * source location). The app's exporter reads these from GET /v1/upgrade/outcomes.
+ */
+export type UpgradeTraceOutcome = { id: string; at: string; release: string; step: (typeof OUTCOME_STEPS)[number]; ok: boolean; rolledBack: boolean }
+
+export function upgradeTraceOutcomes(events: ReadonlyArray<{ id: string; time: string; type: string; data: Record<string, unknown> }>): UpgradeTraceOutcome[] {
+  const out: UpgradeTraceOutcome[] = []
+  for (const e of events) {
+    if (e.type !== 'upgrade.succeeded' && e.type !== 'upgrade.failed') continue
+    const o = outcomeSchema.safeParse(e.data['outcome'])
+    if (!o.success) continue
+    out.push({ id: e.id, at: e.time, release: o.data.release, step: o.data.step, ok: o.data.ok, rolledBack: o.data.rolledBack })
+  }
+  return out
+}
+
 export const upgradeJobSchema = z.object({
   id: z.string(),
   /** The release the person approved (eigenenterprise-<version>-<sha>). */

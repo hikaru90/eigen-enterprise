@@ -322,6 +322,9 @@ export type UpgradeOutcome = {
   rolledBack: boolean
 }
 
+/** An update's end as the product signals report it (ee/src/upgrade-job.ts upgradeTraceOutcomes). */
+export type UpgradeTraceOutcome = { id: string; at: string; release: string; step: Exclude<UpgradeStep, 'handover'>; ok: boolean; rolledBack: boolean }
+
 /** What `ee rollback` would do now (ee/src/rollback.ts): from, to, or why not. */
 export type RollbackPlan = { from: string | null; to: string | null; refused: string | null }
 
@@ -409,6 +412,11 @@ export class EeClient {
   /** What runs, where releases come from, the last update (no network on ee's side). */
   upgrade(): Promise<UpgradeInfo> {
     return this.call('GET', '/v1/upgrade')
+  }
+
+  /** Every update end in ee's journal, for the product signals: step, ok, rolledBack, release — no reason, no source (traces T5). */
+  upgradeOutcomes(): Promise<{ outcomes: UpgradeTraceOutcome[] }> {
+    return this.call('GET', '/v1/upgrade/outcomes')
   }
 
   /** The newest signed release at this box's source (ee fetches and verifies it). */

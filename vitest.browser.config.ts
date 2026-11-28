@@ -197,6 +197,8 @@ export default defineConfig({
       'src/lib/components/contribute/contribute-board.svelte.spec.ts',
       'src/lib/components/contribute/contribute-views.svelte.spec.ts',
       'src/lib/components/contribute/share-settings-card.svelte.spec.ts',
+      // Product signals (plan/traces-phone-home.md T4).
+      'src/lib/components/traces/*.svelte.spec.ts',
       'src/lib/voice/voice-dictation.svelte.spec.ts',
       'src/lib/voice/dictation-field.svelte.spec.ts',
       'src/lib/components/assistant/voice-output-toggle.svelte.spec.ts',

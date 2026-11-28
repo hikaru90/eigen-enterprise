@@ -51,6 +51,7 @@ vi.mock('$lib/server/boot', () => ({
 }))
 
 // Settings → Domains reads the mail domains and (on a managed box) the control plane, past its guard.
+vi.mock('$lib/server/coworkers/model-options', () => ({ liveCoworkerModelOptions: async () => [] }))
 vi.mock('$lib/server/domains/env', () => ({ domainsFromEnv: () => null }))
 vi.mock('../../../modules/email/platform/service', () => ({
   emailPlatform: () => ({ listDomains: async () => [], owlery: { mode: async () => null } }),

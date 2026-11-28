@@ -5,6 +5,7 @@ import { DECISION_KINDS } from './decision-kinds'
 import { moduleManifests } from './index'
 import { memoryHandoverStatus } from './memory/decision-kinds'
 import { memoryInputRoute } from './memory/input-route'
+import { tracesTraceValue } from './traces/decision-kinds'
 import { websitePageAudience } from './website/decision-kinds'
 
 describe('the decision kinds catalog', () => {
@@ -28,6 +29,10 @@ describe('the decision kinds catalog', () => {
     expect(DECISION_KINDS.get('memory.handover_status')).toBe(memoryHandoverStatus)
     expect(memoryHandoverStatus.status).toBe('enforced')
     expect(memoryHandoverStatus.choices).toEqual(['decision_needed', 'in_progress', 'for_info'])
+  })
+
+  it('declares the traces trace_value kind (T1b): usage_meta | personal_or_content, enforced', () => {
+    expect(DECISION_KINDS.get('traces.trace_value')).toBe(tracesTraceValue)
   })
 
   it('every kind has a unique id, a status of shadow or enforced, and belongs to a registered module', () => {

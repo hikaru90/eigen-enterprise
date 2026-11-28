@@ -55,6 +55,7 @@ vi.mock('drizzle-orm/postgres-js', () => ({
   }),
 }))
 
+import { getCurrentTraceGroupId } from '$lib/server/activity/trace-context'
 import { defaultProductionOnlyForDrain, drainUserJobQueue } from './drain'
 
 function claimedWebhookRow(userId: string) {
@@ -115,5 +116,14 @@ describe('drainUserJobQueue DB context', () => {
     expect(result.completed).toBe(1)
     expect(withDbUserMock).toHaveBeenCalledWith('user-webhook', expect.any(Function))
     expect(processWebhookDeliveryJobMock).toHaveBeenCalled()
+  })
+
+  it('runs each job inside a trace of its own, named by the job id (plan/traces-phone-home.md T0)', async () => {
+    let seen: string | undefined
+    processWebhookDeliveryJobMock.mockImplementationOnce(async () => {
+      seen = getCurrentTraceGroupId()
+    })
+    await drainUserJobQueue({ userId: 'user-webhook', productionOnly: false })
+    expect(seen).toBe('job-1')
   })
 })

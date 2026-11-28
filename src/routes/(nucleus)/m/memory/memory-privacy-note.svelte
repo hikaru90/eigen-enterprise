@@ -28,8 +28,8 @@
    *   provider; speech-to-text always goes to OpenRouter (llm-client.ts). Memory's
    *   calls say `contentOrigin: 'memory'` (memory-content-origin.spec.ts): the
    *   gateway logs and keeps their model, size, cost and timing — in server logs,
-   *   the AI usage log (activity_call_log) and, when POSTHOG_API_KEY is set,
-   *   PostHog's $ai_generation (`analyticsSeesAi`) — never their text. Memory's
+   *   the AI usage log (activity_call_log) — never their text; the server sends PostHog
+   *   nothing (box capture retired, plan/traces-phone-home.md T6). Memory's
    *   own log lines carry ids and sizes; its pages send PostHog nothing read off
    *   the page (enterPrivateAnalyticsSurface).
    * - Delete (deleteThoughtForUser) removes the row and everything derived;
@@ -38,7 +38,6 @@
    * Shown on demand in Memory's "?" popover next to its title (Contribute
    * 19fc700d, b732961f), on every Memory tab.
    */
-  let { analyticsSeesAi }: { analyticsSeesAi: boolean } = $props()
 </script>
 
 <section
@@ -66,9 +65,7 @@
     <li>
       To understand and search it, what you capture and search for is sent to this server’s AI
       provider; voice notes are transcribed by OpenRouter. The server’s logs and your AI usage log
-      note that Memory used AI — size, cost, time — never what you wrote.{#if analyticsSeesAi}
-        The same goes for this server’s product analytics (PostHog): how AI requests went, never
-        your Memory text.{/if}
+      note that Memory used AI — size, cost, time — never what you wrote.
     </li>
     <li>
       It is stored in the company’s database, so anyone with direct access to the server can read

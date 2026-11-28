@@ -1323,9 +1323,9 @@
       "version": "7",
       "when": 1795200000191,
       "tag": "0191_memory_documents_in_drive",
-        "breakpoints": true
-      },
-      {
+      "breakpoints": true
+    },
+    {
       "idx": 192,
       "version": "7",
       "when": 1795200000192,
@@ -1344,6 +1344,27 @@
       "version": "7",
       "when": 1795200000198,
       "tag": "0198_messages_calls_wishes",
+      "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1795200000200,
+      "tag": "0200_activity_call_attempt_outcome",
+      "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1795200000201,
+      "tag": "0201_trace_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1795200000202,
+      "tag": "0202_hub_traces",
       "breakpoints": true
     },
     {

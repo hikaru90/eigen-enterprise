@@ -48,7 +48,32 @@ describe('logActivityCall', () => {
       completionTokens: null,
       cachedTokens: null,
       cacheWriteTokens: null,
+      attempt: null,
+      outcome: null,
     })
+  })
+
+  it('persists the attempt and its outcome of a model call', async () => {
+    const values = vi.fn()
+    const insert = vi.fn(() => ({ values }))
+    const db = { insert } as unknown as Parameters<typeof logActivityCall>[0]
+    await logActivityCall(db, 'u1', {
+      provider: 'openrouter',
+      operation: 'llm.chat.chat.error(attempt=2)',
+      task: 'brain.compose_answer',
+      model: 'openai/gpt-4o-mini',
+      baseCostUsd: 0,
+      attempt: 2,
+      outcome: 'error',
+    })
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({ attempt: 2, outcome: 'error' }))
+  })
+
+  it('rejects an attempt that is no positive integer', async () => {
+    const db = { insert: vi.fn() } as unknown as Parameters<typeof logActivityCall>[0]
+    await expect(
+      logActivityCall(db, 'u1', { provider: 'x', operation: 'o', task: null, baseCostUsd: 0, attempt: 0 }),
+    ).rejects.toThrow(/positive integer/)
   })
 
   it('persists the token counts the gateway reported, cache reads and writes included', async () => {
