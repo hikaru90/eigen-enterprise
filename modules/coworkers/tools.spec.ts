@@ -5,8 +5,8 @@ import { coworkerPrincipal } from '$lib/kernel/principals'
 import { KernelRegistry } from '$lib/kernel/registry'
 import type { ToolContext } from '$lib/kernel/types'
 import { onCoworkersChanged } from '$lib/server/coworkers/changes'
-import { memoryCoworkerStore } from '$lib/server/coworkers/memory-store'
 import { MemoryEventStores } from '$lib/server/coworkers/events'
+import { memoryCoworkerStore } from '$lib/server/coworkers/memory-store'
 import { MemoryRhythmStore } from '$lib/server/coworkers/rhythms'
 import { MemoryCoworkerRunStore } from '$lib/server/coworkers/run-store'
 import { getCoworker, type CoworkerActor, type OrgMember } from '$lib/server/coworkers/service'
@@ -25,7 +25,7 @@ const person = (id: string, role: OrgMember['role'], minutesBefore: number): Org
 
 const roleOf: Record<string, OrgMember['role']> = { olga: 'owner', ari: 'admin', mo: 'member' }
 
-function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', opts: { avatars?: Set<string> } = {}) {
+function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', opts: { avatars?: Set<string>; source?: 'eigeninference' | 'byok' } = {}) {
   const store = memoryCoworkerStore([person('olga', 'owner', 3), person('ari', 'admin', 2), person('mo', 'member', 1)])
   let n = 0
   const avatars = opts.avatars ?? new Set<string>()
@@ -42,6 +42,7 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', opts: { a
   const started: string[] = []
   const eventStores = new MemoryEventStores()
   const tools = createCoworkersTools({
+    aiSource: async () => opts.source ?? 'byok',
     events: async () => ({ subscriptions: eventStores, observations: eventStores, coworkers: { get: (id) => getCoworker(store, id) }, now: () => at }),
     runs: async () => runs,
     rhythms: async () => ({
@@ -101,6 +102,36 @@ function setup(mode: 'ask' | 'reasonable' | 'allow_all' = 'allow_all', opts: { a
   }
   return { store, registry, tool, ownerCtx, memberCtx, approved, approvals, runs, started, eventStores }
 }
+
+describe('coworkers on eigenInference (wish cd140a7a: no model to pick, none named)', () => {
+  it('create refuses a model_id, and without one the co-worker shows no model', async () => {
+    const { approved, registry, ownerCtx } = setup('allow_all', { source: 'eigeninference' })
+    await expect(approved('coworkers.create', { template_id: 'designer', model_id: 'qwen/qwen3.8-flash' }, ownerCtx)).rejects.toMatchObject({
+      code: 'invalid_input',
+      message: expect.stringContaining('eigenInference'),
+    })
+    const cw = (await approved('coworkers.create', { template_id: 'designer' }, ownerCtx)) as { id: string; modelId: string | null }
+    expect(cw.modelId).toBeNull()
+    const list = (await registry.execute('coworkers.list', {}, ownerCtx)) as { coworkers: Array<{ modelId: string | null }> }
+    expect(list.coworkers.map((c) => c.modelId)).toEqual([null])
+    expect(((await registry.execute('coworkers.get', { user_id: cw.id }, ownerCtx)) as { modelId: unknown }).modelId).toBeNull()
+    await expect(registry.execute('coworkers.update', { user_id: cw.id, model_id: 'qwen/qwen3.8-flash' }, ownerCtx)).rejects.toMatchObject({ code: 'invalid_input' })
+  })
+
+  it("stores the pool's chat pick (DeepSeek), which applies once the company is on its own key", async () => {
+    const { approved, store, ownerCtx } = setup('allow_all', { source: 'eigeninference' })
+    const cw = (await approved('coworkers.create', { template_id: 'designer' }, ownerCtx)) as { id: string }
+    expect((await getCoworker(store, cw.id)).modelId).toBe('~deepseek/deepseek-flash-latest')
+  })
+
+  it('on the own key the pick shows and can be changed', async () => {
+    const { approved, registry, ownerCtx } = setup('allow_all', { source: 'byok' })
+    const cw = (await approved('coworkers.create', { template_id: 'designer', model_id: 'qwen/qwen3.8-flash' }, ownerCtx)) as { id: string; modelId: string }
+    expect(cw.modelId).toBe('qwen/qwen3.8-flash')
+    const up = (await registry.execute('coworkers.update', { user_id: cw.id, model_id: 'google/gemini-3.8-flash' }, ownerCtx)) as { modelId: string }
+    expect(up.modelId).toBe('google/gemini-3.8-flash')
+  })
+})
 
 describe('coworkers module', () => {
   it('owns exactly its tools, in the coworkers and org namespaces', () => {

@@ -1,5 +1,6 @@
 import type postgres from 'postgres'
 import type { AiUsageRow } from '$lib/ai-usage/overview'
+import { EIGEN_INFERENCE } from '$lib/ai/eigen-inference'
 import type { AiUsagePort } from '$lib/kernel/ai-usage-tools'
 import { ACTIVITY_PAGE_LLM_PROVIDERS, PLATFORM_AI_ACTIVITY_PROVIDER } from '$lib/server/activity/gateway-providers'
 import type { FleetAiUsageDay } from '$lib/server/fleet/ai-usage'
@@ -26,6 +27,16 @@ type Group = {
   completionTokens: string
   cachedTokens: string
   eigenInferenceUsd: string
+  /** The call ran on eigenInference (provider platform). */
+  onEigenInference: boolean
+}
+
+/**
+ * The model column as the company reads it (wish 60bd7be2): a call on eigenInference names no
+ * model, it ran on eigenInference; a call on the company's own key keeps its model.
+ */
+export function usageModelLabel(model: string | null, onEigenInference: boolean): string | null {
+  return onEigenInference ? EIGEN_INFERENCE : model
 }
 
 function amount(value: string | number, what: string): number {
@@ -72,20 +83,21 @@ export async function readAiUsageRows(
       COALESCE(SUM(a.prompt_tokens), 0)::text AS "promptTokens",
       COALESCE(SUM(a.completion_tokens), 0)::text AS "completionTokens",
       COALESCE(SUM(a.cached_tokens), 0)::text AS "cachedTokens",
-      COALESCE(SUM(a.base_cost_usd::numeric) FILTER (WHERE a.provider = ${PLATFORM_AI_ACTIVITY_PROVIDER}), 0)::text AS "eigenInferenceUsd"
+      COALESCE(SUM(a.base_cost_usd::numeric) FILTER (WHERE a.provider = ${PLATFORM_AI_ACTIVITY_PROVIDER}), 0)::text AS "eigenInferenceUsd",
+      (a.provider = ${PLATFORM_AI_ACTIVITY_PROVIDER}) AS "onEigenInference"
     FROM activity_call_log a
     JOIN "user" u ON u.id = a.user_id
     WHERE a.provider IN ${sql([...ACTIVITY_PAGE_LLM_PROVIDERS])}
       ${since}
       ${before}
-    GROUP BY a.user_id, u.name, u.email, u.kind, a.task, a.model, to_char(a.created_at, 'YYYY-MM-DD')
+    GROUP BY a.user_id, u.name, u.email, u.kind, a.task, a.model, to_char(a.created_at, 'YYYY-MM-DD'), a.provider
   `
   return groups.map((g) => ({
     userId: g.userId,
     name: g.name.trim() === '' ? g.email : g.name,
     kind: g.userKind === 'coworker' ? 'coworker' : 'person',
     task: g.task,
-    model: g.model,
+    model: usageModelLabel(g.model, g.onEigenInference),
     day: g.day,
     costUsd: amount(g.costUsd, 'cost'),
     calls: g.calls,

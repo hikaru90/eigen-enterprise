@@ -464,6 +464,7 @@
   "coworkers_lens_hint": "What this seat cares about and pushes back on. It argues from this, not to agree.",
   "coworkers_accountabilities_hint": "One per line, 1 to 8.",
   "coworkers_field_model": "Model",
+  "coworkers_runs_on_eigeninference": "Runs on eigenInference",
   "coworkers_pick_model": "Pick a model",
   "coworkers_model_recommended": "recommended",
   "coworkers_field_daily_cap": "Daily cap (USD)",

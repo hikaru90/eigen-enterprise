@@ -5,6 +5,9 @@ import type { CoworkerRunPatch, CoworkerRunRow, CoworkerRunStore, ThreadKey } fr
 import type { CoworkerView, OrgChartEntry } from './service'
 import { KernelError } from '$lib/kernel/errors'
 import type { CoworkerStopReason } from '$lib/server/db/coworkers.schema'
+import { facingErrorMessage } from '$lib/server/llm/eigen-inference-facing'
+import { emptyReplySentence, findEmptyReplyError } from '$lib/server/llm/empty-reply'
+import type { SlotSource } from '$lib/server/llm/slots'
 import type { AssignedTaskView } from '$lib/server/memory/assigned-tasks/service'
 import { primaryHandle } from '../../../../modules/messages/notify'
 import { canUse, listMessages, listThread } from '../../../../modules/messages/service'
@@ -93,6 +96,8 @@ export class TurnPrompts {
 }
 
 export type CoworkerTurnsDeps = {
+  /** Where the company's calls go: on eigenInference a stop note names no model or provider (wish 60bd7be2). */
+  aiSource: () => Promise<SlotSource>
   runs: CoworkerRunStore
   messages: MessagesDeps
   coworkers: CoworkerDirectory
@@ -155,6 +160,12 @@ export function stopNote(input: {
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+/** What the note says about a failed turn: an empty reply's cause and what to change (wish c37fcfe6), else the error. */
+const noteText = (err: unknown) => {
+  const empty = findEmptyReplyError(err)
+  return empty ? emptyReplySentence(empty.emptyCause) : errorText(err)
+}
 
 type ThreadView = { messages: MessageDto[]; hasOlder: boolean; lastHumanAt: Date | null }
 
@@ -407,13 +418,13 @@ export class CoworkerTurns {
         const capped = err instanceof KernelError && err.code === 'budget_exceeded'
         const reason: StopNoteReason = capped ? 'daily_cap' : 'model_error'
         await this.finish(run, { status: capped ? 'stopped' : 'failed', stopReason: reason, costUsd, error: errorText(err) })
-        await this.postNote(run, reason, capped ? undefined : errorText(err), view)
+        await this.postNote(run, reason, capped ? undefined : noteText(err), view)
         return
       }
       const costUsd = await this.deps.turnCost(run.coworkerUserId, run.id)
       if (!reply.trim()) {
         await this.finish(run, { status: 'failed', stopReason: 'model_error', costUsd, error: 'the model answered with no text' })
-        await this.postNote(run, 'model_error', 'the model answered with no text', view)
+        await this.postNote(run, 'model_error', emptyReplySentence('no_text'), view)
         return
       }
       try {
@@ -446,8 +457,15 @@ export class CoworkerTurns {
   }
 
   /** Posts the stop note as the co-worker in the run's thread, @mentioning its accountable human(s). A failed note is logged on the run. */
-  private async postNote(run: CoworkerRunRow, reason: StopNoteReason, detail?: string, known?: CoworkerView): Promise<void> {
+  /** An error's sentence as the company may read it (eigenInference: no model or provider named). */
+  private async facing(detail: string | undefined): Promise<string | undefined> {
+    if (detail === undefined) return undefined
+    return facingErrorMessage(detail, { eigenInference: (await this.deps.aiSource()) === 'eigeninference' })
+  }
+
+  private async postNote(run: CoworkerRunRow, reason: StopNoteReason, rawDetail?: string, known?: CoworkerView): Promise<void> {
     try {
+      const detail = await this.facing(rawDetail)
       if (!run.conversationId) return
       const view = known ?? (await this.deps.coworkers.get(run.coworkerUserId))
       const accountableList =
@@ -628,12 +646,12 @@ export class CoworkerTurns {
         const capped = err instanceof KernelError && err.code === 'budget_exceeded'
         const reason: StopNoteReason = capped ? 'daily_cap' : 'model_error'
         await this.finish(run, { status: capped ? 'stopped' : 'failed', stopReason: reason, costUsd, error: errorText(err) })
-        return await this.afterWork(run, view, reason, capped ? undefined : errorText(err))
+        return await this.afterWork(run, view, reason, capped ? undefined : noteText(err))
       }
       const costUsd = await this.deps.turnCost(run.coworkerUserId, run.id)
       if (!reply.trim()) {
         await this.finish(run, { status: 'failed', stopReason: 'model_error', costUsd, error: 'the model answered with no text' })
-        return await this.afterWork(run, view, 'model_error', 'the model answered with no text')
+        return await this.afterWork(run, view, 'model_error', emptyReplySentence('no_text'))
       }
       let posted: { id: string } | null = null
       try {
@@ -720,8 +738,9 @@ export class CoworkerTurns {
    * notices: the accountable human, and for an assignment the person who
    * asked. A failure here is logged on the run.
    */
-  private async afterWork(run: CoworkerRunRow, known: CoworkerView | null, reason: StopNoteReason | null, detail?: string): Promise<void> {
+  private async afterWork(run: CoworkerRunRow, known: CoworkerView | null, reason: StopNoteReason | null, rawDetail?: string): Promise<void> {
     try {
+      const detail = await this.facing(rawDetail)
       const view = known ?? (await this.deps.coworkers.get(run.coworkerUserId))
       const people = await this.deps.messages.directory.listPeople()
       const accountableList =

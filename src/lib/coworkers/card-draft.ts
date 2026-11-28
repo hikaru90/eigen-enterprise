@@ -34,7 +34,8 @@ export type CoworkerLike = {
   title: string | null
   accountabilities: string[]
   lens: string
-  modelId: string
+  /** null on eigenInference (no model to name or pick). */
+  modelId: string | null
   reportsToUserId: string | null
   reportsToUserIds?: string[]
   image?: string | null
@@ -83,7 +84,7 @@ export function draftFromCoworker(c: CoworkerLike): CardDraft {
     title: c.title ?? '',
     accountabilities: c.accountabilities.join('\n'),
     lens: c.lens,
-    modelId: c.modelId,
+    modelId: c.modelId ?? '',
     reportsTo,
     dailyCapUsd: String(c.dailyCapUsd),
     avatarPreset: presetIdFromAvatarUrl(c.image),

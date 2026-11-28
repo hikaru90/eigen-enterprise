@@ -2,12 +2,12 @@ import type { Actions, PageServerLoad } from './$types'
 import { error } from '@sveltejs/kit'
 import type { AiAmounts, AiUsageOverview } from '$lib/ai-usage/overview'
 import { periodOf, periodRange } from '$lib/ai-usage/view'
-import { chatModelOption, type ChatModelOption } from '$lib/coworkers/model-family'
+import type { ChatModelOption } from '$lib/coworkers/model-family'
 import { requireCapability } from '$lib/server/auth/require-capability'
+import { liveCoworkerModelOptions } from '$lib/server/coworkers/model-options'
 import type { RhythmTarget, RhythmView } from '$lib/server/coworkers/rhythms'
 import type { CoworkerView, OrgChartEntry } from '$lib/server/coworkers/service'
 import type { CoworkerTemplate } from '$lib/server/coworkers/templates'
-import { chatModels } from '$lib/server/llm/model-pool'
 import { cardInput } from '$lib/server/org/form-input'
 import { field, runAction } from '$lib/server/org/page-actions'
 import { personRun, type PersonRunner } from '$lib/server/org/person-run'
@@ -29,9 +29,10 @@ import { personRun, type PersonRunner } from '$lib/server/org/person-run'
 const REASON = 'Only the owner or an admin manages the AI co-workers.'
 
 /** Overridable in tests: the registry runner and the pool's chat models. */
-export const _coworkersDeps: { run: PersonRunner; chatModels: () => ChatModelOption[]; timeZone: (userId: string) => Promise<string> } = {
+export const _coworkersDeps: { run: PersonRunner; chatModels: () => ChatModelOption[] | Promise<ChatModelOption[]>; timeZone: (userId: string) => Promise<string> } = {
   run: personRun,
-  chatModels: () => chatModels().map(chatModelOption),
+  // None on eigenInference: it picks the co-workers' model (wish cd140a7a).
+  chatModels: liveCoworkerModelOptions,
   timeZone: async (userId) => {
     const [{ withDbUser }, { getUserPreferredTimezone }] = await Promise.all([import('$lib/server/db'), import('$lib/server/memory/user-timezone')])
     return withDbUser(userId, () => getUserPreferredTimezone(userId))
@@ -84,7 +85,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     timeZone: await _coworkersDeps.timeZone(user.id),
     templates: templates.templates,
     seats: chart.people.map((p): SeatOption => ({ id: p.id, name: p.name, kind: p.kind })),
-    models: _coworkersDeps.chatModels(),
+    models: await _coworkersDeps.chatModels(),
   }
 }
 

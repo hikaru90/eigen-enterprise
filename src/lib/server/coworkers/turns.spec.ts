@@ -122,6 +122,22 @@ describe('a turn that cannot answer says so and is not retried', () => {
     expect(note.body).toContain("I won't retry")
   })
 
+  it('on eigenInference the note names neither the model nor the provider (wish 60bd7be2)', async () => {
+    const fx = turnsFixture({
+      script: () => {
+        throw new Error('upstream 502 from api.opper.ai for mistral/deepseek-v4-1-flash-1017')
+      },
+      extra: { aiSource: async () => 'eigeninference' },
+    })
+    await fx.handle.reload()
+    const general = await createChannel(fx.deps, 'owner', { name: 'general', private: false })
+    const { message } = await postMessage(fx.deps, 'bea', general.id, '@gtm price it')
+    await fx.settle()
+    const note = (await fx.thread(message.id)).at(-1)!
+    expect(note.body).toContain('my model call failed (upstream 502 from eigenInference for eigenInference)')
+    expect(note.body).not.toMatch(/opper|deepseek|mistral/i)
+  })
+
   it('an empty answer is a model failure too, never an empty post', async () => {
     const fx = turnsFixture({ script: () => '   ' })
     await fx.handle.reload()
@@ -130,6 +146,22 @@ describe('a turn that cannot answer says so and is not retried', () => {
     await fx.settle()
     expect(fx.runs.rows).toEqual([expect.objectContaining({ status: 'failed', stopReason: 'model_error', error: 'the model answered with no text' })])
     expect((await fx.thread(message.id)).map((m) => m.authorId)).toEqual(['bea', 'cw-gtm'])
+  })
+
+  it('an empty reply with a cause: the note says why and what to change (wish c37fcfe6)', async () => {
+    const { EmptyReplyError, emptyReplySentence } = await import('$lib/server/llm/empty-reply')
+    const fx = turnsFixture({
+      script: () => {
+        throw new EmptyReplyError('tool_loop_limit')
+      },
+    })
+    await fx.handle.reload()
+    const general = await createChannel(fx.deps, 'owner', { name: 'general', private: false })
+    const { message } = await postMessage(fx.deps, 'bea', general.id, '@gtm price it')
+    await fx.settle()
+    const note = (await fx.thread(message.id)).at(-1)!
+    expect(note.body).toContain(emptyReplySentence('tool_loop_limit').slice(0, 60))
+    expect(note.body).not.toContain('did not produce a response')
   })
 
   it('a turn whose process died is recovered as interrupted (with a note); the turn behind it runs', async () => {
@@ -202,6 +234,16 @@ describe('a turn that cannot answer says so and is not retried', () => {
 })
 
 describe('what a turn carries', () => {
+  it('on eigenInference a stored pick (a Sonnet chosen before) does not run: the turn names no model, so the pool’s chat pick runs', async () => {
+    const fx = turnsFixture({ script: () => 'On it.', extra: { aiSource: async () => 'eigeninference' } })
+    await fx.handle.reload()
+    const launch = await createChannel(fx.deps, 'owner', { name: 'launch', private: false })
+    await postMessage(fx.deps, 'bea', launch.id, '@marketing plan the launch')
+    await fx.settle()
+    expect(fx.calls.length).toBeGreaterThan(0)
+    expect(fx.calls[0]!.modelId).toBeUndefined()
+  })
+
   it('its own model, its own prompt with the thread, the cost of its trace on the run; agents reloaded each turn', async () => {
     const fx = turnsFixture({ script: (call) => (call.agentId === 'coworker-cw-mkt' ? 'Story first. @gtm what price?' : '$12 per seat. @marketing') })
     await fx.handle.reload()

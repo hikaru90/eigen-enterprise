@@ -1,4 +1,5 @@
 import type { AiTaskId } from '$lib/ai-usage/tasks'
+import { assertOutputScript } from '$lib/server/llm/output-language'
 import { brainAnswerMessages, brainRecapMessages, type CallBrain } from './brain'
 
 /**
@@ -28,6 +29,8 @@ export type LiveBrainDeps = {
   withDbUser: <T>(userId: string, fn: () => Promise<T>) => Promise<T>
   /** The asker's Memory answer to the question (composeAnswer), as text. */
   memoryAnswer: (userId: string, question: string) => Promise<string>
+  /** The language a person reads generated text in (user_preference.preferred_language). */
+  language: (userId: string) => Promise<string>
   /** The gateway's chat completion (llmChatCompletion). */
   complete: (input: { userId: string; messages: ChatMessage[]; temperature: number; task: AiTaskId; contentOrigin: 'memory' }) => Promise<unknown>
 }
@@ -56,14 +59,20 @@ export function createLiveBrain(d: LiveBrainDeps): CallBrain {
       }),
     recap: (input) =>
       asUser(input.userId, async () => {
+        const language = await d.language(input.userId)
         const response = await d.complete({
           userId: input.userId,
-          messages: brainRecapMessages(input),
+          messages: brainRecapMessages(input, language),
           temperature: 0,
           task: 'calls.brain_recap',
           contentOrigin: 'memory',
         })
-        return replyText(response, 'recap')
+        // A letter in a script the language is not written in (and the call did not contain) is refused, never stored.
+        return assertOutputScript(replyText(response, 'recap'), {
+          language,
+          what: 'call recap',
+          source: [input.callTitle, ...input.people, input.heard].join('\n'),
+        })
       }),
   }
 }
@@ -82,6 +91,7 @@ export const liveBrain: CallBrain = createLiveBrain({
     const { composeAnswer, formatComposedAnswerForUser } = await import('$lib/server/qa/compose-answer')
     return formatComposedAnswerForUser((await composeAnswer({ userId, question })).answer)
   },
+  language: async (userId) => (await import('$lib/server/llm/user-language')).userOutputLanguage(userId),
   complete: async (input) => {
     const { llmChatCompletion } = await import('$lib/server/llm/llm-client')
     return llmChatCompletion(input)

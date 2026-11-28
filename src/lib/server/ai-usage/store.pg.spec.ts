@@ -72,12 +72,14 @@ describe.skipIf(!url)('AI usage (Postgres)', () => {
     })
   })
 
-  it('each group carries the provider-reported base of its eigenInference calls only (what the hosting invoices from)', async () => {
+  it('each group carries the provider-reported base of its eigenInference calls only (what the hosting invoices from); eigenInference calls show as eigenInference', async () => {
     await inRolledBackTx(async (tx) => {
       await call(tx, mia, { provider: 'platform', task: 'assistant.turn', model: `m/${tag}`, base: '0.001', cost: '0.0012' })
       await call(tx, mia, { provider: 'openrouter', task: 'assistant.turn', model: `m/${tag}`, base: '0.004', cost: '0.0048' })
-      const [group] = (await readAiUsageRows(tx, { from: '2026-11-20', to: '2026-11-20' })).filter((r) => r.model === `m/${tag}`)
-      expect(group).toMatchObject({ calls: 2, costUsd: 0.006, eigenInferenceUsd: 0.001 })
+      const rows = (await readAiUsageRows(tx, { from: '2026-11-20', to: '2026-11-20' })).filter((r) => r.userId === mia)
+      // wish 60bd7be2: the eigenInference call names no model; the own-key call keeps its model.
+      expect(rows.find((r) => r.model === 'eigenInference')).toMatchObject({ calls: 1, costUsd: 0.0012, eigenInferenceUsd: 0.001 })
+      expect(rows.find((r) => r.model === `m/${tag}`)).toMatchObject({ calls: 1, costUsd: 0.0048, eigenInferenceUsd: 0 })
     })
   })
 

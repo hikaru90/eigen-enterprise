@@ -136,6 +136,7 @@ describe.skipIf(!DATABASE_URL)('co-worker turns on Postgres with the mock gatewa
         spentUsdToday: ledgerSpentUsdToday,
       })
       const handle = composeCoworkerTurns({
+        aiSource: async () => 'byok' as const,
         typing: new (await import('../../../../modules/messages/typing')).TypingBoard(),
         registry,
         runtime,

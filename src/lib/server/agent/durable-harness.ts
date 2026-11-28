@@ -16,6 +16,7 @@ import type {
 } from '$lib/kernel/engines/durable'
 import { DurableRunError } from '$lib/kernel/engines/durable'
 import { KernelError } from '$lib/kernel/errors'
+import { EmptyReplyError, emptyReplyCause, type FinalMessageStop } from '$lib/server/llm/empty-reply'
 import { assertPoolModel } from '$lib/server/llm/model-pool'
 import { dbScopedGatewayComplete } from './db-scoped-complete'
 import {
@@ -401,7 +402,13 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
         .filter((block) => block.type === 'text')
         .map((block) => (block.type === 'text' ? block.text : ''))
         .join('')
-      if (!text) return 'The assistant did not produce a response.'
+      // Wish c37fcfe6: no text is an error with its cause (the message's own stop reason), never a stock sentence.
+      if (!text.trim()) {
+        throw new EmptyReplyError(
+          emptyReplyCause(message as FinalMessageStop),
+          (message as FinalMessageStop).errorMessage,
+        )
+      }
       return text
     })()
   }

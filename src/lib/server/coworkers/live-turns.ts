@@ -1,4 +1,3 @@
-import { canUse, type MessagesDeps } from '../../../../modules/messages/service'
 import type { TypingBoard } from '../../../../modules/messages/typing'
 import type { CoworkerRunStore } from './run-store'
 import type { CoworkerView } from './service'
@@ -6,9 +5,11 @@ import { randomUUID } from 'node:crypto'
 import type { AgentRuntime } from '$lib/kernel/agent-runtime'
 import { coworkerPrincipal } from '$lib/kernel/principals'
 import type { KernelRegistry } from '$lib/kernel/registry'
+import type { SlotSource } from '$lib/server/llm/slots'
+import { canUse, type MessagesDeps } from '../../../../modules/messages/service'
 import { coworkerAgentSource, CoworkerTriggerListener, type MessageFrames } from './agents'
-import { ChannelMessageSource, CoworkerEventRouter, type CoworkerEventRouterDeps } from './events'
 import { onCoworkersChanged } from './changes'
+import { ChannelMessageSource, CoworkerEventRouter, type CoworkerEventRouterDeps } from './events'
 import { coworkerAgentId } from './service'
 import { CoworkerTurns, STALE_AFTER_MS, TurnPrompts, type CompanyContext, type CoworkerDirectory, type CoworkerTurnsDeps } from './turns'
 
@@ -41,6 +42,8 @@ export type ComposeCoworkerTurnsInput = {
   messages: MessagesDeps
   hub: MessageFrames
   coworkers: CoworkerDirectory & { listEnabled(): Promise<CoworkerView[]> }
+  /** Where the company's calls go: on eigenInference a co-worker runs on the pool's chat pick. */
+  aiSource: () => Promise<SlotSource>
   runs: CoworkerRunStore
   company: (coworkerId: string) => Promise<CompanyContext>
   turnCost: CoworkerTurnsDeps['turnCost']
@@ -61,8 +64,9 @@ const asCoworker = (coworkerId: string) => ({ principal: coworkerPrincipal(cowor
 
 export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): CoworkerTurnsHandle {
   const prompts = new TurnPrompts()
-  const source = coworkerAgentSource({ listEnabled: () => input.coworkers.listEnabled(), prompts })
+  const source = coworkerAgentSource({ listEnabled: () => input.coworkers.listEnabled(), prompts, aiSource: input.aiSource })
   const turns = new CoworkerTurns({
+    aiSource: input.aiSource,
     runs: input.runs,
     messages: input.messages,
     coworkers: input.coworkers,
@@ -208,6 +212,7 @@ export async function startCoworkerTurns(input: {
     messages: await messagesDeps(),
     hub: await messagesHub(),
     coworkers: { get: coworkers.getCoworker, orgChart: coworkers.orgChart, listEnabled: coworkers.listEnabledCoworkers },
+    aiSource: async () => (await import('$lib/server/llm/slots')).companySlotSource(null),
     runs: liveCoworkerRunStore,
     company: liveCompanyContext,
     turnCost: liveTurnCost,

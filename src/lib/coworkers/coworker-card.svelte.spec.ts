@@ -101,4 +101,15 @@ describe('coworker-card.svelte', () => {
     })
     await expect.element(page.getByTestId('coworker-feedback')).toHaveTextContent('Mara cannot report to someone who reports to Mara.')
   })
+
+  it('on eigenInference (no models, modelId null): no model named, no picker, no model_id posted', async () => {
+    render(CoworkerCard, { coworker: { ...coworker, modelId: null }, models: [], seats, rhythms, timeZone: 'Europe/Berlin' })
+    await expect.element(page.getByText('Runs on eigenInference').first()).toBeVisible()
+    expect(document.body.textContent).not.toContain('gemini')
+    expect(document.body.textContent).not.toContain('Google')
+    await page.getByTestId('coworker-edit').click()
+    expect(document.querySelector('[data-testid="coworker-mara-model"]')).toBeNull()
+    await page.getByTestId('coworker-save').click()
+    expect(submitted[0]!.fields).not.toHaveProperty('model_id')
+  })
 })

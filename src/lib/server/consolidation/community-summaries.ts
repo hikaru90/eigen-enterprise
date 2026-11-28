@@ -18,6 +18,8 @@ import {
 } from '$lib/server/db/schema'
 import { createThoughtEmbeddings } from '$lib/server/llm/embedding'
 import { llmChatCompletion } from '$lib/server/llm/llm-client'
+import { assertOutputScript, outputLanguageInstruction } from '$lib/server/llm/output-language'
+import { userOutputLanguage } from '$lib/server/llm/user-language'
 import { loadCommunityThoughtIds } from './community-bundles'
 import { COMMUNITY_MID_LEVEL } from './community-levels'
 
@@ -394,12 +396,15 @@ async function generateSummaryBatch(
 
   const contexts = await Promise.all(communityIds.map((id) => loadCommunityContext(userId, id)))
 
+  // Wish d0a0c775: the summary's language is said, and its script checked before it is stored.
+  const language = await userOutputLanguage(userId)
+  const prompt = buildBatchSummaryPrompt(contexts)
   const response = await llmChatCompletion({
     contentOrigin: 'memory',
     userId,
     messages: [
-      { role: 'system', content: BATCH_SUMMARY_SYSTEM },
-      { role: 'user', content: buildBatchSummaryPrompt(contexts) },
+      { role: 'system', content: `${BATCH_SUMMARY_SYSTEM}\n${outputLanguageInstruction(language)}` },
+      { role: 'user', content: prompt },
     ],
     temperature: 0,
     maxTokens: 280 * communityIds.length,
@@ -417,6 +422,9 @@ async function generateSummaryBatch(
   }
 
   const reports = parseBatchCommunityReports(content, communityIds)
+  for (const r of reports) {
+    assertOutputScript(`${r.title}\n${r.summary}`, { language, what: 'memory community summary', source: prompt })
+  }
   const embeddingSources = reports.map((r) =>
     `${r.title.slice(0, 500)}. ${r.summary}`.slice(0, 2000),
   )

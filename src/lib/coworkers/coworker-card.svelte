@@ -60,7 +60,7 @@
   let confirmingRemove = $state(false)
   let card = $state<CardDraft>(emptyDraft())
 
-  const family = $derived(modelFamily(c.modelId))
+  const family = $derived(c.modelId ? modelFamily(c.modelId) : null)
   const managerIds = $derived(
     c.reportsToUserIds && c.reportsToUserIds.length > 0
       ? c.reportsToUserIds
@@ -113,7 +113,7 @@
       </h3>
       <p class="text-sm text-muted-foreground">{c.title ?? ''}</p>
       <p class="text-xs text-muted-foreground">
-        {modelName(c.modelId)} · {m.coworkers_daily_cap_value({ amount: c.dailyCapUsd.toFixed(2) })} ·
+        {c.modelId ? modelName(c.modelId) : m.coworkers_runs_on_eigeninference()} · {m.coworkers_daily_cap_value({ amount: c.dailyCapUsd.toFixed(2) })} ·
         {#if managerNames.length > 0}
           {m.coworkers_reports_to_name({ name: managerNames.join(', ') })}
         {:else}

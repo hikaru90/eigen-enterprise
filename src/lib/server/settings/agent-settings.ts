@@ -14,6 +14,7 @@ import {
   setCompanyUseEigenInference,
 } from '$lib/server/llm/company-ai-settings'
 import { companyOwnerId, onCompanyProvider } from '$lib/server/llm/company-provider'
+import { facingChatModel } from '$lib/server/llm/eigen-inference-facing'
 import { describeChatModel } from '$lib/server/llm/llm-client'
 import { companyIdentity } from '$lib/server/overview/sources'
 import { getProfile } from '$lib/server/profile/service'
@@ -57,15 +58,16 @@ async function read(): Promise<SettingsView> {
       company: { name: identity.name, hasLogo: identity.logo !== null },
       ai: {
         eigenInference: companyAi.useEigenInference,
-        modelProvider: companyAi.provider,
-        slots: companyAi.slots.map(({ slot, model, pick, available, options }) => ({
+        // On eigenInference nobody is told the provider or the models (wish 60bd7be2): it is eigenInference.
+        modelProvider: companyAi.useEigenInference ? null : companyAi.provider,
+        slots: (companyAi.useEigenInference ? [] : companyAi.slots).map(({ slot, model, pick, available, options }) => ({
           slot,
           model,
           pick,
           available,
           options: options.map((o) => o.id),
         })),
-        embeddingModel: companyAi.embeddingModel,
+        embeddingModel: companyAi.useEigenInference ? null : companyAi.embeddingModel,
         // The same default the gateway applies when no row exists (llm-client resolveActiveProviderLlmConfig).
         activeProvider: active?.provider ?? 'eurouter',
         // the company's source (CB1), not the owner's old per-account billing mode
@@ -161,7 +163,8 @@ async function apply(change: SettingChange, actorUserId: string): Promise<void> 
 
 export const agentSettingsPort: SettingsPort = {
   // Exactly the durable engine's model-call wrapping (agent/db-scoped-complete.ts).
-  modelFor: (identity) => onCompanyProvider(() => withDbUser(identity, () => describeChatModel(identity))),
+  // On eigenInference: "eigenInference", never the model or provider behind it (wish 60bd7be2).
+  modelFor: async (identity) => facingChatModel(await onCompanyProvider(() => withDbUser(identity, () => describeChatModel(identity)))),
   person: async (userId) => {
     const [profile, role] = await Promise.all([getProfile(userId), getUserRole(userId)])
     return { id: userId, name: profile.name || null, email: profile.email || null, role }

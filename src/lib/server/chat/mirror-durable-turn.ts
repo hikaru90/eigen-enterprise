@@ -4,6 +4,7 @@ import { sessionIdOfConversationKey } from '$lib/kernel/engines/durable'
 import type { ResumedChatTurn } from '$lib/server/agent/durable-harness'
 import { withDbUser } from '$lib/server/db'
 import { chatMessage, chatSession } from '$lib/server/db/brain.schema'
+import { emptyReplySentence } from '$lib/server/llm/empty-reply'
 
 /**
  * D9 (plan/phase-durable.md): the chat endpoint writes chat_message rows around
@@ -32,7 +33,7 @@ export async function mirrorResumedChatTurn(
       .limit(1)
     if (!session) return 'not_a_chat'
     const content = sanitizeFinalAnswerText(
-      turn.reply.trim().length > 0 ? turn.reply : 'The assistant did not produce a response.',
+      turn.reply.trim().length > 0 ? turn.reply : emptyReplySentence('no_text'),
     )
     const inserted = await db
       .insert(chatMessage)

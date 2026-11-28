@@ -1,6 +1,7 @@
 import type { ChatMessage } from './chat'
 import type { BrainListen, CallRecord, SharedBrainAnswer } from './store'
 import type { TranscriptSegment, TranscriptTurn } from './transcript'
+import { outputLanguageInstruction } from '$lib/server/llm/output-language'
 import { CallsError } from './errors'
 import { isLive } from './state'
 import { transcriptTurns } from './transcript'
@@ -233,9 +234,14 @@ export const BRAIN_RECAP_SYSTEM_PROMPT = [
   'Add no suggestions, opinions, next-step ideas or questions of your own.',
 ].join('\n')
 
-export function brainRecapMessages(input: BrainRecapInput): { role: 'system' | 'user'; content: string }[] {
+/**
+ * `language`: the asker's language code (user_preference.preferred_language). Wish d0a0c775: the
+ * prompt used to name no output language and a drifting model wrote stray Chinese words into
+ * recaps; the language is now said explicitly (and the output's script is checked in brain-live).
+ */
+export function brainRecapMessages(input: BrainRecapInput, language: string): { role: 'system' | 'user'; content: string }[] {
   return [
-    { role: 'system', content: BRAIN_RECAP_SYSTEM_PROMPT },
+    { role: 'system', content: `${BRAIN_RECAP_SYSTEM_PROMPT}\n${outputLanguageInstruction(language)}` },
     {
       role: 'user',
       content: [`Call: ${input.callTitle}`, `People in the call: ${input.people.join(', ')}`, '', 'What was said while you listened:', input.heard].join('\n'),

@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   })),
   byokUi: vi.fn(() => true),
   withDbUserIds: [] as string[],
+  eigenInference: false,
 }))
 
 vi.mock('$lib/server/db', () => {
@@ -48,7 +49,7 @@ vi.mock('$lib/server/llm/llm-client', () => ({ describeChatModel: vi.fn() }))
 vi.mock('$lib/server/llm/company-ai-settings', async (actual) => ({
   ...(await actual<typeof import('$lib/server/llm/company-ai-settings')>()),
   readCompanyAiView: async () => ({
-    useEigenInference: false,
+    useEigenInference: m.eigenInference,
     provider: 'openrouter',
     providerLabel: 'OpenRouter',
     eigenInferenceAvailable: false,
@@ -82,6 +83,23 @@ beforeEach(() => {
   m.saveName.mockReset().mockResolvedValue({ ok: true, name: 'x' })
   m.ownerId.mockReset().mockResolvedValue('owner-1')
   m.byokUi.mockReset().mockReturnValue(true)
+  m.eigenInference = false
+})
+
+describe('on eigenInference no model or provider is named (wish 60bd7be2)', () => {
+  it('settings.get: no provider, no slots, no embedding model', async () => {
+    m.eigenInference = true
+    m.selectQueue.push([{ provider: 'openrouter' }], [])
+    const view = await agentSettingsPort.read()
+    expect(view.ai).toMatchObject({ eigenInference: true, modelProvider: null, slots: [], embeddingModel: null, billing: 'platform' })
+    expect(JSON.stringify(view)).not.toMatch(/deepseek|qwen|jev/)
+  })
+
+  it('whoami: the model is eigenInference', async () => {
+    const { describeChatModel } = await import('$lib/server/llm/llm-client')
+    vi.mocked(describeChatModel).mockResolvedValue({ provider: 'platform', model: 'mistral/deepseek-v4-1-flash-1017', routingRuleId: null, billing: 'platform', gatewayHost: 'api.opper.ai' })
+    await expect(agentSettingsPort.modelFor('u1')).resolves.toEqual({ provider: 'eigenInference', model: 'eigenInference', routingRuleId: null, billing: 'platform', gatewayHost: 'eigenInference' })
+  })
 })
 
 describe('agentSettingsPort.read', () => {
