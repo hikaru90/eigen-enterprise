@@ -11,7 +11,7 @@
   /**
    * The top bar's bell (wishes f3fc516e, 3c1481b9): what needs me — team
    * questions asked of me, tasks given to me, news on tasks I gave out, my AI
-   * co-workers' results — with the unread count. A client of
+   * co-workers' results, and the Messages that @mentioned me — with the unread count. A client of
    * notifications.inbox / notifications.mark_read (GET / POST /api/notifications).
    * It reloads on every navigation and when the tab comes back into view, so a
    * new question shows up without checking Memory › Questions.
@@ -25,7 +25,7 @@
     at: string
     unread: boolean
   }
-  type Inbox = { items: Item[]; unread: number }
+  type Inbox = { items: Item[]; mentions: Item[]; unread: number }
 
   let open = $state(false)
   let inbox = $state<Inbox | null>(null)
@@ -72,7 +72,11 @@
   })
   afterNavigate(() => void load())
 
-  const unreadKeys = $derived(inbox?.items.filter((i) => i.unread).map((i) => i.key) ?? [])
+  /** The items and the mentions, one list newest first (as the inbox sorts each). */
+  const entries = $derived(
+    inbox ? [...inbox.items, ...inbox.mentions].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)) : [],
+  )
+  const unreadKeys = $derived(entries.filter((i) => i.unread).map((i) => i.key))
   const count = $derived(inbox?.unread ?? 0)
   const when = (at: string) =>
     new Date(at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
@@ -118,13 +122,13 @@
           attempted="Loading your notifications (GET /api/notifications)"
         />
       </div>
-    {:else if inbox && inbox.items.length === 0}
+    {:else if inbox && entries.length === 0}
       <p class="px-4 py-6 text-center text-sm text-muted-foreground">
         Nothing needs you right now.
       </p>
     {:else if inbox}
       <ul class="max-h-[60vh] overflow-y-auto py-1" data-testid="notification-bell-list">
-        {#each inbox.items as item (item.key)}
+        {#each entries as item (item.key)}
           <li>
             <a
               href={appHref(item.href as Parameters<typeof appHref>[0])}

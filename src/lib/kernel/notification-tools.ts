@@ -64,7 +64,9 @@ const inboxItemSchema = z.object({
   at: z.string(),
   unread: z.boolean(),
 })
-const inboxSchema = z.object({ items: z.array(inboxItemSchema), unread: z.number() })
+/** A mention of the person in Messages: a channel message or thread reply that @named them (additive, 0205). */
+const mentionItemSchema = inboxItemSchema.extend({ kind: z.literal('mention') })
+const inboxSchema = z.object({ items: z.array(inboxItemSchema), mentions: z.array(mentionItemSchema), unread: z.number() })
 export type InboxView = z.infer<typeof inboxSchema>
 const markReadInput = z
   .object({ keys: z.array(z.string().min(1)).min(1).max(200).describe('Item keys from notifications.inbox.') })
@@ -148,7 +150,7 @@ export function createNotificationTools(deps: { port: NotificationsPort }): Tool
       name: 'notifications.inbox',
       module: 'kernel',
       summary:
-        'Your inbox (the bell in the top bar): what needs you, newest first — team questions asked of you that you have not answered (kind question), tasks given to you (task), news on tasks you gave out (task_update), and your AI co-workers\' finished results (coworker); each with where to open it (href) and whether you have read it, plus the unread count. An item leaves when its source is done (question answered, task done, result acknowledged); mark it read with notifications.mark_read.',
+        'Your inbox (the bell in the top bar): what needs you, newest first — team questions asked of you that you have not answered (kind question), tasks given to you (task), news on tasks you gave out (task_update), and your AI co-workers\' finished results (coworker); in a separate list `mentions`, the channel messages and thread replies that @mentioned you (kind mention, href opens the conversation or thread); each with where to open it (href) and whether you have read it, plus the unread count. An item leaves when its source is done (question answered, task done, result acknowledged); mark it read with notifications.mark_read.',
       auditClass: 'read',
       inputSchema: z.object({}),
       outputSchema: inboxSchema,

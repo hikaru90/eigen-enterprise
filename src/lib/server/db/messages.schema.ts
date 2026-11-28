@@ -1,4 +1,4 @@
-import { bigint, bigserial, boolean, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
+import { bigint, bigserial, boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core'
 
 /**
  * Messages core (plan/phase-workspace.md C1, migration 0109). Company-level
@@ -104,3 +104,19 @@ export const messageDriveFolders = pgTable('message_drive_folders', {
   scope: text('scope').primaryKey(),
   folderId: text('folder_id').notNull(),
 })
+
+/**
+ * Who a message mentions (0205): the composer's @handles resolved against the
+ * member list when it is posted or edited (modules/messages/mentions.ts). The
+ * notification bell lists a person's mentions from here.
+ */
+export const messageMentions = pgTable(
+  'message_mentions',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId], name: 'message_mentions_pk' }), index('message_mentions_user_idx').on(t.userId)],
+)

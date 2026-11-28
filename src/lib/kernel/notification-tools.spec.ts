@@ -61,10 +61,10 @@ function setup() {
       saved.push({ userId, input })
       return { ...input, message: 'Saved.' }
     },
-    inbox: async () => ({ items: [inboxItem], unread: 1 }),
+    inbox: async () => ({ items: [inboxItem], mentions: [], unread: 1 }),
     markRead: async (userId, keys) => {
       marked.push({ userId, keys })
-      return { items: [{ ...inboxItem, unread: false }], unread: 0 }
+      return { items: [{ ...inboxItem, unread: false }], mentions: [], unread: 0 }
     },
   }
   const registry = new KernelRegistry({
@@ -91,7 +91,7 @@ describe('notification tools', () => {
 
   it('reads the person’s own inbox (the bell) and marks items read, as them', async () => {
     const { registry, marked } = setup()
-    expect(await registry.execute('notifications.inbox', {}, viaBrain)).toEqual({ items: [inboxItem], unread: 1 })
+    expect(await registry.execute('notifications.inbox', {}, viaBrain)).toEqual({ items: [inboxItem], mentions: [], unread: 1 })
     const out = await registry.execute('notifications.mark_read', { keys: ['question:q1'] }, person)
     expect(marked).toEqual([{ userId: 'u1', keys: ['question:q1'] }])
     expect(out).toMatchObject({ unread: 0 })

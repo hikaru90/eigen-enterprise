@@ -320,6 +320,8 @@ export const COMPANY_EXPORT_RULES: Record<string, TableRule> = {
     ['message_id', 'file_id', 'position', 'mime', 'size', 'voice_duration_ms'],
     ['name'],
   ),
+  // Channel messages only (a DM is not a mention); who a message names is company data like its channel.
+  message_mentions: meta(dmMessage('t.message_id'), ['message_id', 'user_id'], []),
   message_events: full,
   message_drive_folders: full,
 

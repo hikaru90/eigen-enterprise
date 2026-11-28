@@ -26437,12 +26437,53 @@
             },
             "type": "array"
           },
+          "mentions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "href": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "mention",
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "unread": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "at",
+                "detail",
+                "href",
+                "key",
+                "kind",
+                "title",
+                "unread"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "unread": {
             "type": "number"
           }
         },
         "required": [
           "items",
+          "mentions",
           "unread"
         ],
         "type": "object"
@@ -26530,12 +26571,53 @@
             },
             "type": "array"
           },
+          "mentions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "href": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "mention",
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "unread": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "at",
+                "detail",
+                "href",
+                "key",
+                "kind",
+                "title",
+                "unread"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "unread": {
             "type": "number"
           }
         },
         "required": [
           "items",
+          "mentions",
           "unread"
         ],
         "type": "object"

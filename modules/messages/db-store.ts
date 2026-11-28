@@ -7,6 +7,7 @@ import {
   messageConversations as conversations,
   messageDriveFolders as driveFolders,
   messageEvents as events,
+  messageMentions as mentions,
   messageReactions as reactions,
   messages,
 } from '$lib/server/db/messages.schema'
@@ -144,6 +145,23 @@ export function dbMessagesStore(db: AppDatabase): MessagesStore {
     async getMessages(ids) {
       if (ids.length === 0) return []
       return (await db.select().from(messages).where(inArray(messages.id, ids))) as Message[]
+    },
+    async setMentions(messageId, userIds) {
+      await db.transaction(async (tx) => {
+        await tx.delete(mentions).where(eq(mentions.messageId, messageId))
+        const ids = [...new Set(userIds)]
+        if (ids.length) await tx.insert(mentions).values(ids.map((userId) => ({ messageId, userId })))
+      })
+    },
+    async mentionsOf(userId, limit) {
+      const rows = await db
+        .select({ m: messages })
+        .from(mentions)
+        .innerJoin(messages, eq(messages.id, mentions.messageId))
+        .where(and(eq(mentions.userId, userId), isNull(messages.deletedAt)))
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(limit)
+      return rows.map((r) => r.m as Message)
     },
     async updateMessage(id, patch) {
       await db.update(messages).set(patch).where(eq(messages.id, id))

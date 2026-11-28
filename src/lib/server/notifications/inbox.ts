@@ -8,9 +8,14 @@
  * acknowledged); the inbox only adds "read": the person saw the item in the
  * bell (notification_reads, migration 0192). An item's key carries the moment
  * it changed, so news on a task is unread again.
+ *
+ * Mentions of the person in Messages (channel messages, thread replies —
+ * message_mentions, 0205) come as their own list `mentions` (kind mention):
+ * the tool's `items` keep their kinds, so the contract only grows. Both count
+ * in `unread` and mark read the same way.
  */
 
-export type InboxKind = 'question' | 'task' | 'task_update' | 'coworker'
+export type InboxKind = 'question' | 'task' | 'task_update' | 'coworker' | 'mention'
 
 export type InboxItem = {
   key: string
@@ -22,7 +27,12 @@ export type InboxItem = {
   unread: boolean
 }
 
-export type Inbox = { items: InboxItem[]; unread: number }
+export type MentionItem = InboxItem & { kind: 'mention' }
+export type OtherItem = InboxItem & { kind: Exclude<InboxKind, 'mention'> }
+export type Inbox = { items: OtherItem[]; mentions: MentionItem[]; unread: number }
+
+const isMention = (i: InboxItem): i is MentionItem => i.kind === 'mention'
+const isOther = (i: InboxItem): i is OtherItem => i.kind !== 'mention'
 
 export type InboxSourceItem = Omit<InboxItem, 'unread'>
 
@@ -43,7 +53,11 @@ export async function loadInbox(d: InboxDeps, userId: string): Promise<Inbox> {
   const items = raw
     .map((i) => ({ ...i, unread: !read.has(i.key) }))
     .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.key.localeCompare(b.key)))
-  return { items, unread: items.filter((i) => i.unread).length }
+  return {
+    items: items.filter(isOther),
+    mentions: items.filter(isMention),
+    unread: items.filter((i) => i.unread).length,
+  }
 }
 
 /** Marks items read; only keys of the person's own current inbox count, anything else fails loud. */
