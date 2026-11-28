@@ -45,7 +45,7 @@ export function htmlToReadable(html: string, baseUrl?: string): { title: string;
       .replace(/<\/t[dh]>/gi, ' | ')
       .replace(/<[^>]+>/g, ''),
   )
-    .replace(/[ \t\f\v ]+/g, ' ')
+    .replace(/[ \t\f\v\u00a0]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
