@@ -21,7 +21,7 @@ const seat = (id: string, over: Partial<OrgPerson> = {}): OrgPerson => ({
   reportsToUserId: null,
   accountableHuman: null,
   enabled: null,
-  modelId: null,
+  modelLabel: null,
   ...over,
 })
 

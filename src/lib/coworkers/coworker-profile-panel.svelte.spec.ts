@@ -1,7 +1,7 @@
+import type { CoworkerProfilePayload } from './profile'
 import { describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-svelte'
 import { page } from 'vitest/browser'
-import type { CoworkerProfilePayload } from './profile'
 import CoworkerProfilePanel from './coworker-profile-panel.svelte'
 
 /** Wish 7c6db153: a co-worker's profile inside Messages; wish acdb941e: its AI usage for owner/admins. */
@@ -15,7 +15,7 @@ const coworker = {
   title: 'Marketing Manager',
   accountabilities: ['Pipeline', 'Launch posts'],
   lens: 'Cares about reach.',
-  modelId: 'google/gemini-3.8-flash',
+  modelLabel: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   templateId: null,

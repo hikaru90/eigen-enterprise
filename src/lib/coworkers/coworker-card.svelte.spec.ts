@@ -25,7 +25,7 @@ const coworker = {
   title: 'Marketing Manager',
   accountabilities: ['Pipeline'],
   lens: 'Cares about reach.',
-  modelId: 'google/gemini-3.8-flash',
+  modelLabel: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   // Primary manager Ony, second Olga: not the order the checkboxes are listed in.
@@ -102,8 +102,8 @@ describe('coworker-card.svelte', () => {
     await expect.element(page.getByTestId('coworker-feedback')).toHaveTextContent('Mara cannot report to someone who reports to Mara.')
   })
 
-  it('on eigenInference (no models, modelId null): no model named, no picker, no model_id posted', async () => {
-    render(CoworkerCard, { coworker: { ...coworker, modelId: null }, models: [], seats, rhythms, timeZone: 'Europe/Berlin' })
+  it('on eigenInference (no models, modelLabel eigenInference): no model named, no picker, no model_id posted', async () => {
+    render(CoworkerCard, { coworker: { ...coworker, modelLabel: 'eigenInference' }, models: [], seats, rhythms, timeZone: 'Europe/Berlin' })
     await expect.element(page.getByText('Runs on eigenInference').first()).toBeVisible()
     expect(document.body.textContent).not.toContain('gemini')
     expect(document.body.textContent).not.toContain('Google')

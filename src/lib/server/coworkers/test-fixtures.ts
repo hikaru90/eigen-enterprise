@@ -39,6 +39,7 @@ const view = (id: string, slug: string, name: string, title: string, modelId: st
   accountabilities: [`${title} outcomes`],
   lens: `${title} lens`,
   modelId,
+  modelLabel: modelId,
   enabled: true,
   dailyCapUsd: 5,
   templateId: null,

@@ -84,7 +84,7 @@ export const _profileDeps: { run: PersonRunner; role: (userId: string) => Promis
 
 export type CoworkerCard = Pick<
   CoworkerView,
-  'lens' | 'modelId' | 'enabled' | 'dailyCapUsd' | 'accountableHuman' | 'accountableHumans'
+  'lens' | 'modelLabel' | 'enabled' | 'dailyCapUsd' | 'accountableHuman' | 'accountableHumans'
 > & {
   /** Its @handle, the token that asks it for a turn in Messages (its slug). */
   handle: string
@@ -105,7 +105,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     coworker = {
       handle: c.slug,
       lens: c.lens,
-      modelId: c.modelId,
+      modelLabel: c.modelLabel,
       enabled: c.enabled,
       dailyCapUsd: c.dailyCapUsd,
       accountableHuman: c.accountableHuman,

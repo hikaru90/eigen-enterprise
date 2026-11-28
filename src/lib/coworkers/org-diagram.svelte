@@ -13,7 +13,7 @@
   import ActionFeedback from './action-feedback.svelte'
   import { feedbackFor } from './action-result'
   import AiMark from './ai-mark.svelte'
-  import { modelFamily } from './model-family'
+  import { modelFamily, shownModel } from './model-family'
   import OrgChartTree from './org-chart-tree.svelte'
   import { buildOrgTree, managerIdsOf, managerOptions } from './org-tree'
 
@@ -184,7 +184,7 @@
                   data-testid="org-seat-name">{p.name}</a
                 >
                 {#if p.kind === 'coworker'}
-                  <AiMark family={p.modelId ? modelFamily(p.modelId) : null} />
+                  <AiMark family={p.modelLabel && shownModel(p.modelLabel) ? modelFamily(p.modelLabel) : null} />
                   {#if p.enabled === false}
                     <span
                       class="text-xs font-normal text-muted-foreground"

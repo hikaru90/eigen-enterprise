@@ -33,8 +33,23 @@ describe('deprecation window (R4: 2 minor releases and 30 days, whichever is lat
     expect(compareSemver('1.0.0', '1.0.0')).toBe(0)
   })
 
+  it('deprecates the named model/provider outputs for their label (wish 60bd7be2), and nothing else besides handover', () => {
+    const rest = DEPRECATIONS.filter((d) => !d.item.startsWith('tool:handover.'))
+    expect(rest.map((d) => [d.item, d.replacement])).toEqual([
+      ...['create', 'get', 'update', 'enable', 'disable', 'remove'].map((v) => [`tool:coworkers.${v}.output.modelId`, `tool:coworkers.${v}.output.modelLabel`]),
+      ['tool:coworkers.list.output.coworkers.[].modelId', 'tool:coworkers.list.output.coworkers.[].modelLabel'],
+      ['tool:settings.get.output.ai.modelProvider', 'tool:settings.get.output.ai.providerLabel'],
+      ['tool:settings.update.output.ai.modelProvider', 'tool:settings.update.output.ai.providerLabel'],
+    ])
+    for (const d of rest) {
+      expect(d).toMatchObject({ since: '0.5.48', sinceDate: '2026-11-28' })
+      expect(d.howToMigrate).toContain('eigenInference')
+    }
+  })
+
   it('deprecates exactly the handover.* tools (wish f3fc516e: Handover goes), with nothing replacing them', () => {
-    expect(DEPRECATIONS.map((d) => d.item)).toEqual([
+    const handover = DEPRECATIONS.filter((d) => d.item.startsWith('tool:handover.'))
+    expect(handover.map((d) => d.item)).toEqual([
       'tool:handover.create',
       'tool:handover.list',
       'tool:handover.get',
@@ -45,7 +60,7 @@ describe('deprecation window (R4: 2 minor releases and 30 days, whichever is lat
       'tool:handover.assign_entry',
       'tool:handover.draft_entry',
     ])
-    for (const d of DEPRECATIONS) {
+    for (const d of handover) {
       expect(d).toMatchObject({ since: '0.5.48', sinceDate: '2026-11-28', replacement: null })
       expect(d.howToMigrate.trim()).not.toBe('')
       expect(removeAfter(d)).toEqual({ release: '0.7.0', date: '2026-12-28' })

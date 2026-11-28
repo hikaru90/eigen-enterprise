@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import { EIGENINFERENCE_LABEL } from '$lib/coworkers/model-family'
 import { KernelError } from '$lib/kernel/errors'
 import type { SettingChange, SettingsPort, SettingsView } from '$lib/kernel/settings-tools'
 import { getUserRole } from '$lib/server/auth/user-role'
@@ -59,7 +60,8 @@ async function read(): Promise<SettingsView> {
       ai: {
         eigenInference: companyAi.useEigenInference,
         // On eigenInference nobody is told the provider or the models (wish 60bd7be2): it is eigenInference.
-        modelProvider: companyAi.useEigenInference ? null : companyAi.provider,
+        modelProvider: companyAi.provider,
+        providerLabel: companyAi.useEigenInference ? EIGENINFERENCE_LABEL : companyAi.provider,
         slots: (companyAi.useEigenInference ? [] : companyAi.slots).map(({ slot, model, pick, available, options }) => ({
           slot,
           model,

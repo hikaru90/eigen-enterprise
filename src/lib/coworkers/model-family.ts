@@ -36,3 +36,11 @@ export type ChatModelOption = { id: string; family: string; name: string; note: 
 export function chatModelOption(m: { id: string; note: string; recommended?: boolean }): ChatModelOption {
   return { id: m.id, family: modelFamily(m.id), name: modelName(m.id), note: m.note, recommended: m.recommended === true }
 }
+
+/** What a co-worker's model shows as on eigenInference (wish 60bd7be2): the model is not named. */
+export const EIGENINFERENCE_LABEL = 'eigenInference'
+
+/** The model a label names, or null when it names none (eigenInference). */
+export function shownModel(modelLabel: string): string | null {
+  return modelLabel === EIGENINFERENCE_LABEL ? null : modelLabel
+}

@@ -91,7 +91,7 @@ describe('on eigenInference no model or provider is named (wish 60bd7be2)', () =
     m.eigenInference = true
     m.selectQueue.push([{ provider: 'openrouter' }], [])
     const view = await agentSettingsPort.read()
-    expect(view.ai).toMatchObject({ eigenInference: true, modelProvider: null, slots: [], embeddingModel: null, billing: 'platform' })
+    expect(view.ai).toMatchObject({ eigenInference: true, modelProvider: 'openrouter', providerLabel: 'eigenInference', slots: [], embeddingModel: null, billing: 'platform' })
     expect(JSON.stringify(view)).not.toMatch(/deepseek|qwen|jev/)
   })
 
@@ -129,6 +129,7 @@ describe('agentSettingsPort.read', () => {
       ai: {
         eigenInference: false,
         modelProvider: 'openrouter',
+        providerLabel: 'openrouter',
         slots: [
           { slot: 'chat', model: '~deepseek/deepseek-flash-latest', pick: null, available: true, options: ['~deepseek/deepseek-flash-latest', 'openai/gpt-5-mini'] },
           { slot: 'stt', model: 'qwen/qwen3-asr-1.7b', pick: null, available: true, options: ['qwen/qwen3-asr-1.7b'] },

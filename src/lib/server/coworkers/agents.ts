@@ -12,7 +12,7 @@ import { presentCoworker, type CoworkerView } from './service'
  * assembled (TurnPrompts). AgentRuntime.loadAgents(source) keeps exactly this
  * set registered; call it at boot, after every change and before every turn.
  */
-export function coworkerAgentConfig(view: CoworkerView, prompts: TurnPrompts): AgentConfig {
+export function coworkerAgentConfig(view: CoworkerView, prompts: TurnPrompts, source: SlotSource): AgentConfig {
   return {
     id: view.agentId,
     personaName: view.name,
@@ -22,8 +22,8 @@ export function coworkerAgentConfig(view: CoworkerView, prompts: TurnPrompts): A
     memoryScope: 'company',
     verificationPolicy: 'none',
     instructions: (turn) => prompts.get(turn.sessionId),
-    // null = eigenInference: the pool's chat pick (the company's chat slot), never a stored pick.
-    ...(view.modelId !== null ? { modelId: view.modelId } : {}),
+    // eigenInference: the pool's chat pick (the company's chat slot), never a stored pick.
+    ...(source === 'eigeninference' ? {} : { modelId: view.modelId }),
     task: 'coworkers.turn',
     actsAs: {
       kind: 'self',
@@ -46,7 +46,7 @@ export function coworkerAgentSource(deps: {
   return {
     listAgentConfigs: async () => {
       const [views, source] = await Promise.all([deps.listEnabled(), deps.aiSource()])
-      return views.map((view) => coworkerAgentConfig(presentCoworker(view, source), deps.prompts))
+      return views.map((view) => coworkerAgentConfig(presentCoworker(view, source), deps.prompts, source))
     },
   }
 }

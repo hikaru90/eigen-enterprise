@@ -21,8 +21,8 @@ export type OrgPerson = {
   accountableHuman: AccountableHumanView | null
   accountableHumans?: AccountableHumanView[]
   enabled: boolean | null
-  /** Co-workers only: the pool model id it runs on. */
-  modelId: string | null
+  /** Co-workers only: what its model shows as ("eigenInference" there, else the pool model id); null for a human. */
+  modelLabel: string | null
 }
 
 export type OrgNode = { person: OrgPerson; reports: OrgNode[] }

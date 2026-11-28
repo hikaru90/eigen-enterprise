@@ -41,7 +41,7 @@ const HANDOVER_GONE =
   'keep "where things stand" as a Memory document (memory.create_text_file {title, content}) ' +
   'and hand work over with tasks.assign {title, assignee_id}.'
 
-export const DEPRECATIONS: readonly Deprecation[] = [
+const HANDOVER_DEPRECATIONS: readonly Deprecation[] = [
   'handover.create',
   'handover.list',
   'handover.get',
@@ -58,6 +58,47 @@ export const DEPRECATIONS: readonly Deprecation[] = [
   replacement: null,
   howToMigrate: HANDOVER_GONE,
 }))
+
+
+
+/**
+ * The model behind eigenInference is not named (wish 60bd7be2, 2026-11-28): the
+ * co-worker's `modelId` and the settings' `ai.modelProvider` keep their old shape
+ * until their window ends; what a person may see is now the additive label.
+ */
+const MODEL_ID_TO_LABEL =
+  'Show modelLabel instead of modelId: it is "eigenInference" when the company runs on eigenInference ' +
+  '(no model is named there) and the model id on the company\'s own key. ' +
+  'Example: coworkers.get {user_id} → read .modelLabel, not .modelId. To pick a model keep passing model_id to coworkers.update (own key only).'
+const PROVIDER_TO_LABEL =
+  'Show ai.providerLabel instead of ai.modelProvider: it is "eigenInference" on eigenInference (no provider named) ' +
+  'and the provider (e.g. "openrouter") on the company\'s own key. Example: settings.get {} → read .ai.providerLabel.'
+
+const LABEL_DEPRECATIONS: readonly Deprecation[] = [
+  ...['create', 'get', 'update', 'enable', 'disable', 'remove'].map((verb) => ({
+    item: `tool:coworkers.${verb}.output.modelId`,
+    since: '0.5.48',
+    sinceDate: '2026-11-28',
+    replacement: `tool:coworkers.${verb}.output.modelLabel`,
+    howToMigrate: MODEL_ID_TO_LABEL,
+  })),
+  {
+    item: 'tool:coworkers.list.output.coworkers.[].modelId',
+    since: '0.5.48',
+    sinceDate: '2026-11-28',
+    replacement: 'tool:coworkers.list.output.coworkers.[].modelLabel',
+    howToMigrate: MODEL_ID_TO_LABEL,
+  },
+  ...['get', 'update'].map((verb) => ({
+    item: `tool:settings.${verb}.output.ai.modelProvider`,
+    since: '0.5.48',
+    sinceDate: '2026-11-28',
+    replacement: `tool:settings.${verb}.output.ai.providerLabel`,
+    howToMigrate: PROVIDER_TO_LABEL,
+  })),
+]
+
+export const DEPRECATIONS: readonly Deprecation[] = [...HANDOVER_DEPRECATIONS, ...LABEL_DEPRECATIONS]
 
 /** Minimum number of minor releases a deprecated item keeps working. */
 export const DEPRECATION_MIN_MINOR_RELEASES = 2

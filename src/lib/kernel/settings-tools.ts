@@ -54,8 +54,10 @@ const settingsViewSchema = z.object({
   ai: z.object({
     /** Settings → AI: "Use eigenInference" (CB1). Off = the company's own key (the providers below). */
     eigenInference: z.boolean(),
-    /** Who serves the company's models on its own key (OpenRouter); null on eigenInference, which names no provider. */
-    modelProvider: z.enum(['openrouter', 'opper']).nullable(),
+    /** Deprecated (show providerLabel): who serves the company's models on its own key. */
+    modelProvider: z.enum(['openrouter', 'opper']),
+    /** What the AI provider shows as: "eigenInference" there (it names no provider), else the provider. */
+    providerLabel: z.string(),
     /**
      * Empty on eigenInference (it picks the models and names none). On the own key: the model each choosable slot runs on (a pool model; pick null = the provider's pick), the
      * models the provider serves for it (options, recommended first), and whether the slot's
