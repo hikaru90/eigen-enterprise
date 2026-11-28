@@ -4954,6 +4954,30 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "trace_hub.get": {
+    input: {
+      "install_id": string
+      "trace_id": string
+    }
+    output: unknown
+  }
+  "trace_hub.list": {
+    input: {
+      "app_version"?: string | null
+      "error_code"?: string | null
+      "limit"?: number
+      "outcome"?: ("ok" | "error" | "stopped" | "rolled_back") | null
+    }
+    output: unknown
+  }
+  "trace_hub.stats": {
+    input: {
+      "days"?: number
+      "group_by"?: "tool" | "model" | "log_context" | "app_version" | "day" | "kind" | "error_code"
+      "kind"?: ("run" | "llm_call" | "tool_call" | "job" | "upgrade") | null
+    }
+    output: unknown
+  }
   "traces.sent_get": {
     input: {
       "id": string
@@ -5736,6 +5760,9 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "tasks.complete",
   "tasks.list",
   "tasks.mark_seen",
+  "trace_hub.get",
+  "trace_hub.list",
+  "trace_hub.stats",
   "traces.sent_get",
   "traces.sent_list",
   "traces.settings_get",

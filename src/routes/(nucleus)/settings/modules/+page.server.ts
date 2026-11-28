@@ -3,15 +3,16 @@ import { randomUUID } from 'node:crypto'
 import { fail } from '@sveltejs/kit'
 import { KernelError } from '$lib/kernel/errors'
 import { isCompanyModuleName } from '$lib/kernel/manifest-schema'
-import { errorReport, refusalReport } from '$lib/server/errors/report'
 import type { ToolContext } from '$lib/kernel/types'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import { appKernel } from '$lib/server/boot'
+import { errorReport, refusalReport } from '$lib/server/errors/report'
 import { ownerRun } from '$lib/server/website/owner-run'
 import { ownerModuleBlurb } from '$lib/shell/module-copy'
 import { CONTRIBUTE_HUB_MODULE_ID } from '../../../../../modules/contribute/hub/manifest'
 import { DEMO_MODULE_ID } from '../../../../../modules/demo/manifest'
 import { MODULE_HUB_MODULE_ID } from '../../../../../modules/module-hub/manifest'
+import { TRACE_HUB_MODULE_ID } from '../../../../../modules/traces/hub/manifest'
 
 /**
  * Settings → Plugins (owner, 2026-11-12: "everything is a plugin"): every
@@ -118,6 +119,7 @@ export const load: PageServerLoad = async ({ locals }): Promise<PluginsData> => 
 const OFF_UNLESS_SWITCHED_ON: ReadonlySet<string> = new Set([
   CONTRIBUTE_HUB_MODULE_ID,
   MODULE_HUB_MODULE_ID,
+  TRACE_HUB_MODULE_ID,
   DEMO_MODULE_ID,
 ])
 

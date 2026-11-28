@@ -52,6 +52,8 @@ import { createContributeHubTools } from './contribute/hub/tools'
 import { CONTRIBUTE_MODULE_ID, CONTRIBUTE_WRITE_TOOLS, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
 import { TRACES_MODULE_ID, tracesManifest } from './traces/manifest'
+import { traceHubManifest } from './traces/hub/manifest'
+import { createTraceHubTools } from './traces/hub/tools'
 import { createTracesTools } from './traces/tools'
 import { COWORKERS_GATED_TOOLS, COWORKERS_MODULE_ID, coworkersManifest } from './coworkers/manifest'
 import { createCoworkersTools } from './coworkers/tools'
@@ -139,6 +141,9 @@ export const moduleManifests = [
   // The central Contribute board (plan/contribute-phone-home.md §3): registered everywhere, never
   // self-seeded — off until the owner switches it on, on os.cerberusblue.com only.
   contributeHubManifest,
+  // The makers' trace hub (plan/traces-phone-home.md T3): like the Contribute board, registered
+  // everywhere, never self-seeded — off until the owner switches it on, on the makers' box only.
+  traceHubManifest,
   // The central module hub (plan/phase-upgrades-u2.md §7): like the Contribute board, registered
   // everywhere, never self-seeded — off until the owner switches it on, on the central box only.
   moduleHubManifest,
@@ -466,6 +471,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createDriveTools(),
     ...createContributeTools(),
     ...createTracesTools(),
+    ...createTraceHubTools(),
     ...createContributeHubTools(),
     ...createModuleHubTools(),
     ...createCallsTools({ service: liveCallsService }),

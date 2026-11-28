@@ -77,7 +77,7 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator, members, coworkers, contribute, traces, contribute-hub, module-hub, domains, demo and company-modules modules are internal (no owner-facing card); the others are not', () => {
+  it('the orchestrator, members, coworkers, contribute, traces, contribute-hub, trace-hub, module-hub, domains, demo and company-modules modules are internal (no owner-facing card); the others are not', () => {
     expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
       'orchestrator',
       'members',
@@ -85,6 +85,7 @@ describe('merged module manifests', () => {
       'contribute',
       'traces',
       'contribute-hub',
+      'trace-hub',
       'module-hub',
       'domains',
       'demo',

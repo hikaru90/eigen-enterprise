@@ -47,6 +47,7 @@ export const CORE_MODULE_IDS = [
   'orchestrator',
   'recap',
   'repos',
+  'trace-hub',
   'traces',
   'website',
 ] as const

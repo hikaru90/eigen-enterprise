@@ -148,6 +148,7 @@ describe('Settings → Plugins (owner and admins)', () => {
         'kernel',
         'members',
         'orchestrator',
+        'traces',
       ])
     },
   )
