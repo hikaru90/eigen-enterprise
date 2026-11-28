@@ -77,12 +77,13 @@ describe('merged module manifests', () => {
     }
   })
 
-  it('the orchestrator, members, coworkers, contribute, contribute-hub, module-hub, domains, demo and company-modules modules are internal (no owner-facing card); the others are not', () => {
+  it('the orchestrator, members, coworkers, contribute, traces, contribute-hub, module-hub, domains, demo and company-modules modules are internal (no owner-facing card); the others are not', () => {
     expect(moduleManifests.filter((m) => m.internal === true).map((m) => m.id)).toEqual([
       'orchestrator',
       'members',
       'coworkers',
       'contribute',
+      'traces',
       'contribute-hub',
       'module-hub',
       'domains',
@@ -215,8 +216,8 @@ describe('merged module manifests', () => {
     for (const name of APPROVAL_REQUIRED_TOOLS) expect(k.registry.get(name), name).toBeDefined()
   })
 
-  it('system modules are website, email, members, memory, brand, messages, drive, contribute, calls, contacts, repos, calendar, assistant, domains, coworkers and company-modules, and boot activates them', async () => {
-    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'calls', 'contacts', 'repos', 'calendar', 'assistant', 'domains', 'coworkers', 'company-modules'])
+  it('system modules are website, email, members, memory, brand, messages, drive, contribute, traces, calls, contacts, repos, calendar, assistant, domains, coworkers and company-modules, and boot activates them', async () => {
+    expect([...SYSTEM_MODULE_IDS]).toEqual(['website', 'email', 'members', 'memory', 'brand', 'messages', 'drive', 'contribute', 'traces', 'calls', 'contacts', 'repos', 'calendar', 'assistant', 'domains', 'coworkers', 'company-modules'])
     const { kernel: k, activations } = kernel()
     await ensureSystemModulesActive(k)
     expect(await activations.get('website')).toBe(true)

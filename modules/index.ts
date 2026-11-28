@@ -51,6 +51,7 @@ import { contributeHubManifest } from './contribute/hub/manifest'
 import { createContributeHubTools } from './contribute/hub/tools'
 import { CONTRIBUTE_MODULE_ID, CONTRIBUTE_WRITE_TOOLS, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
+import { TRACES_MODULE_ID, tracesManifest } from './traces/manifest'
 import { COWORKERS_GATED_TOOLS, COWORKERS_MODULE_ID, coworkersManifest } from './coworkers/manifest'
 import { createCoworkersTools } from './coworkers/tools'
 import { DEMO_GUEST_ACCESS_SET_TOOL, DEMO_SEED_TOOL, demoManifest } from './demo/manifest'
@@ -128,6 +129,8 @@ export const moduleManifests = [
   messagesManifest,
   driveManifest,
   contributeManifest,
+  // Product signals (plan/traces-phone-home.md): usage statistics shared with the makers, no content.
+  tracesManifest,
   callsManifest,
   contactsManifest,
   reposManifest,
@@ -170,6 +173,8 @@ export const SYSTEM_MODULE_IDS = [
   DRIVE_MODULE_ID,
   // Contribute: everyone proposes improvements from the top bar; the agent picks them up.
   CONTRIBUTE_MODULE_ID,
+  // Product signals (plan/traces-phone-home.md): on by default, the owner's switch in Settings → Company.
+  TRACES_MODULE_ID,
   // Calls (plan/video-calls.md): video calls ring on any nucleus page; part of the OS.
   CALLS_MODULE_ID,
   // Contacts (plan/contribute-round-3.md W1): the people the company knows, part of the OS.
