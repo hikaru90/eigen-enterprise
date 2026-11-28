@@ -146,7 +146,6 @@ test('every navigation entry and settings section renders inside the one shell',
   // Kept pages that wait for C3 still render in the shell.
   // The assistant's linkable pages belong to no nav entry: the top bar is their way in.
   const kept: Array<[string, string | null]> = [
-    ['/m/memory/notes', 'memory'],
     ['/m/memory/tasks', 'memory'],
     ['/m/memory/projects', 'memory'],
     ['/m/memory/capture', 'memory'],

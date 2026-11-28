@@ -1,3 +1,6 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { sql } from 'drizzle-orm'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -57,13 +60,15 @@ describe.skipIf(!DATABASE_URL)('shared projects and notes', () => {
         sql`select
           (select coalesce(array_agg(id::text order by id), '{}') from canonical_entity where user_id = ${ana}) as projects,
           (select coalesce(array_agg(id::text order by id), '{}') from thought where user_id = ${ana}) as thoughts,
-          (select coalesce(array_agg(id::text order by id), '{}') from text_file where user_id = ${ana}) as notes`,
+          (select coalesce(array_agg(drive_file_id order by drive_file_id), '{}') from memory_document where user_id = ${ana}) as notes`,
       ),
     )
     return [...rows][0] as { projects: string[]; thoughts: string[]; notes: string[] }
   }
 
   beforeAll(async () => {
+    // Notes are Drive files (drizzle/0191): the live Drive keeps their bytes here.
+    process.env.DRIVE_STORAGE_DIR = await mkdtemp(join(tmpdir(), 'ee-share-drive-'))
     db = await import('$lib/server/db')
     operator = postgres(DATABASE_URL!, { max: 1, prepare: false })
     for (const [id, role] of [
@@ -101,7 +106,8 @@ describe.skipIf(!DATABASE_URL)('shared projects and notes', () => {
         await createTextFile(ana, { title: 'Salary notes', body: 'my number', visibility: 'private' })
       ).id
     })
-  })
+    // Cold imports of Memory, the access contract and Drive take longer than the 10s default.
+  }, 30_000)
 
   afterAll(async () => {
     await operator`delete from "user" where id in (${ana}, ${ben}, ${boss})`
@@ -113,7 +119,7 @@ describe.skipIf(!DATABASE_URL)('shared projects and notes', () => {
     const rows = await operator`
       select id::text, visibility from canonical_entity where id in (${sharedProject}, ${privateProject})
       union all
-      select id::text, visibility from text_file where id in (${sharedNote}, ${privateNote})`
+      select drive_file_id, visibility from memory_document where drive_file_id in (${sharedNote}, ${privateNote})`
     const byId = new Map(rows.map((r) => [r.id as string, r.visibility as string]))
     expect(byId.get(sharedProject)).toBe('company')
     expect(byId.get(privateProject)).toBe('private')
@@ -136,13 +142,15 @@ describe.skipIf(!DATABASE_URL)('shared projects and notes', () => {
     const [t] = await operator`select normalized_text_encrypted as c from thought where id = ${sharedTask}`
     const [p] = await operator`select normalized_text_encrypted as c from thought where id = ${privateProjectTask}`
     const [r] = await operator`select normalized_text_encrypted as c from thought where id = ${rawThought}`
-    const [n] = await operator`select body_text_encrypted as c from text_file where id = ${sharedNote}`
-    const [pn] = await operator`select body_text_encrypted as c from text_file where id = ${privateNote}`
     expect(keyOf(t.c)).toBe('company')
-    expect(keyOf(n.c)).toBe('company')
     expect(keyOf(p.c)).toBe('person')
     expect(keyOf(r.c)).toBe('person')
-    expect(keyOf(pn.c)).toBe('person')
+  })
+
+  it('notes are Drive files: a colleague opens the shared one in Drive, never the private one', async () => {
+    const drive = await (await import('../../../../modules/drive')).driveService()
+    expect((await drive.readText({ kind: 'user', userId: ben }, sharedNote)).content).toBe('DNS, analytics, redirects')
+    await expect(drive.readText({ kind: 'user', userId: ben }, privateNote)).rejects.toMatchObject({ code: 'not_found' })
   })
 
   it('a colleague reads the shared project with its tasks and the shared note through the registry', async () => {
@@ -220,7 +228,7 @@ describe.skipIf(!DATABASE_URL)('shared projects and notes', () => {
     await expect(
       registry.execute('memory.set_text_file_visibility', { text_file_id: privateNote, private: false }, brainFor(ana)),
     ).rejects.toMatchObject({ code: 'permission_denied' })
-    const [still] = await operator`select visibility from text_file where id = ${privateNote}`
+    const [still] = await operator`select visibility from memory_document where drive_file_id = ${privateNote}`
     expect(still.visibility).toBe('private')
   })
 
@@ -248,20 +256,19 @@ describe.skipIf(!DATABASE_URL)('shared projects and notes', () => {
     expect(keyOf(again.c)).toBe('company')
   })
 
-  it('a private note is the owner’s alone; toggling re-keys its body both ways', async () => {
+  it('a private note is the owner’s alone; toggling changes its Drive sharing both ways', async () => {
+    const drive = await (await import('../../../../modules/drive')).driveService()
     await registry.execute('memory.set_text_file_visibility', { text_file_id: sharedNote, private: true }, humanCtx(ana))
     expect((await visibleTo(ben)).notes).toEqual([])
     expect((await visibleTo(boss)).notes).toEqual([])
-    const [n] = await operator`select body_text_encrypted as c from text_file where id = ${sharedNote}`
-    expect(keyOf(n.c)).toBe('person')
+    await expect(drive.readText({ kind: 'user', userId: ben }, sharedNote)).rejects.toMatchObject({ code: 'not_found' })
     const back = (await registry.execute(
       'memory.set_text_file_visibility',
       { text_file_id: sharedNote, private: false },
       humanCtx(ana),
     )) as { textFileId: string; visibility: string }
     expect(back).toEqual({ textFileId: sharedNote, visibility: 'company' })
-    const [n2] = await operator`select body_text_encrypted as c from text_file where id = ${sharedNote}`
-    expect(keyOf(n2.c)).toBe('company')
+    expect((await drive.readText({ kind: 'user', userId: ben }, sharedNote)).content).toBe('DNS, analytics, redirects')
     expect((await visibleTo(ben)).notes).toEqual([sharedNote])
   })
 

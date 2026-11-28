@@ -34,7 +34,7 @@ describe('sweepUnreferencedBlobs', () => {
   it('removes only blobs no file or revision references that are older than the grace period', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'drive-gc-'))
     dirs.push(dir)
-    const blobs = diskBlobStore(dir)
+    const blobs = diskBlobStore(dir, Buffer.alloc(32, 7))
     const store = memoryDriveStore()
     const put = async (s: string) => (await blobs.put(new TextEncoder().encode(s))).sha256
     const [byFile, byRevision, orphanOld, orphanFresh] = [await put('file'), await put('revision'), await put('orphan old'), await put('orphan fresh')]
@@ -56,6 +56,6 @@ describe('sweepUnreferencedBlobs', () => {
   it('fails loud on a cut-off inside the grace period (it would race open writers)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'drive-gc-'))
     dirs.push(dir)
-    await expect(sweepUnreferencedBlobs({ store: memoryDriveStore(), blobs: diskBlobStore(dir) }, new Date())).rejects.toThrow(/grace period/)
+    await expect(sweepUnreferencedBlobs({ store: memoryDriveStore(), blobs: diskBlobStore(dir, Buffer.alloc(32, 7)) }, new Date())).rejects.toThrow(/grace period/)
   })
 })

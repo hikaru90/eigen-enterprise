@@ -10,6 +10,7 @@ import {
   canonicalEntity,
   graphCommunity,
   graphSyncJob,
+  memoryDocument,
   ontologyProposal,
   retrievalQualityEvent,
   textFile,
@@ -72,10 +73,17 @@ export async function deleteAllMemoriesForUser(userId: string): Promise<DeleteAl
     await tx.delete(thought).where(ownThoughts)
     await tx.delete(canonicalEntity).where(ownEntities)
     await tx.delete(captureSession).where(eq(captureSession.userId, userId))
+    // Documents are Drive files (drizzle/0191): the brain forgets them here, their files go to
+    // the Drive trash below; the old text_file rows (not dropped yet) go with them.
     const noteRows = await tx
-      .delete(textFile)
-      .where(eq(textFile.userId, userId))
-      .returning({ id: textFile.id })
+      .delete(memoryDocument)
+      .where(eq(memoryDocument.userId, userId))
+      .returning({ id: memoryDocument.driveFileId, copiedFrom: memoryDocument.textFileId })
+    const copied = new Set(noteRows.map((r) => r.copiedFrom))
+    // Old notes the startup copy has not reached yet count as notes too.
+    const oldOnly = (
+      await tx.delete(textFile).where(eq(textFile.userId, userId)).returning({ id: textFile.id })
+    ).filter((r) => !copied.has(r.id))
     const deliveries = await tx
       .delete(webhookDelivery)
       .where(
@@ -112,11 +120,29 @@ export async function deleteAllMemoriesForUser(userId: string): Promise<DeleteAl
     return {
       thoughtsDeleted: thoughtRows.length,
       entitiesDeleted: entityRows.length,
-      notesDeleted: noteRows.length,
+      notesDeleted: noteRows.length + oldOnly.length,
+      documentFileIds: noteRows.map((r) => r.id),
     }
   })
 
+  if (counts.documentFileIds.length > 0) {
+    const { driveService } = await import('../../../../modules/drive')
+    const drive = await driveService()
+    for (const id of counts.documentFileIds) {
+      try {
+        await drive.moveToTrash({ kind: 'user', userId }, 'file', id)
+      } catch (err) {
+        // Already trashed or deleted in Drive.
+        if ((err as { code?: string }).code !== 'not_found') throw err
+      }
+    }
+  }
+
   await deleteAllUserGraphVertices(userId)
 
-  return counts
+  return {
+    thoughtsDeleted: counts.thoughtsDeleted,
+    entitiesDeleted: counts.entitiesDeleted,
+    notesDeleted: counts.notesDeleted,
+  }
 }

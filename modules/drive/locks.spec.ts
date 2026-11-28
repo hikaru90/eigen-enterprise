@@ -28,7 +28,7 @@ async function setup() {
     groups: {},
   })
   let t = Date.parse('2026-11-03T10:00:00Z')
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 1 << 20, locks: memoryEditLockStore(), now: () => new Date(t) })
+  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir, Buffer.alloc(32, 7)), access, maxUploadBytes: 1 << 20, locks: memoryEditLockStore(), now: () => new Date(t) })
   const doc = await drive.createDocument(ada, null, 'md', 'notes')
   await drive.setGrants(ada, 'file', doc.id, [
     { subject: { kind: 'user', userId: 'ada' }, level: 'manage' },

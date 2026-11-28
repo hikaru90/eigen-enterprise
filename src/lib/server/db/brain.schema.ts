@@ -420,6 +420,61 @@ export const thoughtTextFile = pgTable(
 
 export type TextFile = typeof textFile.$inferSelect
 
+/**
+ * The brain's index of a Memory document (drizzle/0191): the document itself is
+ * a Drive file (Markdown, in its owner's My drive); this row says who owns and
+ * wrote it, whether it is shared, and the lexical text the brain searches.
+ * `textFileId`: the text_file it was copied from (the startup backfill), else null.
+ */
+export const memoryDocument = pgTable(
+  'memory_document',
+  {
+    driveFileId: text('drive_file_id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    textFileId: uuid('text_file_id').unique(),
+    title: text('title').notNull().default(''),
+    lexicalText: text('lexical_text').notNull().default(''),
+    lexicalTsv: tsvector('lexical_tsv')
+      .notNull()
+      .generatedAlwaysAs(sql`to_tsvector('simple', coalesce(lexical_text, ''))`),
+    author: text('author').$type<MemoryAuthor>().notNull().default('user'),
+    authorLabel: text('author_label'),
+    authorKeyId: uuid('author_key_id').references(() => userApiKey.id, { onDelete: 'set null' }),
+    visibility: text('visibility').$type<MemoryVisibility>().notNull().default('company'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('memory_document_user_updated_idx').on(t.userId, t.updatedAt),
+    index('memory_document_visibility_updated_idx').on(t.visibility, t.updatedAt),
+    index('memory_document_lexical_tsv_idx').using('gin', t.lexicalTsv),
+  ],
+)
+
+/** Many-to-many link between thoughts and Memory documents (Drive files). */
+export const thoughtMemoryDocument = pgTable(
+  'thought_memory_document',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    thoughtId: uuid('thought_id')
+      .notNull()
+      .references(() => thought.id, { onDelete: 'cascade' }),
+    driveFileId: text('drive_file_id')
+      .notNull()
+      .references(() => memoryDocument.driveFileId, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.thoughtId, t.driveFileId], name: 'thought_memory_document_pk' }),
+    index('thought_memory_document_user_idx').on(t.userId),
+    index('thought_memory_document_file_idx').on(t.driveFileId),
+  ],
+)
+
 /** Prepaid Eigen platform credits per user (1000 credits = $1 USD). */
 export const userWallet = pgTable('user_wallet', {
   userId: text('user_id')

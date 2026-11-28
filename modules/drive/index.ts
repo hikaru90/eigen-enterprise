@@ -1,10 +1,11 @@
 import { hkdfSync } from 'node:crypto'
+import { join } from 'node:path'
 import { liveDriveAccess } from './access-port'
 import { BLOB_GC_GRACE_MS, sweepUnreferencedBlobs } from './blob-gc'
 import { dbDriveStore, dbEditLockStore } from './db-store'
 import { createDriveService, resolveMaxUploadBytes, type DriveService } from './service'
 import { createDriveSourceWriter, type DriveSourceWriter } from './source-writer'
-import { diskBlobStore, resolveDriveStorageDir } from './storage'
+import { diskBlobStore, driveBlobKey, resolveDriveStorageDir, sealPlainBlobs } from './storage'
 
 export * from './service'
 export type { DriveSourceId, DriveSourceItem, DriveSourceRoot, DriveSourceWriter } from './source-writer'
@@ -23,10 +24,14 @@ export async function driveService(env: Record<string, string | undefined> = pro
   if (live) return live
   live = createDriveService({
     store: dbDriveStore,
-    blobs: diskBlobStore(resolveDriveStorageDir(env)),
+    blobs: diskBlobStore(resolveDriveStorageDir(env), driveBlobKey(env)),
     access: await liveDriveAccess(),
     maxUploadBytes: resolveMaxUploadBytes(env),
     locks: dbEditLockStore,
+    onContentSaved: async (file) => {
+      const { reindexMemoryDocument } = await import('$lib/server/text-files/service')
+      await reindexMemoryDocument(file.id, file.ownerId)
+    },
   })
   return live
 }
@@ -40,7 +45,7 @@ let liveWriter: DriveSourceWriter | null = null
  */
 export async function driveSourceWriter(env: Record<string, string | undefined> = process.env): Promise<DriveSourceWriter> {
   if (liveWriter) return liveWriter
-  liveWriter = createDriveSourceWriter({ store: dbDriveStore, blobs: diskBlobStore(resolveDriveStorageDir(env)), access: await liveDriveAccess() })
+  liveWriter = createDriveSourceWriter({ store: dbDriveStore, blobs: diskBlobStore(resolveDriveStorageDir(env), driveBlobKey(env)), access: await liveDriveAccess() })
   return liveWriter
 }
 
@@ -50,7 +55,7 @@ export async function driveSourceWriter(env: Record<string, string | undefined> 
  * run periodically; nothing schedules it yet.
  */
 export async function sweepDriveBlobs(env: Record<string, string | undefined> = process.env, now: Date = new Date()): Promise<{ removed: number }> {
-  return sweepUnreferencedBlobs({ store: dbDriveStore, blobs: diskBlobStore(resolveDriveStorageDir(env)) }, new Date(now.getTime() - BLOB_GC_GRACE_MS))
+  return sweepUnreferencedBlobs({ store: dbDriveStore, blobs: diskBlobStore(resolveDriveStorageDir(env), driveBlobKey(env)) }, new Date(now.getTime() - BLOB_GC_GRACE_MS))
 }
 
 /**
@@ -62,4 +67,25 @@ export function driveViewSecret(env: Record<string, string | undefined> = proces
   const master = env.TENANT_MASTER_KEY?.trim()
   if (!master) throw new Error('TENANT_MASTER_KEY is required to sign Drive view links')
   return Buffer.from(hkdfSync('sha256', Buffer.from(master, 'utf8'), Buffer.alloc(0), 'eigenEnterprise drive view token v1', 32))
+}
+
+/**
+ * Server start (wish e840c02c): seal every blob written before Drive sealed at
+ * rest — Drive's own store and the stores under it (brand social media,
+ * profile pictures, the company logo). Loud per store; see sealPlainBlobs.
+ */
+export async function sealDriveBlobsAtStartup(env: Record<string, string | undefined> = process.env): Promise<void> {
+  const root = resolveDriveStorageDir(env)
+  const key = driveBlobKey(env)
+  for (const dir of [root, join(root, 'brand-social'), join(root, 'profile'), join(root, 'company')]) {
+    try {
+      const r = await sealPlainBlobs(dir, key)
+      if (r.sealed > 0) console.info('[drive-seal] sealed plain blobs at rest', { dir, sealed: r.sealed, alreadySealed: r.alreadySealed })
+    } catch (err) {
+      console.error('[drive-seal] sealing pass failed: this store still holds plain blobs', {
+        dir,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 }

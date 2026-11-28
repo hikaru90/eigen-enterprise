@@ -232,7 +232,7 @@ describe.skipIf(!url)('drive store (Postgres): source batching (full-mirror M2)'
     const { join } = await import('node:path')
     const dir = await mkdtemp(join(tmpdir(), 'drive-pg-blobs-'))
     dirs.push(dir)
-    const disk = diskBlobStore(dir)
+    const disk = diskBlobStore(dir, Buffer.alloc(32, 7))
     let puts = 0
     const blobs = {
       ...disk,

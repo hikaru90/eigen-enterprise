@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { mkdir, open, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -43,7 +43,13 @@ export const manifestSchema = z.object({
   files: z.array(fileEntry),
   /** Sources that did not exist at backup time (e.g. the agent never ran). */
   absent: z.array(z.enum(SNAPSHOT_FILES)).default([]),
-  blobs: z.array(z.object({ sha256: z.string().regex(/^[0-9a-f]{64}$/), size: z.number().int() })),
+  /**
+   * sealed: the blob is sealed at rest by the os (modules/drive/storage.ts):
+   * stored as-is under blobs/<sha256>.sealed, its bytes are not the plaintext
+   * the name hashes (the os's AEAD tag guards them; TENANT_MASTER_KEY comes
+   * back with ee state). Absent = plain, as before sealing.
+   */
+  blobs: z.array(z.object({ sha256: z.string().regex(/^[0-9a-f]{64}$/), size: z.number().int(), sealed: z.boolean().optional() })),
 })
 export type Manifest = z.infer<typeof manifestSchema>
 
@@ -108,17 +114,36 @@ export async function sqliteBackup(src: string, dest: string): Promise<void> {
   }
 }
 
-/** Every Drive blob on disk: <driveDir>/blobs/<aa>/<bb>/<sha256>. */
-export async function listDriveBlobs(driveDir: string): Promise<Array<{ sha256: string; path: string; size: number }>> {
+/** The first bytes of a blob the os sealed at rest (mirrors SEAL_MAGIC in modules/drive/storage.ts). */
+export const DRIVE_SEAL_MAGIC = Buffer.from('EEDRIVE-SEALED\u0000\u0001', 'latin1')
+/** The os's per-store seal marker (modules/drive/storage.ts SEAL_STATE_FILE). */
+export const DRIVE_SEAL_STATE_FILE = 'seal-state'
+
+async function startsWithSealMagic(path: string): Promise<boolean> {
+  const fh = await open(path, 'r')
+  try {
+    const buf = Buffer.alloc(DRIVE_SEAL_MAGIC.length)
+    const { bytesRead } = await fh.read(buf, 0, buf.length, 0)
+    return bytesRead === buf.length && buf.equals(DRIVE_SEAL_MAGIC)
+  } finally {
+    await fh.close()
+  }
+}
+
+/** Where a blob goes in the bucket: sealed and plain copies of one sha never share a key. */
+export const blobObject = (b: { sha256: string; sealed?: boolean }) => `blobs/${b.sha256}${b.sealed ? '.sealed' : ''}`
+
+/** Every Drive blob on disk: <driveDir>/blobs/<aa>/<bb>/<sha256>, and whether the os sealed it. */
+export async function listDriveBlobs(driveDir: string): Promise<Array<{ sha256: string; path: string; size: number; sealed: boolean }>> {
   const root = join(driveDir, 'blobs')
   if (!(await exists(root))) return []
-  const out: Array<{ sha256: string; path: string; size: number }> = []
+  const out: Array<{ sha256: string; path: string; size: number; sealed: boolean }> = []
   for (const a of await readdir(root)) {
     for (const b of await readdir(join(root, a)).catch(() => [] as string[])) {
       for (const name of await readdir(join(root, a, b)).catch(() => [] as string[])) {
         if (!SHA.test(name) || name.slice(0, 2) !== a || name.slice(2, 4) !== b) continue
         const path = join(root, a, b, name)
-        out.push({ sha256: name, path, size: (await stat(path)).size })
+        out.push({ sha256: name, path, size: (await stat(path)).size, sealed: await startsWithSealMagic(path) })
       }
     }
   }
@@ -170,7 +195,7 @@ export async function takeSnapshot(s3: S3Client, key: Buffer, src: BackupSources
     const remote = new Set((await s3.list(s3.key('blobs/'))).map((o) => o.key))
     let blobsUploaded = 0
     for (const b of blobs) {
-      const k = s3.key(`blobs/${b.sha256}`)
+      const k = s3.key(blobObject(b))
       if (remote.has(k)) continue
       bytes += await uploadEncrypted(s3, key, k, createReadStream(b.path))
       blobsUploaded++
@@ -185,7 +210,7 @@ export async function takeSnapshot(s3: S3Client, key: Buffer, src: BackupSources
       finishedAt: now().toISOString(),
       files,
       absent,
-      blobs: blobs.map((b) => ({ sha256: b.sha256, size: b.size })),
+      blobs: blobs.map((b) => ({ sha256: b.sha256, size: b.size, ...(b.sealed ? { sealed: true } : {}) })),
     }
     const m = Buffer.from(JSON.stringify(manifest))
     bytes += await uploadEncrypted(s3, key, s3.key(`snapshots/${id}/manifest.json`), streamOf(m))
@@ -257,9 +282,23 @@ export async function resolveSnapshot(s3: S3Client, which: string): Promise<stri
   return which
 }
 
-/** Download + decrypt one object into a file (or only hash it when dest is null); checks the expected sha256. */
-async function fetchVerified(s3: S3Client, key: Buffer, objectKey: string, expect: string, dest: string | null): Promise<void> {
+/**
+ * Download + decrypt one object into a file (or only check it when dest is
+ * null). Plain: its sha256 must be `expect`. Sealed (os-sealed Drive blob):
+ * it must start with the seal magic and have the manifest's size — its bytes
+ * are ciphertext, guarded by the os's AEAD tag, which the os checks on read.
+ */
+async function fetchVerified(
+  s3: S3Client,
+  key: Buffer,
+  objectKey: string,
+  expect: string,
+  dest: string | null,
+  sealed?: { size: number },
+): Promise<void> {
   const h = createHash('sha256')
+  let size = 0
+  let head = Buffer.alloc(0)
   const out = dest ? createWriteStream(dest, { mode: 0o600 }) : null
   await pipeline(
     await s3.getObject(objectKey),
@@ -267,6 +306,8 @@ async function fetchVerified(s3: S3Client, key: Buffer, objectKey: string, expec
     new Writable({
       write(c: Buffer, _e, cb) {
         h.update(c)
+        size += c.length
+        if (head.length < DRIVE_SEAL_MAGIC.length) head = Buffer.concat([head, c.subarray(0, DRIVE_SEAL_MAGIC.length - head.length)])
         if (out) out.write(c, cb)
         else cb()
       },
@@ -276,6 +317,11 @@ async function fetchVerified(s3: S3Client, key: Buffer, objectKey: string, expec
       },
     }),
   )
+  if (sealed) {
+    if (!head.equals(DRIVE_SEAL_MAGIC)) throw new Error(`${objectKey}: not a sealed Drive blob (the manifest says sealed)`)
+    if (size !== sealed.size) throw new Error(`${objectKey}: ${size} bytes, the manifest says ${sealed.size}`)
+    return
+  }
   const got = h.digest('hex')
   if (got !== expect) throw new Error(`${objectKey}: content hash ${got} does not match the manifest (${expect})`)
 }
@@ -305,10 +351,18 @@ export async function fetchSnapshot(
     let dest: string | null = null
     if (out) {
       dest = driveBlobPath(out.driveDir, b.sha256)
-      if ((await exists(dest)) && (await hashFile(dest)).sha256 === b.sha256) continue
+      if (await exists(dest)) {
+        const here = b.sealed ? (await startsWithSealMagic(dest)) && (await stat(dest)).size === b.size : (await hashFile(dest)).sha256 === b.sha256
+        if (here) continue
+      }
       await mkdir(join(dest, '..'), { recursive: true })
     }
-    await fetchVerified(s3, key, s3.key(`blobs/${b.sha256}`), b.sha256, dest)
+    await fetchVerified(s3, key, s3.key(blobObject(b)), b.sha256, dest, b.sealed ? { size: b.size } : undefined)
+  }
+  // A snapshot from before sealing brings plain blobs back: the os must seal them again at its next start.
+  if (out && m.blobs.some((b) => !b.sealed)) {
+    await mkdir(out.driveDir, { recursive: true })
+    await writeFile(join(out.driveDir, DRIVE_SEAL_STATE_FILE), 'sealing\n')
   }
   return m
 }
@@ -340,7 +394,7 @@ export async function prune(s3: S3Client, key: Buffer, days: number, now: Date):
   }
   const kept = complete.filter((s) => !doomed.includes(s))
   const referenced = new Set<string>()
-  for (const s of kept) for (const b of (await readManifest(s3, key, s.id)).blobs) referenced.add(b.sha256)
+  for (const s of kept) for (const b of (await readManifest(s3, key, s.id)).blobs) referenced.add(blobObject(b).slice('blobs/'.length))
   let blobsDeleted = 0
   const base = s3.key('blobs/')
   for (const o of await s3.list(base)) {

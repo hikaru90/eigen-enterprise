@@ -242,7 +242,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.list_text_files',
-      'List notes (newest updated first), optionally paginated: the person’s own and the ones colleagues share with everyone (each with its owner; a colleague’s note is read-only).',
+      'List the person’s Memory documents — Markdown files in Drive (newest updated first), optionally paginated: their own and the ones colleagues share with everyone (each with its owner; a colleague’s document is read-only). Each id is its Drive file id (open it at /drive/file/<id>, or with drive.read).',
       'read',
       z.object({
         limit: optionalPositiveInt,
@@ -253,7 +253,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.create_text_file',
-      'Write a note (title and/or body text) into Memory › Documents. It is shared with everyone in the company unless private is true. Working for a person, it lands in their Documents marked as written by the assistant; returns the note id and title.',
+      'Write a document (title and/or body text) as a Markdown file in the person’s Drive (My drive), indexed by the brain. It is shared with everyone in the company unless private is true. Working for a person, it is marked as written by the assistant; returns the Drive file id and title.',
       'mutate',
       z.object({
         title: z.string().optional(),
@@ -276,7 +276,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.set_text_file_visibility',
-      'Make one of the person’s notes private (only they can read it — no admin or owner override) or share it with everyone in the company (the default). Only the note’s owner. Working for a person, the assistant may only make things private.',
+      'Make one of the person’s Memory documents (a Drive file) private (only they can read it in Memory; in Drive only they and admins) or share it with everyone in the company (the default; a company view grant in Drive). Only the document’s owner. Working for a person, the assistant may only make things private.',
       'mutate',
       z.object({
         text_file_id: z.string().min(1),
@@ -286,7 +286,7 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.update_text_file',
-      'Change the title and/or body of a note (body replaces the whole text). Working for a person, only notes the assistant wrote can be changed.',
+      'Change the title and/or body of a Memory document — its Drive file gets a new revision (body replaces the whole text). Working for a person, only documents the assistant wrote can be changed.',
       'mutate',
       z.object({
         text_file_id: z.string().min(1),
@@ -297,13 +297,13 @@ export function createMemoryTools(opts: MemoryToolDeps = {}): ToolDescriptor[] {
     ),
     tool(
       'memory.get_text_file',
-      'Get one note by ID: the person’s own or a colleague’s shared note (with its owner; read-only).',
+      'Get one Memory document (a Drive file) by its Drive file id: the person’s own or a colleague’s shared one (with its owner; read-only).',
       'read',
       z.object({ text_file_id: z.string().min(1) }),
     ),
     tool(
       'memory.search_text_files',
-      'Lexical keyword search over notes the person may read — their own and colleagues’ shared ones (no embeddings — use memory.retrieve_thoughts for hybrid search).',
+      'Lexical keyword search over the Memory documents (Drive files) the person may read — their own and colleagues’ shared ones (no embeddings — use memory.retrieve_thoughts for hybrid search).',
       'read',
       z.object({
         query: z.string().min(1),

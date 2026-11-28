@@ -33,7 +33,7 @@ async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'drive-source-'))
   dirs.push(dir)
   const store = memoryDriveStore()
-  const blobs = diskBlobStore(dir)
+  const blobs = diskBlobStore(dir, Buffer.alloc(32, 7))
   const access = memoryDriveAccess({
     users: { owner: { role: 'owner', name: 'Olivia' }, admin: { role: 'admin', name: 'Adam' }, alice: { role: 'member', name: 'Alice' }, bob: { role: 'member', name: 'Bob' } },
   })

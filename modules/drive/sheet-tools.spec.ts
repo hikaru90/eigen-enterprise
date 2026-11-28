@@ -35,7 +35,7 @@ async function setup() {
   })
   const drive = createDriveService({
     store: memoryDriveStore(),
-    blobs: diskBlobStore(dir),
+    blobs: diskBlobStore(dir, Buffer.alloc(32, 7)),
     access,
     maxUploadBytes: 1 << 22,
     locks: memoryEditLockStore(),
@@ -290,7 +290,7 @@ describe('drive.sheet_* tools (the spreadsheet editor as registry actions)', () 
     })
     const drive = createDriveService({
       store: memoryDriveStore(),
-      blobs: diskBlobStore(dir),
+      blobs: diskBlobStore(dir, Buffer.alloc(32, 7)),
       access,
       maxUploadBytes: 1 << 22,
       locks: memoryEditLockStore(),

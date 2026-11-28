@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { diskBlobStore, resolveDriveStorageDir, type BlobStore } from '../../../../modules/drive/storage'
+import { diskBlobStore, driveBlobKey, resolveDriveStorageDir, type BlobStore } from '../../../../modules/drive/storage'
 
 /**
  * Profile pictures (P-5): the browser crops and resizes to a square 256 px
@@ -76,7 +76,7 @@ export function resolveAvatarStorageDir(env: Record<string, string | undefined>)
 let live: BlobStore | null = null
 
 export function avatarBlobs(env: Record<string, string | undefined> = process.env): BlobStore {
-  live ??= diskBlobStore(resolveAvatarStorageDir(env))
+  live ??= diskBlobStore(resolveAvatarStorageDir(env), driveBlobKey(env))
   return live
 }
 

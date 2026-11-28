@@ -23,7 +23,7 @@ async function setup() {
   dirs.push(dir)
   const access = memoryDriveAccess({ users: { alice: { role: 'member' }, bob: { role: 'member' } } })
   let t = 0
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 64, locks: memoryEditLockStore(), now: () => new Date((t += 1000)) })
+  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir, Buffer.alloc(32, 7)), access, maxUploadBytes: 64, locks: memoryEditLockStore(), now: () => new Date((t += 1000)) })
   const tools = createDriveTools({ service: async () => drive })
   const tool = (n: string) => tools.find((x) => x.name === n)!
   const human = (id: string) => ({ principal: { id, kind: 'human' as const, roles: ['member'] }, requestId: 'r' })

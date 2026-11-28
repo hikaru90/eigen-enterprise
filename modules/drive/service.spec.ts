@@ -32,7 +32,7 @@ async function setup(maxUploadBytes = 1024) {
   const dir = await mkdtemp(join(tmpdir(), 'drive-svc-'))
   dirs.push(dir)
   const store = memoryDriveStore()
-  const blobs = diskBlobStore(dir)
+  const blobs = diskBlobStore(dir, Buffer.alloc(32, 7))
   const access = memoryDriveAccess({
     users: {
       owner: { role: 'owner' },

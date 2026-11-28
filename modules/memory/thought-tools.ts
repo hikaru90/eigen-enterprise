@@ -147,7 +147,7 @@ const NOTE_NOT_FOUND = 'Note not found. List notes with memory.list_text_files.'
 
 const thoughtId = z.string().min(1).describe('The thought id (memory.retrieve_thoughts).')
 const entityId = z.string().min(1).describe('The entity id (memory.retrieve_thoughts / memory.get_entity).')
-const textFileId = z.string().min(1).describe('The note id (memory.list_text_files).')
+const textFileId = z.string().min(1).describe('The document’s Drive file id (memory.list_text_files).')
 const agentId = z.string().min(1).describe('The connected agent id (memory.list_connected_agents).')
 const projectEntityId = z.string().min(1).describe('The project id (memory.list_projects).')
 
@@ -308,18 +308,18 @@ export function createThoughtTools(opts: ThoughtToolDeps = {}): ToolDescriptor[]
       }),
     def('memory.list_thought_notes', 'List the notes linked to one of the person’s thoughts.', thoughtInput,
       async (s, w, i) => ({ notes: await s.listThoughtNotes(w.userId, i.thought_id) })),
-    def('memory.link_text_file', 'Link a note to one of the person’s thoughts.', noteLinkInput,
+    def('memory.link_text_file', 'Link a Memory document (a Drive file) to one of the person’s thoughts; it then shows on that thought’s project.', noteLinkInput,
       async (s, w, i) => {
         const r = await s.linkNote(w.userId, i.thought_id, i.text_file_id)
         if (r.linked) return { linked: true, thoughtId: i.thought_id, textFileId: i.text_file_id }
         throw new Error(r.reason === 'thought_not_found' ? NOT_YOURS : NOTE_NOT_FOUND)
       }, { activity: 'Linked a note to a thought' }),
-    def('memory.unlink_text_file', 'Unlink a note from one of the person’s thoughts (the note itself stays).', noteLinkInput,
+    def('memory.unlink_text_file', 'Unlink a Memory document (a Drive file) from one of the person’s thoughts (the file itself stays).', noteLinkInput,
       async (s, w, i) => {
         if (!(await s.unlinkNote(w.userId, i.thought_id, i.text_file_id))) throw new Error('That note is not linked to that thought.')
         return { unlinked: true, thoughtId: i.thought_id, textFileId: i.text_file_id }
       }, { activity: 'Unlinked a note from a thought' }),
-    def('memory.delete_text_file', 'Delete a note for good. A person deletes their own notes; the assistant only notes it wrote itself; a colleague’s shared note is read-only. It cannot be undone: confirm first.', noteInput,
+    def('memory.delete_text_file', 'Delete a Memory document: the brain forgets it and its Drive file goes to the owner’s Drive trash. A person deletes their own documents; the assistant only documents it wrote itself; a colleague’s shared document is read-only. Confirm first.', noteInput,
       async (s, w, i) => {
         const note = await s.getNote(w.userId, i.text_file_id)
         if (!note) throw new Error(NOTE_NOT_FOUND)
