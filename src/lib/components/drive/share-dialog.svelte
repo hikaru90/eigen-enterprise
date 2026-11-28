@@ -186,32 +186,41 @@
         <p id="drive-share-pick-help" class="text-xs text-muted-foreground">
           Pick someone to add them; Save applies the changes.
         </p>
-        <ul
-          class="flex max-h-48 flex-col overflow-y-auto rounded-md border text-sm"
-          aria-label="People and groups to share with"
-          data-testid="drive-share-candidates"
+        <section
+          class="rounded-lg bg-muted p-1.5"
+          aria-labelledby="drive-share-candidates-heading"
+          data-testid="drive-share-candidates-area"
         >
-          {#each candidates as c (keyOf(c))}
-            <li>
-              <button
-                type="button"
-                class="w-full truncate px-3 py-1.5 text-left hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                aria-label={`Share with ${labelOf(c)}`}
-                onclick={() => pick(c)}
-                data-testid="drive-share-candidate">{labelOf(c)}</button
+          <h3 id="drive-share-candidates-heading" class="px-1.5 pt-0.5 pb-1 text-xs font-medium text-muted-foreground">
+            People in your company
+          </h3>
+          <ul
+            class="flex max-h-48 flex-col overflow-y-auto text-sm"
+            aria-labelledby="drive-share-candidates-heading"
+            data-testid="drive-share-candidates"
+          >
+            {#each candidates as c (keyOf(c))}
+              <li>
+                <button
+                  type="button"
+                  class="w-full truncate rounded-md px-1.5 py-1.5 text-left hover:bg-background focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  aria-label={`Share with ${labelOf(c)}`}
+                  onclick={() => pick(c)}
+                  data-testid="drive-share-candidate">{labelOf(c)}</button
+                >
+              </li>
+            {:else}
+              <li
+                class="px-1.5 py-1.5 text-muted-foreground"
+                data-testid={query.trim() ? 'drive-share-no-match' : undefined}
               >
-            </li>
-          {:else}
-            <li
-              class="px-3 py-2 text-muted-foreground"
-              data-testid={query.trim() ? 'drive-share-no-match' : undefined}
-            >
-              {query.trim()
-                ? `No one matches “${query.trim()}”.`
-                : 'Everyone is in the share already.'}
-            </li>
-          {/each}
-        </ul>
+                {query.trim()
+                  ? `No one matches “${query.trim()}”.`
+                  : 'Everyone is in the share already.'}
+              </li>
+            {/each}
+          </ul>
+        </section>
         <p class="sr-only" aria-live="polite">{announce}</p>
       </div>
     {/if}

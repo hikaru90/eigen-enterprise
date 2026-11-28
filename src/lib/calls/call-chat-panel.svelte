@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import type { CallChat } from './call-chat.svelte'
   import Send from '@lucide/svelte/icons/send'
   import X from '@lucide/svelte/icons/x'
@@ -68,11 +69,7 @@
     void sendDraft()
   }
 
-  function onkeydown(event: KeyboardEvent) {
-    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
-    event.preventDefault()
-    void sendDraft()
-  }
+  const onkeydown = enterSends(() => void sendDraft())
 </script>
 
 <aside

@@ -2,8 +2,8 @@
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { SentView, ShareItemView } from '../../../../modules/contribute/share/service'
   import type { ContributionDto, ContributionStatus } from '../../../../modules/contribute/types'
-  import ChevronDown from '@lucide/svelte/icons/chevron-down'
-  import ChevronUp from '@lucide/svelte/icons/chevron-up'
+  import ThumbsDown from '@lucide/svelte/icons/thumbs-down'
+  import ThumbsUp from '@lucide/svelte/icons/thumbs-up'
   import { BOARD_TABS, inTab, nextVote, tabCounts, type BoardTab } from '$lib/contribute/board'
   import type { ContributeClient } from '$lib/contribute/client'
   import { AREA_LABEL, KIND_LABEL, STATUS_LABEL } from '$lib/contribute/labels'
@@ -15,7 +15,7 @@
 
   /**
    * The Make a wish board (module `contribute`; Eigen's board tabs): Requested · In progress ·
-   * Shipped, most wanted first. Everyone votes (a second click takes the vote
+   * Shipped, most wanted first. Everyone votes with "Want this" / "Don’t need this" (a second click takes the vote
    * back; shipped is closed). The owner and admins move a proposal along and
    * leave the note people read — the agent does the same through the tools.
    * Changes show at once, then the page reloads the server's truth.
@@ -164,38 +164,6 @@
         {@const closed = p.status === 'shipped'}
         {@const share = shareOverrides[p.id] ?? sharing?.[p.id]}
         <li class="flex gap-3 p-3" data-testid="contribute-row">
-          <div class="flex w-9 shrink-0 flex-col items-center" aria-label="Votes">
-            <button
-              type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote ===
-              1
-                ? 'text-primary'
-                : 'text-muted-foreground'}"
-              aria-label="Vote up"
-              aria-pressed={p.myVote === 1}
-              disabled={closed || busy === p.id}
-              onclick={() => vote(p, 1)}
-            >
-              <ChevronUp class="size-4" aria-hidden="true" />
-            </button>
-            <span class="text-sm font-medium tabular-nums" data-testid="contribute-score"
-              >{p.score}</span
-            >
-            <button
-              type="button"
-              class="flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-primary/[0.06] disabled:cursor-default disabled:opacity-40 {p.myVote ===
-              -1
-                ? 'text-primary'
-                : 'text-muted-foreground'}"
-              aria-label="Vote down"
-              aria-pressed={p.myVote === -1}
-              disabled={closed || busy === p.id}
-              onclick={() => vote(p, -1)}
-            >
-              <ChevronDown class="size-4" aria-hidden="true" />
-            </button>
-          </div>
-
           <div class="min-w-0 flex-1">
             <p class="text-sm whitespace-pre-line [overflow-wrap:anywhere]">{p.title}</p>
             <p class="mt-1 text-xs text-muted-foreground">
@@ -204,6 +172,40 @@
               )}
               {#if p.shippedAt}· shipped {dateFmt.format(new Date(p.shippedAt))}{/if}
             </p>
+            <div class="mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="Your vote">
+              <button
+                type="button"
+                class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium disabled:cursor-default disabled:opacity-50 {p.myVote ===
+                1
+                  ? 'border-primary/40 bg-primary/10 text-primary'
+                  : 'border-border text-foreground/80 hover:bg-muted'}"
+                aria-label="Want this"
+                aria-pressed={p.myVote === 1}
+                disabled={closed || busy === p.id}
+                onclick={() => vote(p, 1)}
+              >
+                <ThumbsUp class="size-3.5" aria-hidden="true" />
+                Want this
+              </button>
+              <span class="text-xs text-muted-foreground tabular-nums"
+                ><span class="font-medium text-foreground" data-testid="contribute-score">{p.score}</span>
+                {Math.abs(p.score) === 1 ? 'vote' : 'votes'}</span
+              >
+              <button
+                type="button"
+                class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-2 text-xs disabled:cursor-default disabled:opacity-50 {p.myVote ===
+                -1
+                  ? 'bg-muted font-medium text-foreground'
+                  : 'text-muted-foreground hover:bg-muted'}"
+                aria-label="Don’t need this"
+                aria-pressed={p.myVote === -1}
+                disabled={closed || busy === p.id}
+                onclick={() => vote(p, -1)}
+              >
+                <ThumbsDown class="size-3.5" aria-hidden="true" />
+                Don’t need this
+              </button>
+            </div>
             {#if editingNote?.id === p.id}
               <div class="mt-2 flex flex-col gap-2">
                 <label class="sr-only" for="note-{p.id}">Note</label>

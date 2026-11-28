@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import CircleCheckIcon from '@lucide/svelte/icons/circle-check'
   import Trash2Icon from '@lucide/svelte/icons/trash-2'
   import { Button } from '$lib/components/ui/button'
@@ -103,6 +104,9 @@
               bind:this={editEl}
               class="h-16 w-full rounded border bg-background p-1 pr-10 text-sm"
               aria-label="Comment text"
+              onkeydown={enterSends(() => {
+                if (a.kind !== 'FreeText' || editText.trim()) saveEdit(a.id)
+              })}
               bind:value={editText}></textarea>
           </DictationField>
           <div class="flex justify-end gap-1">
@@ -143,6 +147,7 @@
                   class="h-14 w-full rounded border bg-background p-1 pr-10 text-sm"
                   aria-label="Reply"
                   placeholder="Reply…"
+                  onkeydown={enterSends()}
                   bind:value={replyText}></textarea>
               </DictationField>
               <div class="flex justify-end gap-1">

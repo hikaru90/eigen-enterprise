@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import type { Slide } from './model'
   import MapPinIcon from '@lucide/svelte/icons/map-pin'
   import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus'
@@ -151,10 +152,7 @@
 
   function onComposerKey(e: KeyboardEvent, send: () => void) {
     e.stopPropagation()
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault()
-      send()
-    }
+    enterSends(send)(e)
   }
 </script>
 

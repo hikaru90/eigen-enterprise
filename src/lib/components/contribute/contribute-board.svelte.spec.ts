@@ -41,7 +41,7 @@ describe('contribute-board.svelte', () => {
     await page.getByTestId('contribute-tab-in_progress').click()
     await expect.element(page.getByTestId('contribute-note')).toHaveTextContent('Picked up — building it now.')
     await page.getByTestId('contribute-tab-shipped').click()
-    await expect.element(page.getByRole('button', { name: 'Vote up' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: 'Want this' })).toBeDisabled()
     expect(page.getByLabelText('Status').elements()).toHaveLength(0)
   })
 
@@ -49,12 +49,22 @@ describe('contribute-board.svelte', () => {
     const vote = vi.fn(async (id: string, direction: -1 | 0 | 1) => dto({ id, title: 'Dark mode', score: 3 + direction, myVote: direction }))
     const onchanged = vi.fn(async () => {})
     render(ContributeBoard, { proposals, canManage: false, sharing: null, client: { vote, update: vi.fn(), sentPayload: vi.fn(), dontShare: vi.fn() }, onchanged })
-    await page.getByRole('button', { name: 'Vote up' }).first().click()
+    await page.getByRole('button', { name: 'Want this' }).first().click()
     expect(vote).toHaveBeenCalledWith('a', 1)
     expect(onchanged).toHaveBeenCalled()
     // b is the person's own (+1): clicking up again takes it back
-    await page.getByRole('button', { name: 'Vote up' }).nth(1).click()
+    await page.getByRole('button', { name: 'Want this' }).nth(1).click()
     expect(vote).toHaveBeenLastCalledWith('b', 0)
+  })
+
+  it('the vote says what it does in words, its count beside it, and shows my choice (wish 628e00f8)', async () => {
+    render(ContributeBoard, { proposals, canManage: false, sharing: null, client: { vote: vi.fn(), update: vi.fn(), sentPayload: vi.fn(), dontShare: vi.fn() }, onchanged: vi.fn(async () => {}) })
+    const want = page.getByRole('button', { name: 'Want this' })
+    await expect.element(want.first()).toHaveTextContent('Want this')
+    await expect.element(page.getByTestId('contribute-score').first()).toHaveTextContent('3')
+    await expect.element(want.first()).toHaveAttribute('aria-pressed', 'false')
+    await expect.element(want.nth(1)).toHaveAttribute('aria-pressed', 'true')
+    await expect.element(page.getByRole('button', { name: 'Don’t need this' }).first()).toHaveTextContent('Don’t need this')
   })
 
   it('the makers move a proposal along and leave a note', async () => {
@@ -76,7 +86,7 @@ describe('contribute-board.svelte', () => {
       throw new Error('this proposal has shipped — voting is closed')
     })
     render(ContributeBoard, { proposals, canManage: false, sharing: null, client: { vote, update: vi.fn(), sentPayload: vi.fn(), dontShare: vi.fn() }, onchanged: vi.fn(async () => {}) })
-    await page.getByRole('button', { name: 'Vote down' }).first().click()
+    await page.getByRole('button', { name: 'Don’t need this' }).first().click()
     await expect.element(page.getByRole('alert')).toHaveTextContent('voting is closed')
   })
 

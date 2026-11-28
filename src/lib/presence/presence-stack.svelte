@@ -1,13 +1,4 @@
 <script lang="ts" module>
-  /** The ring around each avatar: the colour of what the stack sits on, so the avatars read as cut out of it. */
-  export type StackRing = 'sidebar' | 'background' | 'card' | 'primary'
-  const RING: Record<StackRing, string> = {
-    sidebar: 'ring-sidebar',
-    background: 'ring-background',
-    card: 'ring-card',
-    primary: 'ring-primary',
-  }
-
   /** How wide a stack of `n` people is (px) at most `max` avatars: room a row leaves for it. */
   export const stackWidth = (n: number, max = 3) => 20 + (Math.min(n, max) - 1) * 14 + (n > max ? 14 : 0)
 
@@ -25,7 +16,7 @@
 
   /**
    * Who is here (plan/phase-multiplayer-presence.md): up to three small round
-   * avatars on a neutral ring, +n for the rest, a status dot only where the
+   * avatars, no border, a light shadow to lift each off the one beneath, +n for the rest, a status dot only where the
    * status is worth telling (online is everyone here). Hover or keyboard
    * focus lists every name with what they have open; a tap opens it too. The
    * button's name says the same for screen readers.
@@ -39,7 +30,6 @@
     title,
     max = 3,
     onItem = false,
-    ring = 'sidebar',
     side = 'right',
     class: className = '',
     testid = 'presence-stack',
@@ -50,7 +40,6 @@
     max?: number
     /** Everyone shown has the item the stack sits on open. */
     onItem?: boolean
-    ring?: StackRing
     side?: 'top' | 'right' | 'bottom' | 'left'
     class?: string
     testid?: string
@@ -81,13 +70,13 @@
           data-testid={testid}
           onclick={() => (open = true)}
           class={[
-            'flex shrink-0 cursor-default items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'flex shrink-0 cursor-default items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring',
             className,
           ]}
         >
           {#each shown as p, i (p.userId)}
             <span
-              class={['relative shrink-0 rounded-full ring-2', RING[ring], i > 0 && '-ml-1.5']}
+              class={['relative flex shrink-0 items-center justify-center rounded-full shadow-sm', i > 0 && '-ml-1.5']}
               data-testid="{testid}-avatar"
             >
               <UserAvatar name={p.name} image={p.image} size="xs" round testid="{testid}-picture" />
@@ -104,10 +93,7 @@
           {/each}
           {#if more > 0}
             <span
-              class={[
-                '-ml-1.5 inline-grid h-5 min-w-5 place-items-center rounded-full bg-muted px-1 font-mono text-xs text-foreground ring-2',
-                RING[ring],
-              ]}
+              class="-ml-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1 font-mono text-xs text-foreground shadow-sm"
               data-testid="{testid}-more">+{more}</span
             >
           {/if}

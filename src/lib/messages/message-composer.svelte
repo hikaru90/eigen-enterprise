@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isSendKey } from '$lib/components/keys/enter-sends'
   import type { Snippet } from 'svelte'
   import Bold from '@lucide/svelte/icons/bold'
   import Code from '@lucide/svelte/icons/code'
@@ -227,7 +228,7 @@
 
   function onKey(e: KeyboardEvent) {
     if (mentionKey(e)) return
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    if (isSendKey(e)) {
       e.preventDefault()
       if (canSend) onsend()
       return

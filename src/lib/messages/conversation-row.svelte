@@ -100,7 +100,6 @@
       title="Open now"
       onItem
       max={MAX}
-      ring={current ? 'primary' : 'background'}
       class="absolute top-1/2 right-2 -translate-y-1/2"
       testid="messages-conversation-presence"
     />

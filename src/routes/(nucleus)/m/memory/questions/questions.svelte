@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import ErrorNotice from '$lib/components/error-notice.svelte'
@@ -153,6 +154,7 @@
       rows={1}
       class="min-h-9"
       placeholder={m.questions_text_placeholder()}
+      onkeydown={enterSends()}
       data-testid="question-text"
     />
     <label class="sr-only" for="question-tags">{m.questions_tags_label()}</label>
