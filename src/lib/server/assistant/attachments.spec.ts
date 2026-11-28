@@ -22,6 +22,8 @@ function modelSays(content: string, finishReason = 'stop') {
   return vi.fn(async () => ({ choices: [{ message: { content }, finish_reason: finishReason }] }))
 }
 
+const visionModel = vi.fn(async () => 'google/gemini-3.8-flash' as string | undefined)
+
 function bytesOf(text: string): Uint8Array {
   return new TextEncoder().encode(text)
 }
@@ -30,7 +32,7 @@ describe('readAssistantAttachment', () => {
   it('reads a text file as is — no model call', async () => {
     const complete = modelSays('unused')
     const attachment = await readAssistantAttachment(
-      { complete },
+      { complete, visionModel },
       { userId: 'u1', filename: ' notes.md ', bytes: bytesOf('# Plan\n\nShip the bakery site.') },
     )
     expect(attachment).toEqual({
@@ -45,7 +47,7 @@ describe('readAssistantAttachment', () => {
   it('hands a PDF to the company model as a file part and keeps the text it read', async () => {
     const complete = modelSays('Quarterly report\n\nRevenue grew 12%.')
     const attachment = await readAssistantAttachment(
-      { complete },
+      { complete, visionModel },
       { userId: 'u1', filename: 'q3.pdf', bytes: PDF },
     )
     expect(attachment).toEqual({
@@ -69,7 +71,7 @@ describe('readAssistantAttachment', () => {
   it('hands an image to the model as an image part', async () => {
     const complete = modelSays('A whiteboard sketch of the homepage.')
     const attachment = await readAssistantAttachment(
-      { complete },
+      { complete, visionModel },
       { userId: 'u1', filename: 'sketch.png', bytes: PNG },
     )
     expect(attachment.kind).toBe('image')
@@ -77,12 +79,20 @@ describe('readAssistantAttachment', () => {
     expect(call.messages.at(-1)?.attachments).toEqual([
       { type: 'image', mime: 'image/png', base64: Buffer.from(PNG).toString('base64') },
     ])
+    // A text-only chat model never gets the image: the vision model reads it.
+    expect((call as { modelOverride?: string }).modelOverride).toBe('google/gemini-3.8-flash')
+  })
+
+  it('a provider outside the pool reads with its own chat model (no override)', async () => {
+    const complete = modelSays('A sketch.')
+    await readAssistantAttachment({ complete, visionModel: async () => undefined }, { userId: 'u1', filename: 's.png', bytes: PNG })
+    expect(complete.mock.calls[0]![0]).not.toHaveProperty('modelOverride')
   })
 
   it('refuses a file it cannot read (binary, e.g. a Word file) with a plain sentence', async () => {
     const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0xfe, 0x00])
     const err = await readAssistantAttachment(
-      { complete: modelSays('x') },
+      { complete: modelSays('x'), visionModel },
       { userId: 'u1', filename: 'brief.docx', bytes: zip },
     ).catch((e: unknown) => e)
     expect(err).toBeInstanceOf(AssistantAttachmentError)
@@ -94,13 +104,13 @@ describe('readAssistantAttachment', () => {
   it('refuses an empty file and a nameless one', async () => {
     await expect(
       readAssistantAttachment(
-        { complete: modelSays('x') },
+        { complete: modelSays('x'), visionModel },
         { userId: 'u1', filename: 'a.txt', bytes: new Uint8Array() },
       ),
     ).rejects.toMatchObject({ status: 400, message: '“a.txt” is empty.' })
     await expect(
       readAssistantAttachment(
-        { complete: modelSays('x') },
+        { complete: modelSays('x'), visionModel },
         { userId: 'u1', filename: '  ', bytes: bytesOf('x') },
       ),
     ).rejects.toMatchObject({ status: 400 })
@@ -111,7 +121,7 @@ describe('readAssistantAttachment', () => {
     const big = new Uint8Array(ASSISTANT_ATTACHMENT_LIMITS.maxBytes.pdf + 1)
     big.set(PDF)
     const err = await readAssistantAttachment(
-      { complete },
+      { complete, visionModel },
       { userId: 'u1', filename: 'huge.pdf', bytes: big },
     ).catch((e: unknown) => e)
     expect((err as AssistantAttachmentError).status).toBe(413)
@@ -123,13 +133,13 @@ describe('readAssistantAttachment', () => {
     const text = 'a'.repeat(ASSISTANT_ATTACHMENT_LIMITS.maxTextChars + 1)
     await expect(
       readAssistantAttachment(
-        { complete: modelSays('x') },
+        { complete: modelSays('x'), visionModel },
         { userId: 'u1', filename: 'log.txt', bytes: bytesOf(text) },
       ),
     ).rejects.toMatchObject({ status: 413 })
     await expect(
       readAssistantAttachment(
-        { complete: modelSays(text) },
+        { complete: modelSays(text), visionModel },
         { userId: 'u1', filename: 'book.pdf', bytes: PDF },
       ),
     ).rejects.toMatchObject({ status: 413 })
@@ -138,7 +148,7 @@ describe('readAssistantAttachment', () => {
   it('fails loud when the model stopped before it finished reading', async () => {
     await expect(
       readAssistantAttachment(
-        { complete: modelSays('Chapter 1 …', 'length') },
+        { complete: modelSays('Chapter 1 …', 'length'), visionModel },
         { userId: 'u1', filename: 'book.pdf', bytes: PDF },
       ),
     ).rejects.toMatchObject({ status: 413 })
@@ -149,7 +159,7 @@ describe('readAssistantAttachment', () => {
       throw new LlmHttpError(400, 'unsupported content part: file')
     })
     const err = await readAssistantAttachment(
-      { complete: rejecting },
+      { complete: rejecting, visionModel },
       { userId: 'u1', filename: 'q3.pdf', bytes: PDF },
     ).catch((e: unknown) => e)
     expect((err as AssistantAttachmentError).status).toBe(422)
@@ -161,7 +171,7 @@ describe('readAssistantAttachment', () => {
     })
     await expect(
       readAssistantAttachment(
-        { complete: unconfigured },
+        { complete: unconfigured, visionModel },
         { userId: 'u1', filename: 'q3.pdf', bytes: PDF },
       ),
     ).rejects.toMatchObject({ status: 503 })

@@ -391,6 +391,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'drive.trash_many',
   'drive.unarchive',
   'drive.upload',
+  'drive.view_image',
   'drive.write_text',
   'ee',
   'email.label_create',
@@ -520,6 +521,8 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'tasks.complete',
   'tasks.list',
   'tasks.mark_seen',
+  'web.fetch',
+  'web.search',
 ] as const
 
 /**

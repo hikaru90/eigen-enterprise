@@ -1,6 +1,7 @@
 import type { RequestHandler } from './$types'
 import { json } from '@sveltejs/kit'
 import { dbScopedGatewayComplete } from '$lib/server/agent/db-scoped-complete'
+import { resolveVisionModel } from '$lib/server/llm/vision'
 import {
   AssistantAttachmentError,
   readAssistantAttachment,
@@ -30,7 +31,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
   try {
     const attachment = await readAssistantAttachment(
-      { complete: dbScopedGatewayComplete },
+      { complete: dbScopedGatewayComplete, visionModel: resolveVisionModel },
       { userId: user.id, filename: file.name, bytes: new Uint8Array(await file.arrayBuffer()) },
     )
     return json({ attachment })

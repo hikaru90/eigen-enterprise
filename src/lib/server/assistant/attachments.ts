@@ -16,8 +16,8 @@ import { detectGuideMime } from '../../../../modules/brand/extract/guide'
 /**
  * Reading a file attached to an assistant message (see $lib/components/assistant/attachments).
  * The type comes from the file's own content — its format signature, or valid UTF-8 text —
- * never from its name. A PDF or an image is read by the company's chat model through the
- * gateway (the same provider and attribution as the chat turn), because the agent's durable
+ * never from its name. A PDF or an image is read through the gateway by a model that reads them
+ * (the company's chat model when it does, else the pool's vision pick, vision.ts), because the agent's durable
  * turn carries text only; the text it read goes into the turn. Every refusal is a plain
  * sentence for the person; nothing is ever cut short silently.
  */
@@ -52,7 +52,15 @@ export class AssistantAttachmentError extends Error {
   }
 }
 
-export type AttachmentReadDeps = { complete: GatewayCompleteFn }
+export type AttachmentReadDeps = {
+  complete: GatewayCompleteFn
+  /**
+   * The pool model that reads PDFs and images for this caller (vision.ts resolveVisionModel):
+   * the company's chat model when it reads them, else the vision pick; undefined for a provider
+   * outside the pool, whose own chat model reads.
+   */
+  visionModel: (userId: string) => Promise<string | undefined>
+}
 
 type Detected =
   | { kind: 'pdf' }
@@ -106,7 +114,9 @@ async function readWithModel(
 ): Promise<string> {
   let response: unknown
   try {
+    const model = await deps.visionModel(input.userId)
     response = await deps.complete({
+      ...(model ? { modelOverride: model } : {}),
       userId: input.userId,
       messages: [
         { role: 'system', content: READ_INSTRUCTIONS },

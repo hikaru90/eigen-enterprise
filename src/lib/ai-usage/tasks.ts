@@ -20,7 +20,8 @@ export const AI_PRODUCTS = {
   repos: { label: 'Repos', description: 'Repository summaries.' },
   branding: { label: 'Branding', description: 'Brand extraction, captions and material texts.' },
   website: { label: 'Website', description: 'Page audience checks and app deploy help.' },
-  drive: { label: 'Drive', description: 'Archive suggestions.' },
+  drive: { label: 'Drive', description: 'Archive suggestions and looking at images.' },
+  web: { label: 'Web', description: 'Web searches and the images and PDFs the AI opens on the web.' },
   contribute: { label: 'Contribute', description: 'Judging, scrubbing and summarising wishes and modules.' },
   email: { label: 'Email', description: 'Email’s own model calls (its routing decisions count under Decisions).' },
   speech: { label: 'Speech', description: 'Speech to text and the assistant’s voice.' },
@@ -111,6 +112,10 @@ export const AI_TASKS = {
   'website.app_diagnose': { product: 'website', label: 'Deploy diagnosis', op: 'app_deploy_diagnose' },
 
   'drive.archive_suggest': { product: 'drive', label: 'Archive suggestions', op: 'drive_archive_suggest' },
+  'drive.image_read': { product: 'drive', label: 'Looking at images and PDFs' },
+
+  'web.search': { product: 'web', label: 'Web searches' },
+  'web.image_read': { product: 'web', label: 'Images and PDFs on the web' },
 
   'contribute.judge': { product: 'contribute', label: 'Judging wishes', op: 'contribute_judge' },
   'contribute.scrub': { product: 'contribute', label: 'Removing private details', op: 'contribute_scrub' },
