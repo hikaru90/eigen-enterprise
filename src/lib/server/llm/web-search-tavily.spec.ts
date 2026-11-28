@@ -69,7 +69,7 @@ describe('web.search on eigenInference (Opper) via Tavily', () => {
     expect(logs).toHaveLength(1)
     const [user, row] = logs[0]!
     expect(user).toBe('u1')
-    expect(row).toMatchObject({ provider: 'platform', task: 'web.search', model: TAVILY_MODEL, gatewayHost: 'api.tavily.com', outcome: 'ok', baseCostUsd: TAVILY_BASIC_SEARCH_USD })
+    expect(row).toMatchObject({ provider: 'platform', task: 'assistant.web_search', model: TAVILY_MODEL, gatewayHost: 'api.tavily.com', outcome: 'ok', baseCostUsd: TAVILY_BASIC_SEARCH_USD })
     expect(JSON.stringify(row)).not.toContain('tvly-SECRET')
   })
 
@@ -78,7 +78,7 @@ describe('web.search on eigenInference (Opper) via Tavily', () => {
     const logs: Array<[string, TavilyLogEntry]> = []
     await expect(llmWebSearch({ userId: 'u1', query: 'q' }, deps(tavily.url, 'tvly-SECRET', logs))).rejects.toThrow(/Tavily search failed/)
     expect(logs).toHaveLength(1)
-    expect(logs[0]![1]).toMatchObject({ outcome: 'error', baseCostUsd: 0, task: 'web.search' })
+    expect(logs[0]![1]).toMatchObject({ outcome: 'error', baseCostUsd: 0, task: 'assistant.web_search' })
     expect(JSON.stringify(logs)).not.toContain('tvly-SECRET')
   })
 

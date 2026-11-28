@@ -48,7 +48,7 @@ export async function tavilySearch(
   const base = {
     provider: input.provider,
     gatewayHost: TAVILY_GATEWAY_HOST,
-    task: 'web.search' as const,
+    task: 'assistant.web_search' as const,
     model: TAVILY_MODEL,
     context: `web.search max_results=${input.maxResults}`,
     attempt: 1,

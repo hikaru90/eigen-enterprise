@@ -9,7 +9,7 @@ import { tavilySearch, type TavilyDeps } from './tavily'
 /**
  * Web search for the assistant and co-workers (wish 133f8e82), through the gateway: OpenRouter's
  * web plugin (`plugins: [{ id: 'web' }]`) on the company's chat model, so the search's price comes
- * back in the call's `usage.cost` and lands on the cost ledger (task `web.search`).
+ * back in the call's `usage.cost` and lands on the cost ledger (task `assistant.web_search`).
  * eigenInference on Opper (no web search there) searches with the hosting's Tavily key
  * (PLATFORM_SEARCH_TAVILY_API_KEY, tavily.ts; owner decision 2026-11-28), billed as an
  * eigenInference row on the ledger. Without that key, and on providers outside the pool, the call
