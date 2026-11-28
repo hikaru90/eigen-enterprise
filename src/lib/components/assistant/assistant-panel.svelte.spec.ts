@@ -73,6 +73,14 @@ function stubFetch(): void {
         if (scripted) return scripted()
         return Response.json({ outcome: 'chat', route: 'question', decisionId: 'd-q', confidence: 0.9, source: 'jev' })
       }
+      if (url.startsWith('/api/drive/artifacts/f-deck')) {
+        if (url.endsWith('/pdf')) return Response.json({ file: { id: 'f-pdf', name: 'Pitch.pdf' } })
+        const n = calls.filter((c) => c.url === '/api/drive/artifacts/f-deck').length - 1
+        return Response.json({
+          artifact: { id: 'f-deck', name: 'Pitch.deck.html', kind: 'deck', slideCount: n + 1 },
+          viewUrl: `about:blank#v${n}`,
+        })
+      }
       if (url === '/api/chat') {
         const scripted = chatReplies.shift()
         if (scripted) return scripted(init?.signal)
@@ -466,6 +474,41 @@ describe('assistant panel', () => {
     const chat = calls.filter((c) => c.url === '/api/chat').at(-1)
     // No session id: the server starts a new conversation.
     expect(chat?.body).toEqual({ message: 'Fresh start' })
+  })
+
+  it('opens an artifact the assistant made beside the chat, sandboxed, and reloads it when it changes', async () => {
+    chatReplies = [
+      () =>
+        ndjson([
+          { type: 'tool.preview', stepId: 'a-1', tool: 'artifacts.create', inputSummary: 'kind: deck' },
+          { type: 'tool.finished', stepId: 'a-1', tool: 'artifacts.create', failed: false, resultSummary: null, artifact: { fileId: 'f-deck' } },
+          { type: 'done', response: 'Here is the deck.', sessionId: 's-1', messageId: 'm-2' },
+        ]),
+      () =>
+        ndjson([
+          { type: 'tool.preview', stepId: 'a-2', tool: 'artifacts.update', inputSummary: null },
+          { type: 'tool.finished', stepId: 'a-2', tool: 'artifacts.update', failed: false, resultSummary: null, artifact: { fileId: 'f-deck' } },
+          { type: 'done', response: 'Added a slide.', sessionId: 's-1', messageId: 'm-4' },
+        ]),
+    ]
+    await openPanel()
+    await page.getByTestId('assistant-composer-input').fill('make me a pitch deck')
+    await page.getByTestId('assistant-send').click()
+    const frame = page.getByTestId('artifact-frame')
+    await expect.element(frame).toHaveAttribute('src', 'about:blank#v0')
+    await expect.element(frame).toHaveAttribute('sandbox', 'allow-scripts')
+    await expect.element(page.getByTestId('artifact-name')).toHaveTextContent('Pitch.deck.html')
+
+    await page.getByTestId('assistant-composer-input').fill('add a slide')
+    await page.getByTestId('assistant-send').click()
+    await expect.element(page.getByText('Added a slide.')).toBeInTheDocument()
+    await expect.element(page.getByTestId('artifact-frame')).toHaveAttribute('src', 'about:blank#v1')
+    await expect.element(page.getByText('2 slides')).toBeInTheDocument()
+
+    await page.getByTestId('artifact-export-pdf').click()
+    await expect.element(page.getByTestId('artifact-exported')).toHaveTextContent('Saved Pitch.pdf in Drive.')
+    await page.getByTestId('artifact-close').click()
+    await expect.element(page.getByTestId('artifact-panel')).not.toBeInTheDocument()
   })
 
   it('shows each tool the assistant ran as a step, and what the reply cost under it', async () => {

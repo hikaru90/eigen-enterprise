@@ -18,7 +18,7 @@ export type ChatStreamEvent =
   | { type: 'message_delta'; content: string }
   | { type: 'tool.preview'; stepId?: string; tool: string; inputSummary: string | null }
   /** The tool step `stepId` ended (failed: a structured tool error); summaries are secret-free. */
-  | { type: 'tool.finished'; stepId: string; tool: string; failed: boolean; resultSummary: string | null }
+  | { type: 'tool.finished'; stepId: string; tool: string; failed: boolean; resultSummary: string | null; artifact?: { fileId: string } }
   | { type: 'approval.required'; tool: string; approvalId: string }
   /**
    * First line of a member turn: the stored message and its session, so the

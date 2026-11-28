@@ -14,7 +14,7 @@ import type { ConversionLoss } from '$lib/office/xlsx/convert'
 import { LEVEL_RANK } from './access-port'
 import { contentDateOf } from './content-date'
 import { holderOf, isLive, LOCK_TTL_MS, type EditLockStore, type LockHolder } from './locks'
-import { isRevisioned, isTextDocument, isTextFile, mimeFor, officeKind } from './preview'
+import { isHtmlFile, isRevisioned, isTextDocument, isTextFile, mimeFor, officeKind } from './preview'
 import {
   SNAPSHOT_MAX_BYTES,
   SNAPSHOT_MAX_FILES,
@@ -1429,6 +1429,26 @@ export function createDriveService(deps: DriveDeps) {
           `Only Markdown (.md) and table (.csv) files are written as text; “${file.name}” is not one.`,
         )
       return saveContent(actor, file, new TextEncoder().encode(content), sessionId)
+    },
+
+    /**
+     * Saves new HTML into an HTML page (an artifact, ./artifact.ts): a new
+     * revision. `baseSha256`: the content the writer started from (a targeted
+     * edit read it first); when the file has changed since, nothing is saved
+     * (`conflict`) — never a silent overwrite.
+     */
+    async writeHtml(
+      actor: Actor,
+      id: string,
+      content: string,
+      opts: { baseSha256?: string } = {},
+    ): Promise<{ file: ItemView; revision: DriveRevision }> {
+      const file = await requireFile(actor, id, 'edit')
+      if (!isHtmlFile(file.name))
+        throw new DriveError('invalid', `Only HTML pages (.html) are written as HTML; “${file.name}” is not one.`)
+      if (opts.baseSha256 !== undefined && opts.baseSha256 !== file.sha256)
+        throw new DriveError('conflict', `“${file.name}” was changed while this edit was made; read it again and redo the edit.`)
+      return saveContent(actor, file, new TextEncoder().encode(content), undefined)
     },
 
     /**

@@ -1,4 +1,5 @@
 import type { Actor, DriveService } from './service'
+import type { ViewScope } from './view-token'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
 import { actsAsMember } from '$lib/kernel/principals'
@@ -11,6 +12,7 @@ import { requireHuman } from '$lib/server/ee/human'
 import type { SheetLive } from '$lib/server/sheet-live/service'
 import { appStatus, PREVIEW_ID, runApp, stopApp, type AppPreviewDeps } from './app-preview'
 import { liveSuggestChat, SUGGEST_DEFAULT_DAYS, SUGGEST_MAX_DAYS, SUGGEST_MIN_DAYS, suggestArchive, type SuggestChat } from './archive-suggest'
+import { createArtifactTools } from './artifact-tools'
 import { createDriveFileTools } from './file-tools'
 import { DRIVE_MODULE_ID } from './manifest'
 import { createDrivePdfTools } from './pdf-tools'
@@ -56,8 +58,15 @@ export type DriveToolDeps = {
   env?: Record<string, string | undefined>
   /** Live .xlsx co-editing service (when active, sheet_* tools route reads/writes through it). */
   sheetLive?: () => Promise<SheetLive>
-  /** Chromium launcher / probe behind drive.sheet_export_pdf (tests inject a fake). */
+  /** Chromium launcher / probe behind drive.sheet_export_pdf and artifacts.export_pdf (tests inject a fake). */
   pdfDeps?: ExportPdfDeps
+  /** The sandboxed view address behind artifacts.read view_url (tests inject a fake). */
+  viewUrl?: (scope: ViewScope) => Promise<string>
+}
+
+async function liveViewUrl(scope: ViewScope): Promise<string> {
+  const { driveViewUrl } = await import('$lib/server/drive-view')
+  return driveViewUrl(scope)
 }
 
 /** Batch size for one archive/unarchive call (one approval). */
@@ -197,7 +206,7 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
       name: 'drive.create_document',
       module: DRIVE_MODULE_ID,
       summary:
-        'Create a new Markdown (.md) document — or, with kind "csv", a table; with kind "xlsx", an empty Excel spreadsheet with one sheet "Sheet1" (no content: write its cells with drive.sheet_write) — in Drive (name; content, omit for an empty file; folder_id, omit for the top level). This is where the company’s internal documents go — pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes — never the public website. Working for a person, it lands in their Drive as theirs. Revise it later with drive.write_text.',
+        'Create a new Markdown (.md) document — or, with kind "csv", a table; with kind "xlsx", an empty Excel spreadsheet with one sheet "Sheet1" (no content: write its cells with drive.sheet_write) — in Drive (name; content, omit for an empty file; folder_id, omit for the top level). This is where the company’s internal documents go — pitch decks, project descriptions, funding/investor documents, plans, briefs, meeting notes — never the public website. Working for a person, it lands in their Drive as theirs. Revise it later with drive.write_text. For a slide deck or anything visual (layout, carousel, one-pager) make an artifact instead (artifacts.create): it renders next to the chat.',
       auditClass: 'mutate',
       approvalRisk: 'internal',
       activity: (input: z.infer<typeof createInput>, output: unknown) => {
@@ -350,5 +359,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     }),
     ...createDriveSheetRulesTools({ service, sheetLive }),
     ...createDriveSheetLiveTools({ sheetLive: opts.sheetLive ?? liveSheetLive }),
+    ...createArtifactTools({ service, viewUrl: opts.viewUrl ?? liveViewUrl, ...(opts.pdfDeps ? { pdf: opts.pdfDeps } : {}) }),
   ]
 }

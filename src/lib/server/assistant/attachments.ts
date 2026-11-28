@@ -1,3 +1,4 @@
+import { unzipSync } from 'fflate'
 import { z } from 'zod'
 import {
   ASSISTANT_ATTACHMENT_KIND_LABEL,
@@ -56,12 +57,33 @@ export type AttachmentReadDeps = { complete: GatewayCompleteFn }
 
 type Detected =
   | { kind: 'pdf' }
+  | { kind: 'docx' }
+  | { kind: 'pptx' }
   | { kind: 'image'; mime: 'image/png' | 'image/jpeg' | 'image/webp' }
   | { kind: 'text'; text: string }
+
+const ZIP_SIGNATURE = [0x50, 0x4b, 0x03, 0x04]
+
+/** A Word or PowerPoint file: a zip whose main part is word/document.xml or ppt/presentation.xml (the format's own layout). */
+function ooxmlKind(bytes: Uint8Array): 'docx' | 'pptx' | null {
+  if (!ZIP_SIGNATURE.every((b, i) => bytes[i] === b)) return null
+  const names: string[] = []
+  try {
+    // Lists the parts without inflating any of them.
+    unzipSync(bytes, { filter: (f) => (names.push(f.name), false) })
+  } catch {
+    return null
+  }
+  if (names.includes('word/document.xml')) return 'docx'
+  if (names.includes('ppt/presentation.xml')) return 'pptx'
+  return null
+}
 
 function detect(bytes: Uint8Array): Detected | null {
   const mime = detectGuideMime(bytes)
   if (mime === 'application/pdf') return { kind: 'pdf' }
+  const office = ooxmlKind(bytes)
+  if (office) return { kind: office }
   if (mime !== null) return { kind: 'image', mime }
   let text: string
   try {
@@ -170,12 +192,12 @@ export async function readAssistantAttachment(
   if (!detected) {
     throw new AssistantAttachmentError(
       'unsupported_type',
-      `“${name}” isn't a file the assistant can read. Attach a PDF, an image (PNG, JPEG, WebP) or a text file (like .txt, .md, .csv) — save other documents as PDF first.`,
+      `“${name}” isn't a file the assistant can read. Attach a PDF, a Word (.docx) or PowerPoint (.pptx) file, an image (PNG, JPEG, WebP) or a text file (like .txt, .md, .csv) — save other documents as PDF first.`,
     )
   }
   const limit = ASSISTANT_ATTACHMENT_LIMITS.maxBytes[detected.kind]
   if (input.bytes.length > limit) {
-    const what = { pdf: 'PDFs', image: 'images', text: 'text files' }[detected.kind]
+    const what = { pdf: 'PDFs', image: 'images', text: 'text files', docx: 'Word files', pptx: 'PowerPoint decks' }[detected.kind]
     throw new AssistantAttachmentError(
       'too_large',
       `“${name}” is ${(input.bytes.length / MB).toFixed(1)} MB; ${what} can be at most ${limit / MB} MB.`,
@@ -186,6 +208,15 @@ export async function readAssistantAttachment(
   let text: string
   if (detected.kind === 'text') {
     text = detected.text
+  } else if (detected.kind === 'docx' || detected.kind === 'pptx') {
+    // The same extraction drive.read uses: no model call, structure kept as Markdown.
+    const { extractOfficeText } = await import('$lib/office/text')
+    try {
+      text = await extractOfficeText(detected.kind, input.bytes)
+    } catch (err) {
+      console.error('[assistant] office attachment read failed', { name, kind: detected.kind, err })
+      throw new AssistantAttachmentError('unreadable', `“${name}” could not be read; it may be damaged. Save it as PDF and attach that.`, { cause: err })
+    }
   } else {
     const base64 = Buffer.from(input.bytes).toString('base64')
     const attachment: ChatAttachment =

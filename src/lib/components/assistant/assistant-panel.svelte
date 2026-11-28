@@ -6,6 +6,7 @@
   import { resolve } from '$app/paths'
   import AiUsageMeter from '$lib/components/ai-usage-meter.svelte'
   import { panelSlide } from '$lib/gestures/panel-slide'
+  import ArtifactPanel from './artifact-panel.svelte'
   import AssistantActivity from './assistant-activity.svelte'
   import AssistantChatView from './assistant-chat-view.svelte'
   import AssistantHistory from './assistant-history.svelte'
@@ -104,6 +105,8 @@
 />
 
 {#if assistant.open}
+  <!-- The artifact the assistant is making, beside the chat (it docks to the panel's left). -->
+  <ArtifactPanel panel={assistant.chat.artifact} />
   <aside
     id="assistant-panel"
     aria-label="Assistant"

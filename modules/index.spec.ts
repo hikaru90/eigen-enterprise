@@ -164,6 +164,9 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'drive.sheet_hyperlink_remove': 'internal',
       'drive.sheet_hyperlink_set': 'internal',
       'drive.sheet_live_submit': 'internal',
+      'artifacts.create': 'internal',
+      'artifacts.update': 'internal',
+      'artifacts.export_pdf': 'internal',
       'drive.sheet_merge': 'internal',
       'drive.sheet_names_delete': 'internal',
       'drive.sheet_names_set': 'internal',
@@ -414,6 +417,9 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     // Module lifecycle: deactivation gates (owner's yes); activation is the
     // agent's own fix for "module not active" (owner, 2026-10-20) — not gated.
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
+      'artifacts.create',
+      'artifacts.export_pdf',
+      'artifacts.update',
       'assistant.conversation_rename',
       'brand.set_activate',
       'brand.social_post_delete',

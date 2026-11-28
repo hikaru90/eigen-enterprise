@@ -310,4 +310,38 @@ describe('the brain’s ee tool — runs as the person, never more', () => {
     expect(pending?.status).toBe('pending')
     expect(f.seen).toEqual([])
   })
+
+  it('an artifact written through ee names its file on the finished step (the chat opens it)', async () => {
+    const f = await fixture()
+    f.registry.register(
+      tool('artifacts.create', ['admin', 'member'], { module: 'drive', auditClass: 'mutate', approvalRisk: 'internal', activity: () => 'Made a deck', handler: async () => ({ artifact: { id: 'file-9', kind: 'deck' } }) }),
+    )
+    const surface: unknown[] = []
+    const durable = new DurableLoopEngine({
+      instructions: 'test',
+      harness: {
+        startBackgroundRun: async () => {
+          throw new Error('not used')
+        },
+        conversation: async (input) => ({
+          id: 'c-1',
+          submitAndSettle: async () => {
+            const ee = input.tools.find((t) => t.name === 'ee')!
+            await ee.execute({ args: ['tool', 'run', 'artifacts.create'], input: {} })
+            return { status: 'answered', reply: 'done' }
+          },
+        }) as never,
+      },
+    })
+    const runtime = new AgentRuntime({
+      registry: f.registry,
+      isToolActive: f.isToolActive,
+      eventSink: new InMemoryEventSink(),
+      engines: new Map([['durable', durable]]),
+      metaTools: [f.ee],
+    })
+    runtime.registerAgent({ ...f.agent, loopEngine: 'durable' })
+    await runtime.dispatch(f.agent.id, 's-1', 'make a deck', { surfaceEvent: (e) => surface.push(e) }, { person: member })
+    expect(surface.at(-1)).toMatchObject({ type: 'tool.finished', tool: 'artifacts.create', failed: false, artifact: { fileId: 'file-9' } })
+  })
 })
