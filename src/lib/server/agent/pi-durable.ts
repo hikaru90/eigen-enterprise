@@ -9,11 +9,13 @@
 
 export {
   AssistantEntry,
+  CompactionTask,
   // `Harness` is both the `Harness.open` namespace value and the instance type.
   Harness,
   createRegistry,
   defineExtension,
   defineTool,
+  hook,
   watchEvents,
 } from '@earendil-works/pi-durable'
 export type {
@@ -24,6 +26,7 @@ export type {
   ConversationCreateOptions,
   ConversationId,
   EntryId,
+  Extension,
   Harness as DurableHarness,
   SettledSubmissionRecord,
   SnapshotEvent,

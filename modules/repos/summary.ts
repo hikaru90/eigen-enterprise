@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { AiTaskId } from '$lib/ai-usage/tasks'
 import { isLlmHttpError, isLlmNotConfiguredError } from '$lib/server/llm/errors'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
+import { assertOutputScript, OutputScriptError, outputLanguageInstruction } from '$lib/server/llm/output-language'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
 import { HIGHLIGHT_KINDS } from './snapshot-types'
@@ -145,7 +146,8 @@ const JSON_SCHEMA = `{
 
 export type SummaryInput = { snapshot: RepoSnapshot; delta: SyncDelta; previous: RepoSummary | null }
 
-export function buildSummaryMessages(input: SummaryInput): ChatMessage[] {
+/** `language`: the company owner's language (wish d0a0c775: the summary says it, and its script is checked). */
+export function buildSummaryMessages(input: SummaryInput, language: string): ChatMessage[] {
   const s = input.snapshot
   const system = [
     "You keep a short \"What's going on\" note for a GitHub repo, for people at a company who don't read GitHub every day.",
@@ -155,9 +157,10 @@ export function buildSummaryMessages(input: SummaryInput): ChatMessage[] {
     JSON_SCHEMA,
     'Rules:',
     '- Use only the facts given. Never invent a feature, a person, a date or a number.',
-    `- summary: 2 to 4 plain sentences in English, at most ${SUMMARY_MAX_CHARS} characters. The first sentence is shown on its own, so it must make sense alone.`,
+    `- summary: 2 to 4 plain sentences, at most ${SUMMARY_MAX_CHARS} characters. The first sentence is shown on its own, so it must make sense alone.`,
     `- highlights: at most ${HIGHLIGHTS_MAX}, the most important changes first. ref is a PR as "#<number>", a branch name, or a 7-character commit sha; null when none fits.`,
     '- "first": true means this is the first sync: describe the repo as it stands.',
+    outputLanguageInstruction(language),
   ].join('\n')
   const open = s.pulls.filter((p) => p.state === 'open')
   const facts = {
@@ -233,11 +236,18 @@ export class SummaryUnreadableError extends Error {
  * whose settings hold the company's AI provider and model); null = no owner
  * yet, so no provider and no model.
  */
-export function createSummarizer(deps: { chat: SummaryChat; account: () => Promise<string | null> }): ReposSummarizer {
+export function createSummarizer(deps: {
+  chat: SummaryChat
+  account: () => Promise<string | null>
+  /** The language the account reads in (the owner's preferred language). */
+  language: (userId: string) => Promise<string>
+}): ReposSummarizer {
   return async (input) => {
     const userId = await deps.account()
     if (!userId) return { status: 'no_model', message: NO_MODEL_MESSAGE }
-    const messages = buildSummaryMessages(input)
+    const language = await deps.language(userId)
+    const messages = buildSummaryMessages(input, language)
+    const source = messages.map((m) => m.content).join('\n')
     let last = ''
     for (let attempt = 1; attempt <= SUMMARY_MAX_ATTEMPTS; attempt++) {
       let response: unknown
@@ -247,11 +257,17 @@ export function createSummarizer(deps: { chat: SummaryChat; account: () => Promi
         if (isLlmNotConfiguredError(err)) return { status: 'no_model', message: NO_MODEL_MESSAGE }
         throw err
       }
+      let output: SummaryOutput
       try {
-        return { status: 'written', ...parseSummaryOutput(response) }
+        output = parseSummaryOutput(response)
       } catch (err) {
         last = err instanceof Error ? err.message.slice(0, 200) : String(err)
+        continue
       }
+      // A foreign script is refused loud (OutputScriptError), never stored — like every summary.
+      const text = [output.summary, ...output.highlights.map((h) => h.text)].join('\n')
+      assertOutputScript(text, { language, what: 'repo summary', source })
+      return { status: 'written', ...output }
     }
     throw new SummaryUnreadableError(SUMMARY_MAX_ATTEMPTS, last)
   }
@@ -261,6 +277,7 @@ export function createSummarizer(deps: { chat: SummaryChat; account: () => Promi
 export function summaryFailureMessage(err: unknown): string {
   if (isLlmHttpError(err)) return `The AI provider refused the request (HTTP ${err.status}).`
   if (err instanceof SummaryUnreadableError) return "The AI's answer could not be read."
+  if (err instanceof OutputScriptError) return `The AI wrote the summary partly in another writing system (${err.scripts.join(', ')}), so it was not stored.`
   return 'Writing the summary failed.'
 }
 
@@ -273,5 +290,10 @@ export function liveSummarizer(): ReposSummarizer {
       return onCompanyProvider(() => llmChatCompletion(input))
     },
     account: async () => (await import('$lib/server/llm/company-provider')).companyOwnerId(),
+    language: async (userId) => {
+      const { withDbUser } = await import('$lib/server/db')
+      const { userOutputLanguage } = await import('$lib/server/llm/user-language')
+      return withDbUser(userId, () => userOutputLanguage(userId))
+    },
   })
 }

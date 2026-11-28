@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { OutputScriptError } from '$lib/server/llm/output-language'
 import { readBundle } from '../../contracts/module-bundle'
 import { publishModule } from './service'
 import { buildSummaryMessages, summarizeVersion, summarySource, SummaryFailedError, type SummaryChat } from './summarize'
@@ -38,6 +39,7 @@ describe('module summary (plan/phase-upgrades-u2.md §7)', () => {
           return answer(GOOD)
         },
         runAsOwner: (fn) => fn('owner-1'),
+        language: async () => 'en',
         now: () => new Date('2026-11-24T12:00:00Z'),
       },
       b.sha256,
@@ -62,6 +64,7 @@ describe('module summary (plan/phase-upgrades-u2.md §7)', () => {
         return answer('{"does": "only this"}')
       },
       runAsOwner: <T>(fn: (u: string) => Promise<T>) => fn('owner-1'),
+      language: async () => 'en',
       now: () => new Date(),
     }
     await expect(summarizeVersion(deps, b.sha256)).rejects.toBeInstanceOf(SummaryFailedError)
@@ -71,7 +74,33 @@ describe('module summary (plan/phase-upgrades-u2.md §7)', () => {
 
   it('the prompt carries the manifest', () => {
     const b = bundleOf()
-    const messages = buildSummaryMessages({ manifest: b.manifest as never }, readBundle(b.bytes).entries)
+    const messages = buildSummaryMessages({ manifest: b.manifest as never }, readBundle(b.bytes).entries, 'en')
     expect(messages[1]!.content).toContain('"members.list"')
+  })
+
+  it("the prompt names the owner's language instead of a fixed English", () => {
+    const b = bundleOf()
+    const [system] = buildSummaryMessages({ manifest: b.manifest as never }, readBundle(b.bytes).entries, 'de')
+    expect(system!.content).toContain('Write the whole text in German only.')
+    expect(system!.content).not.toContain('plain-English')
+  })
+
+  it("a summary in a foreign script (wish d0a0c775) is refused loud and stores nothing", async () => {
+    const { f, b } = await published()
+    const asked: string[] = []
+    const deps = {
+      store: f.moduleStore,
+      bundles: f.bundles,
+      chat: async () => answer(JSON.stringify({ does: 'Greets 一个 person.', touches: 'Reads members.', sends_out: 'Nothing.' })),
+      runAsOwner: <T>(fn: (u: string) => Promise<T>) => fn('owner-1'),
+      language: async (userId: string) => {
+        asked.push(userId)
+        return 'en'
+      },
+      now: () => new Date(),
+    }
+    await expect(summarizeVersion(deps, b.sha256)).rejects.toBeInstanceOf(OutputScriptError)
+    expect(asked).toEqual(['owner-1'])
+    expect((await f.moduleStore.getVersion(b.sha256))?.summary).toBeNull()
   })
 })

@@ -82,6 +82,7 @@ async function summarizeDeps(): Promise<SummarizeDeps> {
   const { llmChatCompletion } = await import('$lib/server/llm/llm-client')
   const { companyOwnerId, onCompanyProvider } = await import('$lib/server/llm/company-provider')
   const { withDbUser } = await import('$lib/server/db')
+  const { userOutputLanguage } = await import('$lib/server/llm/user-language')
   return {
     store: deps.store,
     bundles: deps.bundles,
@@ -91,6 +92,7 @@ async function summarizeDeps(): Promise<SummarizeDeps> {
       if (!owner) throw new Error('the company has no owner, so there is no company AI provider to summarise with')
       return withDbUser(owner, () => onCompanyProvider(() => fn(owner)))
     },
+    language: userOutputLanguage,
     now: () => new Date(),
   }
 }
