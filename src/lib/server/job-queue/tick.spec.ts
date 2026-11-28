@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock, rhythmsTickMock, calendarTickMock } = vi.hoisted(() => ({
+const { recoverMock, ensureMock, drainMock, snapshotMock, emailTickMock, pluginOnMock, shareTickMock, domainsTickMock, rhythmsTickMock, calendarTickMock, patternsTickMock } = vi.hoisted(() => ({
+  patternsTickMock: vi.fn(async () => {}),
   calendarTickMock: vi.fn(async () => {}),
   domainsTickMock: vi.fn(async () => {}),
   rhythmsTickMock: vi.fn(async () => {}),
@@ -42,6 +43,9 @@ vi.mock('./calendar-reminders-tick', () => ({
 }))
 vi.mock('./coworker-rhythms-tick', () => ({
   tickCoworkerRhythms: rhythmsTickMock,
+}))
+vi.mock('./patterns-tick', () => ({
+  tickPatterns: patternsTickMock,
 }))
 vi.mock('$lib/server/plugins/background', () => ({
   pluginOn: pluginOnMock,
@@ -108,6 +112,8 @@ describe('tickGlobalJobQueue', () => {
     expect(shareTickMock).toHaveBeenCalledOnce()
     // AI co-workers are core: their rhythms run on every tick, whatever plugins are off (C6).
     expect(rhythmsTickMock).toHaveBeenCalledOnce()
+    // What's happening is core: its daily digest check runs on every tick (wish 75a4e570).
+    expect(patternsTickMock).toHaveBeenCalledOnce()
     expect(pluginOnMock).not.toHaveBeenCalledWith('coworkers', expect.anything())
     expect(pluginOnMock).toHaveBeenCalledWith('memory', 'overnight consolidation')
     expect(pluginOnMock).toHaveBeenCalledWith('email', 'email background work (DNS checks, scheduled sends, flows)')

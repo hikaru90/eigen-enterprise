@@ -144,6 +144,28 @@ export const actions: Actions = {
       })
     }
   },
+  /** What's happening's Refresh (wish 75a4e570): dashboard.patterns_refresh as the person, through the registry. */
+  patternsRefresh: async ({ locals }) => {
+    const user = locals.user
+    if (!user) throw redirect(302, '/login')
+    try {
+      await _dashboardDeps.run(user, 'dashboard.patterns_refresh', {})
+      return { action: 'patternsRefresh' as const, ok: true as const }
+    } catch (err) {
+      const refused = err instanceof KernelError
+      if (!refused) console.error('[dashboard] dashboard.patterns_refresh failed', err)
+      return fail(refused ? 400 : 500, {
+        action: 'patternsRefresh' as const,
+        ...errorReport(err, {
+          attempted: "Refreshing What's happening on the dashboard",
+          tool: 'dashboard.patterns_refresh',
+          input: {},
+          plain: (e) => (e instanceof KernelError ? e.message : "What's happening could not be refreshed. Try again."),
+          nextSteps: ['dashboard.patterns_refresh (src/lib/kernel/pattern-tools.ts → src/lib/server/patterns/service.ts refreshPatternDigest) refused or failed.'],
+        }),
+      })
+    }
+  },
 }
 
 /** The dashboard greets by first name: the account's, else split from its name or the onboarding name. */

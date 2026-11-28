@@ -86,6 +86,7 @@ export const AI_TASKS = {
   'brain.entity_extraction': { product: 'brain', label: 'Graph entities' },
   'brain.relation_extraction': { product: 'brain', label: 'Graph relations' },
   'brain.entity_embedding': { product: 'brain', label: 'Entity embeddings' },
+  'brain.patterns_digest': { product: 'brain', label: "What's happening digests" },
 
   'decisions.judge': { product: 'decisions', label: 'Decision model calls' },
 

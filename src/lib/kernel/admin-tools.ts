@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { approvalActionLabel } from '$lib/chat/approval-copy'
 import { KERNEL_AI_USAGE_TOOL_NAMES } from './ai-usage-tools'
 import { KERNEL_DECISION_TOOL_NAMES } from './decision-tools'
+import { KERNEL_PATTERN_TOOL_NAMES } from './pattern-tools'
 import { KernelError } from './errors'
 import { KERNEL_EXPORT_TOOL_NAMES } from './export-tools'
 import { KERNEL_MEMBER_AI_CAP_TOOL_NAMES } from './member-ai-cap-tools'
@@ -51,7 +52,8 @@ export const kernelManifest: ModuleManifest = {
   // `settings`: the company settings tools (settings-tools.ts) belong to the kernel core;
   // `notifications`: a person's own notification devices (notification-tools.ts).
   // `decisions`: the decision plane's kinds, log and Needs you questions (decision-tools.ts, CB2).
-  toolNamespaces: [KERNEL_MODULE_ID, 'settings', 'notifications', 'decisions'],
+  // `dashboard`: What's happening, the brain's activity digest (pattern-tools.ts).
+  toolNamespaces: [KERNEL_MODULE_ID, 'settings', 'notifications', 'decisions', 'dashboard'],
   tools: [
     ...KERNEL_ADMIN_TOOL_NAMES,
     ...KERNEL_SETTINGS_TOOL_NAMES,
@@ -61,6 +63,7 @@ export const kernelManifest: ModuleManifest = {
     ...KERNEL_AI_USAGE_TOOL_NAMES,
     ...KERNEL_EXPORT_TOOL_NAMES,
     ...KERNEL_DECISION_TOOL_NAMES,
+    ...KERNEL_PATTERN_TOOL_NAMES,
   ],
   permissions: { roles: ['admin'] },
 }

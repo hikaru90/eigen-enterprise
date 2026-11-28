@@ -27,6 +27,7 @@ const dashboard: Dashboard = {
   reminders: [],
   coworkerNotices: [],
   decisionQuestions: [],
+  patterns: { digestId: null, createdAt: null, windowStart: null, windowEnd: null, items: [] },
   moduleNotices: [],
   overview: {
     modules: [
