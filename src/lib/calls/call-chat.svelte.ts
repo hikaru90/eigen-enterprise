@@ -114,6 +114,29 @@ export class CallChat {
     }
   }
 
+  /** Paste (or drop) images: each becomes a line of its own; false when one was refused (shown). */
+  async sendImages(files: readonly File[]): Promise<boolean> {
+    const images = files.filter((f) => f.type.startsWith('image/'))
+    if (images.length === 0 || this.#sending) return false
+    this.#sending = true
+    try {
+      for (const file of images)
+        this.#merge([await this.opts.client.postChatImage(this.opts.callId, file)])
+      this.#problem = null
+      return true
+    } catch (err) {
+      this.#problem = shownProblemOf(err, 'Image not sent: ')
+      return false
+    } finally {
+      this.#sending = false
+    }
+  }
+
+  /** Where a line's image is shown from. */
+  imageUrl(imageId: string): string {
+    return this.opts.client.imageUrl(this.opts.callId, imageId)
+  }
+
   dismissProblem(): void {
     this.#problem = null
   }

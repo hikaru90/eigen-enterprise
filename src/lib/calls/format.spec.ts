@@ -42,9 +42,33 @@ describe('readingTurns (the transcript page)', () => {
   it('one speaker in a row is one turn, its time from the call start (mm:ss)', () => {
     const turns = readingTurns([seg(1, 'a', '00:30', 'eins'), seg(2, 'a', '01:00', 'zwei'), seg(3, 'b', '01:05', 'drei'), seg(4, 'a', '02:00', 'vier')], '2026-11-19T10:00:00.000Z', [])
     expect(turns).toEqual([
-      { key: 's1', speakerName: 'A', guest: false, chat: false, at: '00:30', text: 'eins zwei' },
-      { key: 's3', speakerName: 'B', guest: false, chat: false, at: '01:05', text: 'drei' },
-      { key: 's4', speakerName: 'A', guest: false, chat: false, at: '02:00', text: 'vier' },
+      {
+        key: 's1',
+        speakerName: 'A',
+        guest: false,
+        chat: false,
+        at: '00:30',
+        text: 'eins zwei',
+        image: null,
+      },
+      {
+        key: 's3',
+        speakerName: 'B',
+        guest: false,
+        chat: false,
+        at: '01:05',
+        text: 'drei',
+        image: null,
+      },
+      {
+        key: 's4',
+        speakerName: 'A',
+        guest: false,
+        chat: false,
+        at: '02:00',
+        text: 'vier',
+        image: null,
+      },
     ])
   })
 
@@ -55,6 +79,7 @@ describe('readingTurns (the transcript page)', () => {
       authorKind,
       authorName: authorId.toUpperCase(),
       body,
+      image: null,
       createdAt: `2026-11-19T10:${at}.000Z`,
     })
     const turns = readingTurns(
@@ -63,10 +88,42 @@ describe('readingTurns (the transcript page)', () => {
       [line(9, 'a', '00:45', 'getippt'), line(10, 'guest:k', '03:00', 'Hallo', 'guest')],
     )
     expect(turns).toEqual([
-      { key: 's1', speakerName: 'A', guest: false, chat: false, at: '00:30', text: 'eins' },
-      { key: 'c9', speakerName: 'A', guest: false, chat: true, at: '00:45', text: 'getippt' },
-      { key: 's2', speakerName: 'A', guest: false, chat: false, at: '01:00', text: 'zwei' },
-      { key: 'c10', speakerName: 'GUEST:K', guest: true, chat: true, at: '03:00', text: 'Hallo' },
+      {
+        key: 's1',
+        speakerName: 'A',
+        guest: false,
+        chat: false,
+        at: '00:30',
+        text: 'eins',
+        image: null,
+      },
+      {
+        key: 'c9',
+        speakerName: 'A',
+        guest: false,
+        chat: true,
+        at: '00:45',
+        text: 'getippt',
+        image: null,
+      },
+      {
+        key: 's2',
+        speakerName: 'A',
+        guest: false,
+        chat: false,
+        at: '01:00',
+        text: 'zwei',
+        image: null,
+      },
+      {
+        key: 'c10',
+        speakerName: 'GUEST:K',
+        guest: true,
+        chat: true,
+        at: '03:00',
+        text: 'Hallo',
+        image: null,
+      },
     ])
   })
 })

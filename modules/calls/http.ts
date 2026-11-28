@@ -104,3 +104,31 @@ export function chatSinceOf(url: URL): number | undefined {
     throw new CallsError('invalid', 'since is a message seq (a whole number, 0 or more)')
   return seq
 }
+
+/** A pasted image's multipart upload (field `file`) → the service's input; the service checks type and size. */
+export async function chatImageUploadOf(
+  request: Request,
+): Promise<{ name: string; mime: string; bytes: Uint8Array }> {
+  let form: FormData
+  try {
+    form = await request.formData()
+  } catch {
+    throw new CallsError('invalid', 'expected a multipart upload with the image as `file`')
+  }
+  const file = form.get('file')
+  if (!(file instanceof File)) throw new CallsError('invalid', 'expected the image as `file`')
+  return { name: file.name, mime: file.type, bytes: new Uint8Array(await file.arrayBuffer()) }
+}
+
+/** A chat image's bytes as the browser shows them: its own type, never sniffed, private to the reader. */
+export function chatImageResponse(img: { mime: string; bytes: Uint8Array }): Response {
+  return new Response(img.bytes as BodyInit, {
+    headers: {
+      'content-type': img.mime,
+      'content-length': String(img.bytes.byteLength),
+      'x-content-type-options': 'nosniff',
+      'cache-control': 'private, max-age=3600',
+      'content-security-policy': "default-src 'none'; sandbox",
+    },
+  })
+}

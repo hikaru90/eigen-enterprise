@@ -56,7 +56,8 @@ export async function guestRoute(
 ): Promise<Response> {
   const headers = { 'cache-control': 'no-store' }
   try {
-    return json(await run(await service()), { headers })
+    const out = await run(await service())
+    return out instanceof Response ? out : json(out, { headers })
   } catch (err) {
     if (!(err instanceof CallsError)) console.error('[calls] guest request failed', err)
     return failure(err, attempted, headers)

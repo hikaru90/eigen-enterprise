@@ -23,6 +23,8 @@ export const CALLS_TOOL_NAMES = [
   'calls.brain_share_answer',
   'calls.brain_recap',
   'calls.chat_post',
+  'calls.chat_post_image',
+  'calls.chat_image',
   'calls.chat_read',
 ] as const
 

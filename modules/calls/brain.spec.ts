@@ -236,6 +236,22 @@ describe('Company Brain: the recap after the call', () => {
     expect(await rejection(f.service.brainRecap('cat', id))).toBe('not_found')
     expect(f.brain.recaps).toEqual([])
   })
+
+  it('is kept for the /calls row: offered empty first, then the recap made (wish 397dfda6)', async () => {
+    const { f, id } = await liveDm()
+    await f.service.setBrain('ann', id, true)
+    await say(f, 'ben', id, 'Wir machen das Angebot fertig.')
+    expect(await f.service.recapsForList('ann', [await f.service.get('ann', id)])).toEqual({}) // still going
+    await f.service.end(f.user('ann'), id)
+    const calls = [await f.service.get('ann', id)]
+    expect(await f.service.recapsForList('ann', calls)).toEqual({ [id]: null })
+    expect(await f.service.recapsForList('ben', [await f.service.get('ben', id)])).toEqual({})
+    f.brain.next('Decided: finish the offer.')
+    await f.service.brainRecap('ann', id)
+    expect(await f.service.recapsForList('ann', calls)).toEqual({
+      [id]: 'Decided: finish the offer.',
+    })
+  })
 })
 
 describe('what the Brain hears and is told', () => {

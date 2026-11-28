@@ -65,6 +65,34 @@ describe.skipIf(!url)('dbChatStore (Postgres)', () => {
     await sql.end()
   })
 
+  it('a pasted image: stored with its call, its line carries it with an empty body (wish 4fbf9991)', async () => {
+    const a = await make()
+    const b = await make()
+    const store = dbChatStore(db)
+    const imageId = randomUUID()
+    const bytes = new Uint8Array([137, 80, 78, 71, 0, 255])
+    await store.addImage({
+      id: imageId,
+      callId: a,
+      uploadedBy: 'pg-ann',
+      name: 'shot.png',
+      mime: 'image/png',
+      size: bytes.byteLength,
+      bytes,
+      createdAt: new Date(),
+    })
+    const l = await store.add({ ...line(a, ''), imageId })
+    expect(l).toMatchObject({ body: '', imageId })
+    expect((await store.list(a)).map((m) => m.imageId)).toEqual([imageId])
+    expect(await store.image(a, imageId)).toMatchObject({ mime: 'image/png', size: 6, bytes })
+    expect(await store.image(b, imageId)).toBeNull()
+    expect(await store.image(a, 'not-a-uuid')).toBeNull()
+    expect(await store.imageInfo([imageId])).toEqual(
+      new Map([[imageId, { id: imageId, name: 'shot.png', mime: 'image/png', size: 6 }]]),
+    )
+    await expect(store.add(line(a, ''))).rejects.toThrow() // no text and no image
+  })
+
   it('stores lines in arrival order; a cursor and a limit; one by seq; counts per call', async () => {
     const a = await make()
     const b = await make()

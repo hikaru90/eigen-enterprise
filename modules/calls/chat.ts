@@ -28,10 +28,25 @@ export type ChatMessage = {
   /** Their name when they wrote it. */
   authorName: string
   body: string
+  /** A pasted image (wish 4fbf9991); the body is then empty. */
+  imageId: string | null
   createdAt: Date
 }
 
-export type NewChatMessage = Omit<ChatMessage, 'seq'>
+export type NewChatMessage = Omit<ChatMessage, 'seq' | 'imageId'> & { imageId?: string | null }
+
+/** A pasted image's bytes, kept with the call (a guest has no Drive). */
+export type ChatImage = {
+  id: string
+  callId: string
+  uploadedBy: string
+  name: string
+  mime: string
+  size: number
+  bytes: Uint8Array
+  createdAt: Date
+}
+export type ChatImageInfo = Omit<ChatImage, 'bytes' | 'uploadedBy' | 'createdAt' | 'callId'>
 
 export type CallChatStore = {
   /** Stores the line (and wakes every listening process); its seq is assigned here. */
@@ -42,6 +57,37 @@ export type CallChatStore = {
   get(seq: number): Promise<ChatMessage | null>
   /** Lines per call; calls without any are absent. */
   countByCall(callIds: string[]): Promise<Map<string, number>>
+  /** Stores a pasted image's bytes (its line is added after, with add()). */
+  addImage(image: ChatImage): Promise<void>
+  /** One image of this call (null: none such in this call). */
+  image(callId: string, id: string): Promise<ChatImage | null>
+  /** Name, type and size of these images (the lines' display). */
+  imageInfo(ids: string[]): Promise<Map<string, ChatImageInfo>>
+}
+
+/** The largest pasted image (the column's check). */
+export const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
+
+/** Raster images the browser shows inline (SVG never: active content) — Messages' rule (isInlineImage). */
+const INLINE_IMAGE = /^image\/(png|jpe?g|gif|webp|avif)$/i
+
+export type ChatImageUpload = { name: string; mime: string; bytes: Uint8Array }
+
+/** A pasted image: a raster type, 1 byte – MAX_CHAT_IMAGE_BYTES, a name (defaulted for a clipboard image). */
+export function parseChatImage(raw: ChatImageUpload): ChatImageUpload {
+  if (!INLINE_IMAGE.test(raw.mime))
+    throw new CallsError(
+      'invalid',
+      'only images (PNG, JPEG, GIF, WebP, AVIF) can be pasted in the chat',
+    )
+  if (raw.bytes.byteLength === 0) throw new CallsError('invalid', 'the image is empty')
+  if (raw.bytes.byteLength > MAX_CHAT_IMAGE_BYTES)
+    throw new CallsError(
+      'invalid',
+      `an image in the chat is at most ${MAX_CHAT_IMAGE_BYTES / 1024 / 1024} MB`,
+    )
+  const name = raw.name.trim().slice(0, 200) || 'image'
+  return { name, mime: raw.mime.toLowerCase(), bytes: raw.bytes }
 }
 
 /** The longest line (the column's check). */
@@ -60,7 +106,9 @@ export function parseChatBody(raw: unknown): string {
 
 /** Each chat line as one turn of the call (never joined with what someone said). */
 export function chatTurns(messages: readonly ChatMessage[]): TranscriptTurn[] {
+  // An image line has no text: nothing of it is read as a turn.
   return [...messages]
+    .filter((m) => m.body !== '')
     .sort((a, b) => a.seq - b.seq)
     .map((m) => ({
       speakerId: m.authorId,
@@ -80,10 +128,37 @@ export class MemoryChatStore implements CallChatStore {
   onAdd: ((seq: number) => void) | null = null
   #seq = 0
 
+  readonly images: ChatImage[] = []
+
+  async addImage(image: ChatImage): Promise<void> {
+    this.images.push(structuredClone(image))
+  }
+
+  async image(callId: string, id: string): Promise<ChatImage | null> {
+    const i = this.images.find((x) => x.id === id && x.callId === callId)
+    return i ? structuredClone(i) : null
+  }
+
+  async imageInfo(ids: string[]): Promise<Map<string, ChatImageInfo>> {
+    return new Map(
+      this.images
+        .filter((i) => ids.includes(i.id))
+        .map((i) => [i.id, { id: i.id, name: i.name, mime: i.mime, size: i.size }]),
+    )
+  }
+
   async add(message: NewChatMessage): Promise<ChatMessage> {
-    if (message.body.length === 0 || message.body.length > MAX_CHAT_BODY) throw new Error('calls: a chat message needs 1–4000 characters')
-    if (message.authorName.length === 0 || message.authorName.length > 200) throw new Error('calls: a chat author needs a name of 1–200 characters')
-    const stored: ChatMessage = { ...message, seq: ++this.#seq, createdAt: new Date(message.createdAt) }
+    const imageId = message.imageId ?? null
+    if ((message.body.length === 0 && imageId === null) || message.body.length > MAX_CHAT_BODY)
+      throw new Error('calls: a chat message needs 1–4000 characters')
+    if (message.authorName.length === 0 || message.authorName.length > 200)
+      throw new Error('calls: a chat author needs a name of 1–200 characters')
+    const stored: ChatMessage = {
+      ...message,
+      imageId,
+      seq: ++this.#seq,
+      createdAt: new Date(message.createdAt),
+    }
     this.messages.push(stored)
     this.onAdd?.(stored.seq)
     return structuredClone(stored)

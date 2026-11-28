@@ -10,8 +10,11 @@
   /**
    * The call's chat panel (proposal bb05b451): what the people in the call —
    * members and guests — write to each other, oldest first, guests marked.
-   * Enter sends, Shift+Enter is a new line. The chat stays with the call (the
-   * transcript page shows it afterwards).
+   * Enter sends, Shift+Enter is a new line; a pasted or dropped image is sent
+   * as a line of its own and shown inline. The chat stays with the call (the
+   * transcript page shows it afterwards). The panel carries the dark tokens
+   * (ink-scope): the call stage is dark in both themes, so the field never
+   * takes the page's dark text.
    *
    * `dictation`: the line takes dictation like every field for people of the
    * company (the mic left of Send); a guest has no account to transcribe for.
@@ -68,6 +71,29 @@
     void sendDraft()
   }
 
+  /** Images pasted or dropped into the field are sent as lines of their own (wish 4fbf9991); text pastes as usual. */
+  function imagesOf(data: DataTransfer | null): File[] {
+    return data ? [...data.files].filter((f) => f.type.startsWith('image/')) : []
+  }
+
+  function onpaste(event: ClipboardEvent) {
+    const files = imagesOf(event.clipboardData)
+    if (files.length === 0) return
+    event.preventDefault()
+    void chat.sendImages(files).then((sent) => sent && follow(true))
+  }
+
+  function ondragover(event: DragEvent) {
+    if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
+  }
+
+  function ondrop(event: DragEvent) {
+    const files = imagesOf(event.dataTransfer)
+    if (files.length === 0) return
+    event.preventDefault()
+    void chat.sendImages(files).then((sent) => sent && follow(true))
+  }
+
   function onkeydown(event: KeyboardEvent) {
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
     event.preventDefault()
@@ -76,8 +102,10 @@
 </script>
 
 <aside
-  class="flex h-full min-h-0 flex-col bg-neutral-900 text-neutral-50"
+  class="ink-scope flex h-full min-h-0 flex-col bg-neutral-900 text-neutral-50"
   aria-label="Chat"
+  {ondragover}
+  {ondrop}
   data-testid="call-chat-panel"
 >
   <div class="flex items-center gap-2 border-b border-white/10 px-4 py-3">
@@ -120,9 +148,29 @@
             >{time.format(new Date(m.createdAt))}</time
           >
         </p>
-        <p class="mt-1 text-sm break-words whitespace-pre-wrap" data-testid="call-chat-body">
-          {m.body}
-        </p>
+        {#if m.image}
+          <!-- eslint-disable svelte/no-navigation-without-resolve -- the reader's own image route (member or guest link) -->
+          <a
+            href={chat.imageUrl(m.image.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-1.5 block w-fit"
+          >
+            <img
+              src={chat.imageUrl(m.image.id)}
+              alt={m.image.name}
+              loading="lazy"
+              class="max-h-60 max-w-full rounded-md bg-white/5 object-contain"
+              data-testid="call-chat-image"
+            />
+          </a>
+          <!-- eslint-enable svelte/no-navigation-without-resolve -->
+        {/if}
+        {#if m.body}
+          <p class="mt-1 text-sm break-words whitespace-pre-wrap" data-testid="call-chat-body">
+            {m.body}
+          </p>
+        {/if}
       </li>
     {/each}
   </ol>
@@ -157,14 +205,15 @@
       bind:this={draftEl}
       onfocus={() => (cursorPlaced = true)}
       {onkeydown}
+      {onpaste}
       id="call-chat-draft"
       rows="2"
       maxlength="4000"
       class={[
-        'min-h-10 min-w-0 flex-1 resize-none rounded-md border border-white/15 bg-neutral-950 px-3 py-2 text-sm placeholder:text-neutral-500 focus:border-white/40 focus:outline-none disabled:opacity-50',
+        'min-h-10 min-w-0 flex-1 resize-none rounded-md border border-white/15 bg-neutral-950 px-3 py-2 text-sm text-neutral-50 caret-white placeholder:text-neutral-500 focus:border-white/40 focus:outline-none disabled:opacity-50',
         voiceActive && 'hidden',
       ]}
-      placeholder="Write to everyone in the call"
+      placeholder="Write to everyone in the call — paste or drop images"
       disabled={chat.sending}
       bind:value={draft}
       data-testid="call-chat-draft"></textarea>

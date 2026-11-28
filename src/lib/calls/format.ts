@@ -28,7 +28,16 @@ export function callClock(since: string, nowMs: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
-export type ReadingTurn = { key: string; speakerName: string; guest: boolean; chat: boolean; at: string; text: string }
+export type ReadingTurn = {
+  key: string
+  speakerName: string
+  guest: boolean
+  chat: boolean
+  at: string
+  text: string
+  /** A chat line's pasted image (wish 4fbf9991); null otherwise. */
+  image: { id: string; name: string } | null
+}
 
 /**
  * The transcript page's turns: the segments (already merged by time on the
@@ -46,11 +55,29 @@ export function readingTurns(
   const items: Item[] = [
     ...segments.map((s) => ({
       at: Date.parse(s.startedAt),
-      turn: { key: `s${s.seq}`, speakerId: s.speakerId, speakerName: s.speakerName, guest: s.speakerKind === 'guest', chat: false, at: callClock(since, Date.parse(s.startedAt)), text: s.text },
+      turn: {
+        key: `s${s.seq}`,
+        speakerId: s.speakerId,
+        speakerName: s.speakerName,
+        guest: s.speakerKind === 'guest',
+        chat: false,
+        at: callClock(since, Date.parse(s.startedAt)),
+        text: s.text,
+        image: null,
+      },
     })),
     ...chat.map((m) => ({
       at: Date.parse(m.createdAt),
-      turn: { key: `c${m.seq}`, speakerId: m.authorId, speakerName: m.authorName, guest: m.authorKind === 'guest', chat: true, at: callClock(since, Date.parse(m.createdAt)), text: m.body },
+      turn: {
+        key: `c${m.seq}`,
+        speakerId: m.authorId,
+        speakerName: m.authorName,
+        guest: m.authorKind === 'guest',
+        chat: true,
+        at: callClock(since, Date.parse(m.createdAt)),
+        text: m.body,
+        image: m.image ? { id: m.image.id, name: m.image.name } : null,
+      },
     })),
   ]
   // Stable: segments keep the server's order among themselves, and come before a chat line at the same moment.

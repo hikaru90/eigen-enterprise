@@ -82,6 +82,25 @@ const chatPostInput = z
     body: z.string().min(1).max(MAX_CHAT_BODY).describe('the line to write (plain text)'),
   })
   .strict()
+const chatImageInput = z
+  .object({
+    call_id: z.string().min(1),
+    filename: z.string().min(1).max(200),
+    mime: z.string().min(1).describe('image/png, image/jpeg, image/gif, image/webp or image/avif'),
+    content_base64: z.string().min(1),
+  })
+  .strict()
+const chatImageReadInput = z
+  .object({ call_id: z.string().min(1), image_id: z.string().min(1) })
+  .strict()
+
+/** Strict standard base64 (the bytes the multipart route receives). */
+function decodeBase64(s: string): Uint8Array {
+  if (s.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(s))
+    throw new CallsError('invalid', 'content_base64 is not valid base64')
+  return new Uint8Array(Buffer.from(s, 'base64'))
+}
+
 const chatReadInput = z
   .object({
     call_id: z.string().min(1),
@@ -119,13 +138,17 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
       name: 'calls.list',
       module: CALLS_MODULE_ID,
       summary:
-        'List video calls, newest first: a person’s calls (DMs, channels, meetings), or for the agent the meetings it started. Each with state, people and times.',
+        'List video calls, newest first: a person’s calls (DMs, channels, meetings), or for the agent the meetings it started. Each with state, people and times; ' +
+        'for a person also `summaries`: per call they may summarize (they switched the Company Brain on) the summary they made, or null (make one with calls.brain_recap).',
       auditClass: 'read',
       inputSchema: listInput,
       permission: { roles: ['admin', 'member', 'agent'] },
-      handler: async (ctx, input) => ({
-        calls: await (await service()).list(actorOf(ctx), listInput.parse(input).limit),
-      }),
+      handler: async (ctx, input) => {
+        const svc = await service()
+        const calls = await svc.list(actorOf(ctx), listInput.parse(input).limit)
+        if (ctx.principal.kind !== 'human') return { calls }
+        return { calls, summaries: await svc.recapsForList(ctx.principal.id, calls) }
+      },
     },
     {
       name: 'calls.start',
@@ -274,7 +297,7 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
       name: 'calls.brain_recap',
       module: CALLS_MODULE_ID,
       summary:
-        'After a call: a recap of what the Company Brain heard, for whoever switched it on — written now, shown to you, posted nowhere. ' +
+        'After a call: a recap (the call’s summary) of what the Company Brain heard, for whoever switched it on — written now, kept for you (calls.list summaries), posted nowhere. ' +
         'To import it into the brain: first list what you would save — notes (memory.capture_thought), tasks (memory.create_task, or tasks.assign for a colleague) and their project (memory.create_project for a new one) — and save only after the person says OK.',
       auditClass: 'read',
       inputSchema: callInput,
@@ -298,10 +321,47 @@ export function createCallsTools(opts: CallsToolDeps): ToolDescriptor[] {
       },
     },
     {
+      name: 'calls.chat_post_image',
+      module: CALLS_MODULE_ID,
+      summary:
+        'Paste an image (content_base64, a raster type, at most 10 MB) as a line in the chat of a live call you are in; everyone in the call sees it.',
+      auditClass: 'mutate',
+      activity: (input: z.infer<typeof chatImageInput>) =>
+        `Pasted an image in the chat of call ${input.call_id}`,
+      inputSchema: chatImageInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = chatImageInput.parse(input)
+        return {
+          message: await (
+            await service()
+          ).postChatImage(personOf(ctx), i.call_id, {
+            name: i.filename,
+            mime: i.mime,
+            bytes: decodeBase64(i.content_base64),
+          }),
+        }
+      },
+    },
+    {
+      name: 'calls.chat_image',
+      module: CALLS_MODULE_ID,
+      summary:
+        'Open an image of a call’s chat you may read (a line’s image.id from calls.chat_read): its type and content_base64.',
+      auditClass: 'read',
+      inputSchema: chatImageReadInput,
+      permission: { roles: ['admin', 'member', 'agent'] },
+      handler: async (ctx, input) => {
+        const i = chatImageReadInput.parse(input)
+        const img = await (await service()).chatImage(personOf(ctx), i.call_id, i.image_id)
+        return { mime: img.mime, content_base64: Buffer.from(img.bytes).toString('base64') }
+      },
+    },
+    {
       name: 'calls.chat_read',
       module: CALLS_MODULE_ID,
       summary:
-        'Read the chat of a call you are in or were in, in order (guests marked); since = the last seq you have, to read on. hasMore: read again from the last seq.',
+        'Read the chat of a call you are in or were in, in order (guests marked; a pasted image is a line with image, opened with calls.chat_image); since = the last seq you have, to read on. hasMore: read again from the last seq.',
       auditClass: 'read',
       inputSchema: chatReadInput,
       permission: { roles: ['admin', 'member', 'agent'] },

@@ -14,9 +14,11 @@
   import { resolve } from '$app/paths'
   import CallNowButton from '$lib/calls/call-now-button.svelte'
   import { getCallPresence } from '$lib/calls/call-presence.svelte'
+  import CallRowSummary from '$lib/calls/call-row-summary.svelte'
   import { openCallTab, reserveCallTab } from '$lib/calls/call-tab'
   import {
     CallRequestError,
+    brainClient,
     callsClient,
     problemOf,
     shownProblemOf,
@@ -50,6 +52,7 @@
   const liveCalls = getLiveCalls()
   const presence = getCallPresence()
   const client = callsClient()
+  const brainApi = brainClient()
 
   const isLive = (c: CallDto) =>
     c.state === 'scheduled' || c.state === 'ringing' || c.state === 'active'
@@ -352,7 +355,7 @@
         {#each recent as c (c.id)}
           {@const h = historyOf(c, data.me)}
           <li
-            class="flex items-center gap-3 px-4 py-3"
+            class="flex flex-wrap items-center gap-3 px-4 py-3"
             data-testid="calls-recent-item"
             data-id={c.id}
             data-outcome={c.state}
@@ -413,6 +416,11 @@
                 data-testid="calls-transcript-link"
                 ><FileText class="size-3.5" aria-hidden="true" />Transcript</a
               >
+            {/if}
+            {#if c.id in data.summaries}
+              <div class="basis-full pl-11">
+                <CallRowSummary callId={c.id} recap={data.summaries[c.id]} client={brainApi} />
+              </div>
             {/if}
           </li>
         {/each}

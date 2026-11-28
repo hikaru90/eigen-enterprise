@@ -20,19 +20,52 @@
 
   const since = $derived(data.call.answeredAt ?? data.segments[0]?.startedAt ?? data.call.startedAt)
   const turns = $derived(readingTurns(data.segments, since, data.chat))
-  const when = $derived(new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(data.call.answeredAt ?? data.call.startedAt)))
-  const live = $derived(data.call.state === 'scheduled' || data.call.state === 'ringing' || data.call.state === 'active')
+  /** The chat on its own, beside the transcript (wish b012b298): what was written, in order. */
+  const chatLines = $derived(turns.filter((t) => t.chat))
+  const when = $derived(
+    new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(
+      new Date(data.call.answeredAt ?? data.call.startedAt),
+    ),
+  )
+  const live = $derived(
+    data.call.state === 'scheduled' ||
+      data.call.state === 'ringing' ||
+      data.call.state === 'active',
+  )
   /** Over, and I switched the Company Brain on in it: the recap is offered (generated only on my click). */
   const recapOffered = $derived(!live && data.call.brain.turnedOnBy.includes(data.me))
   const brainApi = brainClient()
 </script>
 
+{#snippet chatImage(t: (typeof turns)[number])}
+  {#if t.image}
+    {@const src = `/api/calls/${encodeURIComponent(data.call.id)}/chat/images/${encodeURIComponent(t.image.id)}`}
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the chat image route -->
+    <a href={src} target="_blank" rel="noopener noreferrer" class="mt-1 block w-fit"
+      ><img
+        {src}
+        alt={t.image.name}
+        loading="lazy"
+        class="max-h-60 max-w-full rounded-md object-contain"
+        data-testid="call-transcript-image"
+      /></a
+    >
+  {/if}
+{/snippet}
+
 <svelte:head><title>{docTitle(`Transcript: ${data.call.title}`, 'Calls')}</title></svelte:head>
 
 <PageFrame testid="call-transcript">
   <PageHeader title="Transcript" part="calls" description={`${data.call.title} · ${when}`} />
-  <div class="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 pb-10">
-    <a href={resolve('/calls')} class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+  <div
+    class={[
+      'mx-auto flex w-full flex-col gap-4 px-4 pb-10',
+      chatLines.length > 0 ? 'max-w-6xl' : 'max-w-3xl',
+    ]}
+  >
+    <a
+      href={resolve('/calls')}
+      class="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       ><ArrowLeft class="size-4" aria-hidden="true" /> Calls</a
     >
     {#if live}
@@ -48,26 +81,70 @@
       />
     {/if}
     {#if turns.length === 0}
-      <p class="rounded-xl bg-white p-6 text-center text-sm text-muted-foreground" data-testid="call-transcript-empty">
+      <p
+        class="rounded-xl bg-white p-6 text-center text-sm text-muted-foreground"
+        data-testid="call-transcript-empty"
+      >
         Nothing was transcribed or written in the chat in this call.
       </p>
     {:else}
-      <ol class="flex flex-col gap-3 rounded-xl bg-white p-4 sm:p-6" data-testid="call-transcript-turns">
-        {#each turns as t (t.key)}
-          <li class="grid grid-cols-[3.5rem_1fr] gap-3" data-testid="call-transcript-turn" data-source={t.chat ? 'chat' : 'speech'}>
-            <span class="pt-0.5 font-mono text-xs tabular-nums text-muted-foreground">{t.at}</span>
-            <div class="min-w-0">
-              <p class="text-sm font-semibold">
-                {t.speakerName}{#if t.guest}<span class="ml-1.5 text-xs font-normal text-muted-foreground">Guest</span>{/if}{#if t.chat}<span
-                    class="ml-1.5 text-xs font-normal text-muted-foreground"
-                    data-testid="call-transcript-chat">Chat</span
-                  >{/if}
-              </p>
-              <p class="text-sm whitespace-pre-wrap">{t.text}</p>
-            </div>
-          </li>
-        {/each}
-      </ol>
+      <div
+        class={[
+          'grid gap-4',
+          chatLines.length > 0 && 'lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start',
+        ]}
+      >
+        <ol
+          class="flex flex-col gap-3 rounded-xl bg-white p-4 sm:p-6"
+          data-testid="call-transcript-turns"
+        >
+          {#each turns as t (t.key)}
+            <li
+              class="grid grid-cols-[3.5rem_1fr] gap-3"
+              data-testid="call-transcript-turn"
+              data-source={t.chat ? 'chat' : 'speech'}
+            >
+              <span class="pt-0.5 font-mono text-xs tabular-nums text-muted-foreground">{t.at}</span
+              >
+              <div class="min-w-0">
+                <p class="text-sm font-semibold">
+                  {t.speakerName}{#if t.guest}<span
+                      class="ml-1.5 text-xs font-normal text-muted-foreground">Guest</span
+                    >{/if}{#if t.chat}<span
+                      class="ml-1.5 text-xs font-normal text-muted-foreground"
+                      data-testid="call-transcript-chat">Chat</span
+                    >{/if}
+                </p>
+                {@render chatImage(t)}
+                {#if t.text}<p class="text-sm whitespace-pre-wrap">{t.text}</p>{/if}
+              </div>
+            </li>
+          {/each}
+        </ol>
+        {#if chatLines.length > 0}
+          <aside
+            class="flex flex-col gap-3 rounded-xl bg-white p-4 lg:sticky lg:top-4"
+            aria-label="Chat in the call"
+            data-testid="call-transcript-chat-panel"
+          >
+            <h2 class="text-sm font-semibold">
+              Chat <span class="font-normal text-muted-foreground">· {chatLines.length}</span>
+            </h2>
+            <ol class="flex flex-col gap-2.5">
+              {#each chatLines as t (t.key)}
+                <li class="min-w-0" data-testid="call-transcript-chat-line">
+                  <p class="text-xs text-muted-foreground">
+                    <span class="font-semibold text-foreground">{t.speakerName}</span>{#if t.guest}
+                      · Guest{/if} · <span class="font-mono tabular-nums">{t.at}</span>
+                  </p>
+                  {@render chatImage(t)}
+                  {#if t.text}<p class="text-sm whitespace-pre-wrap">{t.text}</p>{/if}
+                </li>
+              {/each}
+            </ol>
+          </aside>
+        {/if}
+      </div>
     {/if}
   </div>
 </PageFrame>
