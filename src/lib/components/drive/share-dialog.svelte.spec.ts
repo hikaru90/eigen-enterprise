@@ -60,10 +60,12 @@ describe('share dialog: picking is adding', () => {
 
   it('the search narrows the candidates and Enter picks the first match', async () => {
     render(ShareDialog, { props: { item, onclose: vi.fn() } })
+    // The dialog moves focus into itself once it has opened; under load that lands late, so wait for it
+    // before typing (otherwise the Enter below can reach whatever the open focus moved to).
+    await expect.poll(() => page.getByTestId('drive-share-dialog').element().contains(document.activeElement)).toBe(true)
     await page.getByTestId('drive-share-pick').fill('cy@')
     await expect.element(page.getByTestId('drive-share-candidate')).toHaveTextContent('Cy Member')
     expect(page.getByTestId('drive-share-candidate').elements()).toHaveLength(1)
-    // Enter in the search field itself: the dialog's open focus may land after the fill under load.
     await userEvent.type(page.getByTestId('drive-share-pick'), '{Enter}')
     await expect.element(page.getByTestId('drive-share-row').nth(1)).toHaveTextContent('Cy Member')
     // The search clears once its match is picked.
