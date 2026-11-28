@@ -65,6 +65,9 @@ vi.mock('$lib/server/db', () => {
 vi.mock('$lib/server/memory/assigned-tasks/live', () => ({ assignedTaskDeps: async () => assignedTasks.deps }))
 vi.mock('$lib/server/memory/reminders/live', () => ({ reminderDeps: async () => reminders.deps }))
 vi.mock('$lib/server/coworkers/rhythm-live', () => ({ liveNoticeDeps: async () => notices.deps }))
+vi.mock('$lib/server/patterns/dashboard-read', () => ({
+  dashboardPatterns: async () => ({ digestId: null, createdAt: null, windowStart: null, windowEnd: null, items: [] }),
+}))
 vi.mock('$lib/server/decisions/live', () => ({ needsYouDecisionQuestions: (userId: string) => decisions.questions(userId) }))
 vi.mock('../../../../modules/company-modules/notices-live', async () => {
   const { moduleNotices } = await import('$lib/kernel/module-host/notices')

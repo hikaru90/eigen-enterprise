@@ -234,6 +234,8 @@ describe('runCli: happy paths through the full registry pipeline', () => {
           'decisions.questions',
           'decisions.answer',
           'decisions.label',
+          'dashboard.patterns',
+          'dashboard.patterns_refresh',
         ],
         active: true,
         core: true,

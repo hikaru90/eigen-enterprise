@@ -15,6 +15,8 @@ import { reminderDeps } from '$lib/server/memory/reminders/live'
 import { needsYouReminders, type ReminderView } from '$lib/server/memory/reminders/service'
 import type { ModuleNotice } from '$lib/kernel/module-host/notices'
 import { buildOverview, type Overview } from '$lib/server/overview/overview'
+import type { PatternToolView } from '$lib/kernel/pattern-tools'
+import { dashboardPatterns } from '$lib/server/patterns/dashboard-read'
 import { updateNotice, type UpdateNotice } from '$lib/server/settings/update-notice'
 import { liveModuleNotices } from '../../../../modules/company-modules/notices-live'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
@@ -38,6 +40,8 @@ export type Dashboard = {
   decisionQuestions: DecisionQuestionView[]
   /** The company's own modules: a failed one (owner + admins), a deploy waiting for an admin's click, the owner's one-time sharing OK (U2). */
   moduleNotices: ModuleNotice[]
+  /** What's happening (wish 75a4e570): the brain's latest activity digest, as this person may see it (dashboard.patterns). */
+  patterns: PatternToolView
 }
 
 /**
@@ -86,6 +90,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     coworkerNotices: await needsYouNotices(await liveNoticeDeps(), userId),
     decisionQuestions: await needsYouDecisionQuestions(userId),
     moduleNotices: await liveModuleNotices({ userId, isOwner: role === 'owner', isAdmin }),
+    patterns: await dashboardPatterns(userId),
   }
 }
 

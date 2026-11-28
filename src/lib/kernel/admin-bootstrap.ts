@@ -20,6 +20,7 @@ import {
   type MemberAiCapPort,
 } from './member-ai-cap-tools'
 import { createNotificationTools, KERNEL_NOTIFICATION_TOOL_NAMES, type NotificationsPort } from './notification-tools'
+import { createPatternTools, KERNEL_PATTERN_TOOL_NAMES, type PatternsPort } from './pattern-tools'
 import { createOperationsTools, KERNEL_OPERATIONS_TOOL_NAMES, type OperationsPort } from './operations-tools'
 import { createSettingsTools, KERNEL_SETTINGS_TOOL_NAMES, type SettingsPort } from './settings-tools'
 import { registerModuleTools } from './wiring'
@@ -55,6 +56,8 @@ export type RegisterAdminToolsOptions = {
   exports?: ExportPort
   /** Overrides the live decision-log port (tests inject fakes). */
   decisions?: DecisionsPort
+  /** Overrides the live What's happening port (tests inject fakes). */
+  patterns?: PatternsPort
 }
 
 /**
@@ -84,6 +87,7 @@ export async function registerAdminTools(
       ...KERNEL_AI_USAGE_TOOL_NAMES,
       ...KERNEL_EXPORT_TOOL_NAMES,
       ...KERNEL_DECISION_TOOL_NAMES,
+      ...KERNEL_PATTERN_TOOL_NAMES,
     ].every(
       (name) => kernel.registry.get(name) !== undefined,
     )
@@ -109,6 +113,7 @@ export async function registerAdminTools(
     ...createAiUsageTools({ port: options.aiUsage ?? liveAiUsagePort() }),
     ...createExportTools({ port: options.exports ?? liveExportPort() }),
     ...createDecisionTools({ port: options.decisions ?? liveDecisionsPort() }),
+    ...createPatternTools({ port: options.patterns ?? livePatternsPort() }),
   )
   registerModuleTools(kernel.registry, kernel.modules, tools)
 }
@@ -194,6 +199,15 @@ function liveDecisionsPort(): DecisionsPort {
     questions: async (userId) => (await live()).questions(userId),
     answer: async (userId, decisionId, choice) => (await live()).answer(userId, decisionId, choice),
     label: async (userId, decisionId, choice) => (await live()).label(userId, decisionId, choice),
+  }
+}
+
+/** The live What's happening port, loaded on first use (like the decisions port). */
+function livePatternsPort(): PatternsPort {
+  const live = async () => (await import('$lib/server/patterns/port')).livePatternsPort
+  return {
+    view: async (roles) => (await live()).view(roles),
+    refresh: async () => (await live()).refresh(),
   }
 }
 

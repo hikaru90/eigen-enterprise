@@ -245,6 +245,9 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'decisions.kinds',
   'decisions.log',
   'decisions.questions',
+  // Wish 75a4e570: What's happening on the dashboard, read and refreshed by every member.
+  'dashboard.patterns',
+  'dashboard.patterns_refresh',
   'org.chart',
   'org.set_position',
   'assistant.conversation_rename',

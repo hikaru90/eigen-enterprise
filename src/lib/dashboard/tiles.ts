@@ -5,7 +5,7 @@
  * on every device. Shared by the server (validation) and the dashboard.
  */
 
-export const DASHBOARD_TILES = ['ask', 'needs-you', 'apps', 'activity', 'approvals'] as const
+export const DASHBOARD_TILES = ['ask', 'needs-you', 'apps', 'activity', 'patterns', 'approvals'] as const
 export type TileId = (typeof DASHBOARD_TILES)[number]
 
 export const TILE_LABELS: Record<TileId, string> = {
@@ -13,6 +13,7 @@ export const TILE_LABELS: Record<TileId, string> = {
   'needs-you': 'Waiting on you',
   apps: 'Apps',
   activity: 'Recent activity',
+  patterns: "What's happening",
   approvals: 'Approvals and warnings',
 }
 

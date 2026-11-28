@@ -8,6 +8,7 @@
   import { resolve } from '$app/paths'
   import { canOpen, type Capabilities } from '$lib/access/capabilities'
   import { assistantIfOn } from '$lib/components/assistant/context'
+  import PatternsCard from '$lib/components/dashboard/patterns-card.svelte'
   import DotMatrix from '$lib/components/dot-matrix.svelte'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import ModuleCard from '$lib/components/module-card.svelte'
@@ -450,6 +451,14 @@
           </div>
         </section>
         {@render close('activity')}
+      </div>
+    {/if}
+
+    <!-- What's happening (wish 75a4e570): the brain's digest of observable activity. -->
+    {#if shown('patterns')}
+      <div class="group/tile relative min-w-0">
+        <PatternsCard patterns={dashboard.patterns} />
+        {@render close('patterns')}
       </div>
     {/if}
 

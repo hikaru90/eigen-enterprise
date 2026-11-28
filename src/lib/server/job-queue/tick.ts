@@ -5,6 +5,7 @@ import { tickContributeShare } from './contribute-share-tick'
 import { tickCoworkerRhythms } from './coworker-rhythms-tick'
 import { tickManagedDomains } from './domains-tick'
 import { drainUserJobQueue } from './drain'
+import { tickPatterns } from './patterns-tick'
 import { tickDriveBlobs } from './drive-blobs-tick'
 import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
@@ -50,6 +51,8 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   await tickContributeShare()
   // AI co-workers are core: their rhythms' due slots run on every tick (plan/phase-ai-coworkers.md C6).
   await tickCoworkerRhythms()
+  // What's happening on the dashboard: the brain's daily digest of observable activity (wish 75a4e570).
+  await tickPatterns()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0
   const shouldHeartbeat = tickCount % HEARTBEAT_EVERY_TICKS === 0
   const shouldInspectBacklog = hasActivity || shouldHeartbeat || drain.claimed === 0
