@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import type { CallBrain } from './call-brain.svelte'
   import Lock from '@lucide/svelte/icons/lock'
   import Send from '@lucide/svelte/icons/send'
@@ -174,6 +175,7 @@
       bind:this={questionEl}
       onfocus={() => (cursorPlaced = true)}
       id="call-brain-question"
+      onkeydown={enterSends()}
       rows="2"
       maxlength="1000"
       class={[

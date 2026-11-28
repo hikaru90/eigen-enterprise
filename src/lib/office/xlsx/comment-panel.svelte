@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import type { Note } from './notes'
   import type { Member, Thread } from './threads'
   import AtSignIcon from '@lucide/svelte/icons/at-sign'
@@ -183,7 +184,10 @@
       oninput={(e) => {
         if (allowMentions) updateMentionHint(e.currentTarget.value)
       }}
-      onkeydown={(e) => e.stopPropagation()}
+      onkeydown={(e) => {
+        e.stopPropagation()
+        enterSends()(e)
+      }}
       data-testid="xlsx-comment-input"
     />
     {#if allowMentions && mentionOpen && mentionMatches.length > 0}

@@ -116,7 +116,7 @@ describe('DocxViewer review', () => {
     const first = page.getByTestId('docx-thread').first()
     await userEvent.click(first.getByTestId('docx-comment-reply'))
     await userEvent.fill(page.getByTestId('docx-comment-input'), 'Found it')
-    await userEvent.click(page.getByTestId('docx-comment-save'))
+    await userEvent.keyboard('{Enter}')
     await expect.element(first).toHaveTextContent('Found it')
     await userEvent.click(first.getByTestId('docx-comment-resolve'))
     await expect.element(first).toHaveAttribute('data-done', '1')

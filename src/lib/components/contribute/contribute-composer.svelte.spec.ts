@@ -57,6 +57,17 @@ describe('contribute-composer.svelte', () => {
     await expect.element(page.getByTestId('contribute-input')).toHaveValue('')
   })
 
+  it('Shift+Enter breaks the line, Enter sends', async () => {
+    const { client } = setup({ kind: 'idea', area: 'everywhere', duplicateOf: null })
+    await page.getByTestId('contribute-input').click()
+    await userEvent.keyboard('One{Shift>}{Enter}{/Shift}two')
+    await expect.element(page.getByTestId('contribute-input')).toHaveValue('One\ntwo')
+    expect(client.check).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Enter}')
+    await expect.element(page.getByTestId('contribute-done')).toBeInTheDocument()
+    expect(client.check).toHaveBeenCalledWith('One\ntwo')
+  })
+
   it('a duplicate offers the chorus: vote for it instead', async () => {
     const { client, onchanged } = setup({ kind: 'idea', area: 'everywhere', duplicateOf: dto() })
     await page.getByTestId('contribute-input').fill('A dark theme')

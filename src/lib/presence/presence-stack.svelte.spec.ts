@@ -32,6 +32,16 @@ describe('presence-stack.svelte (who is here — small round avatars)', () => {
     await expect.element(stack.getByTestId('stack-more')).toHaveTextContent('+1')
   })
 
+  it('avatars sit without a border, on a light shadow, centred with flexbox (owner wish 0994bb7b)', async () => {
+    render(PresenceStack, { people: four, title: 'In Drive', testid: 'stack' })
+    const stack = page.getByTestId('stack')
+    for (const el of [...stack.getByTestId('stack-avatar').elements(), stack.getByTestId('stack-more').element()]) {
+      const cls = el.getAttribute('class') ?? ''
+      expect(cls).not.toMatch(/(^|\s)ring(-|\s|$)/)
+      expect(cls.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'items-center', 'justify-center', 'shadow-sm']))
+    }
+  })
+
   it('a status dot only where the status is worth telling (away, in a call, do not disturb)', async () => {
     render(PresenceStack, { people: four.slice(0, 3), title: 'In Drive', testid: 'stack' })
     const dots = page.getByTestId('stack').getByTestId('stack-dot')

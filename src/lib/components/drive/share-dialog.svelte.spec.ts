@@ -47,6 +47,17 @@ describe('share dialog: picking is adding', () => {
     expect(onclose).toHaveBeenCalled()
   })
 
+  it('the people to pick sit in their own tinted area, headed and named by it, each a focusable button (wish f3b0b4f5)', async () => {
+    render(ShareDialog, { props: { item, onclose: vi.fn() } })
+    const area = page.getByTestId('drive-share-candidates-area')
+    await expect.element(area.getByRole('heading', { name: 'People in your company' })).toBeVisible()
+    expect(area.element().className).toMatch(/\bbg-muted\b/)
+    await expect.element(page.getByRole('list', { name: 'People in your company' })).toBeInTheDocument()
+    const first = page.getByTestId('drive-share-candidate').first()
+    ;(first.element() as HTMLButtonElement).focus()
+    expect(document.activeElement).toBe(first.element())
+  })
+
   it('the search narrows the candidates and Enter picks the first match', async () => {
     render(ShareDialog, { props: { item, onclose: vi.fn() } })
     await page.getByTestId('drive-share-pick').fill('cy@')

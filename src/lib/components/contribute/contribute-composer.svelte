@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   /* eslint-disable svelte/no-navigation-without-resolve -- boardHref is resolved by the caller (resolve('/contribute')) */
   import type { ContributionCheck, ContributionDto } from '../../../../modules/contribute/types'
@@ -120,12 +121,7 @@
     error = null
   }
 
-  function onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault()
-      void send()
-    }
-  }
+  const onKeydown = enterSends(() => void send())
 </script>
 
 <div class="flex flex-col gap-3" data-testid="contribute-composer">

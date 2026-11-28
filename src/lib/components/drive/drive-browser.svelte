@@ -1367,7 +1367,6 @@
                         people={here}
                         title="Open now"
                         onItem
-                        ring="background"
                         side="bottom"
                         class="ml-auto"
                         testid="drive-row-presence"
@@ -1514,7 +1513,6 @@
                   title="Open now"
                   onItem
                   max={2}
-                  ring="card"
                   side="bottom"
                   class="ml-auto"
                   testid="drive-row-presence"

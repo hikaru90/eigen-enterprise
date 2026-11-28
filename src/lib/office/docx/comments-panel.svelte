@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import type { CommentData } from './comments'
   import CircleCheckIcon from '@lucide/svelte/icons/circle-check'
   import MessageSquarePlusIcon from '@lucide/svelte/icons/message-square-plus'
@@ -97,7 +98,7 @@
 
 {#snippet editor(label: string)}
   <form class="mt-2 flex flex-col gap-1.5" onsubmit={submit} data-testid="docx-comment-form">
-    <Textarea class="min-h-16 text-xs" aria-label={label} bind:value={text} data-testid="docx-comment-input" />
+    <Textarea class="min-h-16 text-xs" aria-label={label} bind:value={text} onkeydown={enterSends()} data-testid="docx-comment-input" />
     <div class="flex gap-1.5">
       <Button size="sm" class="h-7 text-xs" type="submit" disabled={!text.trim()} data-testid="docx-comment-save">{label}</Button>
       <Button size="sm" variant="ghost" class="h-7 text-xs" type="button" onclick={() => (draft = null)}>Cancel</Button>

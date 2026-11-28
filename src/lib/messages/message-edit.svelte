@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isSendKey } from '$lib/components/keys/enter-sends'
   import { tick } from 'svelte'
   import { Button } from '$lib/components/ui/button'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
@@ -23,7 +24,7 @@
     if (e.key === 'Escape') {
       e.preventDefault()
       oncancel()
-    } else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    } else if (isSendKey(e)) {
       e.preventDefault()
       onsave(draft)
     }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { enterSends } from '$lib/components/keys/enter-sends'
   import ErrorNotice from '$lib/components/error-notice.svelte'
   import XIcon from '@lucide/svelte/icons/x'
   import { Button } from '$lib/components/ui/button'
@@ -173,6 +174,9 @@
     <Textarea
       bind:value={answer}
       placeholder="Your answer…"
+      onkeydown={enterSends(() => {
+        if (answer.trim() && !loading) void submitGroundingAnswer()
+      })}
       class="min-h-[80px] resize-none rounded-md border border-border bg-muted/40 p-3 text-base leading-relaxed"
       disabled={loading}
     />

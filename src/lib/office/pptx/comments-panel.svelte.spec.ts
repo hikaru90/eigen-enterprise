@@ -120,12 +120,14 @@ describe('comments panel', () => {
     expect(page.getByTestId('pptx-thread-edit').query()).toBeNull()
   })
 
-  it('a slide without comments says so; Ctrl+Enter posts', async () => {
+  it('a slide without comments says so; Shift+Enter breaks the line, Enter posts', async () => {
     const p = props({ current: 2, pending: { label: 'On this slide' } })
     render(CommentsPanel, p)
     await expect.element(page.getByTestId('pptx-comments-none')).toHaveTextContent('No comments on this slide.')
     await page.getByTestId('pptx-comment-text').fill('Hi')
-    await userEvent.keyboard('{Control>}{Enter}{/Control}')
-    expect(p.onpost).toHaveBeenCalledWith('Hi')
+    await userEvent.keyboard('{Shift>}{Enter}{/Shift}')
+    expect(p.onpost).not.toHaveBeenCalled()
+    await userEvent.keyboard('there{Enter}')
+    expect(p.onpost).toHaveBeenCalledWith('Hi\nthere')
   })
 })
