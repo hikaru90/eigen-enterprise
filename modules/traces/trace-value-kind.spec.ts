@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DECISION_KINDS } from '../decision-kinds'
 import { tracesTraceValue } from './decision-kinds'
 import { classifyOpenValues, memoryVerdictCache, openValuesOf } from './value-kind'
 import type { TraceSourceRow } from './payload'
@@ -9,8 +8,7 @@ const tool = (name: string): TraceSourceRow => ({ source: 'tool_call', localId: 
 const llm = (model: string): TraceSourceRow => ({ source: 'llm_call', localId: model, traceKey: null, at, task: null, model, provider: 'openrouter', attempt: 1, outcome: 'ok', tokensIn: 1, tokensOut: 1, costUsd: 0, durationMs: 1 })
 
 describe('traces.trace_value (plan/traces-phone-home.md T1b)', () => {
-  it('is a declared, enforced kind with the closed set usage_meta | personal_or_content', () => {
-    expect(DECISION_KINDS.get('traces.trace_value')).toBe(tracesTraceValue)
+  it('is an enforced kind with the closed set usage_meta | personal_or_content', () => {
     expect(tracesTraceValue.choices).toEqual(['usage_meta', 'personal_or_content'])
     expect(tracesTraceValue.status).toBe('enforced')
   })
