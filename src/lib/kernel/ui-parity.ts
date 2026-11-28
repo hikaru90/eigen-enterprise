@@ -472,6 +472,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/company ?/removeLogo': tool('settings.logo_remove'),
   '/(nucleus)/settings/company ?/saveName': tool('settings.update'),
   '/(nucleus)/settings/company ?/setSharing': human(CONSENT_HUB),
+  '/(nucleus)/settings/company ?/setSignals': tool('traces.settings_set'),
+  '/(nucleus)/settings/company/signals ?/withdraw': tool('traces.withdraw'),
   '/(nucleus)/settings/company ?/uploadLogo': tool('settings.logo_set'),
   '/(nucleus)/settings/domains ?/addHost': tool('domains.set_target'),
   '/(nucleus)/settings/domains ?/recheck': tool('domains.recheck'),

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import ErrorNotice from '$lib/components/error-notice.svelte'
   import type { PageProps } from './$types'
   import { applyAction, deserialize, enhance } from '$app/forms'
   import { invalidateAll } from '$app/navigation'
@@ -13,7 +12,9 @@
   } from '$lib/company/identity'
   import type { LogoCrop } from '$lib/company/logo-crop'
   import ShareSettingsCard from '$lib/components/contribute/share-settings-card.svelte'
+  import ErrorNotice from '$lib/components/error-notice.svelte'
   import LogoCropper from '$lib/components/settings/logo-cropper.svelte'
+  import SignalsCard from '$lib/components/traces/signals-card.svelte'
   import { Button } from '$lib/components/ui/button'
   import { Input } from '$lib/components/ui/input'
   import { docTitle } from '$lib/shell/title'
@@ -44,6 +45,7 @@
       : null,
   )
   const shareResult = $derived(form?.action === 'setSharing' ? form : null)
+  const signalsResult = $derived(form?.action === 'setSignals' ? form : null)
 
   /** What this page knows before the server answers: a file on its way, or why it was not sent. */
   type LogoLocal = { kind: 'uploading'; label: string } | { kind: 'refused'; error: string }
@@ -347,6 +349,9 @@
     </p>
   </section>
 
+  {#if data.signals}
+    <SignalsCard status={data.signals.status} canSwitch={data.signals.canSwitch} result={signalsResult} />
+  {/if}
   {#if data.share}
     <ShareSettingsCard status={data.share} result={shareResult} />
   {/if}

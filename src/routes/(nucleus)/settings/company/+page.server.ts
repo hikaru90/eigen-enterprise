@@ -5,10 +5,11 @@ import { companyStorage } from '$lib/server/company/live'
 import { recropCompanyLogo, uploadCompanyLogo } from '$lib/server/company/logo-actions'
 import { removeCompanyLogo, saveCompanyName } from '$lib/server/company/service'
 import { companyProfileStore } from '$lib/server/company/store'
-import { companyIdentity } from '$lib/server/overview/sources'
 import { errorReport, refusalReport } from '$lib/server/errors/report'
+import { companyIdentity } from '$lib/server/overview/sources'
 import { ContributeError } from '../../../../../modules/contribute/errors'
 import { setSharing, shareStatus } from '../../../../../modules/contribute/share/service'
+import { settingsGet, settingsSet, TracesError } from '../../../../../modules/traces/service'
 
 /**
  * Settings → Company (Contribute `6a3b17ba`): the company's name and logo —
@@ -39,7 +40,7 @@ function parseCrop(raw: FormDataEntryValue | null): unknown {
   }
 }
 
-type CompanyAction = 'saveName' | 'uploadLogo' | 'recropLogo' | 'setSharing'
+type CompanyAction = 'saveName' | 'uploadLogo' | 'recropLogo' | 'setSharing' | 'setSignals'
 
 const ATTEMPTED: Record<CompanyAction, string> = {
   saveName: 'Saving the company name in Settings → Company',
@@ -47,6 +48,7 @@ const ATTEMPTED: Record<CompanyAction, string> = {
   recropLogo: 'Cropping the company logo again in Settings → Company',
   setSharing:
     'Turning sharing of Make a wish wishes with the makers on or off (Settings → Company)',
+  setSignals: 'Turning product signals to the makers on or off (Settings → Company)',
 }
 
 const WHERE: Record<CompanyAction, string> = {
@@ -54,6 +56,7 @@ const WHERE: Record<CompanyAction, string> = {
   uploadLogo: 'uploadCompanyLogo (src/lib/server/company/logo-actions.ts)',
   recropLogo: 'recropCompanyLogo (src/lib/server/company/logo-actions.ts)',
   setSharing: 'setSharing (modules/contribute/share/service.ts)',
+  setSignals: 'settingsSet (modules/traces/service.ts, the traces.settings_set tool)',
 }
 
 /** A refusal (not an exception): the person's sentence unchanged + the agent half. */
@@ -69,6 +72,8 @@ function refuse(status: number, action: CompanyAction, sentence: string, input?:
     }),
   })
 }
+
+const tracesDeps = async () => (await import('$lib/server/traces/live')).liveTracesDeps()
 
 const shareDeps = async () =>
   (await import('../../../../../modules/contribute/share/live')).shareDeps()
@@ -91,6 +96,8 @@ export const load: PageServerLoad = async ({ locals }) => {
     },
     // Owner only: sharing proposals with the makers.
     share: role === 'owner' ? await shareStatus(await shareDeps()) : null,
+    // Product signals (plan/traces-phone-home.md §4): owner and admins see it; the owner switches.
+    signals: { status: await settingsGet(await tracesDeps()), canSwitch: role === 'owner' },
   }
 }
 
@@ -153,6 +160,31 @@ export const actions: Actions = {
       throw err
     }
     return { action: 'setSharing', ok: true }
+  },
+  setSignals: async ({ locals, request }) => {
+    const { user, role } = await requireCapability(locals, 'company.manage', REASON)
+    const form = await request.formData()
+    const enabled = form.get('enabled')
+    if (enabled !== 'on' && enabled !== 'off') return refuse(400, 'setSignals', 'Choose on or off.', { enabled })
+    const input = { enabled: enabled === 'on', withdraw: form.get('withdraw') === 'on' }
+    try {
+      await settingsSet(await tracesDeps(), { id: user.id, isOwner: role === 'owner' }, input)
+    } catch (err) {
+      if (err instanceof TracesError) {
+        console.error('[settings/company] setSignals failed', err)
+        return fail(err.code === 'forbidden' ? 403 : 502, {
+          action: 'setSignals',
+          ...errorReport(err, {
+            attempted: ATTEMPTED.setSignals,
+            input,
+            plain: () => err.message,
+            nextSteps: [`${WHERE.setSignals} failed with TracesError code "${err.code}" (forbidden: not the owner; anything else: the makers' hub did not answer as expected).`],
+          }),
+        })
+      }
+      throw err
+    }
+    return { action: 'setSignals', ok: true }
   },
   removeLogo: async ({ locals }) => {
     const { user } = await requireCapability(locals, 'company.manage', REASON)
