@@ -229,10 +229,6 @@ async function waitForAuthenticatedPage(page: Page, path: string): Promise<void>
   await expect(page.locator('body')).toBeVisible()
 }
 
-async function dismissOpenOverlays(page: Page): Promise<void> {
-  await page.keyboard.press('Escape')
-}
-
 /** Locale-neutral PayPal checkout submit controls (hermes + legacy review). */
 const PAYPAL_SUBMIT_SELECTORS = [
   '#payment-submit-btn',

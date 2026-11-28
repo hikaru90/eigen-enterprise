@@ -1,6 +1,5 @@
 import { asc, eq } from 'drizzle-orm'
 import { zipSync, strToU8 } from 'fflate'
-import { decryptTenantValue } from '$lib/server/crypto/tenant-encryption'
 import { getDb } from '$lib/server/db'
 import {
   canonicalEntity,
