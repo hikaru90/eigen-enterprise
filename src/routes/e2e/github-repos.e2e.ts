@@ -64,12 +64,11 @@ async function openRepoFolder(page: Page): Promise<void> {
   await openPath(page, ['kindred', 'shop'])
 }
 
-/** "Last synced …" of the repo's status row (its "next …" moves as soon as Sync now is clicked). */
+/** When the repo last finished a sync, to the millisecond (the row's text shows only the minute). */
 async function lastSynced(page: Page): Promise<string> {
-  const text = (await page.getByTestId(`repos-status-${REPO}`).textContent()) ?? ''
-  const m = /Last synced [^·]*/.exec(text)
-  if (!m) throw new Error(`no "Last synced" in the status row of ${REPO}: ${text}`)
-  return m[0].trim()
+  const at = await page.getByTestId(`repos-status-${REPO}`).getAttribute('data-last-synced')
+  if (at === null) throw new Error(`the status row of ${REPO} has no data-last-synced`)
+  return at
 }
 
 /**

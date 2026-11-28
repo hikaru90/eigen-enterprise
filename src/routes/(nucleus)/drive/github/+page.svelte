@@ -233,6 +233,7 @@
             <li
               class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5"
               data-testid={`repos-status-${r.fullName}`}
+              data-last-synced={r.lastSyncedAt ?? ''}
             >
               <span class="min-w-0 flex-1 truncate text-sm font-medium">{r.fullName}</span>
               <span class="text-xs text-muted-foreground">

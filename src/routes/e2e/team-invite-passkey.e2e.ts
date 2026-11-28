@@ -67,6 +67,8 @@ test('invite link → passkey (no email) → group → remove ends the session',
   await owner.getByRole('button', { name: 'Create invite link' }).click()
   const linkBox = owner.getByTestId('invite-link')
   await expect(linkBox).toContainText(bEmail)
+  // The invite form posts and the page comes back server-rendered: a click before it hydrates is lost.
+  await owner.waitForFunction(() => document.body.dataset.eigenHydrated === 'true')
   await owner.getByTestId('invite-link-copy').click()
   await expect(owner.getByTestId('invite-link-copy')).toHaveText('Copied')
   const inviteUrl = await owner.evaluate(() => navigator.clipboard.readText())
