@@ -6,7 +6,6 @@ import { building, dev } from '$app/environment'
 import { getTextDirection } from '$lib/paraglide/runtime'
 import { paraglideMiddleware } from '$lib/paraglide/server'
 import { releaseDurableHarnessLockForExit } from '$lib/server/agent/durable-harness'
-import { captureServerException } from '$lib/server/analytics/posthog-server'
 import { hashApiKey } from '$lib/server/api-keys/api-key-utils'
 import { isApiKeyRoute, parseBearerApiKey } from '$lib/server/api-keys/bearer-routes'
 import { auth } from '$lib/server/auth'
@@ -329,11 +328,6 @@ export const handleError: HandleServerError = ({ error, status, event, message }
     console.error(
       `[server error] ${status} ${event.request.method} ${event.url.pathname} (route ${event.route?.id ?? 'none'})\n${describeServerError(error)}`,
     )
-    captureServerException(error, event.locals.user?.id, {
-      status,
-      path: event.url.pathname,
-      route_id: event.route?.id ?? null,
-    })
   }
   // The one error shape: the page shows the plain sentence and offers "Copy agent
   // instructions". The cause chain is only handed to a signed-in member of the

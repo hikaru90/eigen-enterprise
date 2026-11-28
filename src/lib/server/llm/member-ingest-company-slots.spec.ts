@@ -100,7 +100,6 @@ vi.mock('$lib/server/crypto/tenant-encryption', () => ({
   encryptTenantValue: vi.fn(),
 }))
 vi.mock('$lib/server/activity/log-call', () => ({ logActivityCall: vi.fn() }))
-vi.mock('$lib/server/analytics/posthog-server', () => ({ captureServerEvent: vi.fn() }))
 
 import { createThoughtEmbedding } from './embedding'
 

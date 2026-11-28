@@ -7,7 +7,7 @@ const note = () => page.getByRole('region', { name: 'Who can see your Memory' })
 
 describe('MemoryPrivacyNote', () => {
   it('states who can read it (shared by default, Private = yours alone), what the assistant and keys can do, what leaves the server, and delete', async () => {
-    render(MemoryPrivacyNote, { analyticsSeesAi: false })
+    render(MemoryPrivacyNote)
     await expect.element(note()).toBeVisible()
     await expect
       .element(note())
@@ -48,10 +48,5 @@ describe('MemoryPrivacyNote', () => {
       .toHaveAttribute('href', '/m/memory/settings#your-data')
   })
 
-  it('says product analytics sees how AI requests went, never their text — only when this server uses it', async () => {
-    render(MemoryPrivacyNote, { analyticsSeesAi: true })
-    await expect.element(note()).toHaveTextContent(/product analytics \(PostHog\)/i)
-    await expect.element(note()).toHaveTextContent(/never your Memory text/i)
-    await expect.element(note()).not.toHaveTextContent(/including your Memory text/i)
-  })
+
 })

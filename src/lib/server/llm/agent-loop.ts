@@ -1,10 +1,8 @@
-import { randomUUID } from 'node:crypto'
 import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { ChatStreamEvent } from '$lib/chat/chat-stream-types'
 import { isUnpresentableFinalAnswer } from '$lib/chat/chat-stream-types'
 import { AGENT_TOOL_ACTIVITY_PROVIDER } from '$lib/server/activity/gateway-providers'
 import { logActivityCall } from '$lib/server/activity/log-call'
-import { captureServerEvent } from '$lib/server/analytics/posthog-server'
 import { getDb } from '$lib/server/db'
 import type { ChatSessionMode } from '$lib/server/db/brain.schema'
 import {
@@ -249,7 +247,6 @@ type ToolExecutionContext = {
   db?: ReturnType<typeof getDb>
   assistantContentForHistory?: string
   aiSessionId?: string
-  aiTraceId?: string
 }
 
 function normalizeAgentToolArgs(
@@ -309,16 +306,6 @@ async function executeAgentToolCall(input: {
       context: `args: ${Object.keys(args).join(', ')}`,
       durationMs: Date.now() - toolStart,
     })
-    captureServerEvent({
-      distinctId: exec.userId,
-      event: '$ai_span',
-      properties: {
-        $ai_trace_id: exec.aiTraceId,
-        $ai_session_id: exec.aiSessionId,
-        $ai_span_name: tool,
-        $ai_latency: (Date.now() - toolStart) / 1000,
-      },
-    })
 
     if (
       tool === 'answer_question' &&
@@ -350,17 +337,6 @@ async function executeAgentToolCall(input: {
       errorMessage,
       durationMs: Date.now() - toolStart,
     })
-    captureServerEvent({
-      distinctId: exec.userId,
-      event: '$ai_span',
-      properties: {
-        $ai_trace_id: exec.aiTraceId,
-        $ai_session_id: exec.aiSessionId,
-        $ai_span_name: tool,
-        $ai_latency: (Date.now() - toolStart) / 1000,
-        $ai_is_error: true,
-      },
-    })
   }
 
   return {
@@ -380,7 +356,6 @@ export async function agentChat(input: {
   mode?: ChatSessionMode
   aiSessionId?: string
 }): Promise<AgentChatResult> {
-  const aiTraceId = randomUUID()
   const ctx: McpToolContext = {
     userId: input.userId,
     onToolProgress: (event) => {
@@ -400,7 +375,6 @@ export async function agentChat(input: {
     onEvent: input.onEvent,
     db: input.db,
     aiSessionId: input.aiSessionId,
-    aiTraceId,
   }
 
   const messages: ChatMessage[] = [
@@ -434,7 +408,6 @@ export async function agentChat(input: {
       task: input.task,
       operationLabel: `agent_iter_${iteration}`,
       aiSessionId: input.aiSessionId,
-      aiTraceId,
     })
     console.info('[agent-loop] llm request done', { iteration, durationMs: Date.now() - llmStart })
 

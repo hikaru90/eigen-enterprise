@@ -39,7 +39,7 @@
     >
       {#snippet info()}
         <p>{m.memory_info()}</p>
-        <MemoryPrivacyNote analyticsSeesAi={data.privacy.analyticsSeesAi} />
+        <MemoryPrivacyNote />
       {/snippet}
       {#snippet actions()}
         <a
