@@ -11,11 +11,14 @@ import { kernelEvents } from '$lib/server/db/kernel.schema'
 import { patternDigest } from '$lib/server/db/patterns.schema'
 import { stripMarkdownJsonFences } from '$lib/server/memory/llm-json-content'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
+import { MESSAGES_MODULE_ID } from '../../../../modules/messages/manifest'
+import { messageActivityEvents } from './message-activity'
 
 /**
  * Production wiring of the What's happening digest: the audit trail's changes, the kernel
  * registry as the catalog (a tool's module and permission roles; internal modules such as the
- * kernel's own admin surface are no activity to show), account names, the gateway on the
+ * kernel's own admin surface are no activity to show), public-channel messages from the messages
+ * table (never DMs, group DMs or private channels), account names, the gateway on the
  * company provider in the owner's session, and the pattern_digest table.
  */
 export async function livePatternDeps(): Promise<PatternDeps> {
@@ -35,7 +38,14 @@ export async function livePatternDeps(): Promise<PatternDeps> {
             eq(sql`${kernelEvents.payload}->>'ok'`, 'true'),
           ),
         )
-      return rows.flatMap((r) => (r.principalId && r.tool ? [{ principalId: r.principalId, tool: r.tool, at: r.ts }] : []))
+      // The audit trail does not say where a message went, so the messages module's activity
+      // comes from the messages table instead: public channels only (messageActivityEvents).
+      const changes = rows.flatMap((r) =>
+        r.principalId && r.tool && kernel.registry.get(r.tool)?.module !== MESSAGES_MODULE_ID
+          ? [{ principalId: r.principalId, tool: r.tool, at: r.ts }]
+          : [],
+      )
+      return [...changes, ...(await messageActivityEvents(since))]
     },
     catalog: (tool) => {
       const descriptor = kernel.registry.get(tool)
