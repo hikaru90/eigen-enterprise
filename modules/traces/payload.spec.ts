@@ -117,4 +117,19 @@ describe('toHubSpansV1 (plan/traces-phone-home.md §2 Tier A)', () => {
     expect(s).toMatchObject({ kind: 'upgrade', run_kind: 'upgrade', outcome: 'rolled_back', error_code: 'upgrade_step:watching', app_version: '0.5.48', ee_version: null, parent_id: null })
     expect(Object.keys(s)).not.toContain('reason')
   })
+
+  it('a module breakage is a root span of its own: module_failed, no module id or sentence', () => {
+    const broke: TraceSourceRow = { source: 'module_run', localId: 'k9', traceKey: null, at: at('2026-11-21T04:00:00Z') }
+    const s = toHubSpansV1([broke], ctx()).spans[0]!
+    expect(s).toMatchObject({ kind: 'module_run', outcome: 'error', error_code: 'module_failed', parent_id: null, tool: null, app_version: '0.5.47' })
+  })
+})
+
+describe('the e2e journey’s copy of the Tier A keys (src/routes/e2e/traces-phone-home.e2e.ts)', () => {
+  it('equals hubSpanV1’s keys', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const src = await readFile(new URL('../../src/routes/e2e/traces-phone-home.e2e.ts', import.meta.url), 'utf8')
+    const block = /const TIER_A_KEYS = \[([^\]]+)\]/.exec(src)![1]!
+    expect(block.match(/'([a-z_]+)'/g)!.map((k) => k.slice(1, -1))).toEqual([...HUB_SPAN_KEYS])
+  })
 })

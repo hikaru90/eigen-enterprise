@@ -73,9 +73,12 @@ async function decideValue(v: { field: 'tool' | 'model'; value: string }) {
   return r.choice
 }
 
-/** One exporter pass for the job-queue tick; one at a time per process. */
+/**
+ * One exporter pass for the job-queue tick; one at a time per process. `now` is the tick's clock:
+ * only the dev/e2e harness passes one (to skip the settle and build waits), the ticker never does.
+ */
 let running: Promise<TraceTickResult | null> | null = null
-export function tracesTick(): Promise<TraceTickResult | null> {
+export function tracesTick(now?: () => Date): Promise<TraceTickResult | null> {
   running ??= (async () => {
     const { isHubInstall } = await import('../../../../modules/contribute/share/live')
     if (await isHubInstall()) return null
@@ -90,6 +93,7 @@ export function tracesTick(): Promise<TraceTickResult | null> {
       appVersion: APP_VERSION,
       eeVersion: null,
       newId: randomUUID,
+      ...(now ? { now } : {}),
     })
     if (out.built > 0 || out.sent > 0 || out.failed > 0) console.info('[traces] tick', out)
     return out

@@ -3,7 +3,7 @@ import type { PatternDeps } from './service'
 import { and, desc, eq, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { moduleLabel } from '$lib/server/activity/readable-log'
 import { appKernel } from '$lib/server/boot'
-import { getDb } from '$lib/server/db'
+import { companyDb } from '$lib/server/db'
 import { authDb } from '$lib/server/db/auth-db'
 import { user } from '$lib/server/db/auth.schema'
 import { coworkerProfile } from '$lib/server/db/coworkers.schema'
@@ -26,7 +26,7 @@ export async function livePatternDeps(): Promise<PatternDeps> {
   return {
     now: () => new Date(),
     events: async (since) => {
-      const rows = await getDb()
+      const rows = await companyDb()
         .select({ ts: kernelEvents.ts, principalId: kernelEvents.principalId, tool: sql<string>`${kernelEvents.payload}->>'tool'` })
         .from(kernelEvents)
         .where(
@@ -79,11 +79,11 @@ export async function livePatternDeps(): Promise<PatternDeps> {
       return stripMarkdownJsonFences(extractChatContent(response))
     },
     latest: async () => {
-      const [row] = await getDb().select().from(patternDigest).orderBy(desc(patternDigest.createdAt)).limit(1)
+      const [row] = await companyDb().select().from(patternDigest).orderBy(desc(patternDigest.createdAt)).limit(1)
       return row ? (row as PatternDigest) : null
     },
     save: async (digest) => {
-      const [row] = await getDb().insert(patternDigest).values(digest).returning()
+      const [row] = await companyDb().insert(patternDigest).values(digest).returning()
       return row as PatternDigest
     },
   }

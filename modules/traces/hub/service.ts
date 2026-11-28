@@ -125,3 +125,34 @@ export async function hubGetTrace(d: Pick<TraceHubDeps, 'store'>, input: z.infer
   if (spans.length === 0) throw new TraceHubError('not_found', 'no such trace on the hub')
   return { spans }
 }
+
+// ─── Waves (T5; phase-upgrades §6.3, §9 Q4) ──────────────────────────────────
+
+export const releaseHealthInput = z.object({ release: z.string().min(1).max(80) }).strict()
+
+const WAVE_SCAN = 500
+
+/**
+ * Whether a release's rollout wave halts: any box that rolled it back, or any company module the
+ * kernel switched off as failed on a box running it. Boxes with the switch off send nothing, so a
+ * wave can't halt on their failures (phase-upgrades §9 Q4).
+ */
+export async function hubReleaseHealth(
+  d: Pick<TraceHubDeps, 'store'>,
+  input: z.infer<typeof releaseHealthInput>,
+): Promise<{ release: string; halt: boolean; rollbacks: number; rolled_back_installs: number; module_breakages: number; broken_installs: number }> {
+  const [rolled, broken] = await Promise.all([
+    d.store.listRuns({ outcome: 'rolled_back', errorCode: null, appVersion: input.release, limit: WAVE_SCAN }),
+    d.store.listRuns({ outcome: 'error', errorCode: 'module_failed', appVersion: input.release, limit: WAVE_SCAN }),
+  ])
+  const rollbacks = rolled.filter((s) => s.kind === 'upgrade')
+  const breakages = broken.filter((s) => s.kind === 'module_run')
+  return {
+    release: input.release,
+    halt: rollbacks.length > 0 || breakages.length > 0,
+    rollbacks: rollbacks.length,
+    rolled_back_installs: new Set(rollbacks.map((s) => s.install_id)).size,
+    module_breakages: breakages.length,
+    broken_installs: new Set(breakages.map((s) => s.install_id)).size,
+  }
+}

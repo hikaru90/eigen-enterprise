@@ -139,6 +139,13 @@ export type TraceSourceRow =
       release: string
       durationMs: number | null
     }
+  | {
+      /** A company module the kernel switched off because it failed (module.failed). Its id and sentence never leave. */
+      source: 'module_run'
+      localId: string
+      traceKey: null
+      at: Date
+    }
 
 export type ValueVerdict = 'usage_meta' | 'personal_or_content' | 'unclassified'
 /** The Jev gate's answers for this batch's open values (value-kind.ts fills them before the call). */
@@ -198,7 +205,7 @@ export function toHubSpansV1(rows: readonly TraceSourceRow[], ctx: SpanContext):
   const spans = rows.map((r): HubSpanV1 => {
     const k = traceKeyOf(r)
     const spanId = exportId(ctx.salt, `span:${r.source}:${r.localId}`)
-    const parent = r.source === 'run' || r.source === 'job' || r.source === 'upgrade' ? null : (runSpan.get(k) ?? null)
+    const parent = r.source === 'run' || r.source === 'job' || r.source === 'upgrade' || r.source === 'module_run' ? null : (runSpan.get(k) ?? null)
     const base = {
       trace_id: exportId(ctx.salt, `trace:${k}`),
       span_id: spanId,
@@ -211,7 +218,7 @@ export function toHubSpansV1(rows: readonly TraceSourceRow[], ctx: SpanContext):
       tokens_in: null,
       tokens_out: null,
       cost_usd: null,
-      duration_ms: int(r.durationMs),
+      duration_ms: 'durationMs' in r ? int(r.durationMs) : null,
       attempt: null,
       start_offset_ms: r.at.getTime() - starts.get(k)!,
       error_code: null,
@@ -285,6 +292,9 @@ export function toHubSpansV1(rows: readonly TraceSourceRow[], ctx: SpanContext):
           app_version: VERSION_SHAPE.test(r.release) ? r.release : ctx.appVersion,
         }
       }
+      case 'module_run':
+        // The release the box runs is the one the breakage counts against (a wave halts on it).
+        return { ...base, kind: 'module_run', outcome: 'error', error_code: 'module_failed' }
     }
   })
   return { spans: spans.map((s) => hubSpanV1.parse(s)), withheld }

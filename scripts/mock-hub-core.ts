@@ -28,6 +28,8 @@ import {
   verifyHubRequest,
 } from '../modules/contribute/share/contract'
 import { memoryBundleStorage } from '../modules/module-hub/bundles'
+import { hubTraceBatchV1 } from '../modules/traces/payload'
+import { TRACE_PATHS } from '../modules/traces/worker'
 import { lockCatalog } from '../modules/module-hub/checks'
 import { MODULE_HUB_ERROR_STATUS, ModuleHubError } from '../modules/module-hub/errors'
 import { memoryModuleHubStore } from '../modules/module-hub/memory-store'
@@ -52,6 +54,9 @@ export type MockHubRequest = {
 
 const contributionPath = new RegExp(`^${HUB_PATHS.contribution('([0-9a-f-]{36})').replace(/\//g, '\\/')}$`)
 const installPath = new RegExp(`^${HUB_PATHS.install('([0-9a-f-]{36})').replace(/\//g, '\\/')}$`)
+
+/** Product signals (plan/traces-phone-home.md T4): POST /api/hub/traces, DELETE it or /api/hub/traces/:batchId. */
+const tracesBatchPath = /^\/api\/hub\/traces\/([0-9a-f-]{36})$/
 
 type Answer = { status: number; answer: Record<string, unknown>; signatureOk: boolean | null; installId: string | null }
 
@@ -79,6 +84,7 @@ export const isModulePath = (path: string) => MODULE_PATH.test(path)
 export function createMockHub(now: () => number = Date.now, opts: { origin?: string } = {}) {
   const installs = new Map<string, string>() // install id → public key (SPKI DER, base64)
   const contributions = new Map<string, unknown>() // `${installId}/${remoteId}` → payload
+  const traceBatches = new Map<string, unknown>() // `${installId}/${batchId}` → the strict batch
   const requests: MockHubRequest[] = []
   // The module hub: the real service over memory stores; registered installs are known to it too.
   const hubStore = memoryHubStore()
@@ -122,7 +128,9 @@ export function createMockHub(now: () => number = Date.now, opts: { origin?: str
 
     const contribution = contributionPath.exec(path)
     const install = installPath.exec(path)
-    if (!contribution && !install) return { status: 404, answer: { error: `mock hub has no route for ${method} ${path}` }, signatureOk: null, installId: null }
+    const traces = path === TRACE_PATHS.traces
+    const traceBatch = tracesBatchPath.exec(path)
+    if (!contribution && !install && !traces && !traceBatch) return { status: 404, answer: { error: `mock hub has no route for ${method} ${path}` }, signatureOk: null, installId: null }
 
     const header = (name: string) => {
       const v = headers[name]
@@ -146,6 +154,25 @@ export function createMockHub(now: () => number = Date.now, opts: { origin?: str
     if (!verdict.ok) return { status: 401, answer: { error: `request not accepted: ${verdict.reason}` }, signatureOk: false, installId }
     const ok = (status: number, answer: Record<string, unknown>): Answer => ({ status, answer, signatureOk: true, installId })
 
+    if (traces || traceBatch) {
+      if (method === 'POST' && traces) {
+        // The strict Tier A schema, the hub's own: an extra key anywhere is a 400.
+        const p = hubTraceBatchV1.safeParse(parseJson(body))
+        if (!p.success) return ok(400, { error: `invalid body: ${p.error.issues[0]?.path.join('.')}: ${p.error.issues[0]?.message ?? 'does not match'}` })
+        const key = `${installId}/${p.data.batch_id}`
+        const created = !traceBatches.has(key)
+        traceBatches.set(key, p.data)
+        return ok(created ? 201 : 200, { outcome: created ? 'created' : 'duplicate', spans: p.data.spans.length })
+      }
+      if (method === 'DELETE') {
+        if (body !== '') return ok(400, { error: 'a DELETE carries no body' })
+        let deleted = 0
+        for (const key of [...traceBatches.keys()])
+          if ((traceBatch ? key === `${installId}/${traceBatch[1]}` : key.startsWith(`${installId}/`)) && traceBatches.delete(key)) deleted++
+        return ok(200, { deleted })
+      }
+      return ok(405, { error: `mock hub: ${method} is not allowed on ${path}` })
+    }
     if (method === 'DELETE') {
       if (body !== '') return ok(400, { error: 'a DELETE carries no body' })
       if (install) {
@@ -215,6 +242,6 @@ export function createMockHub(now: () => number = Date.now, opts: { origin?: str
     return out
   }
 
-  return { receive, receiveModules, requests, contributions, hubStore, moduleStore, bundles, summaryQueue }
+  return { receive, receiveModules, requests, contributions, traceBatches, hubStore, moduleStore, bundles, summaryQueue }
 }
 

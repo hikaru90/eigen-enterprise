@@ -121,3 +121,23 @@ export async function settingsSet(
   const withdrawn = !input.enabled && input.withdraw ? (await withdraw(d, actor, null)).withdrawn : []
   return { ...(await settingsGet(d)), withdrawn }
 }
+
+/** The one-time Needs you notice (plan/traces-phone-home.md §4): informational, not a consent step. */
+export const SIGNALS_NOTICE_SENTENCE =
+  'This box shares usage statistics (which tool, which model, how long, what failed, on which version — never content, names or emails) with the eigenEnterprise makers. You can switch it off in Settings → Company.'
+export const SIGNALS_SETTINGS_HREF = '/settings/company'
+
+export type SignalsNotice = { sentence: string; href: string }
+
+/** The owner's notice until they mark it seen; nobody else gets one (the switch is the owner's). */
+export async function noticeGet(d: TracesDeps, actor: TracesActor): Promise<{ notice: SignalsNotice | null }> {
+  if (!actor.isOwner) return { notice: null }
+  const s = await d.store.settings()
+  return { notice: s.noticeSeenAt ? null : { sentence: SIGNALS_NOTICE_SENTENCE, href: SIGNALS_SETTINGS_HREF } }
+}
+
+export async function noticeSeen(d: TracesDeps, actor: TracesActor): Promise<{ seen: true }> {
+  ownerOnly(actor, 'marks the product signals notice seen')
+  await d.store.setNoticeSeen(d.now())
+  return { seen: true }
+}

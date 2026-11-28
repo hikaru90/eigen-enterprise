@@ -1,7 +1,7 @@
 import type { HubTraceStore } from './store'
 import { describe, expect, it, vi } from 'vitest'
 import { toHubSpansV1 } from '../payload'
-import { ingestTraces, MAX_BODY_BYTES, runRetention, TraceHubError, withdrawAll, withdrawBatch, type TraceHubDeps } from './service'
+import { hubReleaseHealth, ingestTraces, MAX_BODY_BYTES, runRetention, TraceHubError, withdrawAll, withdrawBatch, type TraceHubDeps } from './service'
 
 const INSTALL = '11111111-1111-4111-8111-111111111111'
 const BATCH = '22222222-2222-4222-8222-222222222222'
@@ -87,5 +87,29 @@ describe('hub retention (T3)', () => {
     expect(await runRetention(d)).toEqual({ rolledUp: 2, expired: 4, revoked: 0 })
     expect(store.rollup).toHaveBeenCalledWith('2026-11-20')
     expect(store.retention).toHaveBeenCalledWith('2026-08-22')
+  })
+})
+
+describe('a release’s wave halts on rollbacks and module breakage (T5, phase-upgrades §6, §9 Q4)', () => {
+  const R = 'eigenenterprise-0.5.48-0123456789ab'
+  const root = (kind: 'upgrade' | 'module_run', outcome: 'rolled_back' | 'error' | 'ok', install: string) => ({
+    ...spans[0]!, kind, outcome, error_code: kind === 'module_run' ? 'module_failed' : null, app_version: R, install_id: install, batch_id: BATCH,
+  })
+  it('halts when any box rolled the release back or reported a module breakage on it; counts installs', async () => {
+    const listRuns = vi.fn(async (f: { outcome: string | null; errorCode: string | null }) =>
+      f.outcome === 'rolled_back'
+        ? [root('upgrade', 'rolled_back', INSTALL), root('upgrade', 'rolled_back', INSTALL)]
+        : f.errorCode === 'module_failed'
+          ? [root('module_run', 'error', BATCH)]
+          : [],
+    )
+    const store = { listRuns } as unknown as HubTraceStore
+    expect(await hubReleaseHealth({ store }, { release: R })).toEqual({ release: R, halt: true, rollbacks: 2, rolled_back_installs: 1, module_breakages: 1, broken_installs: 1 })
+    expect(listRuns).toHaveBeenCalledWith({ outcome: 'rolled_back', errorCode: null, appVersion: R, limit: 500 })
+    expect(listRuns).toHaveBeenCalledWith({ outcome: 'error', errorCode: 'module_failed', appVersion: R, limit: 500 })
+  })
+  it('no rollback and no breakage: the wave goes on', async () => {
+    const store = { listRuns: vi.fn(async () => []) } as unknown as HubTraceStore
+    expect(await hubReleaseHealth({ store }, { release: R })).toMatchObject({ halt: false, rollbacks: 0, module_breakages: 0 })
   })
 })

@@ -1,6 +1,6 @@
 import type { ActivityEvent } from './digest'
 import { and, eq, gte, isNull } from 'drizzle-orm'
-import { getDb } from '$lib/server/db'
+import { companyDb } from '$lib/server/db'
 import { messageConversations, messages } from '$lib/server/db/messages.schema'
 
 /**
@@ -11,7 +11,7 @@ import { messageConversations, messages } from '$lib/server/db/messages.schema'
  * `tool.executed` event does not say where a message went.
  */
 export async function messageActivityEvents(since: Date): Promise<ActivityEvent[]> {
-  const rows = await getDb()
+  const rows = await companyDb()
     .select({ principalId: messages.authorId, at: messages.createdAt })
     .from(messages)
     .innerJoin(messageConversations, eq(messageConversations.id, messages.conversationId))

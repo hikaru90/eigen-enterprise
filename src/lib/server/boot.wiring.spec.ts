@@ -227,7 +227,7 @@ describe('bootApp — the brain reaches every tool of the person through ee', ()
  * stays off the brain (CB3) and service tools are webhooks' own. Not new — the
  * same before ee; pinned so a new one is a visible decision.
  */
-const NO_BRAIN_REACH = ['agent.disable', 'agent.enable', 'brand.picker_choose', 'github.auto_deploy', 'traces.settings_set', 'traces.withdraw', 'website.app_auto_deploy'] as const
+const NO_BRAIN_REACH = ['agent.disable', 'agent.enable', 'brand.picker_choose', 'github.auto_deploy', 'website.app_auto_deploy'] as const
 
 /** What a member (no admin role) reaches through the brain — as themselves, under their own access checks. */
 const MEMBER_KEEPS_VIA_BRAIN = [
@@ -593,10 +593,16 @@ const MEMBER_LOSES_VIA_BRAIN = [
   // Product signals (plan/traces-phone-home.md): the box's reads, and the makers' hub reads.
   'trace_hub.get',
   'trace_hub.list',
+  'trace_hub.release_health',
   'trace_hub.stats',
+  'traces.notice_get',
   'traces.sent_get',
   'traces.sent_list',
   'traces.settings_get',
+  // The owner's acts: owner/admin in the registry (an owner is an admin there), owner-only in the tool.
+  'traces.notice_seen',
+  'traces.settings_set',
+  'traces.withdraw',
   'demo.guest_access_get',
   'demo.guest_access_set',
   // U2 §7: the module hub's reads and summarise are the hub box's admins' (and agent's).

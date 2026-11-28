@@ -74,6 +74,11 @@ vi.mock('$lib/server/memory/team-questions/service', async (orig) => ({
   listQuestions: async () => ({ questions: [] })
 }))
 vi.mock('$lib/server/decisions/live', () => ({ needsYouDecisionQuestions: (userId: string) => decisions.questions(userId) }))
+vi.mock('$lib/server/traces/live', async () => {
+  const { memoryTraceStore } = await import('../../../../modules/traces/memory-store')
+  const store = memoryTraceStore()
+  return { liveTracesDeps: async () => ({ store, hub: { config: () => ({ ok: true }) }, now: () => new Date() }) }
+})
 vi.mock('../../../../modules/company-modules/notices-live', async () => {
   const { moduleNotices } = await import('$lib/kernel/module-host/notices')
   return {
@@ -274,6 +279,22 @@ describe('the dashboard at / (loadDashboard)', () => {
     expect((await loadDashboard('admin')).update).toBeNull()
     expect(upgradeMock).not.toHaveBeenCalled()
     backupsMock.mockReset()
+  })
+
+  it('the owner gets the one-time product signals notice (what is shared, the switch) until they mark it seen; an admin never', async () => {
+    kernelHolder.kernel = await kernel(['website'])
+    roleMock.mockResolvedValue('admin')
+    expect((await loadDashboard('admin')).signalsNotice).toBeNull()
+    roleMock.mockResolvedValue('owner')
+    backupsMock.mockResolvedValue({ health: { state: 'ok', lastSuccessAt: 't' }, runs: [] })
+    upgradeMock.mockResolvedValue({ installed: null, managed: false, source: null, job: null, lastOutcome: null })
+    expect((await loadDashboard('owner')).signalsNotice).toMatchObject({ href: '/settings/company', sentence: expect.stringMatching(/switch it off/) })
+    const { liveTracesDeps } = await import('$lib/server/traces/live')
+    await (await liveTracesDeps()).store.setNoticeSeen(new Date())
+    expect((await loadDashboard('owner')).signalsNotice).toBeNull()
+    roleMock.mockResolvedValue('admin')
+    backupsMock.mockReset()
+    upgradeMock.mockReset()
   })
 
   it('Needs you holds the tasks other members assigned to this person, and the news on the ones they assigned', async () => {

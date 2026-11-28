@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { appDbAsyncLocal, type AppDatabase } from '$lib/server/db/context'
+import { closeAppDbPool } from '$lib/server/db'
 import { companyAiStore } from './company-ai'
 import { ModelNotInPoolError } from './model-pool'
 
@@ -25,6 +26,7 @@ describe.skipIf(!url)('companyAiStore (Postgres)', () => {
   })
 
   afterAll(async () => {
+    await closeAppDbPool()
     await sql.end()
   })
 
@@ -36,6 +38,12 @@ describe.skipIf(!url)('companyAiStore (Postgres)', () => {
       }),
     ).rejects.toBeInstanceOf(Rollback)
   }
+
+  it('reads outside any request (boot: the co-workers start on the pool pick)', async () => {
+    expect(appDbAsyncLocal.getStore()).toBeUndefined()
+    const s = await companyAiStore().read()
+    expect(Object.keys(s.picks)).toEqual(['chat', 'stt', 'tts', 'decision'])
+  })
 
   it('the migration leaves exactly one row; picks start at the pool’s pick (null)', async () => {
     await inRolledBackTx(async () => {
