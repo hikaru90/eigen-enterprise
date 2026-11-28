@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { newBackupKey } from './crypto.ts'
 import { FakeS3 } from './fake-s3.ts'
 import { S3Client } from './s3.ts'
-import { driveBlobPath, fetchSnapshot, listSnapshots, prune, readManifest, resolveSnapshot, takeSnapshot } from './snapshot.ts'
+import { DRIVE_SEAL_MAGIC, DRIVE_SEAL_STATE_FILE, driveBlobPath, fetchSnapshot, listSnapshots, prune, readManifest, resolveSnapshot, takeSnapshot } from './snapshot.ts'
 import { companyFixture } from './test-fixture.ts'
 
 
@@ -123,6 +124,52 @@ describe('snapshots against the fake S3', () => {
     await expect(fetchSnapshot(s3, key, r.snapshotId, null)).rejects.toThrow(/authentication/)
     fake.objects.delete(k)
     await expect(fetchSnapshot(s3, key, r.snapshotId, null)).rejects.toThrow(/NoSuchKey/)
+  })
+
+  it('sealed Drive blobs (os seals at rest) go up as-is under <sha>.sealed and come back byte-identical; plain ones mark the store for sealing', async () => {
+    const co = await companyFixture()
+    const plainSha = createHash('sha256').update('sealed contract').digest('hex')
+    const sealed = Buffer.concat([DRIVE_SEAL_MAGIC, Buffer.from('iv-and-ciphertext-and-tag')])
+    const path = driveBlobPath(co.sources.driveDir, plainSha)
+    await mkdir(join(path, '..'), { recursive: true })
+    await writeFile(path, sealed)
+    const s3 = new S3Client(fake.target(endpoint))
+    const r = await takeSnapshot(s3, key, co.sources, at('2026-11-01T03:00:00Z'))
+    expect([...fake.objects.keys()]).toContain(`acme/blobs/${plainSha}.sealed`)
+    const m = await readManifest(s3, key, r.snapshotId)
+    expect(m.blobs).toEqual([{ sha256: plainSha, size: sealed.length, sealed: true }])
+
+    const out = join(co.root, 'restore-sealed')
+    await fetchSnapshot(s3, key, r.snapshotId, { dir: out, driveDir: join(out, 'drive') })
+    expect((await readFile(driveBlobPath(join(out, 'drive'), plainSha))).equals(sealed)).toBe(true)
+    await expect(readFile(join(out, 'drive', DRIVE_SEAL_STATE_FILE))).rejects.toThrow(/ENOENT/)
+
+    // Tampering that keeps the backup's own encryption intact is still caught by the os's tag; ee checks magic + size.
+    const plainBlob = await co.addBlob(Buffer.from('legacy plain'))
+    const r2 = await takeSnapshot(s3, key, co.sources, at('2026-11-02T03:00:00Z'))
+    const out2 = join(co.root, 'restore-mixed')
+    await fetchSnapshot(s3, key, r2.snapshotId, { dir: out2, driveDir: join(out2, 'drive') })
+    expect((await readFile(driveBlobPath(join(out2, 'drive'), plainBlob))).toString()).toBe('legacy plain')
+    expect((await readFile(join(out2, 'drive', DRIVE_SEAL_STATE_FILE))).toString()).toBe('sealing\n')
+
+    const pr = await prune(s3, key, 30, new Date('2026-11-03T00:00:00Z'))
+    expect(pr.blobsDeleted).toBe(0)
+    expect([...fake.objects.keys()]).toContain(`acme/blobs/${plainSha}.sealed`)
+  })
+
+  it('a sealed blob whose object lost its seal or its size fails the check', async () => {
+    const co = await companyFixture()
+    const sha = createHash('sha256').update('x').digest('hex')
+    const path = driveBlobPath(co.sources.driveDir, sha)
+    await mkdir(join(path, '..'), { recursive: true })
+    await writeFile(path, Buffer.concat([DRIVE_SEAL_MAGIC, Buffer.from('body')]))
+    const plain = await co.addBlob(Buffer.from('plain bytes, same backup key'))
+    const s3 = new S3Client(fake.target(endpoint))
+    const r = await takeSnapshot(s3, key, co.sources, at('2026-11-01T03:00:00Z'))
+    await fetchSnapshot(s3, key, r.snapshotId, null)
+    // A validly encrypted object that is not the sealed blob (swapped in the bucket).
+    fake.objects.set(`acme/blobs/${sha}.sealed`, fake.objects.get(`acme/blobs/${plain}`)!)
+    await expect(fetchSnapshot(s3, key, r.snapshotId, null)).rejects.toThrow(/not a sealed Drive blob/)
   })
 
   it('retention: old snapshots and their unreferenced blobs go; the newest always stays; abandoned partial runs go', async () => {

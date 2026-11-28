@@ -71,7 +71,7 @@ async function setup(opts: { ee?: EeClient; env?: Record<string, string | undefi
   const dir = await mkdtemp(join(tmpdir(), 'drive-apps-'))
   dirs.push(dir)
   const access = memoryDriveAccess({ users: { owner: { role: 'owner' }, admin: { role: 'admin' }, member: { role: 'member' } } })
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(join(dir, 'blobs')), access, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
+  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(join(dir, 'blobs'), Buffer.alloc(32, 7)), access, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
   const ee = fakeEe()
   const roles: Record<string, MemberRole> = { owner: 'owner', admin: 'admin', member: 'member' }
   const state = join(dir, 'state')

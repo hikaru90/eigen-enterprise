@@ -1,10 +1,8 @@
 import type { ExportFile } from './run'
 import type postgres from 'postgres'
-import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { env } from '$lib/server/env/private-env'
-import { blobPath, resolveDriveStorageDir } from '../../../../../modules/drive/storage'
+import { diskBlobStore, driveBlobKey, resolveDriveStorageDir, type BlobStore } from '../../../../../modules/drive/storage'
 import { DM_FILE } from './rules'
 
 /**
@@ -16,6 +14,10 @@ import { DM_FILE } from './rules'
  *   pictures, the company logo), so `data/` can be put back together exactly.
  * A DM's attachments are a DM's (rules.ts): they are not in it. A blob a table
  * points at but the disk doesn't have stops the export — never a silent gap.
+ *
+ * Blobs are sealed at rest (modules/drive/storage.ts); the export carries
+ * their plaintext, unsealed as it streams: it is the owner's portable copy and
+ * must open on a restore or elsewhere without this server's TENANT_MASTER_KEY.
  */
 
 export type DriveFolderRow = { id: string; parent_id: string | null; name: string }
@@ -59,21 +61,15 @@ export function drivePaths(folders: DriveFolderRow[], files: DriveFileRow[]): Ma
   return out
 }
 
-async function* readBlob(path: string): AsyncIterable<Uint8Array> {
-  for await (const chunk of createReadStream(path)) yield chunk as Uint8Array
-}
-
-async function present(path: string, what: string): Promise<string> {
-  try {
-    await stat(path)
-    return path
-  } catch {
-    throw new Error(`company export: ${what} is missing on disk (${path})`)
-  }
+async function present(blobs: BlobStore, sha: string, what: string): Promise<() => AsyncIterable<Uint8Array>> {
+  if (!(await blobs.has(sha))) throw new Error(`company export: ${what} is missing on disk (blob ${sha})`)
+  return () => blobs.stream(sha)
 }
 
 export async function* companyExportFiles(sql: postgres.Sql): AsyncIterable<ExportFile> {
   const root = resolveDriveStorageDir(env)
+  const key = driveBlobKey(env)
+  const drive = diskBlobStore(root, key)
   const folders = await sql<DriveFolderRow[]>`SELECT id, parent_id, name FROM drive_folder WHERE trashed_at IS NULL`
   const live = await sql.unsafe<(DriveFileRow & { sha256: string })[]>(
     `SELECT t.id, t.folder_id, t.name, t.sha256 FROM drive_file t
@@ -84,9 +80,9 @@ export async function* companyExportFiles(sql: postgres.Sql): AsyncIterable<Expo
   const inTree = new Set<string>()
   for (const f of live) {
     const path = paths.get(f.id)!
-    const file = await present(blobPath(root, f.sha256), `Drive file ${f.id} (${f.name})`)
+    const open = await present(drive, f.sha256, `Drive file ${f.id} (${f.name})`)
     inTree.add(f.sha256)
-    yield { path: `drive/${path}`, open: () => readBlob(file) }
+    yield { path: `drive/${path}`, open }
   }
 
   const driveShas = await sql.unsafe<{ sha256: string }[]>(
@@ -97,8 +93,8 @@ export async function* companyExportFiles(sql: postgres.Sql): AsyncIterable<Expo
   )
   for (const { sha256 } of driveShas) {
     if (inTree.has(sha256)) continue
-    const file = await present(blobPath(root, sha256), `Drive blob ${sha256}`)
-    yield { path: `blobs/drive/${sha256}`, open: () => readBlob(file) }
+    const open = await present(drive, sha256, `Drive blob ${sha256}`)
+    yield { path: `blobs/drive/${sha256}`, open }
   }
 
   const stores: { store: string; query: string }[] = [
@@ -111,8 +107,8 @@ export async function* companyExportFiles(sql: postgres.Sql): AsyncIterable<Expo
   ]
   for (const { store, query } of stores) {
     for (const { sha256 } of await sql.unsafe<{ sha256: string }[]>(query)) {
-      const file = await present(blobPath(join(root, store), sha256), `${store} blob ${sha256}`)
-      yield { path: `blobs/${store}/${sha256}`, open: () => readBlob(file) }
+      const open = await present(diskBlobStore(join(root, store), key), sha256, `${store} blob ${sha256}`)
+      yield { path: `blobs/${store}/${sha256}`, open }
     }
   }
 }

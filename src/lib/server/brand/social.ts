@@ -11,7 +11,7 @@ import { defaultSocialPostStore } from '../../../../modules/brand/social/store'
 import { SocialPostError } from '../../../../modules/brand/social/types'
 import { defaultBrandStore } from '../../../../modules/brand/store'
 import { resolveMaxUploadBytes } from '../../../../modules/drive/service'
-import { diskBlobStore, resolveDriveStorageDir } from '../../../../modules/drive/storage'
+import { diskBlobStore, driveBlobKey, resolveDriveStorageDir } from '../../../../modules/drive/storage'
 
 /**
  * The live wiring behind the Brand › Social routes: the post library on
@@ -32,7 +32,7 @@ let live: SocialBlobStore | null = null
 export function socialMediaBlobs(
   env: Record<string, string | undefined> = process.env,
 ): SocialBlobStore {
-  live ??= diskBlobStore(resolveSocialMediaDir(env))
+  live ??= diskBlobStore(resolveSocialMediaDir(env), driveBlobKey(env))
   return live
 }
 

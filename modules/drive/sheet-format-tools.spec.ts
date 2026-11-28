@@ -28,7 +28,7 @@ async function setup() {
   dirs.push(dir)
   const drive = createDriveService({
     store: memoryDriveStore(),
-    blobs: diskBlobStore(dir),
+    blobs: diskBlobStore(dir, Buffer.alloc(32, 7)),
     access: memoryDriveAccess({ users: { alice: { role: 'member' } } }),
     maxUploadBytes: 1 << 22,
     locks: memoryEditLockStore(),

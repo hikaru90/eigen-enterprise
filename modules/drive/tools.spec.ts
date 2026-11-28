@@ -20,7 +20,7 @@ async function setup() {
   const dir = await mkdtemp(join(tmpdir(), 'drive-tools-'))
   dirs.push(dir)
   const access = memoryDriveAccess({ users: { alice: { role: 'member' }, bob: { role: 'member' } } })
-  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir), access, maxUploadBytes: 4 << 20, locks: memoryEditLockStore() })
+  const drive = createDriveService({ store: memoryDriveStore(), blobs: diskBlobStore(dir, Buffer.alloc(32, 7)), access, maxUploadBytes: 4 << 20, locks: memoryEditLockStore() })
   const chat = vi.fn<SuggestChat>()
   // The suggestion's clock runs far ahead of the files': every file counts as long unchanged.
   const tools = createDriveTools({ service: async () => drive, chat, now: () => new Date('2099-01-01T00:00:00Z') })

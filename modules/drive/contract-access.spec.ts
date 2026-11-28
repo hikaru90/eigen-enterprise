@@ -32,7 +32,7 @@ async function setup() {
   }
   const access = createAccess({ store, audit, resolvers })
   const port = contractDriveAccess({ access, store, audit, shareTargets: async () => ({ people: [], groups: [] }) })
-  const blobs = diskBlobStore(dir)
+  const blobs = diskBlobStore(dir, Buffer.alloc(32, 7))
   const drive = createDriveService({ store: driveStore, blobs, access: port, maxUploadBytes: 1 << 20, locks: memoryEditLockStore() })
   const writer = createDriveSourceWriter({ store: driveStore, blobs, access: port })
   return { drive, audit, store, writer }

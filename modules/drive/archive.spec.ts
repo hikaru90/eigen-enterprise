@@ -42,7 +42,7 @@ async function setup() {
   const clock = { t: Date.parse('2026-11-12T10:00:00Z') }
   const drive = createDriveService({
     store,
-    blobs: diskBlobStore(dir),
+    blobs: diskBlobStore(dir, Buffer.alloc(32, 7)),
     access,
     maxUploadBytes: 1 << 20,
     locks: memoryEditLockStore(),

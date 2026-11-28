@@ -35,7 +35,7 @@ async function setup() {
   let t = 0
   const drive = createDriveService({
     store: memoryDriveStore(),
-    blobs: diskBlobStore(dir),
+    blobs: diskBlobStore(dir, Buffer.alloc(32, 7)),
     access,
     maxUploadBytes: 1024,
     locks: memoryEditLockStore(),

@@ -30,7 +30,7 @@ async function setup(maxUploadBytes = 1024) {
   const dir = await mkdtemp(join(tmpdir(), 'drive-office-'))
   dirs.push(dir)
   const store = memoryDriveStore()
-  const blobs = diskBlobStore(dir)
+  const blobs = diskBlobStore(dir, Buffer.alloc(32, 7))
   const access = memoryDriveAccess({ users: { owner: { role: 'owner' }, alice: { role: 'member' }, bob: { role: 'member' } }, groups: {} })
   let t = Date.parse('2026-11-20T10:00:00Z')
   const drive = createDriveService({ store, blobs, access, maxUploadBytes, locks: memoryEditLockStore(), now: () => new Date((t += 1000)) })

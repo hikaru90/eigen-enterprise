@@ -43,7 +43,7 @@ describe('/drive +page.server load (overview)', () => {
     const dir = await mkdtemp(join(tmpdir(), 'drive-overview-page-'))
     dirs.push(dir)
     const store = memoryDriveStore()
-    const blobs = diskBlobStore(dir)
+    const blobs = diskBlobStore(dir, Buffer.alloc(32, 7))
     const access = memoryDriveAccess({
       users: {
         owner: { role: 'owner', name: 'Olivia Owner' },

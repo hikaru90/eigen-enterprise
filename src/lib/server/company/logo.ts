@@ -4,7 +4,7 @@ import DOMPurify, { type Config } from 'isomorphic-dompurify'
 import sharp from 'sharp'
 import { bareLogoType, isLogoType, LOGO_TYPE_LABEL, refuseLogoFile, type LogoType } from '$lib/company/identity'
 import { checkLogoCrop, type LogoCrop } from '$lib/company/logo-crop'
-import { diskBlobStore, resolveDriveStorageDir, type BlobStore } from '../../../../modules/drive/storage'
+import { diskBlobStore, driveBlobKey, resolveDriveStorageDir, type BlobStore } from '../../../../modules/drive/storage'
 
 /**
  * The company logo (Settings → Company): PNG, JPEG, WebP or SVG, at most
@@ -181,6 +181,6 @@ export function resolveCompanyLogoDir(env: Record<string, string | undefined>): 
 let live: BlobStore | null = null
 
 export function companyLogoBlobs(env: Record<string, string | undefined> = process.env): BlobStore {
-  live ??= diskBlobStore(resolveCompanyLogoDir(env))
+  live ??= diskBlobStore(resolveCompanyLogoDir(env), driveBlobKey(env))
   return live
 }
