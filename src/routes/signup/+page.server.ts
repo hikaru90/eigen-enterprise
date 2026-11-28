@@ -1,11 +1,12 @@
 import type { Actions, PageServerLoad, RequestEvent } from './$types'
 import { error, fail, redirect } from '@sveltejs/kit'
 import { parseSignupPlanParam } from '$lib/auth/signup-plan'
+import { listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { requestCode, verifyCode } from '$lib/server/auth/email-code-actions'
 import { managedByEe, unclaimedMessage } from '$lib/server/auth/unclaimed'
-import { listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { activeDemoGuest } from '$lib/server/demo/guest-access-db'
 import { env } from '$lib/server/env/private-env'
+import { applyLangParam } from '$lib/server/i18n/lang-param'
 import { companyMail } from '$lib/server/mail'
 import { openJoinOffMessage } from '$lib/server/members/open-join'
 import { openJoinOn } from '$lib/server/members/open-join-db'
@@ -32,6 +33,7 @@ async function closed() {
 }
 
 export const load: PageServerLoad = async (event) => {
+  applyLangParam(event.url, event.cookies)
   if (event.locals.user) {
     throw redirect(302, '/')
   }

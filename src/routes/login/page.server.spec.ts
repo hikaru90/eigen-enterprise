@@ -49,6 +49,12 @@ describe('login page server', () => {
     expect(data).toMatchObject({ mailConfigured: true })
   })
 
+  it('?lang=de (the German website’s demo link) sets the UI language and reloads /login without it', async () => {
+    const cookies = { set: vi.fn() }
+    await expect(load({ locals: { user: null }, cookies, url: new URL('http://localhost/login?lang=de') } as never)).rejects.toMatchObject({ status: 303, location: '/login' })
+    expect(cookies.set).toHaveBeenCalledWith(expect.any(String), 'de', expect.objectContaining({ path: '/' }))
+  })
+
   it('on a claimed ee server: a normal sign-in with no claim/owner message and no signup link', async () => {
     unclaimedState.ee = true
     unclaimedState.unclaimed = null

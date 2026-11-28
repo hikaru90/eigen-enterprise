@@ -1,13 +1,14 @@
 import type { Actions, PageServerLoad, RequestEvent } from './$types'
 import { fail, redirect } from '@sveltejs/kit'
 import { auth } from '$lib/server/auth'
+import { listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { requestCode, verifyCode } from '$lib/server/auth/email-code-actions'
 import { publicErrorReport } from '$lib/server/auth/public-error-report'
 import { signInHeaders } from '$lib/server/auth/sign-in-headers'
 import { managedByEe, unclaimedMessage } from '$lib/server/auth/unclaimed'
-import { listEnabledSocialProviderIds } from '$lib/server/auth-social'
 import { activeDemoGuest } from '$lib/server/demo/guest-access-db'
 import { env } from '$lib/server/env/private-env'
+import { applyLangParam } from '$lib/server/i18n/lang-param'
 import { companyMail } from '$lib/server/mail'
 import { openJoinOn } from '$lib/server/members/open-join-db'
 import { foundingCompanyName } from '$lib/server/overview/sources'
@@ -36,6 +37,7 @@ async function signInAsDemoGuest(
 }
 
 export const load: PageServerLoad = async (event) => {
+  applyLangParam(event.url, event.cookies)
   if (event.locals.user) {
     throw redirect(302, '/')
   }
