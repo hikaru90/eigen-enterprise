@@ -109,7 +109,7 @@ test('every navigation entry and settings section renders inside the one shell',
   expect(panelBox.width).toBeGreaterThanOrEqual(320)
   await page.screenshot({ path: `${SHOTS}/assistant-panel.png` })
   await sidebar(page).getByTestId('shell-nav-memory').click()
-  await expect(page).toHaveURL(/\/m\/memory\/tasks$/)
+  await expect(page).toHaveURL(/\/m\/memory\/capture$/)
   await expect(panel.getByText('What can you do?')).toBeVisible()
   await page.getByTestId('assistant-close').click()
   await expect(panel).toHaveCount(0)
