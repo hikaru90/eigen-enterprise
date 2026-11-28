@@ -136,11 +136,17 @@ describe('platform AI provider (feature platformAiProvider)', () => {
   })
 })
 
+describe('platformAiSearch (feature)', () => {
+  it('is appended after aiUsage', () => {
+    expect(FLEET_FEATURES.at(-1)).toBe('platformAiSearch')
+    expect(FLEET_FEATURES.indexOf('platformAiSearch')).toBe(FLEET_FEATURES.indexOf('aiUsage') + 1)
+  })
+})
+
 describe('AI usage (feature aiUsage)', () => {
   const row = { day: '2026-11-27', task: 'assistant.turn', model: 'openai/gpt-5-mini', calls: 3, promptTokens: 120, completionTokens: 40, cachedTokens: 0, costUsd: 0.0012 }
 
   it('is appended after platformAiProvider', () => {
-    expect(FLEET_FEATURES.at(-1)).toBe('aiUsage')
     expect(FLEET_FEATURES.indexOf('aiUsage')).toBe(FLEET_FEATURES.indexOf('platformAiProvider') + 1)
   })
 
@@ -162,6 +168,8 @@ describe('AI usage (feature aiUsage)', () => {
     const ai = { llmBaseUrl: 'https://api.opper.ai/v3/compat', llmApiKey: 'k', llmModelChat: 'c', llmModelEmbedding: 'e', provider: 'opper' as const }
     expect(desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, usageTag: 'box_1a2b' } }).platformAi?.usageTag).toBe('box_1a2b')
     expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, usageTag: 'a b' } })).toThrow()
+    expect(desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, searchTavilyApiKey: 'tvly-1' } }).platformAi?.searchTavilyApiKey).toBe('tvly-1')
+    expect(() => desiredV1.parse({ protocol: 1, pollSeconds: 60, platformAi: { ...ai, searchTavilyApiKey: '' } })).toThrow()
   })
 })
 

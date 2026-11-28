@@ -48,7 +48,7 @@ export const POLL_SECONDS = { min: 15, max: 3600, default: 60 } as const
  * must leave every other field at its neutral value for that box. New features
  * are added here (append only), never repurposed.
  */
-export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims', 'hostedAddress', 'platformAiProvider', 'aiUsage'] as const
+export const FLEET_FEATURES = ['release', 'suspended', 'backup', 'platformAi', 'backupRequestedAt', 'escrowBackupKey', 'mail', 'domains', 'claims', 'hostedAddress', 'platformAiProvider', 'aiUsage', 'platformAiSearch'] as const
 export type FleetFeature = (typeof FLEET_FEATURES)[number]
 
 /**
@@ -183,6 +183,12 @@ export const platformAiV1 = z
      * cross-check the box's report against the provider's own numbers.
      */
     usageTag: z.string().regex(/^[a-zA-Z0-9_.-]{1,64}$/).optional(),
+    /**
+     * Only with feature `platformAiSearch`: the hosting's Tavily key, so web.search works on
+     * eigenInference providers without a search of their own (Opper). os reads it as
+     * PLATFORM_SEARCH_TAVILY_API_KEY; absent = no web search on such a provider (fails loud).
+     */
+    searchTavilyApiKey: z.string().min(1).max(512).optional(),
     /** The os workload's PLATFORM_LLM_BASE_URL / _API_KEY / _MODEL_CHAT / _MODEL_EMBEDDING (the gateway's platform path; never the BYOK LLM_* names). */
     llmBaseUrl: httpsOrigin,
     llmApiKey: z.string().min(1).max(512),
