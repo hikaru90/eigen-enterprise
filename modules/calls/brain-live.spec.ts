@@ -9,7 +9,7 @@ import { createLiveBrain, type LiveBrainDeps } from './brain-live'
  * declared as Memory (never logged). Everything external is faked here.
  */
 
-function fakes(opts: { memory?: string; reply?: string } = {}) {
+function fakes(opts: { memory?: string; reply?: string; language?: string } = {}) {
   const log: string[] = []
   let scope: string | null = null
   const completions: Parameters<LiveBrainDeps['complete']>[0][] = []
@@ -31,6 +31,7 @@ function fakes(opts: { memory?: string; reply?: string } = {}) {
       log.push(`memory:${userId}:${scope}:${question}`)
       return opts.memory ?? 'Answer: Not in memory.'
     },
+    language: async () => opts.language ?? 'en',
     complete: async (input) => {
       log.push(`complete:${input.userId}:${scope}`)
       completions.push(input)
@@ -67,7 +68,22 @@ describe('createLiveBrain', () => {
     expect(out).toBe('- Decided: offer goes out tomorrow.')
     expect(log).toEqual(['company-provider', 'db-user:ann', 'complete:ann:ann'])
     expect(completions[0]).toMatchObject({ userId: 'ann', contentOrigin: 'memory', task: 'calls.brain_recap' })
-    expect(completions[0]!.messages[0]).toEqual({ role: 'system', content: BRAIN_RECAP_SYSTEM_PROMPT })
+    expect(completions[0]!.messages[0]!.content).toContain(BRAIN_RECAP_SYSTEM_PROMPT)
+    expect(completions[0]!.messages[0]!.content).toContain('Write the whole text in English only.')
+  })
+
+  it("a recap is written in the asker's language (wish d0a0c775)", async () => {
+    const { deps, completions } = fakes({ reply: '- Entschieden: Angebot geht morgen raus.', language: 'de' })
+    await createLiveBrain(deps).recap({ userId: 'ann', callTitle: 'Sync', people: ask.people, heard: ask.heard })
+    expect(completions[0]!.messages[0]!.content).toContain('Write the whole text in German only.')
+  })
+
+  it('a recap with stray Chinese characters is refused loud, never returned (wish d0a0c775)', async () => {
+    const { deps } = fakes({ reply: '- Decided: the offer 报价 goes out tomorrow.' })
+    await expect(createLiveBrain(deps).recap({ userId: 'ann', callTitle: 'Sync', people: ask.people, heard: ask.heard })).rejects.toMatchObject({
+      name: 'OutputScriptError',
+      scripts: ['Han'],
+    })
   })
 
   it('fails loud on a reply without text', async () => {
