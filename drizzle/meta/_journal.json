@@ -1324,6 +1324,13 @@
       "when": 1795200000200,
       "tag": "0200_activity_call_attempt_outcome",
       "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1795200000201,
+      "tag": "0201_trace_export",
+      "breakpoints": true
     }
   ]
 }

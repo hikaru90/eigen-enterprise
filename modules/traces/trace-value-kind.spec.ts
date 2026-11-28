@@ -1,7 +1,7 @@
+import type { TraceSourceRow } from './payload'
 import { describe, expect, it, vi } from 'vitest'
 import { tracesTraceValue } from './decision-kinds'
 import { classifyOpenValues, memoryVerdictCache, openValuesOf } from './value-kind'
-import type { TraceSourceRow } from './payload'
 
 const at = new Date('2026-11-20T10:00:00Z')
 const tool = (name: string): TraceSourceRow => ({ source: 'tool_call', localId: name, traceKey: null, at, tool: name, auditClass: 'read', ok: true, via: null, durationMs: 1 })

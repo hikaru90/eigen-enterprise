@@ -10,6 +10,7 @@ import { tickEmailPlatform } from './email-tick'
 import { ensureOvernightJobsEnqueued } from './ensure-overnight'
 import { recoverStaleRunningJobs } from './recover-stale-running'
 import { tickRepos } from './repos-tick'
+import { tickTraces } from './traces-tick'
 import { loadJobQueueSnapshot } from './snapshot'
 
 export type TickGlobalJobQueueResult = {
@@ -48,6 +49,8 @@ async function runTickBody(): Promise<TickGlobalJobQueueResult> {
   await tickDriveBlobs()
   // Contribute is a system module (always on); sharing has its own owner switch in Settings → Company.
   await tickContributeShare()
+  // Product signals (plan/traces-phone-home.md): on by default; the owner's switch in Settings → Company.
+  await tickTraces()
   // AI co-workers are core: their rhythms' due slots run on every tick (plan/phase-ai-coworkers.md C6).
   await tickCoworkerRhythms()
   const hasActivity = enqueued > 0 || drain.claimed > 0 || recoveredStale > 0

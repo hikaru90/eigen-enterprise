@@ -4954,6 +4954,35 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "traces.sent_get": {
+    input: {
+      "id": string
+    }
+    output: unknown
+  }
+  "traces.sent_list": {
+    input: {
+      "limit"?: number
+    }
+    output: unknown
+  }
+  "traces.settings_get": {
+    input: Record<string, never>
+    output: unknown
+  }
+  "traces.settings_set": {
+    input: {
+      "enabled": boolean
+      "withdraw"?: boolean
+    }
+    output: unknown
+  }
+  "traces.withdraw": {
+    input: {
+      "batch_id"?: string | null
+    }
+    output: unknown
+  }
   "website.activity": {
     input: {
       "limit"?: number
@@ -5707,6 +5736,11 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "tasks.complete",
   "tasks.list",
   "tasks.mark_seen",
+  "traces.sent_get",
+  "traces.sent_list",
+  "traces.settings_get",
+  "traces.settings_set",
+  "traces.withdraw",
   "website.activity",
   "website.app_auto_deploy",
   "website.app_deploy",

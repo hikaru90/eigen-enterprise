@@ -20,6 +20,6 @@ export const tracesManifest: ModuleManifest = {
   internal: true,
   version: '0.1.0',
   description: 'Usage statistics (no content) this box shares with the eigenEnterprise makers, and what was sent.',
-  tools: [],
+  tools: [...TRACES_TOOL_NAMES],
   permissions: { roles: ['owner', 'admin', 'agent'] },
 }

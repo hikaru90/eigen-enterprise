@@ -1,5 +1,5 @@
-import { defineDecisionKind, type DecisionKindDef } from '$lib/server/decisions/kind'
 import type { OpenField } from './enums'
+import { defineDecisionKind, type DecisionKindDef } from '$lib/server/decisions/kind'
 
 /**
  * The traces decision kind (plan/traces-phone-home.md T1b, owner 2026-11-25): a value in a usage

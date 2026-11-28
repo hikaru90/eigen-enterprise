@@ -1,5 +1,5 @@
-import type { KernelErrorCode } from '$lib/kernel/errors'
 import { AI_TASKS } from '$lib/ai-usage/tasks'
+import type { KernelErrorCode } from '$lib/kernel/errors'
 import { COWORKER_STOP_REASONS, COWORKER_TRIGGER_KINDS } from '$lib/server/db/coworkers.schema'
 import lock from '../../contracts/core-api.lock.json'
 

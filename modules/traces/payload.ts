@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { z } from 'zod'
+import { COWORKER_STOP_REASONS, COWORKER_TRIGGER_KINDS } from '$lib/server/db/coworkers.schema'
 import {
   AUDIT_CLASSES,
   CORE_TOOL_NAMES,
@@ -18,7 +19,6 @@ import {
   type OpenField,
   type SpanOutcome,
 } from './enums'
-import { COWORKER_STOP_REASONS, COWORKER_TRIGGER_KINDS } from '$lib/server/db/coworkers.schema'
 
 /**
  * The Tier A payload (plan/traces-phone-home.md §2, T1): the only thing a box ever sends about

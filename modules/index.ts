@@ -52,6 +52,7 @@ import { createContributeHubTools } from './contribute/hub/tools'
 import { CONTRIBUTE_MODULE_ID, CONTRIBUTE_WRITE_TOOLS, contributeManifest } from './contribute/manifest'
 import { createContributeTools } from './contribute/tools'
 import { TRACES_MODULE_ID, tracesManifest } from './traces/manifest'
+import { createTracesTools } from './traces/tools'
 import { COWORKERS_GATED_TOOLS, COWORKERS_MODULE_ID, coworkersManifest } from './coworkers/manifest'
 import { createCoworkersTools } from './coworkers/tools'
 import { DEMO_GUEST_ACCESS_SET_TOOL, DEMO_SEED_TOOL, demoManifest } from './demo/manifest'
@@ -464,6 +465,7 @@ export function buildKernel(options: BootstrapKernelOptions = {}): WiredKernel {
     ...createMessagesTools(),
     ...createDriveTools(),
     ...createContributeTools(),
+    ...createTracesTools(),
     ...createContributeHubTools(),
     ...createModuleHubTools(),
     ...createCallsTools({ service: liveCallsService }),
