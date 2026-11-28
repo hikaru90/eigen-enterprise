@@ -4,7 +4,7 @@ import { registerUser, waitForHydration } from './test-helpers'
 
 /**
  * Phase-cohesion C3 (Memory): one Memory module page in the shell. Open it
- * from the navigation (it lands on Tasks: no Overview any more), walk every
+ * from the navigation (it lands on What the brain knows: no Overview any more), walk every
  * sub-page (each its own URL under /m/memory), see that nothing is typed in on
  * Memory (the Ask bar is the one door, plan/concept-memory-one-door.md), find
  * a thought the brain took in under What the brain knows and its task under
@@ -63,18 +63,18 @@ test('Memory is one module page: nav → Tasks → sub-pages → what the brain 
   await page.setViewportSize({ width: 1280, height: 860 })
   const ownerId = await newOwner(context, page)
 
-  await test.step('open Memory from the navigation: Active, it lands on Tasks', async () => {
+  await test.step('open Memory from the navigation: Active, it lands on What the brain knows', async () => {
     await page.goto('/')
     const navEntry = page.getByTestId('shell-sidebar').getByTestId('shell-nav-memory')
     await expect(navEntry).toHaveAttribute('href', '/m/memory')
     await navEntry.click()
-    await expect(page).toHaveURL(/\/m\/memory\/tasks$/)
-    await expectMemoryTab(page, 'tasks', /^Tasks · Memory · eigenEnterprise$/)
+    await expect(page).toHaveURL(/\/m\/memory\/capture$/)
+    await expectMemoryTab(page, 'knows', /^What the brain knows · Memory · eigenEnterprise$/)
     await expect(page.getByTestId('module-status')).toHaveText('Active')
     await expect(page.getByText('Not active')).toHaveCount(0)
     await expect(page.getByTestId('memory-tab-overview')).toHaveCount(0)
-    await expect(page.getByTestId('memory-tab-description')).toHaveText('One step someone does.')
-    await page.screenshot({ path: `${SHOTS}/tasks-landing.png`, fullPage: true })
+    await expect(page.getByTestId('memory-tab-description')).toHaveText('Everything the brain took in, and whether it’s indexed yet.')
+    await page.screenshot({ path: `${SHOTS}/knows-landing.png`, fullPage: true })
   })
 
   await test.step('open Settings from the header (right) and save one', async () => {

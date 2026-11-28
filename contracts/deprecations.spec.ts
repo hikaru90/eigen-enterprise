@@ -33,7 +33,22 @@ describe('deprecation window (R4: 2 minor releases and 30 days, whichever is lat
     expect(compareSemver('1.0.0', '1.0.0')).toBe(0)
   })
 
-  it('core-api 1.0.0 ships with no deprecations', () => {
-    expect(DEPRECATIONS).toEqual([])
+  it('deprecates exactly the handover.* tools (wish f3fc516e: Handover goes), with nothing replacing them', () => {
+    expect(DEPRECATIONS.map((d) => d.item)).toEqual([
+      'tool:handover.create',
+      'tool:handover.list',
+      'tool:handover.get',
+      'tool:handover.add_entry',
+      'tool:handover.update_entry',
+      'tool:handover.remove_entry',
+      'tool:handover.delete',
+      'tool:handover.assign_entry',
+      'tool:handover.draft_entry',
+    ])
+    for (const d of DEPRECATIONS) {
+      expect(d).toMatchObject({ since: '0.5.48', sinceDate: '2026-11-28', replacement: null })
+      expect(d.howToMigrate.trim()).not.toBe('')
+      expect(removeAfter(d)).toEqual({ release: '0.7.0', date: '2026-12-28' })
+    }
   })
 })

@@ -22610,8 +22610,14 @@
         "additionalProperties": false,
         "properties": {
           "change": {
-            "description": "What to change, in plain words; Memory rewrites and re-reads the thought.",
+            "description": "What to change, in plain words; Memory rewrites and re-reads the thought. Give change or text, not both.",
             "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "text": {
+            "description": "The new thought text, stored exactly as written (Memory re-reads it). Give change or text, not both.",
+            "maxLength": 20000,
             "minLength": 1,
             "type": "string"
           },
@@ -22622,7 +22628,6 @@
           }
         },
         "required": [
-          "change",
           "thought_id"
         ],
         "type": "object"

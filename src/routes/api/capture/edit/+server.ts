@@ -23,11 +23,18 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const b =
-    typeof body === 'object' && body ? (body as { thoughtId?: unknown; editRequest?: unknown }) : {}
+    typeof body === 'object' && body
+      ? (body as { thoughtId?: unknown; editRequest?: unknown; text?: unknown })
+      : {}
   const thoughtId = typeof b.thoughtId === 'string' ? b.thoughtId : ''
-  const editRequest = typeof b.editRequest === 'string' ? b.editRequest : ''
   if (!thoughtId) error(400, 'thoughtId is required')
-  if (!editRequest.trim()) error(400, 'editRequest is required')
+  // Either a change in plain words (editRequest) or the new text verbatim (text), never both.
+  if (b.text !== undefined && b.editRequest !== undefined) error(400, 'send editRequest or text, not both')
+  const verbatim = b.text !== undefined
+  const editRequest = verbatim
+    ? typeof b.text === 'string' ? b.text : ''
+    : typeof b.editRequest === 'string' ? b.editRequest : ''
+  if (!editRequest.trim()) error(400, verbatim ? 'text is required' : 'editRequest is required')
 
   const accept = event.request.headers?.get('accept') ?? ''
   const streamNdjson = accept.includes('application/x-ndjson')
@@ -35,7 +42,7 @@ export const POST: RequestHandler = async (event) => {
   if (!streamNdjson) {
     try {
       const result = await runWithTrace(crypto.randomUUID(), () =>
-        editStoredThought(user.id, thoughtId, editRequest),
+        editStoredThought(user.id, thoughtId, editRequest, { verbatim }),
       )
       if (!result.ok) error(404, 'Thought not found')
       return json({ thought: result.thought })
@@ -81,7 +88,7 @@ export const POST: RequestHandler = async (event) => {
       const scopedDb = createScopedDrizzle(reserved)
       const result = await appDbAsyncLocal.run(scopedDb, () =>
         runWithTrace(crypto.randomUUID(), () =>
-          editStoredThought(user.id, thoughtId, editRequest, { onProgress }),
+          editStoredThought(user.id, thoughtId, editRequest, { onProgress, verbatim }),
         ),
       )
       if (!result.ok) {

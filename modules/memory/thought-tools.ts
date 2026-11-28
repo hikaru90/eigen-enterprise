@@ -25,7 +25,7 @@ type NoteAuthorship = { editable: boolean; author: string; authorKeyId: string |
 
 /** The service calls the routes make (live: liveThoughtToolService). */
 export type ThoughtToolService = {
-  editThought(userId: string, thoughtId: string, change: string): Promise<Ok<{ thought: unknown }>>
+  editThought(userId: string, thoughtId: string, change: string, opts: { verbatim: boolean }): Promise<Ok<{ thought: unknown }>>
   setThoughtStatus(userId: string, thoughtId: string, status: 'open' | 'completed' | 'archived'): Promise<Ok<{ thought: unknown }>>
   deleteThought(
     userId: string,
@@ -86,7 +86,7 @@ export async function liveThoughtToolService(): Promise<ThoughtToolService> {
     ])
   const traced = <T>(fn: () => Promise<T>) => trace.runWithTrace(crypto.randomUUID(), fn)
   return {
-    editThought: (u, t, change) => traced(() => capture.editStoredThought(u, t, change)) as ReturnType<ThoughtToolService['editThought']>,
+    editThought: (u, t, change, o) => traced(() => capture.editStoredThought(u, t, change, o)) as ReturnType<ThoughtToolService['editThought']>,
     setThoughtStatus: (u, t, s) => traced(() => lifecycle.setThoughtLifecycleStatus(u, t, s)) as ReturnType<ThoughtToolService['setThoughtStatus']>,
     deleteThought: (u, t) => traced(() => del.deleteThoughtForUser(u, t)) as ReturnType<ThoughtToolService['deleteThought']>,
     deleteArchivedThoughts: (u) => del.deleteArchivedThoughtsForUser(u),
@@ -161,8 +161,13 @@ const listThoughtsInput = z
   .strict()
 const archivedInput = z.object({ limit: z.number().int().min(1).max(200).optional().describe('At most this many (default 50).') }).strict()
 const editInput = z
-  .object({ thought_id: thoughtId, change: z.string().trim().min(1).max(4000).describe('What to change, in plain words; Memory rewrites and re-reads the thought.') })
+  .object({
+    thought_id: thoughtId,
+    change: z.string().trim().min(1).max(4000).optional().describe('What to change, in plain words; Memory rewrites and re-reads the thought. Give change or text, not both.'),
+    text: z.string().trim().min(1).max(20000).optional().describe('The new thought text, stored exactly as written (Memory re-reads it). Give change or text, not both.'),
+  })
   .strict()
+  .refine((i) => (i.change === undefined) !== (i.text === undefined), { message: 'Give change (in plain words) or text (verbatim), exactly one.' })
 const statusInput = z.object({ thought_id: thoughtId, status: z.enum(['open', 'completed', 'archived']) }).strict()
 const checkInInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('relevance'), thought_id: thoughtId, action: z.enum(['keep', 'archive']) }).strict(),
@@ -227,8 +232,8 @@ export function createThoughtTools(opts: ThoughtToolDeps = {}): ToolDescriptor[]
   }
 
   return [
-    def('memory.edit_thought', 'Edit one of the person’s thoughts (like Memory › Edit): change = what to change in plain words; Memory rewrites, re-enriches and re-links it.', editInput,
-      async (s, w, i) => ({ thought: thoughtOrFail(await s.editThought(w.userId, i.thought_id, i.change)).thought }), { activity: 'Edited a thought in Memory' }),
+    def('memory.edit_thought', 'Edit one of the person’s thoughts (like Memory › Edit or a task’s Source thought): change = what to change in plain words (Memory rewrites it), or text = the new text verbatim; either way Memory re-enriches and re-links it.', editInput,
+      async (s, w, i) => ({ thought: thoughtOrFail(i.text !== undefined ? await s.editThought(w.userId, i.thought_id, i.text, { verbatim: true }) : await s.editThought(w.userId, i.thought_id, i.change!, { verbatim: false })).thought }), { activity: 'Edited a thought in Memory' }),
     def('memory.set_thought_status', 'Open, complete or archive one of the person’s thoughts (status: open | completed | archived). Archiving is the undoable way to put a thought away.', statusInput,
       async (s, w, i) => ({ thought: thoughtOrFail(await s.setThoughtStatus(w.userId, i.thought_id, i.status)).thought }), { activity: 'Changed a thought’s status in Memory' }),
     def('memory.delete_thought', 'Delete one of the person’s thoughts for good — text, search index, dates, graph links. It cannot be undone: confirm with the person first; to keep it out of the way, archive it (memory.set_thought_status) instead.', thoughtInput,
