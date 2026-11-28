@@ -446,6 +446,8 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/(nucleus)/settings/org ?/setPosition': tool('org.set_position'),
   // CB2: a decision question's answer buttons in the dashboard's Needs you.
   '/(nucleus) ?/decisionAnswer': tool('decisions.answer'),
+  // The owner's one-time product signals notice in Needs you (plan/traces-phone-home.md §4).
+  '/(nucleus) ?/signalsNoticeSeen': tool('traces.notice_seen'),
   // Wish 75a4e570: What's happening's Refresh on the dashboard.
   '/(nucleus) ?/patternsRefresh': tool('dashboard.patterns_refresh'),
   '/(nucleus)/settings/members ?/createGroup': tool('members.group_create'),
@@ -552,6 +554,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/e2e/graph-scale/spend/init POST': transport(E2E),
   '/api/e2e/graph-scale/spend/step POST': transport(E2E),
   '/api/e2e/harness/contribute-share POST': transport(E2E),
+  '/api/e2e/harness/traces-tick POST': transport(E2E),
   '/api/e2e/harness/ensure-credentials POST': transport(E2E),
   '/api/e2e/harness/inbox POST': transport(E2E),
   '/api/e2e/harness/mail DELETE': transport(E2E),

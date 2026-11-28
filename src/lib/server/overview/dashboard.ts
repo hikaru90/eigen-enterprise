@@ -21,6 +21,8 @@ import type { PatternToolView } from '$lib/kernel/pattern-tools'
 import { dashboardPatterns } from '$lib/server/patterns/dashboard-read'
 import { humanContext, overviewResultSources } from '$lib/server/overview/sources'
 import { updateNotice, type UpdateNotice } from '$lib/server/settings/update-notice'
+import { liveTracesDeps } from '$lib/server/traces/live'
+import { noticeGet, type SignalsNotice } from '../../../../modules/traces/service'
 import { liveModuleNotices } from '../../../../modules/company-modules/notices-live'
 
 /** How many recent agent actions the dashboard shows; Assistant › Activity holds the rest. */
@@ -42,6 +44,8 @@ export type Dashboard = {
   decisionQuestions: DecisionQuestionView[]
   /** The company's own modules: a failed one (owner + admins), a deploy waiting for an admin's click, the owner's one-time sharing OK (U2). */
   moduleNotices: ModuleNotice[]
+  /** The owner's one-time notice that this box shares product signals (usage statistics, no content) and where the switch is (traces.notice_get). */
+  signalsNotice: SignalsNotice | null
   /** What's happening (wish 75a4e570): the brain's latest activity digest, as this person may see it (dashboard.patterns). */
   patterns: PatternToolView
   /** Team questions asked of this person that they have not answered yet (questions.list for_me; wish f3fc516e). */
@@ -94,6 +98,7 @@ export async function loadDashboard(userId: string): Promise<Dashboard> {
     coworkerNotices: await needsYouNotices(await liveNoticeDeps(), userId),
     decisionQuestions: await needsYouDecisionQuestions(userId),
     moduleNotices: await liveModuleNotices({ userId, isOwner: role === 'owner', isAdmin }),
+    signalsNotice: (await noticeGet(await liveTracesDeps(), { id: userId, isOwner: role === 'owner' })).notice,
     patterns: await dashboardPatterns(userId),
     questionsForMe: (await listQuestions(await teamQuestionDeps(), userId, { forMe: true })).questions,
   }

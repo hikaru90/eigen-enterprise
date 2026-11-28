@@ -9,7 +9,7 @@ import lock from '../../contracts/core-api.lock.json'
  * (value-kind.ts) classified `usage_meta`. Client-safe: no server imports beyond schema constants.
  */
 
-export const SPAN_KINDS = ['run', 'llm_call', 'tool_call', 'job', 'upgrade'] as const
+export const SPAN_KINDS = ['run', 'llm_call', 'tool_call', 'job', 'upgrade', 'module_run'] as const
 export type SpanKind = (typeof SPAN_KINDS)[number]
 
 export const SPAN_OUTCOMES = ['ok', 'error', 'stopped', 'rolled_back'] as const
@@ -63,6 +63,8 @@ export const ERROR_CODES = [
   ...COWORKER_STOP_REASONS,
   ...UPGRADE_STEPS.map((s) => `upgrade_step:${s}` as const),
   'job_failed',
+  /** A company module the kernel switched off because it failed (kernel event module.failed, T5). */
+  'module_failed',
   'other',
 ] as const
 export type ErrorCode = (typeof ERROR_CODES)[number]

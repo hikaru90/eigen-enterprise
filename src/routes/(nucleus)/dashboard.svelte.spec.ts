@@ -30,6 +30,7 @@ const dashboard: Dashboard = {
   patterns: { digestId: null, createdAt: null, windowStart: null, windowEnd: null, items: [] },
   questionsForMe: [],
   moduleNotices: [],
+  signalsNotice: null,
   overview: {
     modules: [
       {
@@ -79,6 +80,7 @@ function renderDashboard(
     decisionQuestions?: Dashboard['decisionQuestions']
     update?: Dashboard['update']
     moduleNotices?: Dashboard['moduleNotices']
+    signalsNotice?: Dashboard['signalsNotice']
     questionsForMe?: Dashboard['questionsForMe']
   } = {},
 ) {
@@ -94,6 +96,7 @@ function renderDashboard(
       ...(notices.decisionQuestions ? { decisionQuestions: notices.decisionQuestions } : {}),
       ...(notices.update ? { update: notices.update } : {}),
       ...(notices.moduleNotices ? { moduleNotices: notices.moduleNotices } : {}),
+      ...(notices.signalsNotice ? { signalsNotice: notices.signalsNotice } : {}),
       ...(notices.questionsForMe ? { questionsForMe: notices.questionsForMe } : {}),
     },
     greetingName: 'Alex',
@@ -366,5 +369,17 @@ describe('dashboard.svelte', () => {
     expect(form.getAttribute('action')).toBe('/settings/modules/company?/acceptSharing')
     // 1 approval + 2 module notices waiting.
     await expect.element(page.getByText('3 waiting on you')).toBeInTheDocument()
+  })
+
+  it('Needs you holds the owner’s one-time product signals notice: what is shared, Settings to switch it off, and Got it posting traces.notice_seen', async () => {
+    renderDashboard(controller(), {}, {
+      signalsNotice: { sentence: 'This box shares usage statistics with the eigenEnterprise makers. You can switch it off in Settings → Company.', href: '/settings/company' },
+    })
+    const row = page.getByTestId('dashboard-signals-notice')
+    await expect.element(row).toHaveTextContent(/shares usage statistics/)
+    await expect.element(row.getByTestId('dashboard-signals-open')).toHaveAttribute('href', '/settings/company')
+    expect(row.element().querySelector('form')!.getAttribute('action')).toBe('/?/signalsNoticeSeen')
+    // 1 approval + the notice.
+    await expect.element(page.getByText('2 waiting on you')).toBeInTheDocument()
   })
 })

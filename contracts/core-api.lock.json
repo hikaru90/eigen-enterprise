@@ -30117,6 +30117,38 @@
       "input": {
         "additionalProperties": false,
         "properties": {
+          "release": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "release"
+        ],
+        "type": "object"
+      },
+      "module": "trace-hub",
+      "name": "trace_hub.release_health",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "owner"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {
           "days": {
             "default": 30,
             "maximum": 3650,
@@ -30144,7 +30176,8 @@
                   "llm_call",
                   "tool_call",
                   "job",
-                  "upgrade"
+                  "upgrade",
+                  "module_run"
                 ],
                 "type": "string"
               },
@@ -30164,6 +30197,51 @@
         "roles": [
           "admin",
           "agent",
+          "owner"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "read",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "traces",
+      "name": "traces.notice_get",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
+          "agent",
+          "owner"
+        ]
+      }
+    },
+    {
+      "approval": {
+        "always": false,
+        "gated": false,
+        "risk": null
+      },
+      "auditClass": "mutate",
+      "input": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "traces",
+      "name": "traces.notice_seen",
+      "output": null,
+      "permission": {
+        "roles": [
+          "admin",
           "owner"
         ]
       }
@@ -30282,6 +30360,7 @@
       "output": null,
       "permission": {
         "roles": [
+          "admin",
           "owner"
         ]
       }
@@ -30318,6 +30397,7 @@
       "output": null,
       "permission": {
         "roles": [
+          "admin",
           "owner"
         ]
       }

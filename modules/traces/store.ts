@@ -2,7 +2,7 @@ import type { TraceSourceRow, Withheld } from './payload'
 import type { VerdictCache } from './value-kind'
 
 /** The sources the exporter reads, each through its own cursor (plan/traces-phone-home.md §3). */
-export const TRACE_SOURCES = ['llm_call', 'tool_call', 'run', 'job', 'upgrade'] as const
+export const TRACE_SOURCES = ['llm_call', 'tool_call', 'run', 'job', 'upgrade', 'module_run'] as const
 export type TraceSource = (typeof TRACE_SOURCES)[number]
 
 export type TraceCursor = { at: Date; id: string }
@@ -15,6 +15,8 @@ export type TraceSettings = {
   lastError: string | null
   updatedBy: string | null
   updatedAt: Date
+  /** The owner saw the one-time Needs you notice (what is shared, where the switch is); null on new and upgraded installs. */
+  noticeSeenAt: Date | null
 }
 
 export const BATCH_STATES = ['pending', 'sent', 'failed', 'withdrawn'] as const
@@ -41,6 +43,7 @@ export type TraceStore = {
   setEnabled(enabled: boolean, by: string, at: Date): Promise<void>
   setSent(at: Date): Promise<void>
   setLastError(error: string | null, at: Date): Promise<void>
+  setNoticeSeen(at: Date): Promise<void>
 
   /** The cursor of a source; made at `now` on first read (no backfill: only rows after the feature lands). */
   cursor(source: TraceSource, now: Date): Promise<TraceCursor>

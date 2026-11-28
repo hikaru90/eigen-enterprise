@@ -1,6 +1,6 @@
 import type { ToolDescriptor } from '$lib/kernel/types'
 import { TRACE_HUB_MODULE_ID } from './manifest'
-import { getInput, hubGetTrace, hubListRuns, hubStats, listInput, statsInput, type TraceHubDeps } from './service'
+import { getInput, hubGetTrace, hubListRuns, hubReleaseHealth, hubStats, listInput, releaseHealthInput, statsInput, type TraceHubDeps } from './service'
 
 /**
  * trace_hub.* kernel tools: how the makers (and their agent, over MCP) read what every box
@@ -22,7 +22,7 @@ export function createTraceHubTools(opts: { deps?: () => Promise<ReadDeps> } = {
       name: 'trace_hub.stats',
       module: TRACE_HUB_MODULE_ID,
       summary:
-        'Product signals of every box, grouped by tool | model | log_context | app_version | day | kind | error_code over the last `days`: spans, errors, error rate, installs, p50/p95 duration (ms), tokens in/out, cost (USD). Optional `kind` (run|llm_call|tool_call|job|upgrade).',
+        'Product signals of every box, grouped by tool | model | log_context | app_version | day | kind | error_code over the last `days`: spans, errors, error rate, installs, p50/p95 duration (ms), tokens in/out, cost (USD). Optional `kind` (run|llm_call|tool_call|job|upgrade|module_run).',
       auditClass: 'read',
       inputSchema: statsInput,
       permission: { roles: ['owner', 'admin', 'agent'] },
@@ -45,6 +45,15 @@ export function createTraceHubTools(opts: { deps?: () => Promise<ReadDeps> } = {
       inputSchema: getInput,
       permission: { roles: ['owner', 'admin', 'agent'] },
       handler: async (_ctx, input) => hubGetTrace(await deps(), getInput.parse(input)),
+    },
+    {
+      name: 'trace_hub.release_health',
+      module: TRACE_HUB_MODULE_ID,
+      summary: 'Whether a release’s rollout wave halts: how many boxes rolled it back and how many company modules were switched off as failed on boxes running it (halt = any).',
+      auditClass: 'read',
+      inputSchema: releaseHealthInput,
+      permission: { roles: ['owner', 'admin', 'agent'] },
+      handler: async (_ctx, input) => hubReleaseHealth(await deps(), releaseHealthInput.parse(input)),
     },
   ]
 }

@@ -11,6 +11,8 @@ export const traceShareSettings = pgTable('trace_share_settings', {
   lastError: text('last_error'),
   updatedBy: text('updated_by'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  /** The owner saw the one-time Needs you notice (migration 0204); null until then, so new and upgraded installs get it. */
+  noticeSeenAt: timestamp('notice_seen_at', { withTimezone: true }),
 })
 
 /** Where the exporter stands in each source table: (at, id) of the last row it read. */

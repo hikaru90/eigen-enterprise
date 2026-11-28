@@ -5159,12 +5159,26 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "trace_hub.release_health": {
+    input: {
+      "release": string
+    }
+    output: unknown
+  }
   "trace_hub.stats": {
     input: {
       "days"?: number
       "group_by"?: "tool" | "model" | "log_context" | "app_version" | "day" | "kind" | "error_code"
-      "kind"?: ("run" | "llm_call" | "tool_call" | "job" | "upgrade") | null
+      "kind"?: ("run" | "llm_call" | "tool_call" | "job" | "upgrade" | "module_run") | null
     }
+    output: unknown
+  }
+  "traces.notice_get": {
+    input: Record<string, never>
+    output: unknown
+  }
+  "traces.notice_seen": {
+    input: Record<string, never>
     output: unknown
   }
   "traces.sent_get": {
@@ -5978,7 +5992,10 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "tasks.mark_seen",
   "trace_hub.get",
   "trace_hub.list",
+  "trace_hub.release_health",
   "trace_hub.stats",
+  "traces.notice_get",
+  "traces.notice_seen",
   "traces.sent_get",
   "traces.sent_list",
   "traces.settings_get",

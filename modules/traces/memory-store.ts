@@ -6,7 +6,7 @@ export function memoryTraceStore(salt = 'test-salt'): TraceStore & { batches: Ma
   let s: TraceSettings | null = null
   const batches = new Map<string, TraceBatch>()
   const cursors = new Map<TraceSource, TraceCursor>()
-  const settings = (): TraceSettings => (s ??= { enabled: true, salt, lastSentAt: null, lastError: null, updatedBy: null, updatedAt: new Date(0) })
+  const settings = (): TraceSettings => (s ??= { enabled: true, salt, lastSentAt: null, lastError: null, updatedBy: null, updatedAt: new Date(0), noticeSeenAt: null })
   const patch = (id: string, p: Partial<TraceBatch>) => {
     const b = batches.get(id)
     if (b) batches.set(id, { ...b, ...p })
@@ -25,6 +25,9 @@ export function memoryTraceStore(salt = 'test-salt'): TraceStore & { batches: Ma
     },
     async setLastError(error, at) {
       s = { ...settings(), lastError: error, updatedAt: at }
+    },
+    async setNoticeSeen(at) {
+      s = { ...settings(), noticeSeenAt: at }
     },
     async cursor(source, now) {
       if (!cursors.has(source)) cursors.set(source, { at: now, id: '' })

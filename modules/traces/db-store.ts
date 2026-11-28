@@ -61,7 +61,7 @@ export function dbTraceStore(db: AppDatabase): TraceStore {
       await db.insert(traceShareSettings).values({ id: 1, salt: randomBytes(32).toString('base64') }).onConflictDoNothing()
       const [r] = await db.select().from(traceShareSettings).where(eq(traceShareSettings.id, 1)).limit(1)
       if (!r) throw new Error('trace_share_settings has no row after insert')
-      return { enabled: r.enabled, salt: r.salt, lastSentAt: r.lastSentAt, lastError: r.lastError, updatedBy: r.updatedBy, updatedAt: r.updatedAt }
+      return { enabled: r.enabled, salt: r.salt, lastSentAt: r.lastSentAt, lastError: r.lastError, updatedBy: r.updatedBy, updatedAt: r.updatedAt, noticeSeenAt: r.noticeSeenAt }
     },
     async setEnabled(enabled, by, at) {
       await store.settings()
@@ -69,6 +69,10 @@ export function dbTraceStore(db: AppDatabase): TraceStore {
     },
     setSent: (at) => setSettings({ lastSentAt: at, lastError: null }),
     setLastError: (lastError, at) => setSettings({ lastError, updatedAt: at }),
+    async setNoticeSeen(at) {
+      await store.settings()
+      await setSettings({ noticeSeenAt: at })
+    },
 
     async cursor(source, now) {
       await db.insert(traceExportCursor).values({ source, lastAt: now, lastId: '', updatedAt: now }).onConflictDoNothing()
@@ -240,6 +244,20 @@ export function dbTraceSourceReader(db: AppDatabase, upgrades: (after: TraceCurs
             cursor: { at: ended, id: String(r.id) },
           }
         })
+      case 'module_run':
+        return (
+          await rows(sql`
+            SELECT id::text, ts AS at
+            FROM kernel_events
+            WHERE type = 'module.failed' AND (ts, id::text) > (${a}::timestamptz, ${after.id}) AND ts < ${u}::timestamptz
+            ORDER BY ts, id::text LIMIT ${limit}`)
+        ).map((r) => ({
+          source: 'module_run' as const,
+          localId: String(r.id),
+          traceKey: null,
+          at: date(r.at),
+          cursor: { at: date(r.at), id: String(r.id) },
+        }))
       case 'upgrade':
         return upgrades(after, until, limit)
     }

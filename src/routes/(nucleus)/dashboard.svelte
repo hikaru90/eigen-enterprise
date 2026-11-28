@@ -110,6 +110,7 @@
       coworkerNotices.length +
       decisionQuestions.length +
       moduleNotices.length +
+      (dashboard.signalsNotice ? 1 : 0) +
       dashboard.questionsForMe.length,
   )
   const warnings = $derived((dashboard.backup ? 1 : 0) + (dashboard.update ? 1 : 0))
@@ -683,6 +684,23 @@
                   {/if}
                 </li>
               {/each}
+              {#if dashboard.signalsNotice}
+                <!-- The owner's one-time notice: this box shares product signals (traces.notice_get); Got it = traces.notice_seen. -->
+                <li class={taskRow} data-testid="dashboard-signals-notice">
+                  <span class="flex min-w-0 items-center gap-3">
+                    <span class="grid size-8 shrink-0 place-items-center rounded-full bg-ink" aria-hidden="true"
+                      ><span class="size-2 rounded-full bg-white"></span></span
+                    >
+                    <span class="min-w-0">{dashboard.signalsNotice.sentence}</span>
+                  </span>
+                  <span class="flex shrink-0 items-center gap-1.5">
+                    <a href={resolve('/settings/company')} class={softPill} data-testid="dashboard-signals-open">Settings</a>
+                    <form method="POST" action="{resolve('/')}?/signalsNoticeSeen" use:enhance>
+                      <button type="submit" class={inkPill} data-testid="dashboard-signals-seen">Got it</button>
+                    </form>
+                  </span>
+                </li>
+              {/if}
             </ul>
           {/if}
           {#if overview.approvals.length === 0 && warnings === 0 && taskCount === 0}

@@ -3,7 +3,7 @@ import type { ModuleManifest } from '$lib/kernel/modules'
 export const TRACE_HUB_MODULE_ID = 'trace-hub'
 
 /** The owner's reads of every box's product signals (plan/traces-phone-home.md §4). */
-export const TRACE_HUB_TOOL_NAMES = ['trace_hub.stats', 'trace_hub.list', 'trace_hub.get'] as const
+export const TRACE_HUB_TOOL_NAMES = ['trace_hub.stats', 'trace_hub.list', 'trace_hub.get', 'trace_hub.release_health'] as const
 
 /**
  * Trace hub (plan/traces-phone-home.md T3): the makers' store of Tier A spans that every box

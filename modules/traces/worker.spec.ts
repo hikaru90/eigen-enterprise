@@ -160,4 +160,23 @@ describe('runTraceTick (plan/traces-phone-home.md T2)', () => {
     expect(await runTraceTick(d)).toMatchObject({ built: 1, spans: 1 })
     expect(h.sent).toHaveLength(2)
   })
+
+  it('T5: an upgrade outcome and a module breakage are sent as Tier A spans — reason, from and the sentence never', async () => {
+    const at = later(1000)
+    const rows: Array<TraceSourceRow & { cursor: TraceCursor }> = [
+      { source: 'upgrade', localId: 'u1', traceKey: null, at, step: 'watching', ok: false, rolledBack: true, release: 'eigenenterprise-0.5.48-0123456789ab', durationMs: null, cursor: { at, id: 'u1' } },
+      { source: 'module_run', localId: 'm1', traceKey: null, at, cursor: { at, id: 'm1' } },
+    ]
+    const h = hub()
+    const { d, clock } = deps({ read: table(rows), hub: h })
+    await runTraceTick(d)
+    clock.t = later(1000 + SETTLE_MS + 1)
+    expect(await runTraceTick(d)).toMatchObject({ sent: 1, spans: 2 })
+    const spans = JSON.parse(h.sent[0]!.body).spans
+    expect(spans).toEqual([
+      expect.objectContaining({ kind: 'upgrade', outcome: 'rolled_back', error_code: 'upgrade_step:watching', app_version: 'eigenenterprise-0.5.48-0123456789ab' }),
+      expect.objectContaining({ kind: 'module_run', outcome: 'error', error_code: 'module_failed' }),
+    ])
+    expect(h.sent[0]!.body).not.toMatch(/reason|"from"|sentence/)
+  })
 })
