@@ -1,12 +1,17 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- the grouping is resolve() + a query string */
   import type { PageProps } from './$types'
+  import { docTitle } from '$lib/shell/title'
   import { resolve } from '$app/paths'
 
   /** Product signals hub (plan/traces-phone-home.md T4): error rate and p95 per tool, model or version. */
   let { data }: PageProps = $props()
   const pct = (r: number) => `${(r * 100).toFixed(1)} %`
 </script>
+
+<svelte:head>
+  <title>{docTitle('Product signals', 'Settings')}</title>
+</svelte:head>
 
 <div class="space-y-4">
   <div>

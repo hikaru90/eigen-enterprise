@@ -1,6 +1,7 @@
 <script lang="ts">
   /* eslint-disable svelte/no-navigation-without-resolve -- opening a batch is resolve() + a query string */
   import type { PageProps } from './$types'
+  import { docTitle } from '$lib/shell/title'
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import ErrorNotice from '$lib/components/error-notice.svelte'
@@ -12,6 +13,10 @@
   const when = (iso: string | null) => (iso ? dateFmt.format(new Date(iso)) : '—')
   const STATE_WORDS = { pending: 'Waiting', sent: 'Sent', failed: 'Refused by the hub', withdrawn: 'Deleted from the hub' } as const
 </script>
+
+<svelte:head>
+  <title>{docTitle('What was sent', 'Settings')}</title>
+</svelte:head>
 
 <div class="space-y-4">
   <div>
@@ -71,7 +76,7 @@
           Not sent (could not be checked): {data.open.withheld.map((w) => `${w.field} “${w.value}”`).join(', ')}
         </p>
       {/if}
-      <pre class="max-h-[28rem] overflow-auto rounded bg-foreground/[0.04] p-2 text-[11px]">{JSON.stringify(data.open.body, null, 2)}</pre>
+      <pre class="max-h-[28rem] overflow-auto rounded bg-foreground/[0.04] p-2 text-xs">{JSON.stringify(data.open.body, null, 2)}</pre>
     </section>
   {/if}
 </div>

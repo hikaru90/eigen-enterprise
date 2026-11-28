@@ -57,6 +57,7 @@ vi.mock('$lib/server/db', () => ({
 }))
 vi.mock('$lib/server/activity/trace-context', () => ({
   runWithTrace: (_id: string, fn: () => unknown) => fn(),
+  getCurrentTraceGroupId: () => undefined,
 }))
 // What a reply cost (the trace's cost-log rows): a fixed answer, recorded per call.
 const { readReplyCostMock } = vi.hoisted(() => ({
