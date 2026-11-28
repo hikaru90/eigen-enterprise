@@ -1441,5 +1441,18 @@
   "drive_sheet_allow_autoFilter": "AutoFilter verwenden",
   "drive_sheet_allow_pivotTables": "Pivot-Tabellen verwenden",
   "drive_sheet_allow_objects": "Objekte bearbeiten",
-  "drive_sheet_allow_scenarios": "Szenarien bearbeiten"
+  "drive_sheet_allow_scenarios": "Szenarien bearbeiten",
+  "one_door_routing": "Wird abgelegt…",
+  "one_door_filed": "Gespeichert als {route}",
+  "one_door_open": "Öffnen",
+  "one_door_change": "Ändern",
+  "one_door_unsure": "Was ist das?",
+  "one_door_failed": "Nicht gespeichert: {error}",
+  "one_door_retry": "Nochmal",
+  "one_door_dismiss": "Schließen",
+  "one_door_route_question": "Frage",
+  "one_door_route_remember": "Notiz zum Merken",
+  "one_door_route_task": "Aufgabe",
+  "one_door_route_document": "Dokument",
+  "one_door_route_reminder": "Erinnerung"
 }

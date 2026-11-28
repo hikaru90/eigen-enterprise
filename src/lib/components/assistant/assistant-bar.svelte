@@ -7,6 +7,7 @@
   import { onMount } from 'svelte'
   import { dictateInto } from '$lib/voice/dictation-insert'
   import VoiceDictation from '$lib/voice/voice-dictation.svelte'
+  import OneDoorChip from './one-door-chip.svelte'
 
   /**
    * The shell's top bar (polish P-1): one field to ask the company's
@@ -25,6 +26,10 @@
    * the field, the same control as Contribute. A tap opens the spotlight; while recording the
    * voice bar takes the field's row; Done puts the words in at the cursor and gives the field
    * focus back — the person reads, edits and presses Enter. Nothing is asked by itself.
+   *
+   * The one door (plan/concept-memory-one-door.md M1): Enter goes to memory.route_input first —
+   * Jev decides; only a question or a reminder opens the panel. The chip under the pill says
+   * what was filed and lets the person change it.
    */
   let { assistant }: { assistant: AssistantController } = $props()
 
@@ -85,11 +90,12 @@
   function submit(event: SubmitEvent): void {
     event.preventDefault()
     const text = value.trim()
-    if (voiceActive || !text || assistant.chat.busy) return
+    if (voiceActive || !text || assistant.chat.busy || assistant.door.busy) return
     value = ''
     close(false)
     inputEl?.blur()
-    assistant.ask(text)
+    // The one door: Jev routes first; only a question (or a reminder) opens the chat.
+    void assistant.door.submit(text)
   }
 
   function onWindowKeydown(event: KeyboardEvent): void {
@@ -139,7 +145,10 @@
 <!-- The ask pill on the frame: the website's yellow assistant spark, the field, a ⌘K chip. -->
 <div class="flex min-w-0 flex-1 items-center gap-2" data-testid="assistant-bar">
   <!-- The slot keeps the pill's room in the top bar while the field floats. -->
-  <div class="flex h-10 min-w-0 flex-1">
+  <div class="relative flex h-10 min-w-0 flex-1">
+    <div class="absolute top-full left-0 z-[54] mt-1 max-w-full">
+      <OneDoorChip door={assistant.door} />
+    </div>
     <div
       bind:this={dialogEl}
       role={active ? 'dialog' : undefined}
@@ -214,7 +223,7 @@
             type="submit"
             class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             aria-label="Ask"
-            disabled={!value.trim() || assistant.chat.busy}
+            disabled={!value.trim() || assistant.chat.busy || assistant.door.busy}
             data-testid="assistant-spotlight-submit"
           >
             <ArrowUp class="size-5" aria-hidden="true" strokeWidth={2} />

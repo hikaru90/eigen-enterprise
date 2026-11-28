@@ -4,6 +4,7 @@ import { coworkerEventMine } from './coworkers/decision-kinds'
 import { DECISION_KINDS } from './decision-kinds'
 import { moduleManifests } from './index'
 import { memoryHandoverStatus } from './memory/decision-kinds'
+import { memoryInputRoute } from './memory/input-route'
 import { websitePageAudience } from './website/decision-kinds'
 
 describe('the decision kinds catalog', () => {
@@ -17,6 +18,10 @@ describe('the decision kinds catalog', () => {
     expect(coworkerEventMine.status).toBe('shadow')
     expect(coworkerEventMine.choices).toEqual(['yes', 'no'])
     expect(coworkerEventMine.lowConfidence).toBe(0)
+  })
+
+  it('declares Memory’s input_route kind: the one door’s closed set', () => {
+    expect(DECISION_KINDS.get('memory.input_route')).toBe(memoryInputRoute)
   })
 
   it('declares Memory’s handover_status kind: three statuses, enforced, asking the owner when unsure', () => {

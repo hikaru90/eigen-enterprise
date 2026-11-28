@@ -3,6 +3,7 @@ import type { AssistantTab } from './types'
 import { AssistantChat, type AssistantChatDeps } from './assistant-chat.svelte'
 import { ComposerAttachments } from './composer-attachments.svelte'
 import { takePendingHandoff } from './handoff'
+import { OneDoor } from './one-door.svelte'
 import { readPanelSession, writePanelSession } from './panel-session'
 import {
   PANEL_DEFAULT_WIDTH,
@@ -50,6 +51,8 @@ export class AssistantController {
   readonly chat: AssistantChat
   /** Files waiting in the panel composer (they survive closing the panel, like the draft). */
   readonly attachments: ComposerAttachments
+  /** The Ask bar's one door: Jev routes the words first (one-door.svelte.ts). */
+  readonly door: OneDoor
   readonly fetch: typeof globalThis.fetch
 
   /** Registered by the bar / the panel composer when they mount. */
@@ -63,6 +66,7 @@ export class AssistantController {
     this.fetch = deps.fetch
     this.chat = new AssistantChat(deps)
     this.attachments = new ComposerAttachments(deps.fetch)
+    this.door = new OneDoor({ fetch: deps.fetch, ask: (text) => this.ask(text) })
     const remembered = readPanelWidth(deps.storage)
     if (remembered !== null) this.width = clampPanelWidth(remembered, deps.viewportWidth())
   }

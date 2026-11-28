@@ -460,6 +460,7 @@ const MEMBER_KEEPS_VIA_BRAIN = [
   'memory.retrieve_thoughts',
   'memory.retry_enrichment',
   'memory.retry_scheduled_task_step',
+  'memory.route_input',
   'memory.run_scheduled_task',
   'memory.search_text_files',
   'memory.set_project_deadline',

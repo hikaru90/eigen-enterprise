@@ -49,6 +49,7 @@ export const THOUGHT_TOOL_NAMES = [
 
 /** Memory › What the brain took in (intake-tools.ts): counts per source and period, newest items. */
 export const INTAKE_TOOL_NAMES = ['memory.intake'] as const
+export const ROUTE_TOOL_NAMES = ['memory.route_input'] as const
 
 /** The person's own Memory › Tasks (own-task-tools.ts): list, add, change, complete, delete. */
 export const OWN_TASK_TOOL_NAMES = [
@@ -125,6 +126,6 @@ export const memoryManifest: ModuleManifest = {
   description:
     'Thought capture, hybrid retrieval, and GTD project/text-note tools over the eigen memory system.',
   toolNamespaces: [MEMORY_MODULE_ID, 'tasks', 'reminders', 'questions', 'handover'],
-  tools: [...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...INTAKE_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...QUESTION_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES, ...HANDOVER_TOOL_NAMES],
+  tools: [...MEMORY_TOOL_NAMES, ...THOUGHT_TOOL_NAMES, ...INTAKE_TOOL_NAMES, ...ROUTE_TOOL_NAMES, ...OWN_TASK_TOOL_NAMES, ...TASK_TOOL_NAMES, ...REMINDER_TOOL_NAMES, ...QUESTION_TOOL_NAMES, ...PROJECT_SCHEDULE_TOOL_NAMES, ...HANDOVER_TOOL_NAMES],
   permissions: { roles: ['admin', 'agent'] },
 }
