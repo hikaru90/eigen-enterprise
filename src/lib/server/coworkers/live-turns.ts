@@ -66,6 +66,7 @@ export function composeCoworkerTurns(input: ComposeCoworkerTurnsInput): Coworker
   const prompts = new TurnPrompts()
   const source = coworkerAgentSource({ listEnabled: () => input.coworkers.listEnabled(), prompts, aiSource: input.aiSource })
   const turns = new CoworkerTurns({
+    aiSource: input.aiSource,
     runs: input.runs,
     messages: input.messages,
     coworkers: input.coworkers,

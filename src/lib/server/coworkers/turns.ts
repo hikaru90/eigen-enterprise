@@ -1,4 +1,6 @@
 import type { MessageDto, MessagesDeps } from '../../../../modules/messages/service'
+import { facingErrorMessage } from '$lib/server/llm/eigen-inference-facing'
+import type { SlotSource } from '$lib/server/llm/slots'
 import type { Conversation, Person } from '../../../../modules/messages/store'
 import type { RhythmRow } from './rhythms'
 import type { CoworkerRunPatch, CoworkerRunRow, CoworkerRunStore, ThreadKey } from './run-store'
@@ -93,6 +95,8 @@ export class TurnPrompts {
 }
 
 export type CoworkerTurnsDeps = {
+  /** Where the company's calls go: on eigenInference a stop note names no model or provider (wish 60bd7be2). */
+  aiSource: () => Promise<SlotSource>
   runs: CoworkerRunStore
   messages: MessagesDeps
   coworkers: CoworkerDirectory
@@ -446,8 +450,15 @@ export class CoworkerTurns {
   }
 
   /** Posts the stop note as the co-worker in the run's thread, @mentioning its accountable human(s). A failed note is logged on the run. */
-  private async postNote(run: CoworkerRunRow, reason: StopNoteReason, detail?: string, known?: CoworkerView): Promise<void> {
+  /** An error's sentence as the company may read it (eigenInference: no model or provider named). */
+  private async facing(detail: string | undefined): Promise<string | undefined> {
+    if (detail === undefined) return undefined
+    return facingErrorMessage(detail, { eigenInference: (await this.deps.aiSource()) === 'eigeninference' })
+  }
+
+  private async postNote(run: CoworkerRunRow, reason: StopNoteReason, rawDetail?: string, known?: CoworkerView): Promise<void> {
     try {
+      const detail = await this.facing(rawDetail)
       if (!run.conversationId) return
       const view = known ?? (await this.deps.coworkers.get(run.coworkerUserId))
       const accountableList =
@@ -720,8 +731,9 @@ export class CoworkerTurns {
    * notices: the accountable human, and for an assignment the person who
    * asked. A failure here is logged on the run.
    */
-  private async afterWork(run: CoworkerRunRow, known: CoworkerView | null, reason: StopNoteReason | null, detail?: string): Promise<void> {
+  private async afterWork(run: CoworkerRunRow, known: CoworkerView | null, reason: StopNoteReason | null, rawDetail?: string): Promise<void> {
     try {
+      const detail = await this.facing(rawDetail)
       const view = known ?? (await this.deps.coworkers.get(run.coworkerUserId))
       const people = await this.deps.messages.directory.listPeople()
       const accountableList =

@@ -1,4 +1,5 @@
 import type { Actions, RequestEvent } from '@sveltejs/kit'
+import { EIGEN_INFERENCE } from '$lib/ai/eigen-inference'
 import { fail, redirect } from '@sveltejs/kit'
 import { and, eq } from 'drizzle-orm'
 import { isUserAdmin } from '$lib/server/auth/user-role'
@@ -93,10 +94,11 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
   )
 
   const slotModel = (slot: 'stt' | 'tts') => ai.slots.find((s) => s.slot === slot)!.model
-  // The endpoint check is OpenRouter's public catalog: Opper's speech models are not in it.
+  // The endpoint check is OpenRouter's public catalog: Opper's speech models are not in it. On
+  // eigenInference no speech model is named (wish 60bd7be2): their health is the hosting's to watch.
   const [dictation, speechModelStatus] = await Promise.all([
     speechToTextReadiness(userId),
-    ai.provider === 'openrouter'
+    !ai.useEigenInference && ai.provider === 'openrouter'
       ? checkSpeechModelEndpoints({ models: speechModels({ stt: slotModel('stt'), tts: slotModel('tts') }) })
       : Promise.resolve([]),
   ])
@@ -108,13 +110,14 @@ export async function loadLlmSettingsPage(event: RequestEvent) {
     /** The company's own keys live on the owner's account: only the owner manages them. */
     isOwner: ownerId === userId,
     /** Settings → AI (CB1): the switch, the slots, the install's embedding model. */
-    ai,
+    // On eigenInference the provider is not named (wish 60bd7be2).
+    ai: ai.useEigenInference ? { ...ai, providerLabel: EIGEN_INFERENCE, slots: [], embeddingModel: null } : ai,
     byokConfigured,
     activeProvider,
     /** Daily AI cap per member (DC3): the cap and the person's own usage today (settings.my_ai_usage). */
     memberAiCap,
     /** Speech runs on the company's provider: whether dictation can work, and (OpenRouter) each speech model's endpoints. */
-    speech: { dictation, models: speechModelStatus, providerLabel: ai.providerLabel },
+    speech: { dictation, models: speechModelStatus, providerLabel: ai.useEigenInference ? EIGEN_INFERENCE : ai.providerLabel },
     providers: {
       eurouter: {
         configured: isProviderConfigured(eurouterRow),

@@ -10,11 +10,11 @@ const { getDbMock, isUserAdminMock, decryptTenantValueMock, setSwitchMock, setSl
 }))
 
 vi.mock('$lib/server/llm/company-provider', () => ({ companyOwnerId: async () => 'owner-1' }))
-const viewProvider = vi.hoisted(() => ({ current: 'openrouter' as 'openrouter' | 'opper' }))
+const viewProvider = vi.hoisted(() => ({ current: 'openrouter' as 'openrouter' | 'opper', eigen: false }))
 vi.mock('$lib/server/llm/company-ai-settings', async (actual) => ({
   ...(await actual<typeof import('$lib/server/llm/company-ai-settings')>()),
   readCompanyAiView: async () => ({
-    useEigenInference: false,
+    useEigenInference: viewProvider.eigen,
     provider: viewProvider.current,
     providerLabel: viewProvider.current === 'opper' ? 'Opper' : 'OpenRouter',
     eigenInferenceAvailable: false,
@@ -126,6 +126,25 @@ describe('settings/llm page server load', () => {
       models: [{ feature: 'dictation', model: 'qwen/qwen3-asr-0.6b', endpoints: 2, providers: ['A', 'B'] }],
       providerLabel: 'OpenRouter',
     })
+  })
+
+  it('on eigenInference nothing names the provider or a model (wish 60bd7be2)', async () => {
+    viewProvider.current = 'opper'
+    viewProvider.eigen = true
+    checkSpeechMock.mockClear()
+    try {
+      const result = await load({
+        locals: { user: { id: 'u1', email: 'a@b.c' } },
+        url: new URL('http://localhost/settings/llm'),
+      } as never)
+      expect(result.speech).toMatchObject({ models: [], providerLabel: 'eigenInference' })
+      expect(result.ai).toMatchObject({ providerLabel: 'eigenInference', slots: [], embeddingModel: null })
+      expect(JSON.stringify({ ai: result.ai, speech: result.speech })).not.toMatch(/Opper|OpenRouter|deepseek|qwen|jev/)
+      expect(checkSpeechMock).not.toHaveBeenCalled()
+    } finally {
+      viewProvider.current = 'openrouter'
+      viewProvider.eigen = false
+    }
   })
 
   it("on Opper the speech models are not looked up in OpenRouter's catalog, and speech names Opper", async () => {

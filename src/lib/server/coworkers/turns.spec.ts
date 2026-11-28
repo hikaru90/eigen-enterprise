@@ -122,6 +122,22 @@ describe('a turn that cannot answer says so and is not retried', () => {
     expect(note.body).toContain("I won't retry")
   })
 
+  it('on eigenInference the note names neither the model nor the provider (wish 60bd7be2)', async () => {
+    const fx = turnsFixture({
+      script: () => {
+        throw new Error('upstream 502 from api.opper.ai for mistral/deepseek-v4-1-flash-1017')
+      },
+      extra: { aiSource: async () => 'eigeninference' },
+    })
+    await fx.handle.reload()
+    const general = await createChannel(fx.deps, 'owner', { name: 'general', private: false })
+    const { message } = await postMessage(fx.deps, 'bea', general.id, '@gtm price it')
+    await fx.settle()
+    const note = (await fx.thread(message.id)).at(-1)!
+    expect(note.body).toContain('my model call failed (upstream 502 from eigenInference for eigenInference)')
+    expect(note.body).not.toMatch(/opper|deepseek|mistral/i)
+  })
+
   it('an empty answer is a model failure too, never an empty post', async () => {
     const fx = turnsFixture({ script: () => '   ' })
     await fx.handle.reload()
