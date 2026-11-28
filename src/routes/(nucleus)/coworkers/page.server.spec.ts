@@ -58,6 +58,7 @@ const coworker = {
   accountabilities: ['Pipeline'],
   lens: 'Cares about reach.',
   modelId: 'google/gemini-3.8-flash',
+  modelLabel: 'google/gemini-3.8-flash',
   enabled: true,
   dailyCapUsd: 2,
   templateId: 'marketing-manager',
@@ -143,7 +144,7 @@ describe('load', () => {
       ['me', 'coworkers.list'],
     ])
     expect(data.me).toEqual({ id: 'me', canManage: false })
-    expect((data.people as { id: string; modelId: string | null }[]).map((p) => [p.id, p.modelId])).toEqual([
+    expect((data.people as { id: string; modelLabel: string | null }[]).map((p) => [p.id, p.modelLabel])).toEqual([
       ['owner', null],
       ['me', null],
       ['cw1', 'google/gemini-3.8-flash'],
