@@ -10,4 +10,10 @@ export async function tickTraces(): Promise<void> {
   } catch (err) {
     console.error('[traces] background tick failed', { message: err instanceof Error ? err.message : String(err) })
   }
+  try {
+    const { traceHubRetentionTick } = await import('$lib/server/traces/live')
+    await traceHubRetentionTick()
+  } catch (err) {
+    console.error('[trace-hub] retention failed', { message: err instanceof Error ? err.message : String(err) })
+  }
 }

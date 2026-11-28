@@ -417,3 +417,21 @@ describe('runUpgradeApply (the ee-upgrade.service side)', () => {
     expect(await f.job()).toMatchObject({ status: 'failed', step: 'safety-copy', error: 'the installer failed (exit 1)', safetyCopy: '/var/lib/ee/upgrades/x' })
   })
 })
+
+describe('upgrade outcomes for the product signals (plan/traces-phone-home.md T5)', () => {
+  it('lists every update end from the journal with step, ok, rolledBack and release — `reason` and `from` never present', async () => {
+    const { upgradeTraceOutcomes } = await import('./upgrade-job.ts')
+    const ev = (id: string, type: string, outcome: unknown) => ({ id, time: `2026-11-2${id}T03:00:00.000Z`, type, workload: null, message: 'm', data: { outcome } })
+    const out = upgradeTraceOutcomes([
+      ev('1', 'upgrade.succeeded', { release: NEW, from: 'https://releases.acme.example/x', step: 'done', ok: true, reason: null, rolledBack: false }),
+      ev('2', 'upgrade.failed', { release: NEW, from: 'dir:/srv/jane', step: 'watching', ok: false, reason: 'health check of jane.acme.example failed', rolledBack: true }),
+      ev('3', 'deploy.succeeded', {}),
+      ev('4', 'upgrade.failed', { nonsense: true }),
+    ])
+    expect(out).toEqual([
+      { id: '1', at: '2026-11-21T03:00:00.000Z', release: NEW, step: 'done', ok: true, rolledBack: false },
+      { id: '2', at: '2026-11-22T03:00:00.000Z', release: NEW, step: 'watching', ok: false, rolledBack: true },
+    ])
+    expect(JSON.stringify(out)).not.toMatch(/jane|acme|reason|from/)
+  })
+})

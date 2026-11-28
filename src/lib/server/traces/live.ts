@@ -81,10 +81,11 @@ export function tracesTick(): Promise<TraceTickResult | null> {
     if (await isHubInstall()) return null
     const { runTraceTick } = await import('../../../../modules/traces/worker')
     const { dbTraceSourceReader } = await import('../../../../modules/traces/db-store')
+    const { upgradeTraceRows } = await import('./upgrades')
     const deps = await liveTracesDeps()
     const out = await runTraceTick({
       ...deps,
-      read: dbTraceSourceReader(await db(), async () => []),
+      read: dbTraceSourceReader(await db(), upgradeTraceRows),
       decide: decideValue,
       appVersion: APP_VERSION,
       eeVersion: null,
@@ -96,4 +97,16 @@ export function tracesTick(): Promise<TraceTickResult | null> {
     running = null
   })
   return running
+}
+
+/** The makers' hub (trace-hub active): roll up finished days and drop expired / revoked spans, at most hourly. */
+let lastRetention = 0
+export async function traceHubRetentionTick(now = Date.now()): Promise<void> {
+  if (now - lastRetention < 60 * 60_000) return
+  const { traceHubActive, traceHubReadDeps } = await import('../../../../modules/traces/hub/live')
+  if (!(await traceHubActive())) return
+  lastRetention = now
+  const { runRetention } = await import('../../../../modules/traces/hub/service')
+  const out = await runRetention(await traceHubReadDeps())
+  if (out.rolledUp + out.expired + out.revoked > 0) console.info('[trace-hub] retention', out)
 }

@@ -27,7 +27,7 @@ import { readClaims } from './fleet/claims.ts'
 import { readHostedAddress } from './fleet/hosted-address.ts'
 import { UPGRADE_UNIT as FLEET_UPGRADE_UNIT } from './fleet/agent.ts'
 import { fetchReleaseText, hostArch, installedOsRelease } from './upgrade.ts'
-import { UPGRADE_UNIT, upgradeRoute, UpgradeService, type UpgradeServiceDeps } from './upgrade-job.ts'
+import { UPGRADE_UNIT, upgradeRoute, UpgradeService, upgradeTraceOutcomes, type UpgradeServiceDeps } from './upgrade-job.ts'
 import { boxRollbackDeps, lastUpgradeOutcome } from './rollback-box.ts'
 import { RELEASE_PUBLIC_KEY_PEM } from './release-key.ts'
 import { ModuleService, moduleRoute, moduleSecretRefusal, type ModuleServiceDeps } from './modules.ts'
@@ -389,6 +389,8 @@ export function controlHandler(ee: Ee): (req: IncomingMessage, res: ServerRespon
         const m = await moduleRoute(ee.modules, route, url.searchParams, () => body(req))
         if (m) return send(res, m.status, m.data)
       }
+      // The product signals' upgrade outcomes (plan/traces-phone-home.md T5): no reason, no source.
+      if (route === 'GET /v1/upgrade/outcomes') return send(res, 200, { outcomes: upgradeTraceOutcomes(ee.journal.events) })
       if (url.pathname.startsWith('/v1/upgrade')) {
         const u = await upgradeRoute(ee.upgrades, route, () => body(req))
         if (u) return send(res, u.status, u.data)
