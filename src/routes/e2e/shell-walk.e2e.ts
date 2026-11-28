@@ -103,6 +103,8 @@ test('every navigation entry and settings section renders inside the one shell',
   const panel = page.getByTestId('assistant-panel')
   await expect(panel).toBeVisible()
   await expect(panel.getByText('What can you do?')).toBeVisible()
+  // The panel slides in (panelSlide): measure once its open transition has ended.
+  await page.waitForFunction(() => document.querySelector('[data-testid="assistant-panel"]')?.getAnimations({ subtree: true }).length === 0)
   const panelBox = (await panel.boundingBox())!
   const contentBox = (await page.getByTestId('shell-content').boundingBox())!
   expect(panelBox.x).toBeGreaterThanOrEqual(contentBox.x + contentBox.width - 1)
@@ -206,7 +208,7 @@ test('every navigation entry and settings section renders inside the one shell',
   await expect(page.getByTestId('shell-drawer').getByTestId('shell-nav-memory')).toBeVisible()
   await page.screenshot({ path: `${SHOTS}/phone-drawer.png` })
   await page.getByTestId('shell-drawer').getByTestId('shell-nav-memory').click()
-  await expect(page).toHaveURL(/\/m\/memory\/tasks$/)
+  await expect(page).toHaveURL(/\/m\/memory\/capture$/)
   await page.screenshot({ path: `${SHOTS}/phone-memory.png` })
   // Phone: the top bar keeps the assistant; asking opens it as a full-screen sheet.
   await page.getByTestId('assistant-bar-input').fill('Hello')
