@@ -4,7 +4,8 @@
   /**
    * A person's status as a small badge on an avatar's corner. Shape AND color
    * differ per status (a phone for a call, a bar for do-not-disturb, a clock
-   * for away, a hollow ring for offline; an AI co-worker's spark, dots while
+   * for away, a hollow ring for offline; an AI co-worker's spark — green with AI budget left today, red when it is
+   * used up (wish 32162c64) — dots while
    * it writes, a pause sign when switched off), and the words are its accessible
    * name and tooltip — never color alone.
    */
@@ -26,6 +27,7 @@
   const GLYPH: Record<PresenceStatus, 'phone' | 'bar' | 'clock' | 'none' | 'ring' | 'spark' | 'dots' | 'pause'> = {
     available: 'spark',
     busy: 'dots',
+    capped: 'spark',
     paused: 'pause',
     in_call: 'phone',
     dnd: 'bar',
@@ -39,7 +41,8 @@
     away: 'bg-amber-600',
     online: 'bg-emerald-600',
     offline: 'border-2 border-muted-foreground bg-background',
-    available: 'bg-primary',
+    available: 'bg-emerald-600',
+    capped: 'bg-red-600',
     busy: 'bg-primary',
     paused: 'bg-muted-foreground',
   }

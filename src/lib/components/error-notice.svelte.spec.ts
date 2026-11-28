@@ -20,6 +20,18 @@ describe('ErrorNotice: a sentence for the person, instructions for an agent', ()
     await expect.element(copyButton()).toBeVisible()
   })
 
+  it('wish 714726fe: says what the copy is for and where to paste it, before and after copying', async () => {
+    stubClipboard(async () => {})
+    render(ErrorNotice, { error: 'Something broke.' })
+    await expect
+      .element(copyButton())
+      .toHaveAccessibleDescription('Copies a report of this error. Paste it into the assistant (or your coding agent) and send it to get it fixed.')
+    await copyButton().click()
+    await expect
+      .element(page.getByRole('status'))
+      .toHaveTextContent('Copied. Now paste it into the assistant (or your coding agent) and send it.')
+  })
+
   it('shows an optional title above the sentence', async () => {
     render(ErrorNotice, { error: 'Build failed at npm ci.', title: 'The last deploy failed' })
     await expect.element(page.getByRole('alert')).toHaveTextContent('The last deploy failed')

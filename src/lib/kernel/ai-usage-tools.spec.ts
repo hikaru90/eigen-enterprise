@@ -69,6 +69,21 @@ describe('settings.ai_usage_overview', () => {
     ])
   })
 
+  it('wish acdb941e: user_id narrows everything to one principal (an AI co-worker\'s usage), the same folds and period', async () => {
+    const reads: { from: string | null; to: string | null }[] = []
+    const CW: AiUsageRow = { ...ROW, userId: 'cw-ada', name: 'Ada', kind: 'coworker', costUsd: 1, calls: 3, promptTokens: 100, completionTokens: 20 }
+    const registry = new KernelRegistry({
+      eventSink: new InMemoryEventSink(),
+      approvalPolicy: new ModeAwareApprovalPolicy(new Set(), new InMemoryApprovalModeStore('ask')),
+      approvalStore: new InMemoryApprovalStore(),
+    })
+    for (const tool of createAiUsageTools({ port: { rows: async (p) => (reads.push(p), [ROW, CW]), billing: async () => null } })) registry.register(tool)
+    const out = (await registry.execute('settings.ai_usage_overview', { user_id: 'cw-ada', from: '2026-11-01', to: '2026-11-27' }, admin)) as AiUsageOverview
+    expect(out.totals).toEqual({ costUsd: 1, calls: 3, promptTokens: 100, completionTokens: 20, cachedTokens: 0 })
+    expect(out.people).toEqual([expect.objectContaining({ userId: 'cw-ada', kind: 'coworker' })])
+    expect(reads).toEqual([{ from: '2026-11-01', to: '2026-11-27' }])
+  })
+
   it('self-hosted or BYOK (no billing): USD as logged, nothing in EUR', async () => {
     const { registry } = makeRegistry(null)
     const out = (await registry.execute('settings.ai_usage_overview', {}, admin)) as AiUsageOverview

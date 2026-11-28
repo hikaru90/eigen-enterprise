@@ -1,4 +1,7 @@
 import type { Actions, PageServerLoad } from './$types'
+import { error } from '@sveltejs/kit'
+import type { AiAmounts, AiUsageOverview } from '$lib/ai-usage/overview'
+import { periodOf, periodRange } from '$lib/ai-usage/view'
 import { chatModelOption, type ChatModelOption } from '$lib/coworkers/model-family'
 import { requireCapability } from '$lib/server/auth/require-capability'
 import type { RhythmTarget, RhythmView } from '$lib/server/coworkers/rhythms'
@@ -39,13 +42,36 @@ export type CoworkerRhythms = { rhythms: RhythmView[]; targets: RhythmTarget[] }
 
 export type SeatOption = { id: string; name: string; kind: 'human' | 'coworker' }
 
-export const load: PageServerLoad = async ({ locals }) => {
+/** Each co-worker's AI usage of the period (wish acdb941e), from settings.ai_usage_overview's people. */
+export type CoworkerUsage = { billing: AiUsageOverview['billing']; byCoworker: Record<string, AiAmounts> }
+
+function usageOf(overview: AiUsageOverview): CoworkerUsage {
+  const byCoworker: Record<string, AiAmounts> = {}
+  for (const p of overview.people) {
+    if (p.kind !== 'coworker') continue
+    byCoworker[p.userId] = {
+      costUsd: p.costUsd,
+      calls: p.calls,
+      promptTokens: p.promptTokens,
+      completionTokens: p.completionTokens,
+      cachedTokens: p.cachedTokens,
+      ...(p.providerUsd === undefined ? {} : { providerUsd: p.providerUsd }),
+      ...(p.invoicedEur === undefined ? {} : { invoicedEur: p.invoicedEur }),
+    }
+  }
+  return { billing: overview.billing, byCoworker }
+}
+
+export const load: PageServerLoad = async ({ locals, url }) => {
   const { user } = await requireCapability(locals, 'coworkers.manage', REASON)
+  const usagePeriod = periodOf(url.searchParams.get('usage'))
+  if (usagePeriod === null) error(400, 'Choose 7, 30 or 90 days, or all.')
   const run = _coworkersDeps.run
-  const [list, templates, chart] = await Promise.all([
+  const [list, templates, chart, overview] = await Promise.all([
     run<{ coworkers: CoworkerView[] }>(user, 'coworkers.list', {}),
     run<{ templates: CoworkerTemplate[] }>(user, 'coworkers.templates', {}),
     run<{ people: OrgChartEntry[] }>(user, 'org.chart', {}),
+    run<AiUsageOverview>(user, 'settings.ai_usage_overview', periodRange(usagePeriod, new Date())),
   ])
   const coworkers = list.coworkers.filter((c) => c.removedAt === null)
   const rhythms: Record<string, CoworkerRhythms> = {}
@@ -53,6 +79,8 @@ export const load: PageServerLoad = async ({ locals }) => {
   return {
     coworkers,
     rhythms,
+    usage: usageOf(overview),
+    usagePeriod,
     timeZone: await _coworkersDeps.timeZone(user.id),
     templates: templates.templates,
     seats: chart.people.map((p): SeatOption => ({ id: p.id, name: p.name, kind: p.kind })),

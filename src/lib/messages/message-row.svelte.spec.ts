@@ -75,6 +75,20 @@ describe('message-row.svelte', () => {
     await expect.element(page.getByTestId('messages-item')).toHaveAttribute('aria-label', expect.stringContaining('Marketing Manager (AI co-worker)'))
   })
 
+  it('wish 7c6db153: an AI co-worker’s name and avatar open its profile; a person’s name stays plain text', async () => {
+    const onopenprofile = vi.fn()
+    render(MessageRow, props({ message: { ...base, authorId: 'cw1', authorName: 'Mara', authorKind: 'coworker' }, onopenprofile }))
+    await page.getByRole('button', { name: 'Mara: Profile' }).click()
+    await page.getByTestId('messages-avatar-profile').click()
+    expect(onopenprofile.mock.calls).toEqual([['cw1'], ['cw1']])
+  })
+
+  it('a person’s name is not a profile button', async () => {
+    render(MessageRow, props({ onopenprofile: vi.fn() }))
+    expect(page.getByTestId('messages-avatar-profile').query()).toBeNull()
+    expect(page.getByRole('button', { name: /Profile/ }).query()).toBeNull()
+  })
+
   it('a person’s message has no AI mark', async () => {
     render(MessageRow, props())
     await expect.element(page.getByTestId('messages-author')).toHaveTextContent('Bea Member')

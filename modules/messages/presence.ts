@@ -27,9 +27,10 @@ export type PresencePort = Pick<
 /**
  * An AI co-worker's presence, from facts (Contribute 14aea69d), never a
  * heartbeat: switched on = available (it answers whenever it is asked), busy
- * while one of its turns is writing, paused when switched off or removed.
+ * while one of its turns is writing, capped when today's AI budget is used up
+ * (wish 32162c64), paused when switched off or removed.
  */
-export const COWORKER_PRESENCE_STATUSES = ['available', 'busy', 'paused'] as const
+export const COWORKER_PRESENCE_STATUSES = ['available', 'busy', 'capped', 'paused'] as const
 export type CoworkerPresenceStatus = (typeof COWORKER_PRESENCE_STATUSES)[number]
 
 export type CoworkerPresencePort = {

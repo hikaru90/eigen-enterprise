@@ -56,6 +56,22 @@ beforeEach(() => {
 afterEach(() => document.removeEventListener('submit', catchSubmits, true))
 
 describe('coworker-card.svelte', () => {
+  it('wish acdb941e: shows its AI usage of the period (tokens in/out and cost) with the AI-usage periods as links', async () => {
+    render(CoworkerCard, {
+      coworker,
+      models,
+      seats,
+      rhythms,
+      timeZone: 'Europe/Berlin',
+      usage: { amounts: { costUsd: 0.5, calls: 4, promptTokens: 1500, completionTokens: 500, cachedTokens: 0 }, billing: null, period: '7' },
+    })
+    await expect.element(page.getByTestId('coworker-usage-tokens')).toHaveTextContent('2k tokens')
+    await expect.element(page.getByTestId('coworker-usage')).toHaveTextContent('Last 7 days')
+    await expect.element(page.getByTestId('coworker-usage-cost')).toHaveTextContent('$0.50')
+    await expect.element(page.getByRole('link', { name: 'Last 30 days' })).toHaveAttribute('href', '?usage=30')
+    await expect.element(page.getByRole('link', { name: 'Last 7 days' })).toHaveAttribute('aria-current', 'page')
+  })
+
   it('Save posts the edited card with every manager, primary first, and the avatar', async () => {
     render(CoworkerCard, { coworker, models, seats, rhythms, timeZone: 'Europe/Berlin' })
     await page.getByTestId('coworker-edit').click()

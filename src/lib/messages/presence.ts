@@ -13,7 +13,7 @@ import { sameWhere, type WhereReport } from '$lib/presence/where'
  * facts, never offline — available while switched on, busy while writing a
  * reply, paused when switched off.
  */
-export type PresenceStatus = 'in_call' | 'dnd' | 'online' | 'away' | 'offline' | 'available' | 'busy' | 'paused'
+export type PresenceStatus = 'in_call' | 'dnd' | 'online' | 'away' | 'offline' | 'available' | 'busy' | 'capped' | 'paused'
 
 export type PresenceView = {
   userId: string
@@ -43,7 +43,8 @@ const LABELS: Record<Exclude<PresenceStatus, 'offline'>, string> = {
   dnd: 'Do not disturb',
   online: 'Online',
   away: 'Away',
-  available: 'AI co-worker · always available',
+  available: 'AI co-worker · available, AI budget left today',
+  capped: 'AI co-worker · today’s AI budget is used up',
   busy: 'Writing a reply',
   paused: 'Paused (switched off)',
 }

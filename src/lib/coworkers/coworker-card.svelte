@@ -10,6 +10,10 @@
   import AiMark from './ai-mark.svelte'
   import { draftFromCoworker, emptyDraft, type CardDraft, type CoworkerLike } from './card-draft'
   import CoworkerFields from './coworker-fields.svelte'
+  import CoworkerUsage from './coworker-usage.svelte'
+  import type { AiBilling } from '$lib/ai-usage/billing'
+  import type { AiAmounts } from '$lib/ai-usage/overview'
+  import type { AiUsagePeriod } from '$lib/ai-usage/view'
   import CoworkerRhythms, { type RhythmItem, type RhythmTargetItem } from './coworker-rhythms.svelte'
   import MentionHandle from './mention-handle.svelte'
   import { modelFamily, modelName, type ChatModelOption } from './model-family'
@@ -37,6 +41,7 @@
     form = null,
     rhythms,
     timeZone,
+    usage = null,
   }: {
     coworker: Coworker
     models: ChatModelOption[]
@@ -47,6 +52,8 @@
     rhythms: { rhythms: RhythmItem[]; targets: RhythmTargetItem[] }
     /** The time zone a new rhythm starts in. */
     timeZone: string
+    /** Its AI usage of the page's period (wish acdb941e); null: not shown. */
+    usage?: { amounts: AiAmounts | null; billing: AiBilling | null; period: AiUsagePeriod } | null
   } = $props()
 
   let editing = $state(false)
@@ -89,7 +96,7 @@
   }
 </script>
 
-<li class="rounded-lg border border-border bg-card p-4" data-testid="coworker-card" data-id={c.id} data-enabled={c.enabled}>
+<li id="coworker-{c.id}" class="rounded-lg border border-border bg-card p-4" data-testid="coworker-card" data-id={c.id} data-enabled={c.enabled}>
   <div class="flex flex-wrap items-start gap-3">
     <UserAvatar name={c.name} image={c.image ?? null} size="md" />
     <div class="min-w-0 flex-1 space-y-0.5">
@@ -115,6 +122,9 @@
         {#if accountables.length > 0}· {m.coworkers_answers_to({ name: accountables.map((h) => h.name).join(', ') })}{/if}
       </p>
       <MentionHandle handle={c.slug} />
+      {#if usage}
+        <CoworkerUsage {...usage} href={(p) => `?usage=${p}`} />
+      {/if}
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <Button
