@@ -4,6 +4,7 @@ import type { ModuleSummaryDto } from './types'
 import { z } from 'zod'
 import type { AiTaskId } from '$lib/ai-usage/tasks'
 import type { ChatMessage } from '$lib/server/llm/llm-client'
+import { assertOutputScript, outputLanguageInstruction } from '$lib/server/llm/output-language'
 import { parseLlmJsonPayload } from '$lib/server/memory/llm-json-content'
 import { extractChatContent } from '$lib/server/ontology/llm-json'
 import { BUNDLE_LOCKFILES, type BundleEntry } from '../../contracts/module-bundle'
@@ -45,6 +46,8 @@ export type SummarizeDeps = {
   chat: SummaryChat
   /** The person the call is attributed to (the company owner) and the DB/provider context it runs in. */
   runAsOwner: <T>(fn: (userId: string) => Promise<T>) => Promise<T>
+  /** The language that person reads in (their preferred language); runs inside runAsOwner. */
+  language: (userId: string) => Promise<string>
   now: () => Date
 }
 
@@ -91,15 +94,16 @@ export function summarySource(version: Pick<HubModuleVersion, 'manifest'>, entri
   return out
 }
 
-export function buildSummaryMessages(version: Pick<HubModuleVersion, 'manifest'>, entries: readonly BundleEntry[]): ChatMessage[] {
+export function buildSummaryMessages(version: Pick<HubModuleVersion, 'manifest'>, entries: readonly BundleEntry[], language: string): ChatMessage[] {
   const system = [
     'You describe an eigenEnterprise module for the owner of the module hub, who reviews modules that companies built and published as open source.',
-    'Write three short plain-English paragraphs from the manifest and the source below:',
+    'Write three short plain paragraphs from the manifest and the source below:',
     '"does": what the module does for the people who use it;',
     '"touches": which company data it reads and changes (the core tools and events it uses, and what it keeps in its own data);',
     '"sends_out": what leaves the company through it (mail, messages, anything sent outside) — say so plainly when nothing does.',
     'Describe only what the manifest and the code show; never guess intent and never judge the authors.',
     'Return JSON only: { "does": "...", "touches": "...", "sends_out": "..." }, each at most 600 characters.',
+    outputLanguageInstruction(language),
   ].join('\n')
   const source = summarySource(version, entries)
     .map((f) => `--- ${f.path}${f.cut ? ' (cut)' : ''}\n${f.text}`)
@@ -119,16 +123,23 @@ export function parseSummaryOutput(response: unknown): ModuleSummaryDto {
 /** Writes (or rewrites) the summary of one version and stores it. The gateway's own errors surface as is. */
 export async function summarizeVersion(deps: SummarizeDeps, bundleSha256: string): Promise<ModuleSummaryDto> {
   const { version, entries } = await bundleEntries(deps, bundleSha256)
-  const messages = buildSummaryMessages(version, entries)
   const summary = await deps.runAsOwner(async (userId) => {
+    // Wish d0a0c775: the summary is asked in the owner's language, and a foreign script is refused loud.
+    const language = await deps.language(userId)
+    const messages = buildSummaryMessages(version, entries, language)
+    const source = messages.map((m) => m.content).join('\n')
     let lastError = ''
     for (let attempt = 1; attempt <= SUMMARY_MAX_ATTEMPTS; attempt++) {
       const response = await deps.chat({ userId, messages, temperature: 0, task: 'contribute.module_summary', responseFormat: 'json_object' })
+      let parsed: ModuleSummaryDto
       try {
-        return parseSummaryOutput(response)
+        parsed = parseSummaryOutput(response)
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err)
+        continue
       }
+      assertOutputScript(`${parsed.does}\n${parsed.touches}\n${parsed.sendsOut}`, { language, what: 'module summary', source })
+      return parsed
     }
     throw new SummaryFailedError(`The module summary gave no valid answer in ${SUMMARY_MAX_ATTEMPTS} attempts: ${lastError}`)
   })

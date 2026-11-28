@@ -2,6 +2,7 @@ import type { RepoSnapshot } from './snapshot-types'
 import { describe, expect, it, vi } from 'vitest'
 import { aiTaskOperation } from '$lib/ai-usage/tasks'
 import { LlmHttpError, LlmNotConfiguredError } from '$lib/server/llm/errors'
+import { OutputScriptError } from '$lib/server/llm/output-language'
 import { takeSnapshot } from './snapshot'
 import {
   buildSummaryMessages,
@@ -105,7 +106,7 @@ describe('summary output (JSON schema, then validate only)', () => {
 
   it('the prompt carries the delta and the previous summary as JSON', async () => {
     const s = await snap(sampleRepo(), '2026-11-12T14:00:00Z')
-    const [system, user] = buildSummaryMessages({ snapshot: s, delta: diffSnapshots(null, s), previous: { ...GOOD, writtenAt: '2026-11-11T10:00:00Z' } })
+    const [system, user] = buildSummaryMessages({ snapshot: s, delta: diffSnapshots(null, s), previous: { ...GOOD, writtenAt: '2026-11-11T10:00:00Z' } }, 'en')
     expect(system!.content).toContain('"summary"')
     expect(system!.content).toContain('branch | pr | commit | release | other')
     expect(user!.content).toContain('kindred/shop')
@@ -129,7 +130,7 @@ describe('the summarizer (one gateway call, cost attributed to repos)', () => {
 
   it('calls the gateway once with the repos log context and JSON mode, on the company account', async () => {
     const chat = vi.fn(async (_: unknown) => answer(GOOD))
-    const summarize = createSummarizer({ chat, account: async () => 'owner-1' })
+    const summarize = createSummarizer({ chat, account: async () => 'owner-1', language: async () => 'en' })
     expect(await summarize(await input())).toEqual({ status: 'written', ...GOOD })
     expect(chat).toHaveBeenCalledTimes(1)
     expect(chat.mock.calls[0]![0]).toMatchObject({ userId: 'owner-1', task: 'repos.summary', responseFormat: 'json_object', temperature: 0 })
@@ -140,19 +141,45 @@ describe('the summarizer (one gateway call, cost attributed to repos)', () => {
     const chat = vi.fn(async () => {
       throw new LlmNotConfiguredError('No chat model configured')
     })
-    expect(await createSummarizer({ chat, account: async () => 'owner-1' })(await input())).toMatchObject({ status: 'no_model' })
-    expect(await createSummarizer({ chat, account: async () => null })(await input())).toMatchObject({ status: 'no_model' })
+    expect(await createSummarizer({ chat, account: async () => 'owner-1', language: async () => 'en' })(await input())).toMatchObject({ status: 'no_model' })
+    expect(await createSummarizer({ chat, account: async () => null, language: async () => 'en' })(await input())).toMatchObject({ status: 'no_model' })
   })
 
   it(`retries an unreadable answer ${SUMMARY_MAX_ATTEMPTS} times, then fails loud; a refusal is not retried`, async () => {
     const bad = vi.fn(async () => answer('nope'))
-    await expect(createSummarizer({ chat: bad, account: async () => 'o' })(await input())).rejects.toThrow(/could not be read/)
+    await expect(createSummarizer({ chat: bad, account: async () => 'o', language: async () => 'en' })(await input())).rejects.toThrow(/could not be read/)
     expect(bad).toHaveBeenCalledTimes(SUMMARY_MAX_ATTEMPTS)
     const refused = vi.fn(async () => {
       throw new LlmHttpError(500, 'boom')
     })
-    await expect(createSummarizer({ chat: refused, account: async () => 'o' })(await input())).rejects.toThrow(LlmHttpError)
+    await expect(createSummarizer({ chat: refused, account: async () => 'o', language: async () => 'en' })(await input())).rejects.toThrow(LlmHttpError)
     expect(refused).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the summary language (wish d0a0c775: no foreign script in summaries)', () => {
+  const input = async () => {
+    const s = await snap(sampleRepo(), '2026-11-12T14:00:00Z')
+    return { snapshot: s, delta: diffSnapshots(null, s), previous: null }
+  }
+
+  it("the prompt names the company owner's language, never a fixed English", async () => {
+    const [system] = buildSummaryMessages(await input(), 'de')
+    expect(system!.content).toContain('Write the whole text in German only.')
+    expect(system!.content).not.toContain('in English')
+  })
+
+  it("asks in the owner's language and refuses a summary in a foreign script (not stored, not retried)", async () => {
+    const chat = vi.fn(async (_: unknown) => answer({ ...GOOD, summary: 'Cart totals 已经 close to done.' }))
+    const language = vi.fn(async () => 'en')
+    await expect(createSummarizer({ chat, account: async () => 'owner-1', language })(await input())).rejects.toBeInstanceOf(OutputScriptError)
+    expect(language).toHaveBeenCalledWith('owner-1')
+    expect(chat).toHaveBeenCalledTimes(1)
+  })
+
+  it('a highlight in a foreign script is refused too', async () => {
+    const chat = vi.fn(async (_: unknown) => answer({ ...GOOD, highlights: [{ kind: 'pr', text: 'Корзина', ref: '#7' }] }))
+    await expect(createSummarizer({ chat, account: async () => 'o', language: async () => 'en' })(await input())).rejects.toBeInstanceOf(OutputScriptError)
   })
 })
 
@@ -163,7 +190,7 @@ describe('the summary input carries no file contents (plan §4)', () => {
     await t.service.tick()
     expect(t.summaries.calls).toHaveLength(1)
     const call = t.summaries.calls[0]!
-    const seen = JSON.stringify({ input: call, messages: buildSummaryMessages(call) })
+    const seen = JSON.stringify({ input: call, messages: buildSummaryMessages(call, 'en') })
     expect(seen).not.toContain('export const shop')
     expect(seen).not.toContain('# Shop')
     expect(seen).not.toContain('"name":"shop","version"')

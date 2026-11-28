@@ -18,6 +18,7 @@ import { DurableRunError } from '$lib/kernel/engines/durable'
 import { KernelError } from '$lib/kernel/errors'
 import { EmptyReplyError, emptyReplyCause, type FinalMessageStop } from '$lib/server/llm/empty-reply'
 import { assertPoolModel } from '$lib/server/llm/model-pool'
+import { compactionExtension } from './compaction-summary'
 import { dbScopedGatewayComplete } from './db-scoped-complete'
 import {
   OWNER_INPUT_ENTRY_KIND,
@@ -184,6 +185,8 @@ export type DurableHarnessDeps = {
   index: DurableConversationIndex
   /** Overrides the gateway completion call (tests inject fakes; never a real LLM). */
   complete?: GatewayCompleteFn
+  /** The language a person reads generated text in (compaction summaries); default: their preferred language. */
+  outputLanguage?: (userId: string) => Promise<string>
   /** Failure reporter (default: console.error with the [durable] prefix). */
   onReport?: (error: unknown) => void
   /**
@@ -227,6 +230,13 @@ export type DurableHarnessBox = {
   waitForSubmission(submissionId: string): Promise<SettledDurableTurn>
 }
 
+/** Production: the person's preferred language, read inside their own RLS session (no request is in scope). */
+async function defaultOutputLanguage(userId: string): Promise<string> {
+  const { withDbUser } = await import('$lib/server/db')
+  const { userOutputLanguage } = await import('$lib/server/llm/user-language')
+  return withDbUser(userId, () => userOutputLanguage(userId))
+}
+
 async function openDurableHarness(deps: DurableHarnessDeps): Promise<DurableHarnessBox> {
   const stateDir = resolveAgentStateDir(deps.env)
   mkdirSync(stateDir, { recursive: true })
@@ -245,8 +255,9 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
   const storage = await openNodeSqliteStorage(join(stateDir, 'agent.sqlite'), { prefix: 'pi_' })
 
   const index = deps.index
+  const complete = deps.complete ?? dbScopedGatewayComplete
   const models = createGatewayModelCatalog({
-    complete: deps.complete ?? dbScopedGatewayComplete,
+    complete,
     resolveCall: async (providerSessionId) => {
       const row = await index.resolveByProviderSession(providerSessionId)
       if (!row) {
@@ -264,6 +275,14 @@ async function openLocked(deps: DurableHarnessDeps, stateDir: string): Promise<D
   })
 
   const registry = createRegistry()
+  // Wish d0a0c775: compaction summaries are written in the person's language and script-checked.
+  registry.install(
+    compactionExtension({
+      complete,
+      conversation: (piConversationId) => index.resolveByPiConversationId(piConversationId),
+      language: deps.outputLanguage ?? defaultOutputLanguage,
+    }),
+  )
   const harness = await Harness.open(
     storage,
     {
