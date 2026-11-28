@@ -1,9 +1,9 @@
 import type { SheetEditor } from './editor'
 import {
+  BrowserUnavailableError,
   requireBrowserExecutable,
   type BrowserProbe,
-} from '../../../../modules/brand/extract/capture'
-import { BrowserUnavailableError } from '../../../../modules/brand/extract/capture-errors'
+} from '$lib/server/browser/executable'
 import { renderWorkbookHtml, type RenderHtmlOptions } from './print'
 
 /** The browser capability's own error, re-exported so module code and specs need no cross-module import. */

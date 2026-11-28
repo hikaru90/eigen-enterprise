@@ -1,4 +1,4 @@
-import type { BrowserProbe } from '../brand/extract/capture'
+import type { BrowserProbe } from '$lib/server/browser/executable'
 import type { ViewScope } from './view-token'
 import { z } from 'zod'
 import { KernelError } from '$lib/kernel/errors'
@@ -109,8 +109,7 @@ function pdfName(artifactName: string): string {
 }
 
 async function renderPdf(html: string, deps: ArtifactToolDeps['pdf'] = {}): Promise<Uint8Array> {
-  const { requireBrowserExecutable } = await import('../brand/extract/capture')
-  const { BrowserUnavailableError } = await import('../brand/extract/capture-errors')
+  const { requireBrowserExecutable, BrowserUnavailableError } = await import('$lib/server/browser/executable')
   let executablePath: string
   try {
     executablePath = await requireBrowserExecutable(deps.browser)

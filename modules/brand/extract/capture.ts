@@ -1,7 +1,5 @@
-import { constants } from 'node:fs'
-import { access } from 'node:fs/promises'
 import { chromium } from 'playwright'
-import { BrowserUnavailableError } from './capture-errors'
+import { requireBrowserExecutable, type BrowserProbe } from '$lib/server/browser/executable'
 import { normalizeColor, type ElementFacts, type SiteFacts } from './facts-digest'
 import { assertPublicUrl } from './ssrf-guard'
 
@@ -12,36 +10,7 @@ import { assertPublicUrl } from './ssrf-guard'
  * before anything else happens.
  */
 
-/** Where the headless browser lives and whether it can run (injectable for tests). */
-export type BrowserProbe = {
-  /**
-   * The chrome-headless-shell the server installed: ee sets EE_CAP_CHROMIUM for a
-   * workload whose ee.json declares the chromium capability (ee/src/capabilities.ts).
-   * Null on an install without it. A local run sets it in .env to use its own browser.
-   */
-  executablePath(): string | null
-  isExecutable(path: string): Promise<boolean>
-}
-
-export const defaultBrowserProbe: BrowserProbe = {
-  executablePath: () => process.env.EE_CAP_CHROMIUM || null,
-  isExecutable: (path) =>
-    access(path, constants.X_OK).then(
-      () => true,
-      () => false,
-    ),
-}
-
-/** The browser executable the capture launches, or BrowserUnavailableError when it isn't installed. */
-export async function requireBrowserExecutable(
-  probe: BrowserProbe = defaultBrowserProbe,
-): Promise<string> {
-  const executablePath = probe.executablePath()
-  if (executablePath === null || !(await probe.isExecutable(executablePath))) {
-    throw new BrowserUnavailableError(executablePath)
-  }
-  return executablePath
-}
+export { defaultBrowserProbe, requireBrowserExecutable, type BrowserProbe } from '$lib/server/browser/executable'
 
 export type CaptureDeps = { browser?: BrowserProbe }
 
