@@ -10,6 +10,7 @@ import {
   listQuestionTags,
   normaliseTags,
   TeamQuestionError,
+  type AnswerKnowledge,
   type TeamQuestionDeps,
 } from './service'
 
@@ -27,8 +28,15 @@ function setup() {
     { id: 'g-sales', name: 'Sales', memberIds: ['alex'] },
     { id: 'g-dev', name: 'Dev', memberIds: ['kim'] },
   ]
+  const remembered: AnswerKnowledge[] = []
   const deps: TeamQuestionDeps = {
     store: memoryTeamQuestionStore(),
+    brain: {
+      async rememberAnswer(a) {
+        remembered.push(a)
+        return { thoughtId: `t-${remembered.length}` }
+      },
+    },
     directory: {
       async get(id) {
         return MEMBERS.find((m) => m.id === id) ?? null
@@ -41,7 +49,7 @@ function setup() {
     now: () => new Date((t += 60_000)),
     newId: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
   }
-  return { deps, groups }
+  return { deps, groups, remembered }
 }
 
 const person = (userId: string) => ({ userId, via: 'person' as const })
@@ -146,6 +154,34 @@ describe('team questions', () => {
       { tag: 'hr', count: 2 },
       { tag: 'it', count: 1 },
     ])
+  })
+
+  it('an answer becomes brain knowledge: the question and the answer, linked to the question, in the answerer’s brain', async () => {
+    const { deps, remembered } = setup()
+    const q = await askQuestion(deps, person('ony'), { text: 'Wie buchen wir Reisekosten ab?', tags: [], audience: { kind: 'company' } })
+    const answered = await answerQuestion(deps, { userId: 'alex', via: 'assistant' }, q.id, '  Über das Spesenformular in Drive.  ')
+    expect(remembered).toEqual([
+      {
+        questionId: q.id,
+        answerId: answered.answers[0]!.id,
+        answererId: 'alex',
+        via: 'assistant',
+        question: 'Wie buchen wir Reisekosten ab?',
+        answer: 'Über das Spesenformular in Drive.',
+      },
+    ])
+  })
+
+  it('fails loud when the brain cannot take the answer in (the answer itself stays saved)', async () => {
+    const { deps } = setup()
+    deps.brain = {
+      rememberAnswer: async () => {
+        throw new Error('embedding down')
+      },
+    }
+    const q = await askQuestion(deps, person('ony'), { text: 'Q?', tags: [], audience: { kind: 'company' } })
+    await expect(answerQuestion(deps, person('alex'), q.id, 'A.')).rejects.toMatchObject({ code: 'brain_failed' })
+    expect((await getQuestion(deps, 'ony', q.id)).answers).toHaveLength(1)
   })
 
   it('only the asker closes; a closed question takes no answers', async () => {

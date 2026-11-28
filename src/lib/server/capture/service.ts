@@ -75,6 +75,8 @@ export type CaptureThoughtOptions = {
   capturedAt?: Date
   /** A thought category the person chose (see QueueCaptureOptions.category). */
   category?: string
+  /** An answer to this team question (QueueCaptureOptions.teamQuestionId). */
+  teamQuestionId?: string
 }
 
 async function decryptThoughtRow<
@@ -149,6 +151,7 @@ export async function captureThought(
     skipWorker: awaitEnrichment,
     capturedAt: options?.capturedAt,
     ...(options?.category ? { category: options.category } : {}),
+    ...(options?.teamQuestionId ? { teamQuestionId: options.teamQuestionId } : {}),
   })
 
   if (awaitEnrichment) {

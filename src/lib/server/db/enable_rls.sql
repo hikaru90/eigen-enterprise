@@ -638,3 +638,26 @@ CREATE POLICY thought_coworker_read ON thought
     coalesce(current_setting('app.current_user_id', true), '') <> ''
     AND EXISTS (SELECT 1 FROM "user" u WHERE u.id = thought.user_id AND u.kind = 'coworker')
   );
+
+-- Answers to team questions (drizzle/0203): readable by whoever reads the question.
+DROP POLICY IF EXISTS thought_team_question_read ON thought;
+CREATE POLICY thought_team_question_read ON thought
+  FOR SELECT
+  USING (
+    thought.team_question_id IS NOT NULL
+    AND coalesce(current_setting('app.current_user_id', true), '') <> ''
+    AND EXISTS (
+      SELECT 1 FROM team_questions q
+      WHERE q.id = thought.team_question_id
+        AND (
+          q.author_id = current_setting('app.current_user_id', true)
+          OR q.audience_kind = 'company'
+          OR current_setting('app.current_user_id', true) = ANY (q.audience_user_ids)
+          OR EXISTS (
+            SELECT 1 FROM member_group_member gm
+            WHERE gm.user_id = current_setting('app.current_user_id', true)
+              AND gm.group_id = ANY (q.audience_group_ids)
+          )
+        )
+    )
+  );

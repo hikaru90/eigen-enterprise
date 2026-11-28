@@ -4,8 +4,10 @@ import { thought, type MemoryAuthor } from '$lib/server/db/schema'
 /**
  * Whose thoughts a read reaches (plan/phase-ai-coworkers.md §7, C4):
  * - 'mine' — the reader's own Memory (every caller's default: unchanged);
- * - 'team' — the AI co-workers' thoughts (company-visible, drizzle/0171), never
- *   the reader's own and never a person's: a person's thoughts are theirs alone;
+ * - 'team' — the AI co-workers' thoughts (company-visible, drizzle/0171) and
+ *   colleagues' answers to team questions the reader can read (drizzle/0203: the
+ *   question's asker and audience), never the reader's own; any other thought of
+ *   a person is theirs alone;
  * - 'all'  — both.
  * The condition is part of the SQL that picks candidates, so access is decided
  * before anything is ranked; row level security holds underneath it. An author
@@ -25,7 +27,19 @@ export function thoughtReachCondition(
     ne(thought.userId, readerId),
     sql`EXISTS (SELECT 1 FROM "user" cw WHERE cw.id = ${thought.userId} AND cw.kind = 'coworker')`,
   )!
+  // Answers to team questions: the same audience rule as thought_team_question_read (0203).
+  const answers = and(
+    ne(thought.userId, readerId),
+    sql`${thought.teamQuestionId} IS NOT NULL AND EXISTS (
+      SELECT 1 FROM team_questions q
+      WHERE q.id = ${thought.teamQuestionId}
+        AND (q.author_id = ${readerId}
+          OR q.audience_kind = 'company'
+          OR ${readerId} = ANY (q.audience_user_ids)
+          OR EXISTS (SELECT 1 FROM member_group_member gm WHERE gm.user_id = ${readerId} AND gm.group_id = ANY (q.audience_group_ids))))`,
+  )!
+  const team = or(coworkers, answers)!
   if (reach === 'mine') return own
-  if (reach === 'team') return coworkers
-  return or(own, coworkers)!
+  if (reach === 'team') return team
+  return or(own, team)!
 }

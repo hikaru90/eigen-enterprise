@@ -28,8 +28,28 @@ export type QuestionDirectory = {
 
 export type QuestionGroup = { id: string; name: string; memberIds: string[] }
 
+/**
+ * An answer as brain knowledge (Contribute 057cd4d5 follow-up): the question and its
+ * answer go into the answerer's company brain as one thought linked to the question, so
+ * the assistant retrieves it. The thought is readable by exactly who reads the question
+ * (its audience, drizzle/0203) — never wider.
+ */
+export type AnswerKnowledge = {
+  questionId: string
+  answerId: string
+  answererId: string
+  via: QuestionVia
+  question: string
+  answer: string
+}
+
+export type TeamQuestionBrain = {
+  rememberAnswer(a: AnswerKnowledge): Promise<{ thoughtId: string }>
+}
+
 export type TeamQuestionDeps = {
   store: TeamQuestionStore
+  brain: TeamQuestionBrain
   directory: QuestionDirectory
   groups: { list(): Promise<QuestionGroup[]> }
   now?: () => Date
@@ -64,7 +84,7 @@ export type QuestionFilter = { tag?: string; status?: QuestionStatus | 'all'; fo
 
 export class TeamQuestionError extends Error {
   constructor(
-    readonly code: 'invalid' | 'not_found' | 'forbidden' | 'conflict',
+    readonly code: 'invalid' | 'not_found' | 'forbidden' | 'conflict' | 'brain_failed',
     message: string,
   ) {
     super(message)
@@ -240,8 +260,15 @@ export async function answerQuestion(d: TeamQuestionDeps, actor: QuestionActor, 
   if (body.length > ANSWER_MAX) throw new TeamQuestionError('invalid', `Keep the answer under ${ANSWER_MAX} characters.`)
   const { q, viewer, groups } = await visible(d, actor.userId, id)
   if (q.status !== 'open') throw new TeamQuestionError('conflict', 'This question is closed: it takes no new answers.')
-  const updated = await d.store.addAnswer({ id: newIdOf(d), questionId: q.id, authorId: actor.userId, body, createdVia: actor.via, createdAt: nowOf(d) })
+  const answerId = newIdOf(d)
+  const updated = await d.store.addAnswer({ id: answerId, questionId: q.id, authorId: actor.userId, body, createdVia: actor.via, createdAt: nowOf(d) })
   if (!updated) throw new TeamQuestionError('conflict', 'This question was closed meanwhile: it takes no new answers.')
+  try {
+    await d.brain.rememberAnswer({ questionId: q.id, answerId, answererId: actor.userId, via: actor.via, question: q.text, answer: body })
+  } catch (err) {
+    console.error('[team-questions] answer → brain failed', { questionId: q.id, answerId, error: err instanceof Error ? err.message : String(err) })
+    throw new TeamQuestionError('brain_failed', 'Your answer is saved under the question, but the company brain could not take it in. Try again later or tell an admin.')
+  }
   return one(d, viewer, updated, groups)
 }
 

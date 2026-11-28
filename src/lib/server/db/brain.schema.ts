@@ -262,6 +262,11 @@ export const thought = pgTable(
     enrichQueueError: text('enrich_queue_error'),
     /** Surface that queued this row (mcp, ui, api, eval). */
     captureSource: text('capture_source').$type<CaptureSource>(),
+    /**
+     * Set when this thought is an answer to a team question (drizzle/0203): the question and
+     * the answer as brain knowledge, readable by whoever reads the question (FK in SQL).
+     */
+    teamQuestionId: uuid('team_question_id'),
     /** Human vs agent authorship for UI labeling and optional filtering. */
     author: text('author').$type<MemoryAuthor>().notNull().default('user'),
     /** Resolved API key name when author is agent. */
