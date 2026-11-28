@@ -2,6 +2,18 @@
 
 Format: newest entries on top. Every milestone gets: what shipped, commit refs, what broke, decisions, what's next.
 
+## 2026-11-28 — Open points of the make-a-wish round fixed, board closed (owner: "fix the open points. also close all contributions that are still in progress")
+
+- **Board:** every in-progress wish on ee-one set to shipped (43; traces last, once T5 merged). Notes kept; the deck wish's note now names PowerPoint export.
+- **Merged (low-effort subagents):**
+  - PPTX export for decks: `artifacts.export_pptx` + "Export PowerPoint" in the artifact panel; each slide is rendered by the headless browser to a full-bleed PNG, its text goes into the speaker notes (slide text is not editable in PowerPoint); `pptxgenjs@4.0.1` (62f969e1).
+  - @mentions in the bell: migration 0205 `message_mentions` (recorded on post, replaced on edit, gone on delete; DMs record none), visibility re-checked on every inbox read; `notifications.inbox` / `.mark_read` gain a `mentions` list beside `items` (no new enum value → contract additive). Messages posted before this release have no stored mentions (674dac2c).
+  - Language + script check now also on repo summaries, module summaries and chat compaction (compaction written by our own `beforeCompact` hook on the company default chat model; a rejected compaction fails the task and keeps the full history) (560deb7d).
+  - Dashboard "What's happening": message counts come from the messages table, public channels only — DMs, group DMs and private channels never count; reactions/edits no longer count either (60fc9571).
+- **eCloud (`a86b1e5`, pushed, needs a Coolify redeploy):** a deleted company's backups and backup-key copy are kept **90 days** (owner decision), then the daily sweep deletes the backups and only afterwards the key copy (`backup_purge` job, `BACKUP_RETENTION_DAYS`); a failed purge keeps the key and fails loud. **Changed behaviour:** before, backups of deleted companies were kept forever. New dependency `@aws-sdk/client-s3`.
+- **Gate:** green on 9196d339 (one load timeout in the real-browser brand render spec on the first run; passed alone in 2 s and on rerun).
+- **Still open:** V0 spike on a real host → host agent update → ee-one disk move; release + install on ee-one; removing deprecated `handover.*` / `modelId` / `modelProvider` from 0.7.0 (on/after 2026-12-28).
+
 ## 2026-11-28 — Make-a-wish round: every open ee-one wish built, merged on main (owner: "integrate the ee-one contributions from the mcp and integrate all of them. make sure to finish the work in 'in progress' … use subagents on low"; plan `plan/contribute-round-2026-11-28.md`)
 
 - **Owner decisions (asked at the start):** Handover is deleted; all big wishes are built this round; Memory documents migrate into Drive for real. Later: "all company data should be encrypted at rest" → encrypted volume per hosted company (eCloud), **no encryption for self-hosted installs** ("we dont manage those installs"); web search on eigenInference through **Tavily** (Camofox and SearXNG considered, dropped).
