@@ -5,20 +5,26 @@ import {
   deleteAllMemoriesForUser,
 } from './delete-all-memories'
 
-const { getDbMock, deleteAllUserGraphVerticesMock } = vi.hoisted(() => ({
+const { getDbMock, deleteAllUserGraphVerticesMock, moveToTrashMock } = vi.hoisted(() => ({
   getDbMock: vi.fn(),
   deleteAllUserGraphVerticesMock: vi.fn(),
+  moveToTrashMock: vi.fn(),
 }))
 
 vi.mock('$lib/server/db', () => ({ getDb: getDbMock }))
 vi.mock('$lib/server/graph/age', () => ({
   deleteAllUserGraphVertices: deleteAllUserGraphVerticesMock,
 }))
+// Documents are Drive files: their files go to the Drive trash.
+vi.mock('../../../../modules/drive', () => ({
+  driveService: async () => ({ moveToTrash: moveToTrashMock }),
+}))
 
 describe('deleteAllMemoriesForUser', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     deleteAllUserGraphVerticesMock.mockResolvedValue(undefined)
+    moveToTrashMock.mockResolvedValue(undefined)
   })
 
   it('rejects wrong confirmation phrase', () => {
@@ -35,7 +41,8 @@ describe('deleteAllMemoriesForUser', () => {
     // `where` is awaited directly or continued with `.returning()` (notes, deliveries).
     const deleteWhere = vi.fn(() =>
       Object.assign(Promise.resolve(undefined), {
-        returning: vi.fn(async () => [{ id: 'n1' }]),
+        // The note n1 is a Drive document copied from the old text file n1: one note, not two.
+        returning: vi.fn(async () => [{ id: 'n1', copiedFrom: 'n1' }]),
       }),
     )
     const updateWhere = vi.fn().mockResolvedValue(undefined)
@@ -58,6 +65,7 @@ describe('deleteAllMemoriesForUser', () => {
 
     expect(result).toEqual({ thoughtsDeleted: 2, entitiesDeleted: 2, notesDeleted: 1 })
     expect(deleteWhere).toHaveBeenCalled()
+    expect(moveToTrashMock).toHaveBeenCalledWith({ kind: 'user', userId: 'u1' }, 'file', 'n1')
     expect(deleteAllUserGraphVerticesMock).toHaveBeenCalledWith('u1')
   })
 })
