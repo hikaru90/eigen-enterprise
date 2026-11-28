@@ -45,6 +45,8 @@ const NO_DICTATION: Record<string, string> = {
   'src/routes/(nucleus)/brand/editor/[setId]/+page.svelte': 'design token values (colours, sizes, font names)',
   'src/routes/(nucleus)/brand/extract/source-options.svelte': 'a web address (www.example.com)',
   'src/routes/(nucleus)/brand/extract/specimen-mini.svelte': 'a type specimen preview, not a form',
+  'src/routes/(nucleus)/messages/+page.svelte':
+    'the inline group-chat rename (a short name, Escape cancels), like the run title editor; the composers are their own components with dictation',
   'src/routes/(nucleus)/contribute/modules/+page.svelte': 'search-as-filter by module id or name',
   'src/routes/(nucleus)/m/email/layouts/[id]/+page.svelte': 'MJML/HTML layout source code',
   'src/routes/(nucleus)/m/email/marketing/lists/[id]/+page.svelte': 'CSV import of addresses',

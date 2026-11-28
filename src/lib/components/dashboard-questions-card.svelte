@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms'
   import { resolve } from '$app/paths'
   import ErrorNotice from '$lib/components/error-notice.svelte'
+  import DictationField from '$lib/voice/dictation-field.svelte'
   import type { TeamQuestionView } from '$lib/server/memory/team-questions/service'
 
   /**
@@ -15,6 +16,8 @@
 
   const page = resolve('/m/memory/questions')
   let errors = $state<Record<string, string>>({})
+  /** Each question's answer field, for its dictation control. */
+  let answerEls = $state<Record<string, HTMLInputElement | null>>({})
 </script>
 
 {#if questions.length > 0}
@@ -51,14 +54,17 @@
           >
             <input type="hidden" name="question_id" value={q.id} />
             <label class="sr-only" for="dash-answer-{q.id}">Your answer</label>
-            <input
-              id="dash-answer-{q.id}"
-              name="text"
-              required
-              maxlength="4000"
-              placeholder="Your answer"
-              class="h-8 min-w-0 flex-1 rounded-full border bg-background px-3 text-sm"
-            />
+            <DictationField field={answerEls[q.id] ?? null} kind="input" testid="dashboard-question-voice" class="min-w-0 flex-1">
+              <input
+                bind:this={answerEls[q.id]}
+                id="dash-answer-{q.id}"
+                name="text"
+                required
+                maxlength="4000"
+                placeholder="Your answer"
+                class="h-8 w-full min-w-0 rounded-full border bg-background py-0 pr-9 pl-3 text-sm"
+              />
+            </DictationField>
             <button
               type="submit"
               class="inline-flex h-8 shrink-0 items-center rounded-full bg-primary px-3.5 text-sm font-medium text-primary-foreground outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring"
