@@ -63,7 +63,8 @@ describe('share dialog: picking is adding', () => {
     await page.getByTestId('drive-share-pick').fill('cy@')
     await expect.element(page.getByTestId('drive-share-candidate')).toHaveTextContent('Cy Member')
     expect(page.getByTestId('drive-share-candidate').elements()).toHaveLength(1)
-    await userEvent.keyboard('{Enter}')
+    // Enter in the search field itself: the dialog's open focus may land after the fill under load.
+    await userEvent.type(page.getByTestId('drive-share-pick'), '{Enter}')
     await expect.element(page.getByTestId('drive-share-row').nth(1)).toHaveTextContent('Cy Member')
     // The search clears once its match is picked.
     await expect.element(page.getByTestId('drive-share-pick')).toHaveValue('')
