@@ -167,6 +167,7 @@ describe('buildKernel wires the owner-chosen approval mode', () => {
       'artifacts.create': 'internal',
       'artifacts.update': 'internal',
       'artifacts.export_pdf': 'internal',
+      'artifacts.export_pptx': 'internal',
       'drive.sheet_merge': 'internal',
       'drive.sheet_names_delete': 'internal',
       'drive.sheet_names_set': 'internal',
@@ -423,6 +424,7 @@ describe('buildKernel (in-memory fakes, no DB)', () => {
     expect([...APPROVAL_REQUIRED_TOOLS].sort()).toEqual([
       'artifacts.create',
       'artifacts.export_pdf',
+      'artifacts.export_pptx',
       'artifacts.update',
       'assistant.conversation_rename',
       'brand.set_activate',

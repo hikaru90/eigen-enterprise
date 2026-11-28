@@ -38,7 +38,21 @@ export type ArtifactToolDeps = {
   /** Mints the sandboxed view address for a person (src/lib/server/drive-view.ts). */
   viewUrl?: (scope: ViewScope) => Promise<string>
   pdf?: { browser?: BrowserProbe; launch?: PdfBrowserLauncher }
+  pptx?: PptxRenderDeps
 }
+
+/** The slice of a Playwright page the PowerPoint export drives (tests inject a fake). */
+export type PptxPage = {
+  route(pattern: string, handler: (route: { request(): { url(): string }; continue(): Promise<void>; abort(): Promise<void> }) => Promise<void>): Promise<void>
+  setContent(html: string, opts: { waitUntil: 'load'; timeout: number }): Promise<void>
+  emulateMedia(opts: { media: 'print' }): Promise<void>
+  evaluate<T>(fn: () => T): Promise<T>
+  locator(selector: string): { nth(i: number): { screenshot(opts: { type: 'png'; timeout: number }): Promise<Uint8Array> } }
+}
+export type PptxBrowser = { newPage(opts: { viewport: { width: number; height: number } }): Promise<PptxPage>; close(): Promise<void> }
+export type PptxRenderDeps = { browser?: BrowserProbe; launch?: (executablePath: string) => Promise<PptxBrowser> }
+
+export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
 const ROLES = ['admin', 'member', 'agent']
 const PDF_TIMEOUT_MS = 30_000
@@ -104,20 +118,30 @@ async function readArtifact(drive: DriveService, actor: Actor, fileId: string) {
   return { file, html: new TextDecoder().decode(bytes) }
 }
 
-function pdfName(artifactName: string): string {
-  return `${artifactName.replace(/\.(deck\.)?html?$/i, '')}.pdf`
+function exportName(artifactName: string, ext: 'pdf' | 'pptx'): string {
+  return `${artifactName.replace(/\.(deck\.)?html?$/i, '')}.${ext}`
+}
+
+async function browserPath(probe: BrowserProbe | undefined, what: string): Promise<string> {
+  const { requireBrowserExecutable, BrowserUnavailableError } = await import('$lib/server/browser/executable')
+  try {
+    return await requireBrowserExecutable(probe)
+  } catch (err) {
+    if (err instanceof BrowserUnavailableError)
+      throw new DriveError('unavailable', `Exporting to ${what} needs a browser on the server, and this install doesn’t have one.`, undefined, { cause: err })
+    throw err
+  }
+}
+
+/** The server never fetches for an artifact: inline content only (decision, plan/phase-artifacts.md). */
+const inlineOnly = async (route: { request(): { url(): string }; continue(): Promise<void>; abort(): Promise<void> }) => {
+  const url = route.request().url()
+  if (url.startsWith('data:') || url === 'about:blank') await route.continue()
+  else await route.abort()
 }
 
 async function renderPdf(html: string, deps: ArtifactToolDeps['pdf'] = {}): Promise<Uint8Array> {
-  const { requireBrowserExecutable, BrowserUnavailableError } = await import('$lib/server/browser/executable')
-  let executablePath: string
-  try {
-    executablePath = await requireBrowserExecutable(deps.browser)
-  } catch (err) {
-    if (err instanceof BrowserUnavailableError)
-      throw new DriveError('unavailable', 'Exporting to PDF needs a browser on the server, and this install doesn’t have one.', undefined, { cause: err })
-    throw err
-  }
+  const executablePath = await browserPath(deps.browser, 'PDF')
   const launch: PdfBrowserLauncher =
     deps.launch ??
     (async (path) => {
@@ -127,12 +151,7 @@ async function renderPdf(html: string, deps: ArtifactToolDeps['pdf'] = {}): Prom
   const browser = await launch(executablePath)
   try {
     const page = await browser.newPage()
-    // The server never fetches for an artifact: inline content only (decision, plan/phase-artifacts.md).
-    await page.route('**/*', async (route) => {
-      const url = route.request().url()
-      if (url.startsWith('data:') || url === 'about:blank') await route.continue()
-      else await route.abort()
-    })
+    await page.route('**/*', inlineOnly)
     await page.setContent(html, { waitUntil: 'load', timeout: PDF_TIMEOUT_MS })
     return new Uint8Array(await page.pdf({ printBackground: true, preferCSSPageSize: true }))
   } finally {
@@ -155,7 +174,60 @@ export async function exportArtifactPdf(
   const { file, html } = await readArtifact(drive, actor, fileId)
   const bytes = await renderPdf(html, pdf)
   const folder = folderId === undefined ? file.folderId : folderId
-  const saved = await drive.upload(actor, folder, { name: pdfName(file.name), bytes, mime: 'application/pdf' }, 'replace')
+  const saved = await drive.upload(actor, folder, { name: exportName(file.name, 'pdf'), bytes, mime: 'application/pdf' }, 'replace')
+  return { file: saved, source: { id: file.id, name: file.name } }
+}
+
+/**
+ * A deck's slides as PNGs (each 1920×1080 stage as it prints) plus each
+ * slide's visible text. Slides are free HTML, so an image is what keeps
+ * their look in PowerPoint; the text rides along as speaker notes.
+ */
+async function renderSlides(html: string, deps: PptxRenderDeps = {}): Promise<Array<{ png: Uint8Array; text: string }>> {
+  const executablePath = await browserPath(deps.browser, 'PowerPoint')
+  const launch =
+    deps.launch ??
+    (async (path: string) => {
+      const { chromium } = await import('playwright')
+      return (await chromium.launch({ headless: true, executablePath: path })) as unknown as PptxBrowser
+    })
+  const browser = await launch(executablePath)
+  try {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } })
+    await page.route('**/*', inlineOnly)
+    await page.emulateMedia({ media: 'print' })
+    await page.setContent(html, { waitUntil: 'load', timeout: PDF_TIMEOUT_MS })
+    const texts = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.ee-slide')].map((el) => el.innerText.trim()))
+    const out: Array<{ png: Uint8Array; text: string }> = []
+    for (let i = 0; i < texts.length; i++) {
+      const png = await page.locator('.ee-slide').nth(i).screenshot({ type: 'png', timeout: PDF_TIMEOUT_MS })
+      out.push({ png: new Uint8Array(png), text: texts[i]! })
+    }
+    return out
+  } finally {
+    await browser.close()
+  }
+}
+
+/** artifacts.export_pptx's work, shared with the panel's Export PowerPoint button: one full-bleed image slide per deck slide. */
+export async function exportArtifactPptx(drive: DriveService, actor: Actor, fileId: string, folderId: string | null | undefined, deps?: PptxRenderDeps) {
+  const { file, html } = await readArtifact(drive, actor, fileId)
+  if (artifactKindOf(file.name) !== 'deck') throw new DriveError('invalid', `“${file.name}” is a page, not a deck; only a deck exports to PowerPoint (a page exports to PDF).`)
+  const rendered = await renderSlides(html, deps)
+  if (rendered.length !== deckSlides(html).length) throw new Error(`artifacts.export_pptx: rendered ${rendered.length} slides of ${deckSlides(html).length}`)
+  const { default: PptxGenJS } = await import('pptxgenjs')
+  const pptx = new PptxGenJS()
+  pptx.defineLayout({ name: 'EE_1920', width: 13.333, height: 7.5 })
+  pptx.layout = 'EE_1920'
+  pptx.title = file.name.replace(/\.deck\.html$/i, '')
+  for (const s of rendered) {
+    const slide = pptx.addSlide()
+    slide.addImage({ data: `data:image/png;base64,${Buffer.from(s.png).toString('base64')}`, x: 0, y: 0, w: '100%', h: '100%' })
+    if (s.text) slide.addNotes(s.text)
+  }
+  const bytes = new Uint8Array((await pptx.write({ outputType: 'nodebuffer' })) as Buffer)
+  const folder = folderId === undefined ? file.folderId : folderId
+  const saved = await drive.upload(actor, folder, { name: exportName(file.name, 'pptx'), bytes, mime: PPTX_MIME }, 'replace')
   return { file: saved, source: { id: file.id, name: file.name } }
 }
 
@@ -285,6 +357,24 @@ export function createArtifactTools(deps: ArtifactToolDeps): ToolDescriptor[] {
       handler: async (ctx, input) => {
         const i = exportInput.parse(input)
         return exportArtifactPdf(await service(), actorOf(ctx), i.file_id, i.folder_id, deps.pdf)
+      },
+    },
+    {
+      name: 'artifacts.export_pptx',
+      module: DRIVE_MODULE_ID,
+      summary:
+        'Export a deck artifact (file_id) to PowerPoint (.pptx) and save it in Drive next to it (or in folder_id): each slide becomes a full-bleed 16:9 image of the slide exactly as it looks, with the slide’s text as its speaker notes. Decks only (a page exports with artifacts.export_pdf). Only what is inside the deck renders; the server fetches nothing.',
+      auditClass: 'mutate',
+      approvalRisk: 'internal',
+      activity: (input: z.infer<typeof exportInput>, output: unknown) => {
+        const name = (output as { file?: { name?: string } } | undefined)?.file?.name
+        return name ? `Exported ${name} to Drive` : `Tried to export artifact ${input.file_id} to PowerPoint`
+      },
+      inputSchema: exportInput,
+      permission: { roles: ROLES },
+      handler: async (ctx, input) => {
+        const i = exportInput.parse(input)
+        return exportArtifactPptx(await service(), actorOf(ctx), i.file_id, i.folder_id, deps.pptx)
       },
     },
   ]

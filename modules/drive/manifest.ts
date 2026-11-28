@@ -179,9 +179,9 @@ export const DRIVE_WRITE_TOOLS = [
 ] as const
 
 /** Artifacts (./artifact-tools.ts, plan/phase-artifacts.md): HTML pages and slide decks agents write; the artifacts namespace. */
-export const ARTIFACT_TOOL_NAMES = ['artifacts.create', 'artifacts.update', 'artifacts.read', 'artifacts.export_pdf'] as const
+export const ARTIFACT_TOOL_NAMES = ['artifacts.create', 'artifacts.update', 'artifacts.read', 'artifacts.export_pdf', 'artifacts.export_pptx'] as const
 /** The artifact writes: each waits on the approval mode (wired in modules/index.ts). */
-export const ARTIFACT_WRITE_TOOLS = ['artifacts.create', 'artifacts.update', 'artifacts.export_pdf'] as const
+export const ARTIFACT_WRITE_TOOLS = ['artifacts.create', 'artifacts.update', 'artifacts.export_pdf', 'artifacts.export_pptx'] as const
 
 export const DRIVE_TOOL_NAMES = [
   'drive.list',

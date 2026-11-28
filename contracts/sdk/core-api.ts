@@ -45,6 +45,13 @@ export type CoreApiTools = {
     }
     output: unknown
   }
+  "artifacts.export_pptx": {
+    input: {
+      "file_id": string
+      "folder_id"?: string | null
+    }
+    output: unknown
+  }
   "artifacts.read": {
     input: {
       "file_id": string
@@ -5498,6 +5505,7 @@ export const CORE_API_TOOL_NAMES: readonly CoreApiToolName[] = [
   "agent.list",
   "artifacts.create",
   "artifacts.export_pdf",
+  "artifacts.export_pptx",
   "artifacts.read",
   "artifacts.update",
   "assistant.conversation_rename",

@@ -321,6 +321,7 @@ export const UI_PARITY: Record<string, UiParity> = {
   '/api/drive/apps/[previewId] DELETE': tool('drive.app_stop'),
   '/api/drive/archive DELETE': tool('drive.unarchive'),
   '/api/drive/artifacts/[id]/pdf POST': tool('artifacts.export_pdf'),
+  '/api/drive/artifacts/[id]/pptx POST': tool('artifacts.export_pptx'),
   '/api/drive/archive POST': tool('drive.archive'),
   '/api/drive/archive/suggestions POST': tool('drive.suggest_archive'),
   '/api/drive/batch/delete-forever POST': tool('drive.delete_forever_many'),

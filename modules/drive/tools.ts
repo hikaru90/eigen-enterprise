@@ -5,6 +5,7 @@ import { KernelError } from '$lib/kernel/errors'
 import { actsAsMember } from '$lib/kernel/principals'
 import type { ToolContext, ToolDescriptor } from '$lib/kernel/types'
 import type { ExportPdfDeps } from '$lib/office/xlsx/print-pdf'
+import type { PptxRenderDeps } from './artifact-tools'
 import { roleCan } from '$lib/server/auth/capabilities'
 import type { MemberRole } from '$lib/server/auth/roles'
 import { EeClient } from '$lib/server/ee/client'
@@ -61,6 +62,8 @@ export type DriveToolDeps = {
   sheetLive?: () => Promise<SheetLive>
   /** Chromium launcher / probe behind drive.sheet_export_pdf and artifacts.export_pdf (tests inject a fake). */
   pdfDeps?: ExportPdfDeps
+  /** Chromium launcher / probe behind artifacts.export_pptx (renders each slide to an image; tests inject a fake). */
+  pptxDeps?: PptxRenderDeps
   /** The sandboxed view address behind artifacts.read view_url (tests inject a fake). */
   viewUrl?: (scope: ViewScope) => Promise<string>
 }
@@ -361,6 +364,6 @@ export function createDriveTools(opts: DriveToolDeps = {}): ToolDescriptor[] {
     }),
     ...createDriveSheetRulesTools({ service, sheetLive }),
     ...createDriveSheetLiveTools({ sheetLive: opts.sheetLive ?? liveSheetLive }),
-    ...createArtifactTools({ service, viewUrl: opts.viewUrl ?? liveViewUrl, ...(opts.pdfDeps ? { pdf: opts.pdfDeps } : {}) }),
+    ...createArtifactTools({ service, viewUrl: opts.viewUrl ?? liveViewUrl, ...(opts.pdfDeps ? { pdf: opts.pdfDeps } : {}), ...(opts.pptxDeps ? { pptx: opts.pptxDeps } : {}) }),
   ]
 }

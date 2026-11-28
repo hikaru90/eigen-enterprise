@@ -2,7 +2,7 @@
  * The artifact beside the chat (plan/phase-artifacts.md): when the assistant
  * creates or changes an artifact (a tool step's `artifact`), the panel opens
  * it rendered — sandboxed, from a fresh view address — and loads it again on
- * every later change. Explicit calls only (show/close/exportPdf), no effects.
+ * every later change. Explicit calls only (show/close/exportPdf/exportPptx), no effects.
  */
 
 export type ArtifactPanelKind = 'page' | 'deck'
@@ -79,17 +79,26 @@ export class ArtifactPanel {
   }
 
   /** Export PDF: saved in Drive next to the artifact (= artifacts.export_pdf). */
-  async exportPdf(): Promise<void> {
+  exportPdf(): Promise<void> {
+    return this.#export('pdf', 'The PDF could not be made.')
+  }
+
+  /** Export PowerPoint (decks): saved in Drive next to the deck (= artifacts.export_pptx). */
+  exportPptx(): Promise<void> {
+    return this.#export('pptx', 'The PowerPoint file could not be made.')
+  }
+
+  async #export(format: 'pdf' | 'pptx', failure: string): Promise<void> {
     const fileId = this.fileId
     if (!fileId) return
     this.exported = { status: 'exporting' }
     try {
-      const res = await this.#fetch(`/api/drive/artifacts/${encodeURIComponent(fileId)}/pdf`, { method: 'POST' })
-      if (!res.ok) throw new Error(await messageOf(res, 'The PDF could not be made.'))
+      const res = await this.#fetch(`/api/drive/artifacts/${encodeURIComponent(fileId)}/${format}`, { method: 'POST' })
+      if (!res.ok) throw new Error(await messageOf(res, failure))
       const body = (await res.json()) as { file: { id: string; name: string } }
       if (this.fileId === fileId) this.exported = { status: 'done', fileId: body.file.id, name: body.file.name }
     } catch (err) {
-      if (this.fileId === fileId) this.exported = { status: 'failed', message: err instanceof Error ? err.message : 'The PDF could not be made.' }
+      if (this.fileId === fileId) this.exported = { status: 'failed', message: err instanceof Error ? err.message : failure }
     }
   }
 }
