@@ -50,7 +50,7 @@
   // Page data of the first load decides, like the beat: a switch takes effect on the next full load.
   // svelte-ignore state_referenced_locally
   const selfPresence = setSelfPresence(
-    data.user && data.liveFeeds?.presence ? new SelfPresence({ fetch: (input, init) => fetch(input, init) }) : null,
+    data.user && data.liveFeeds?.presence ? new SelfPresence({ fetch: (input, init) => fetch(input, init), hidden: () => document.visibilityState === 'hidden' }) : null,
   )
 
   // Where everyone is working (plan/phase-multiplayer-presence.md): every beat

@@ -20,7 +20,7 @@ const settle = () => new Promise((r) => setTimeout(r, 0))
 
 describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef6be1)', () => {
   it('knows nothing until the first heartbeat answers', () => {
-    const self = new SelfPresence({ fetch: vi.fn<SelfPresenceFetch>() })
+    const self = new SelfPresence({ hidden: () => false, fetch: vi.fn<SelfPresenceFetch>() })
     expect(self.view).toBeNull()
     expect(self.error).toBeNull()
     expect(self.saving).toBe(false)
@@ -30,7 +30,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
     const fetch = vi.fn<SelfPresenceFetch>(async () =>
       answer(200, { presence: view({ status: 'dnd', doNotDisturb: true }) }),
     )
-    const self = new SelfPresence({ fetch })
+    const self = new SelfPresence({ hidden: () => false, fetch })
     self.beat({ clientId: 'tab-0123456789', state: 'active', where: HERE })
     await settle()
     expect(fetch).toHaveBeenCalledWith('/api/messages/presence', {
@@ -44,7 +44,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
 
   it('a refused heartbeat is shown as an error, never hidden', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const self = new SelfPresence({
+    const self = new SelfPresence({ hidden: () => false,
       fetch: async () => answer(403, { error: 'only members of the company have a presence' }),
     })
     self.beat({ clientId: 'tab-0123456789', state: 'active', where: HERE })
@@ -56,7 +56,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
 
   it('a heartbeat that cannot reach the server is shown as an error', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const self = new SelfPresence({
+    const self = new SelfPresence({ hidden: () => false,
       fetch: async () => Promise.reject(new TypeError('Failed to fetch')),
     })
     self.beat({ clientId: 'tab-0123456789', state: 'active', where: HERE })
@@ -65,10 +65,32 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
     err.mockRestore()
   })
 
+  it('a beat that fails once the page is hidden (a navigation aborted it) is no error', async () => {
+    // Navigating away sends the page's last beats (idle, gone); the browser aborts them with
+    // the page. The server's 90 s window runs out on its own.
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const self = new SelfPresence({ hidden: () => true, fetch: async () => Promise.reject(new TypeError('Failed to fetch')) })
+    self.beat({ clientId: 'tab-0123456789', state: 'gone', where: null })
+    self.beat({ clientId: 'tab-0123456789', state: 'idle', where: HERE })
+    await settle()
+    expect(self.error).toBeNull()
+    expect(err).not.toHaveBeenCalled()
+    err.mockRestore()
+  })
+
+  it('a hidden page’s beat the server refuses is still shown', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const self = new SelfPresence({ hidden: () => true, fetch: async () => answer(500, { error: 'tracker down' }) })
+    self.beat({ clientId: 'tab-0123456789', state: 'idle', where: HERE })
+    await settle()
+    expect(self.error?.error).toBe('tracker down')
+    err.mockRestore()
+  })
+
   it('Do not disturb is saved with PUT and the answer becomes my status', async () => {
     let resolve!: (r: Response) => void
     const fetch = vi.fn<SelfPresenceFetch>(() => new Promise<Response>((r) => (resolve = r)))
-    const self = new SelfPresence({ fetch })
+    const self = new SelfPresence({ hidden: () => false, fetch })
     const saved = self.setDoNotDisturb(true)
     expect(self.saving).toBe(true)
     expect(fetch).toHaveBeenCalledWith('/api/messages/presence', {
@@ -87,7 +109,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
       attempted: 'Switching Do not disturb (/api/messages)',
       nextSteps: ['Read the journal.'],
     }
-    const self = new SelfPresence({
+    const self = new SelfPresence({ hidden: () => false,
       fetch: async () => answer(500, { error: 'tracker down', agent }),
     })
     self.receive(view())
@@ -98,7 +120,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
   })
 
   it('a status from elsewhere (the Messages feed) replaces mine and clears an old error', async () => {
-    const self = new SelfPresence({ fetch: async () => answer(500, { error: 'tracker down' }) })
+    const self = new SelfPresence({ hidden: () => false, fetch: async () => answer(500, { error: 'tracker down' }) })
     await self.setDoNotDisturb(true)
     self.receive(view({ status: 'in_call' }))
     expect(self.view?.status).toBe('in_call')
@@ -106,7 +128,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
   })
 
   it('Share where I am is unknown until the server says it, then follows every answer', () => {
-    const self = new SelfPresence({ fetch: vi.fn<SelfPresenceFetch>() })
+    const self = new SelfPresence({ hidden: () => false, fetch: vi.fn<SelfPresenceFetch>() })
     expect(self.shareWhere).toBeNull()
     self.receive({ ...view(), shareWhere: false })
     expect(self.shareWhere).toBe(false)
@@ -118,7 +140,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
   it('Share where I am is saved with PUT …/presence/where and the answer becomes my status', async () => {
     let resolve!: (r: Response) => void
     const fetch = vi.fn<SelfPresenceFetch>(() => new Promise<Response>((r) => (resolve = r)))
-    const self = new SelfPresence({ fetch })
+    const self = new SelfPresence({ hidden: () => false, fetch })
     self.receive({ ...view(), shareWhere: true })
     const saved = self.setShareWhere(false)
     expect(self.saving).toBe(true)
@@ -134,7 +156,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
   })
 
   it('a refused Share where I am keeps the switch as it was and says why', async () => {
-    const self = new SelfPresence({ fetch: async () => answer(500, { error: 'tracker down' }) })
+    const self = new SelfPresence({ hidden: () => false, fetch: async () => answer(500, { error: 'tracker down' }) })
     self.receive({ ...view(), shareWhere: true })
     await self.setShareWhere(false)
     expect(self.shareWhere).toBe(true)
@@ -143,7 +165,7 @@ describe('SelfPresence (my own status, shown in the main nav — Contribute e4ef
   })
 
   it('a Share where I am that cannot reach the server says so', async () => {
-    const self = new SelfPresence({ fetch: async () => Promise.reject(new TypeError('Failed to fetch')) })
+    const self = new SelfPresence({ hidden: () => false, fetch: async () => Promise.reject(new TypeError('Failed to fetch')) })
     await self.setShareWhere(true)
     expect(self.error?.error).toBe('Sharing where you are could not be saved: Failed to fetch')
   })

@@ -40,7 +40,13 @@ export class SelfPresence {
   #saving = $state(false)
   #shareWhere = $state<boolean | null>(null)
 
-  constructor(private readonly env: { fetch: SelfPresenceFetch }) {}
+  constructor(
+    private readonly env: {
+      fetch: SelfPresenceFetch
+      /** The page is hidden — on a navigation, by the time the browser aborts its last beats. */
+      hidden: () => boolean
+    },
+  ) {}
 
   /** My status, or null until the first heartbeat answers. */
   get view(): PresenceView | null {
@@ -90,6 +96,10 @@ export class SelfPresence {
         console.error('[presence] heartbeat refused', res.status, this.#error.error)
       })
       .catch((err: unknown) => {
+        // A beat that fails once the page is hidden went out with the page: the browser aborts
+        // a navigating page's last beats (idle, gone). That is the page leaving, not a failure —
+        // the server's window runs out on its own, and the next visible beat reports an outage.
+        if (this.env.hidden()) return
         this.#error = { error: `Status could not be updated: ${reason(err)}`, agent: null }
         console.error('[presence] heartbeat failed', err)
       })

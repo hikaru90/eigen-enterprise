@@ -1,6 +1,7 @@
 import { expect, test, type BrowserContext, type Page } from './e2e-test'
 import postgres from 'postgres'
 import { registerUser } from './test-helpers'
+import { becomeCompanyOwner, type CompanyOwnerSwap } from './company-owner'
 
 /**
  * Phase-cohesion C2 proof: one shell. As an admin, click every navigation
@@ -20,6 +21,14 @@ const GATEWAY_BASE_URL = `http://127.0.0.1:${process.env.MOCK_GATEWAY_PORT ?? 51
 
 let _sql: postgres.Sql | null = null
 const sql = () => (_sql ??= postgres(DATABASE_URL!, { prepare: false }))
+// The Ask bar routes through Jev on the company's provider — the owner's (company-owner.ts).
+// The walk's admin becomes the owner so Jev answers from the mock gateway, not from the real
+// key of whatever owner the shared test DB has (real Jev found "Hello" unsure: 0.46).
+let owner: CompanyOwnerSwap | null = null
+test.afterEach(async () => {
+  await owner?.restore()
+  owner = null
+})
 test.afterAll(async () => {
   await _sql?.end()
 })
@@ -28,6 +37,7 @@ async function newAdmin(context: BrowserContext, page: Page): Promise<void> {
   const { email } = await registerUser(context, page, { emailDomain: 'test.eigen' })
   const updated = await sql()`update "user" set role = 'admin' where email = ${email} returning id`
   if (updated.length !== 1) throw new Error(`could not promote ${email} to admin`)
+  owner = await becomeCompanyOwner(email)
   const saved = await page.request.post('/api/onboarding/provider', {
     data: {
       provider: 'openrouter',
