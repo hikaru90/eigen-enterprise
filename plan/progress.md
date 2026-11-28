@@ -19,7 +19,7 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
 
 ## 2026-11-28 — Open points of the make-a-wish round fixed, board closed (owner: "fix the open points. also close all contributions that are still in progress")
 
-- **Board:** every in-progress wish on ee-one set to shipped (43; traces last, once T5 merged). Notes kept; the deck wish's note now names PowerPoint export.
+- **Board:** every in-progress wish on ee-one set to shipped (43). Notes kept; the deck wish's note now names PowerPoint export.
 - **Merged (low-effort subagents):**
   - PPTX export for decks: `artifacts.export_pptx` + "Export PowerPoint" in the artifact panel; each slide is rendered by the headless browser to a full-bleed PNG, its text goes into the speaker notes (slide text is not editable in PowerPoint); `pptxgenjs@4.0.1` (62f969e1).
   - @mentions in the bell: migration 0205 `message_mentions` (recorded on post, replaced on edit, gone on delete; DMs record none), visibility re-checked on every inbox read; `notifications.inbox` / `.mark_read` gain a `mentions` list beside `items` (no new enum value → contract additive). Messages posted before this release have no stored mentions (674dac2c).
@@ -27,6 +27,12 @@ Format: newest entries on top. Every milestone gets: what shipped, commit refs, 
   - Dashboard "What's happening": message counts come from the messages table, public channels only — DMs, group DMs and private channels never count; reactions/edits no longer count either (60fc9571).
 - **eCloud (`a86b1e5`, pushed, needs a Coolify redeploy):** a deleted company's backups and backup-key copy are kept **90 days** (owner decision), then the daily sweep deletes the backups and only afterwards the key copy (`backup_purge` job, `BACKUP_RETENTION_DAYS`); a failed purge keeps the key and fails loud. **Changed behaviour:** before, backups of deleted companies were kept forever. New dependency `@aws-sdk/client-s3`.
 - **Gate:** green on 9196d339 (one load timeout in the real-browser brand render spec on the first run; passed alone in 2 s and on rerun).
+- **Traces finished (f27c3cc1):** one-time owner notice (`traces.notice_get` / `.notice_seen`, migration 0204), failed company modules become Tier A spans, hub tool `trace_hub.release_health` says halt for a release that was rolled back or broke a module (the wave rollout U6 must call it once built); `traces.settings_set` / `.withdraw` accept the real owner from the CLI (registry roles owner+admin, company role checked in the tool).
+- **Bugs the e2e run found (all this round's):**
+  - AI co-workers never started at boot and the What's happening digest failed on its tick: both read with `getDb()` outside a request → `companyDb()` (ae59c6d7).
+  - Every call stayed "connecting" in the harness: the new presence stream made a page hold 3 long-lived streams, main tab + call tab hit the HTTP/1.1 limit of 6 and the LiveKit module never loaded; the sidebar streams now open only where the shell shows (a8ab6cfd). Production is HTTP/2 behind Caddy, but several plain-HTTP tabs could still hit it (one shared stream across tabs would end it — not built).
+  - Shell walk: Memory's new front page; the walk now becomes the company owner so Jev answers from the mock; aborted presence beats on page hide are no longer reported as errors (144c89ac).
+- **e2e:** full suite green on main (77 passed, 5 skipped).
 - **Still open:** V0 spike on a real host → host agent update → ee-one disk move; release + install on ee-one; removing deprecated `handover.*` / `modelId` / `modelProvider` from 0.7.0 (on/after 2026-12-28).
 
 ## 2026-11-28 — Make-a-wish round: every open ee-one wish built, merged on main (owner: "integrate the ee-one contributions from the mcp and integrate all of them. make sure to finish the work in 'in progress' … use subagents on low"; plan `plan/contribute-round-2026-11-28.md`)
