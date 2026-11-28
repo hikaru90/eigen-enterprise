@@ -1,6 +1,6 @@
+import type { SlotTarget } from './slots'
 import { describe, expect, it, vi } from 'vitest'
 import { LlmNotConfiguredError } from './errors'
-import type { SlotTarget } from './slots'
 import { llmWebSearch, type WebSearchDeps } from './web-search'
 
 function target(pool: 'openrouter' | 'opper' | null): SlotTarget {
@@ -12,6 +12,12 @@ function target(pool: 'openrouter' | 'opper' | null): SlotTarget {
     pool,
     route: null,
   }
+}
+
+const noTavily = {
+  tavilyKey: () => null,
+  capCheck: async () => {},
+  tavily: { fetch: (() => { throw new Error('no tavily in this test') }) as unknown as typeof fetch, now: () => 0, logCall: async () => {} },
 }
 
 const response = {
@@ -32,7 +38,7 @@ const response = {
 describe('llmWebSearch', () => {
   it('searches through the gateway with the web plugin and returns the cited sources', async () => {
     const complete = vi.fn(async () => response)
-    const deps: WebSearchDeps = { resolveChat: async () => target('openrouter'), complete }
+    const deps: WebSearchDeps = { ...noTavily, resolveChat: async () => target('openrouter'), complete }
     const out = await llmWebSearch({ userId: 'u1', query: 'kindred digital labs', maxResults: 50 }, deps)
     expect(out).toEqual({
       answer: 'Kindred builds websites.',
@@ -46,7 +52,7 @@ describe('llmWebSearch', () => {
   it('fails loud on a provider without web search, before any call', async () => {
     for (const pool of ['opper', null] as const) {
       const complete = vi.fn()
-      await expect(llmWebSearch({ userId: 'u1', query: 'q' }, { resolveChat: async () => target(pool), complete })).rejects.toBeInstanceOf(LlmNotConfiguredError)
+      await expect(llmWebSearch({ userId: 'u1', query: 'q' }, { ...noTavily, resolveChat: async () => target(pool), complete })).rejects.toBeInstanceOf(LlmNotConfiguredError)
       expect(complete).not.toHaveBeenCalled()
     }
   })

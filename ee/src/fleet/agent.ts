@@ -1,5 +1,6 @@
 import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
 import type { DesiredState, Settings } from '../company-repo.ts'
+import type { HostedAddressRecord } from './hosted-address.ts'
 import { addDomain, removeDomain } from '../domains.ts'
 import { generateSecret } from '../secrets.ts'
 import { releaseOf } from '../upgrade.ts'
@@ -23,7 +24,6 @@ import {
   type HostedAddressV1,
   type ReportV1,
 } from './protocol.ts'
-import type { HostedAddressRecord } from './hosted-address.ts'
 
 /**
  * Managed mode (plan/phase-managed-box.md M4): a box enrolled with a hosting
@@ -54,6 +54,12 @@ export const PLATFORM_AI_SECRETS = ['PLATFORM_LLM_BASE_URL', 'PLATFORM_LLM_API_K
  * sends a tag, brought to absent when it sends none, and removed with them.
  */
 export const PLATFORM_AI_USAGE_TAG = 'PLATFORM_LLM_USAGE_TAG'
+/**
+ * Feature `platformAiSearch`: the hosting's Tavily key for web.search on eigenInference (desired
+ * platformAi.searchTavilyApiKey). Optional like the usage tag: set with the four when sent, brought to absent when not,
+ * removed with them. Never logged.
+ */
+export const PLATFORM_SEARCH_TAVILY_API_KEY = 'PLATFORM_SEARCH_TAVILY_API_KEY'
 /**
  * Feature `aiUsage`: how the company is billed for eigenInference, for os's Settings → AI usage (€ = provider USD ×
  * markup × usdToEur, at the rate of rateDay); all or none, from desired.aiUsage (currency is always EUR).
@@ -418,8 +424,14 @@ export class FleetAgent {
   }
 
   private async applyPlatformAi(ai: DesiredV1['platformAi']): Promise<void> {
-    type Name = (typeof PLATFORM_AI_SECRETS)[number] | typeof PLATFORM_AI_USAGE_TAG
+    type Optional = typeof PLATFORM_AI_USAGE_TAG | typeof PLATFORM_SEARCH_TAVILY_API_KEY
+    type Name = (typeof PLATFORM_AI_SECRETS)[number] | Optional
     const tag = ai?.usageTag
+    // The optional ones go with the others; set only when sent, so a box never keeps a value the control plane dropped.
+    const optional: Partial<Record<Optional, string>> = ai
+      ? { ...(tag ? { [PLATFORM_AI_USAGE_TAG]: tag } : {}), ...(ai.searchTavilyApiKey ? { [PLATFORM_SEARCH_TAVILY_API_KEY]: ai.searchTavilyApiKey } : {}) }
+      : {}
+    const optionalNames: Optional[] = [PLATFORM_AI_USAGE_TAG, PLATFORM_SEARCH_TAVILY_API_KEY]
     const want: Partial<Record<Name, string>> | null = ai
       ? {
           PLATFORM_LLM_BASE_URL: ai.llmBaseUrl,
@@ -427,11 +439,11 @@ export class FleetAgent {
           PLATFORM_LLM_MODEL_CHAT: ai.llmModelChat,
           PLATFORM_LLM_MODEL_EMBEDDING: ai.llmModelEmbedding,
           PLATFORM_LLM_PROVIDER: ai.provider ?? 'openrouter',
-          ...(tag ? { [PLATFORM_AI_USAGE_TAG]: tag } : {}),
+          ...optional,
         }
       : null
-    // The tag goes with the others; set only when sent, so a box never tags calls with a name the control plane dropped.
-    const names: Name[] = want && !tag ? [...PLATFORM_AI_SECRETS] : [...PLATFORM_AI_SECRETS, PLATFORM_AI_USAGE_TAG]
+    const sent = optionalNames.filter((n) => optional[n] !== undefined)
+    const names: Name[] = want ? [...PLATFORM_AI_SECRETS, ...sent] : [...PLATFORM_AI_SECRETS, ...optionalNames]
     await this.applyOsSecrets(
       names,
       want as Record<Name, string> | null,
@@ -439,9 +451,11 @@ export class FleetAgent {
         set: 'managed: platform AI set for os',
         removed: 'managed: platform AI removed from os',
         type: 'fleet.platform_ai',
-        log: want ? `platform AI set for os (${want.PLATFORM_LLM_PROVIDER}, ${ai!.llmBaseUrl}, ${ai!.llmModelChat}${tag ? `, usage tag ${tag}` : ''})` : 'platform AI removed from os',
+        log: want
+          ? `platform AI set for os (${want.PLATFORM_LLM_PROVIDER}, ${ai!.llmBaseUrl}, ${ai!.llmModelChat}${tag ? `, usage tag ${tag}` : ''}${ai!.searchTavilyApiKey ? ', web search on Tavily' : ''})`
+          : 'platform AI removed from os',
       },
-      { retired: LEGACY_PLATFORM_AI_SECRETS, absent: want && !tag ? [PLATFORM_AI_USAGE_TAG] : [] },
+      { retired: LEGACY_PLATFORM_AI_SECRETS, absent: want ? optionalNames.filter((n) => !sent.includes(n)) : [] },
     )
   }
 

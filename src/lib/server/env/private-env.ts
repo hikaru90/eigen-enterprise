@@ -64,6 +64,8 @@ export type ExtendedPrivateEnv = typeof kitEnv & {
   PLATFORM_LLM_PROVIDER?: string
   /** The box's usage tag at the provider (fleet platformAi.usageTag); optional (llm/platform-ai.ts). */
   PLATFORM_LLM_USAGE_TAG?: string
+  /** The hosting's Tavily key for web.search on eigenInference (fleet platformAi.searchTavilyApiKey); absent = none. */
+  PLATFORM_SEARCH_TAVILY_API_KEY?: string
   /** How the hosting invoices eigenInference (fleet desired.aiUsage); all three or none (ai-usage/billing-env.ts). */
   EE_AI_BILLING_MARKUP?: string
   EE_AI_BILLING_USD_TO_EUR?: string

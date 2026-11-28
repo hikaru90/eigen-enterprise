@@ -124,3 +124,17 @@ export function readPlatformAiConfig(env: Record<string, string | undefined>): P
     usageTag: readUsageTag(env[PLATFORM_AI_USAGE_TAG_ENV]),
   }
 }
+
+/**
+ * Web search on eigenInference (owner decision 2026-11-28): Opper offers none, so the hosting
+ * rents Tavily (https://api.tavily.com/search) with one platform key, fleet
+ * `platformAi.searchTavilyApiKey`. Optional and independent of the four PLATFORM_LLM_*: present
+ * → web.search on eigenInference runs on Tavily; absent → web.search on Opper fails loud.
+ */
+export const PLATFORM_SEARCH_TAVILY_API_KEY_ENV = 'PLATFORM_SEARCH_TAVILY_API_KEY' as const
+
+/** The platform Tavily key, or null when the hosting sent none. Never a default. */
+export function readPlatformSearchTavilyKey(env: Record<string, string | undefined>): string | null {
+  const value = env[PLATFORM_SEARCH_TAVILY_API_KEY_ENV]?.trim() ?? ''
+  return value === '' ? null : value
+}

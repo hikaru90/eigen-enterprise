@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
 import type { BackupConfig, BackupRun, Health } from '../backup/service.ts'
+import type { HostedAddressRecord } from './hosted-address.ts'
+import { describe, expect, it, vi } from 'vitest'
 import { settingsSchema, type DesiredState } from '../company-repo.ts'
 import { addDomain, OS_HOME_PATH, OS_PUBLIC_SURFACE } from '../domains.ts'
 import { EE_VERSION } from '../version.ts'
-import { AI_BILLING_SECRETS, AI_USAGE_MAX_ROWS, BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, IMPLEMENTED_FEATURES, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, PLATFORM_AI_USAGE_TAG, UPGRADE_UNIT, type FleetHost } from './agent.ts'
-import type { HostedAddressRecord } from './hosted-address.ts'
+import { AI_BILLING_SECRETS, AI_USAGE_MAX_ROWS, BOX_KEY, FLEET_BACKUP_MARK, FLEET_SCOPE, FleetAgent, FleetError, IMPLEMENTED_FEATURES, LEGACY_PLATFORM_AI_SECRETS, LOCAL_TOKEN, PLATFORM_AI_USAGE_TAG, PLATFORM_SEARCH_TAVILY_API_KEY, UPGRADE_UNIT, type FleetHost } from './agent.ts'
 import { escrowRequestV1, FLEET_FEATURES, FLEET_PATHS, newBoxKey, reportV1, verifyFleetRequest, type AiUsageDayV1, type DomainClaimV1 } from './protocol.ts'
 
 const BOX = '0b9a7c3e-1f2d-4c5b-8a6e-9d8c7b6a5f4e'
@@ -417,6 +417,34 @@ describe('fleet: desired state (level-triggered)', () => {
     expect(f.secrets['os']![PLATFORM_AI_USAGE_TAG]).toBeUndefined()
     expect(f.state().workloads[0]!.secrets).not.toContain(PLATFORM_AI_USAGE_TAG)
     for (const l of f.logs) expect(l.message).not.toContain('sk-OPPER')
+  })
+
+  it('platformAi: searchTavilyApiKey reaches os as PLATFORM_SEARCH_TAVILY_API_KEY; dropped when no longer sent; removed with the rest; never logged', async () => {
+    const f = fakeHost({ managed: true })
+    const agent = new FleetAgent(f.host)
+    const ai = { provider: 'opper' as const, searchTavilyApiKey: 'tvly-SECRET', llmBaseUrl: 'https://api.opper.ai/v3/compat', llmApiKey: 'sk-OPPER', llmModelChat: 'chat-1', llmModelEmbedding: 'embed-1' }
+    f.setAnswer(desired({ platformAi: ai }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(PLATFORM_SEARCH_TAVILY_API_KEY).toBe('PLATFORM_SEARCH_TAVILY_API_KEY')
+    expect(f.secrets['os']).toMatchObject({ PLATFORM_LLM_PROVIDER: 'opper', PLATFORM_SEARCH_TAVILY_API_KEY: 'tvly-SECRET' })
+    expect(f.secrets['os']![PLATFORM_AI_USAGE_TAG]).toBeUndefined()
+    expect(f.state().workloads[0]!.secrets).toContain(PLATFORM_SEARCH_TAVILY_API_KEY)
+    const n = f.commits.length
+    await agent.poll()
+    expect(f.commits).toHaveLength(n)
+    const { searchTavilyApiKey: _k, ...without } = ai
+    f.setAnswer(desired({ platformAi: { ...without, usageTag: 'box_1' } }))
+    expect((await agent.poll()).ok).toBe(true)
+    expect(f.secrets['os']![PLATFORM_SEARCH_TAVILY_API_KEY]).toBeUndefined()
+    expect(f.state().workloads[0]!.secrets).not.toContain(PLATFORM_SEARCH_TAVILY_API_KEY)
+    expect(f.secrets['os']![PLATFORM_AI_USAGE_TAG]).toBe('box_1')
+    f.setAnswer(desired({ platformAi: ai }))
+    await agent.poll()
+    f.setAnswer(desired({ platformAi: null }))
+    await agent.poll()
+    expect(f.secrets['os']![PLATFORM_SEARCH_TAVILY_API_KEY]).toBeUndefined()
+    expect(f.state().workloads[0]!.secrets).not.toContain(PLATFORM_SEARCH_TAVILY_API_KEY)
+    for (const l of f.logs) expect(l.message).not.toContain('tvly-SECRET')
   })
 
   describe('aiUsage (feature aiUsage)', () => {
